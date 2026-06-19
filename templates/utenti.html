@@ -1,0 +1,958 @@
+{% extends "base.html" %}
+
+{% block title %}Gestione Utenti - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Gestione Utenti</h1>
+    <p class="page-subtitle">Visualizza e gestisci gli utenti del servizio</p>
+    <div class="header-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="btn btn-secondary btn-sm" onclick="exportUtentiCSV()" title="Esporta lista utenti in CSV">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Export CSV
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="openModal('modal-import-csv')" title="Importa utenti da CSV">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            Import CSV
+        </button>
+        <button class="btn btn-primary" onclick="openModal('modal-nuovo-utente')">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Nuovo Utente
+        </button>
+    </div>
+</div>
+
+<!-- Filtri -->
+<div class="filters">
+    <div class="filter-group">
+        <label class="filter-label">Commessa</label>
+        <select id="filter-commessa" class="form-control" style="width: 200px;">
+            <option value="">Tutte</option>
+        </select>
+    </div>
+
+    <div class="filter-group">
+        <label class="filter-label">Scuola</label>
+        <select id="filter-scuola" class="form-control" style="width: 300px;">
+            <option value="">Tutte le scuole</option>
+        </select>
+    </div>
+
+    <div class="filter-group">
+        <label class="filter-label">Cerca</label>
+        <input type="text" id="filter-search" class="form-control" placeholder="Nome o cognome..." style="width: 200px;">
+    </div>
+
+    <div class="filter-group">
+        <label class="filter-label">Stato</label>
+        <select id="filter-stato" class="form-control" style="width: 150px;">
+            <option value="">Tutti</option>
+            <option value="attivo">Attivi</option>
+            <option value="lista_attesa">In Lista Attesa</option>
+            <option value="scaduto">Scaduti</option>
+            <option value="inattivo">Inattivi</option>
+        </select>
+    </div>
+
+    <div class="filter-group" style="margin-left: auto;">
+        <label class="filter-label">&nbsp;</label>
+        <button id="btn-load" class="btn btn-primary">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Carica
+        </button>
+    </div>
+</div>
+
+<!-- Tabella Utenti -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Elenco Utenti</h2>
+        <span class="badge badge-primary" id="count-badge">0 utenti</span>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div class="table-container" id="table-container">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuovo Utente -->
+<div class="modal-overlay" id="modal-nuovo-utente">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Aggiungi Nuovo Utente</h3>
+            <button class="modal-close" onclick="closeModal('modal-nuovo-utente')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Commessa *</label>
+                <select id="new-commessa" class="form-control">
+                    <option value="">Seleziona commessa...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Scuola/IC (Albero Attività) *</label>
+                <input type="text" id="new-scuola" class="form-control" placeholder="es. /IC ACHILLE TEDESCHI/Infanzia/...">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Nome *</label>
+                <input type="text" id="new-nome" class="form-control" placeholder="Nome">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Cognome</label>
+                <input type="text" id="new-cognome" class="form-control" placeholder="Cognome">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Monte Ore Settimanale *</label>
+                <input type="number" id="new-monte-ore" class="form-control" placeholder="es. 15" step="0.5" min="0">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-nuovo-utente')">Annulla</button>
+            <button class="btn btn-primary" onclick="createUtente()">Aggiungi Utente</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Reset Dati -->
+<div class="modal-overlay" id="modal-reset">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Reset Dati</h3>
+            <button class="modal-close" onclick="closeModal('modal-reset')">✕</button>
+        </div>
+        <div class="modal-body">
+            <p style="color:red;font-weight:bold;">⚠️ Attenzione! Questa operazione non può essere annullata.</p>
+            <div class="form-group">
+                <label class="form-label">Tipo di Reset</label>
+                <select id="reset-type" class="form-control">
+                    <option value="rendicontazioni">Solo rendicontazioni</option>
+                    <option value="utenti">Utenti e rendicontazioni</option>
+                    <option value="all">Reset completo</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-reset')">Annulla</button>
+            <button class="btn btn-danger" onclick="resetData()">Conferma Reset</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Modifica Utente -->
+<div class="modal-overlay" id="modal-edit">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Modifica Utente</h3>
+            <button class="modal-close" onclick="closeModal('modal-edit')">✕</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="edit-utente-id">
+            <div class="form-group">
+                <label class="form-label">Nome *</label>
+                <input type="text" id="edit-nome" class="form-control" placeholder="Nome">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Cognome</label>
+                <input type="text" id="edit-cognome" class="form-control" placeholder="Cognome">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Monte Ore Settimanale (base) *</label>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <input type="number" id="edit-monte-ore" class="form-control" placeholder="es. 15" step="0.5" min="0" style="flex:1;">
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="openVariazioniMonteOre()" title="Gestisci incrementi/decrementi programmati">Variazioni</button>
+                </div>
+                <p class="form-help" id="edit-monte-ore-help" style="display:none; color: var(--warning);"></p>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Lista di Attesa</label>
+                <select id="edit-lista-attesa" class="form-control">
+                    <option value="">Nessuna</option>
+                    <option value="Settembre">Settembre</option>
+                    <option value="Ottobre">Ottobre</option>
+                    <option value="Novembre">Novembre</option>
+                    <option value="Dicembre">Dicembre</option>
+                    <option value="Gennaio">Gennaio</option>
+                    <option value="Febbraio">Febbraio</option>
+                    <option value="Marzo">Marzo</option>
+                    <option value="Aprile">Aprile</option>
+                    <option value="Maggio">Maggio</option>
+                    <option value="Giugno">Giugno</option>
+                </select>
+            </div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Attivo da (mese)</label>
+                    <input type="month" id="edit-data-inizio" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Attivo fino a (mese)</label>
+                    <input type="month" id="edit-data-fine" class="form-control">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Scuola</label>
+                <input type="text" id="edit-scuola" class="form-control" disabled>
+                <p class="form-help">La scuola non può essere modificata.</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-edit')">Annulla</button>
+            <button class="btn btn-danger btn-sm" onclick="duplicaUtente()" style="margin-right: auto;" title="Crea una copia di questo utente">Duplica</button>
+            <button class="btn btn-warning btn-sm" onclick="openCambioScuola()" title="Cambia la scuola dell'utente">Cambia Scuola</button>
+            <button class="btn btn-primary" onclick="saveEditUtente()">Salva Modifiche</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Import CSV -->
+<div class="modal-overlay" id="modal-import-csv">
+    <div class="modal" style="max-width: 500px;">
+        <div class="modal-header">
+            <h3 class="modal-title">Import Utenti da CSV</h3>
+            <button class="modal-close" onclick="closeModal('modal-import-csv')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-info mb-4">
+                <strong>Formato richiesto:</strong><br>
+                CSV con colonne: nome, cognome, scuola, monte_ore, commessa<br>
+                <a href="#" onclick="downloadTemplateCSV(); return false;">Scarica template CSV</a>
+            </div>
+            <div class="form-group">
+                <label class="form-label">File CSV</label>
+                <input type="file" id="import-csv-file" class="form-control" accept=".csv">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Modalità</label>
+                <select id="import-csv-mode" class="form-control">
+                    <option value="add">Aggiungi nuovi utenti</option>
+                    <option value="update">Aggiorna esistenti (per nome/cognome)</option>
+                </select>
+            </div>
+            <div id="import-csv-preview" style="display: none; margin-top: 16px;">
+                <h4 style="font-size: 0.9rem; margin-bottom: 8px;">Anteprima:</h4>
+                <div id="import-csv-preview-content" style="max-height: 200px; overflow-y: auto; font-size: 0.8rem; background: var(--bg-secondary); padding: 12px; border-radius: 8px;"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-import-csv')">Annulla</button>
+            <button class="btn btn-primary" onclick="importUtentiCSV()">Importa</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Cambio Scuola -->
+<div class="modal-overlay" id="modal-cambio-scuola">
+    <div class="modal" style="max-width: 500px;">
+        <div class="modal-header">
+            <h3 class="modal-title">Cambia Scuola</h3>
+            <button class="modal-close" onclick="closeModal('modal-cambio-scuola')">✕</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="cambio-scuola-utente-id">
+            <div class="alert alert-warning mb-4">
+                Lo storico delle rendicontazioni verrà mantenuto. L'utente apparirà nella nuova scuola per i mesi futuri.
+            </div>
+            <div class="form-group">
+                <label class="form-label">Utente</label>
+                <input type="text" id="cambio-scuola-utente-nome" class="form-control" disabled>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Scuola attuale</label>
+                <input type="text" id="cambio-scuola-attuale" class="form-control" disabled>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Nuova Commessa</label>
+                <select id="cambio-scuola-commessa" class="form-control" onchange="loadScuolePerCambio()">
+                    <option value="">Seleziona commessa...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Nuova Scuola *</label>
+                <select id="cambio-scuola-nuova" class="form-control">
+                    <option value="">Prima seleziona una commessa...</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-cambio-scuola')">Annulla</button>
+            <button class="btn btn-primary" onclick="confermaCambioScuola()">Conferma Cambio</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Storico Monte Ore -->
+<div class="modal-overlay" id="modal-storico-monte-ore">
+    <div class="modal" style="max-width: 500px;">
+        <div class="modal-header">
+            <h3 class="modal-title">Storico Monte Ore</h3>
+            <button class="modal-close" onclick="closeModal('modal-storico-monte-ore')">✕</button>
+        </div>
+        <div class="modal-body" id="storico-monte-ore-content">
+            <div class="text-center text-muted py-4">Caricamento...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Variazioni Monte Ore -->
+<div class="modal-overlay" id="modal-variazioni-monte-ore">
+    <div class="modal" style="max-width: 600px;">
+        <div class="modal-header">
+            <h3 class="modal-title">Variazioni Monte Ore</h3>
+            <button class="modal-close" onclick="closeModal('modal-variazioni-monte-ore')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-info" style="margin-bottom: 16px; font-size: 0.85rem;">
+                Aggiungi incrementi o decrementi del monte ore che si applicano a partire da un determinato mese.
+                Il sistema userà automaticamente il valore corretto nei calcoli della rendicontazione.
+            </div>
+
+            <div id="variazioni-monte-ore-list">
+                <div class="text-center text-muted py-4">Caricamento...</div>
+            </div>
+
+            <hr style="margin: 16px 0;">
+
+            <h4 style="font-size: 0.95rem; margin-bottom: 12px;">Nuova variazione</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group" style="margin-bottom: 8px;">
+                    <label class="form-label">Nuovo monte ore *</label>
+                    <input type="number" id="var-monte-ore" class="form-control" placeholder="es. 18" step="0.5" min="0" max="40">
+                </div>
+                <div class="form-group" style="margin-bottom: 8px;">
+                    <label class="form-label">A partire da *</label>
+                    <input type="month" id="var-mese-inizio" class="form-control">
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label">Nota (opzionale)</label>
+                <input type="text" id="var-nota" class="form-control" placeholder="es. Incremento delibera n. 123">
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="addVariazioneMO()">Aggiungi Variazione</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var allUtenti = [];
+var deleteUtenteId = null;
+var editUtenteId = null;
+var utentiMap = {};
+
+function esc(str) {
+    if (!str) return '';
+    var d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+// === Init ===
+document.addEventListener('DOMContentLoaded', function() {
+    loadCommesse();
+    loadScuole();
+    loadUtenti();
+
+    document.getElementById('filter-commessa').addEventListener('change', function(e) {
+        loadScuole(e.target.value);
+        loadUtenti();
+    });
+    document.getElementById('filter-scuola').addEventListener('change', loadUtenti);
+    document.getElementById('filter-stato').addEventListener('change', loadUtenti);
+    document.getElementById('btn-load').addEventListener('click', loadUtenti);
+
+    var searchTimeout;
+    document.getElementById('filter-search').addEventListener('input', function(e) {
+        clearTimeout(searchTimeout);
+        var val = e.target.value.toLowerCase().trim();
+        searchTimeout = setTimeout(function() { filterTable(val); }, 200);
+    });
+
+    // Preview CSV import
+    document.getElementById('import-csv-file')?.addEventListener('change', previewCSV);
+});
+
+// === Ricerca locale ===
+function filterTable(query) {
+    var rows = document.querySelectorAll('#table-container tbody tr');
+    var matchCount = 0;
+    rows.forEach(function(row) {
+        if (!query) { row.style.display = ''; return; }
+        var match = row.textContent.toLowerCase().indexOf(query) >= 0;
+        row.style.display = match ? '' : 'none';
+        if (match) matchCount++;
+    });
+    document.getElementById('count-badge').textContent = query
+        ? matchCount + ' trovati' : allUtenti.length + ' utenti';
+}
+
+// === Caricamento dati ===
+function loadCommesse() {
+    apiCall('/api/commesse').then(function(commesse) {
+        var html = '<option value="">Tutte</option>';
+        var html2 = '<option value="">Seleziona commessa...</option>';
+        commesse.forEach(function(c) {
+            html += '<option value="' + esc(c.nome) + '">' + esc(c.nome) + '</option>';
+            html2 += '<option value="' + esc(c.nome) + '">' + esc(c.nome) + '</option>';
+        });
+        document.getElementById('filter-commessa').innerHTML = html;
+        document.getElementById('new-commessa').innerHTML = html2;
+    }).catch(function(err) { console.error('Errore commesse:', err); });
+}
+
+function loadScuole(commessa) {
+    var url = '/api/scuole';
+    if (commessa) url += '?commessa=' + encodeURIComponent(commessa);
+    apiCall(url).then(function(scuole) {
+        var html = '<option value="">Tutte le scuole</option>';
+        scuole.forEach(function(s) {
+            var nome = s.nome_completo ? s.nome_completo.substring(0, 60) : '';
+            html += '<option value="' + s.id + '">' + esc(nome) + '...</option>';
+        });
+        document.getElementById('filter-scuola').innerHTML = html;
+    }).catch(function(err) { console.error('Errore scuole:', err); });
+}
+
+function loadUtenti() {
+    var commessa = document.getElementById('filter-commessa').value;
+    var scuolaId = document.getElementById('filter-scuola').value;
+    var stato = document.getElementById('filter-stato').value;
+    showLoading('table-container');
+
+    var url = '/api/utenti';
+    var params = [];
+    if (commessa) params.push('commessa=' + encodeURIComponent(commessa));
+    if (scuolaId) params.push('scuola_id=' + scuolaId);
+    if (params.length > 0) url += '?' + params.join('&');
+
+    apiCall(url).then(function(utenti) {
+        // Filtra per stato lato client
+        if (stato) {
+            var oggi = new Date();
+            var oggiStr = oggi.toISOString().slice(0, 7); // YYYY-MM
+
+            utenti = utenti.filter(function(u) {
+                if (stato === 'attivo') {
+                    return u.attivo && !u.lista_attesa && (!u.data_fine || u.data_fine >= oggiStr);
+                } else if (stato === 'lista_attesa') {
+                    return u.lista_attesa;
+                } else if (stato === 'scaduto') {
+                    return u.data_fine && u.data_fine < oggiStr;
+                } else if (stato === 'inattivo') {
+                    return !u.attivo;
+                }
+                return true;
+            });
+        }
+        allUtenti = utenti;
+        renderTable(utenti);
+    }).catch(function(err) {
+        showToast('Errore caricamento utenti', 'error');
+    });
+}
+
+// === Render tabella ===
+function renderTable(utenti) {
+    var container = document.getElementById('table-container');
+    document.getElementById('count-badge').textContent = utenti.length + ' utenti';
+
+    if (utenti.length === 0) {
+        showEmptyState('table-container', 'Nessun utente trovato', 'Importa i dati dalla sezione Import Excel oppure aggiungili manualmente');
+        return;
+    }
+
+    // Mappa utenti per accesso rapido
+    utentiMap = {};
+    utenti.forEach(function(u) {
+        utentiMap[u.id] = u;
+        utentiMap[String(u.id)] = u;
+    });
+
+    var mesi = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+    function fmtPeriodo(d) {
+        if (!d) return '...';
+        var parts = d.split('-');
+        return mesi[parseInt(parts[1]) - 1] + ' ' + parts[0].slice(2);
+    }
+
+    var rows = '';
+    utenti.forEach(function(u) {
+        var periodo = '-';
+        if (u.data_inizio || u.data_fine) {
+            periodo = '<span class="badge badge-info">' + fmtPeriodo(u.data_inizio) + ' &rarr; ' + fmtPeriodo(u.data_fine) + '</span>';
+        }
+        var lista = u.lista_attesa ? '<span class="badge badge-warning">' + esc(u.lista_attesa) + '</span>' : '-';
+
+        rows += '<tr>'
+            + '<td><span class="badge badge-primary">' + esc(u.commessa) + '</span></td>'
+            + '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(u.scuola) + '">' + esc(u.scuola) + '</td>'
+            + '<td><a href="/utente/' + u.id + '" style="color:var(--primary);text-decoration:none;"><strong>' + esc(u.nome) + '</strong></a></td>'
+            + '<td><a href="/utente/' + u.id + '" style="color:var(--primary);text-decoration:none;"><strong>' + esc(u.cognome) + '</strong></a></td>'
+            + '<td>' + esc(u.nome_puntato) + '</td>'
+            + '<td style="text-align:center;">' + u.monte_ore_settimanale + '</td>'
+            + '<td>' + periodo + '</td>'
+            + '<td>' + lista + '</td>'
+            + '<td style="white-space:nowrap;">'
+            +   '<a href="/utente/' + u.id + '" class="btn btn-sm btn-ghost" title="Dettaglio">👤</a> '
+            +   '<button class="btn btn-sm btn-secondary" onclick="apriModifica(' + u.id + ')">✏️</button> '
+            +   '<button class="btn btn-sm btn-danger" onclick="apriElimina(' + u.id + ')">🗑️</button>'
+            + '</td>'
+            + '</tr>';
+    });
+
+    container.innerHTML = '<table class="table">'
+        + '<thead><tr>'
+        + '<th>Commessa</th>'
+        + '<th>Scuola</th>'
+        + '<th>Cognome</th>'
+        + '<th>Nome</th>'
+        + '<th>N. Puntati</th>'
+        + '<th style="text-align:center;">Monte Ore</th>'
+        + '<th>Periodo</th>'
+        + '<th>Lista Attesa</th>'
+        + '<th>Azioni</th>'
+        + '</tr></thead>'
+        + '<tbody>' + rows + '</tbody>'
+        + '</table>';
+}
+
+// === Modifica utente ===
+function apriModifica(id) {
+    var u = utentiMap[id];
+    if (!u) { showToast('Utente non trovato', 'error'); return; }
+
+    editUtenteId = u.id;
+    document.getElementById('edit-utente-id').value = u.id;
+    document.getElementById('edit-nome').value = u.nome || '';
+    document.getElementById('edit-cognome').value = u.cognome || '';
+    document.getElementById('edit-monte-ore').value = u.monte_ore_settimanale;
+    document.getElementById('edit-scuola').value = u.scuola || '';
+    document.getElementById('edit-lista-attesa').value = u.lista_attesa || '';
+    document.getElementById('edit-data-inizio').value = u.data_inizio || '';
+    document.getElementById('edit-data-fine').value = u.data_fine || '';
+
+    // Carica conteggio variazioni monte ore
+    var helpEl = document.getElementById('edit-monte-ore-help');
+    helpEl.style.display = 'none';
+    apiCall('/api/utenti/' + u.id + '/variazioni-monte-ore').then(function(data) {
+        var n = (data.variazioni || []).length;
+        if (n > 0) {
+            helpEl.textContent = n + ' variazione/i programmata/e';
+            helpEl.style.display = 'block';
+        }
+    });
+
+    openModal('modal-edit');
+}
+
+function saveEditUtente() {
+    if (!editUtenteId) return;
+    var nome = document.getElementById('edit-nome').value.trim();
+    var cognome = document.getElementById('edit-cognome').value.trim();
+    var monteOre = document.getElementById('edit-monte-ore').value;
+    var listaAttesa = document.getElementById('edit-lista-attesa').value;
+    var dataInizio = document.getElementById('edit-data-inizio').value;
+    var dataFine = document.getElementById('edit-data-fine').value;
+
+    if (!nome) { showToast('Nome obbligatorio', 'error'); return; }
+    if (!monteOre || isNaN(parseFloat(monteOre)) || parseFloat(monteOre) < 0 || parseFloat(monteOre) > 40) {
+        showToast('Monte ore deve essere tra 0 e 40', 'error'); return;
+    }
+
+    apiCall('/api/utenti/' + editUtenteId, {
+        method: 'PUT',
+        body: JSON.stringify({
+            nome: nome,
+            cognome: cognome,
+            monte_ore: parseFloat(monteOre),
+            lista_attesa: listaAttesa || null,
+            data_inizio: dataInizio || null,
+            data_fine: dataFine || null
+        })
+    }).then(function() {
+        showToast('Utente modificato con successo', 'success');
+        closeModal('modal-edit');
+        loadUtenti();
+    }).catch(function(err) {
+        showToast('Errore: ' + err.message, 'error');
+    });
+}
+
+// === Elimina utente ===
+function apriElimina(id) {
+    var u = utentiMap[id];
+    if (!u) { showToast('Utente non trovato', 'error'); return; }
+
+    if (confirm('Eliminare utente ' + (u.nome || '') + ' ' + (u.cognome || '') + '?')) {
+        apiCall('/api/utenti/' + u.id, { method: 'DELETE' }).then(function() {
+            showToast('Utente eliminato', 'success');
+            loadUtenti();
+        }).catch(function(err) {
+            showToast('Errore: ' + err.message, 'error');
+        });
+    }
+}
+
+// === Nuovo Utente ===
+function createUtente() {
+    var commessa = document.getElementById('new-commessa').value;
+    var scuola = document.getElementById('new-scuola').value.trim();
+    var nome = document.getElementById('new-nome').value.trim();
+    var cognome = document.getElementById('new-cognome').value.trim();
+    var monteOre = document.getElementById('new-monte-ore').value;
+
+    if (!commessa || !scuola || !nome || !monteOre) {
+        showToast('Compila tutti i campi obbligatori', 'error');
+        return;
+    }
+
+    apiCall('/api/utenti', {
+        method: 'POST',
+        body: JSON.stringify({
+            commessa: commessa,
+            scuola: scuola,
+            nome: nome,
+            cognome: cognome,
+            monte_ore: parseFloat(monteOre)
+        })
+    }).then(function() {
+        showToast('Utente aggiunto con successo', 'success');
+        closeModal('modal-nuovo-utente');
+        document.getElementById('new-commessa').value = '';
+        document.getElementById('new-scuola').value = '';
+        document.getElementById('new-nome').value = '';
+        document.getElementById('new-cognome').value = '';
+        document.getElementById('new-monte-ore').value = '';
+        loadUtenti();
+        loadScuole();
+    }).catch(function(err) {
+        showToast('Errore: ' + err.message, 'error');
+    });
+}
+
+// === Reset Dati ===
+function resetData() {
+    var resetType = document.getElementById('reset-type').value;
+    var labels = { 'all': 'TUTTI i dati', 'rendicontazioni': 'tutte le rendicontazioni', 'utenti': 'utenti e rendicontazioni' };
+    closeModal('modal-reset');
+
+    showConfirmDialog(
+        'Attenzione: Reset dati',
+        'Stai per cancellare ' + (labels[resetType] || resetType) + '. Digita CONFERMA per procedere.',
+        function(inputVal) {
+            if (inputVal !== 'CONFERMA') {
+                showToast('Devi digitare esattamente "CONFERMA"', 'error');
+                return;
+            }
+            apiCall('/api/reset', {
+                method: 'POST',
+                body: JSON.stringify({ type: resetType, confirm: inputVal })
+            }).then(function(result) {
+                showToast(result.message, 'success', 8000);
+                loadUtenti();
+                loadScuole();
+            }).catch(function(err) {
+                showToast('Errore: ' + err.message, 'error');
+            });
+        },
+        { type: 'danger', confirmText: 'Procedi con il Reset', requireInput: true, inputPlaceholder: 'Digita CONFERMA' }
+    );
+}
+
+// === Export/Import CSV ===
+function exportUtentiCSV() {
+    var commessa = document.getElementById('filter-commessa').value;
+    var url = '/api/utenti/export-csv';
+    if (commessa) url += '?commessa=' + encodeURIComponent(commessa);
+    window.location.href = url;
+    showToast('Download CSV avviato', 'success');
+}
+
+function downloadTemplateCSV() {
+    var csv = 'nome,cognome,scuola,monte_ore,commessa,lista_attesa\n';
+    csv += 'Mario,Rossi,/IC ESEMPIO/Primaria,15,OEPAC IV,\n';
+    csv += 'Anna,Bianchi,/IC ESEMPIO/Infanzia,20,OEPAC V,Settembre\n';
+
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'template_utenti.csv';
+    link.click();
+}
+
+function previewCSV() {
+    var file = document.getElementById('import-csv-file').files[0];
+    if (!file) return;
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var lines = e.target.result.split('\n').slice(0, 6);
+        var preview = document.getElementById('import-csv-preview');
+        var content = document.getElementById('import-csv-preview-content');
+        content.innerHTML = '<pre style="margin:0; white-space: pre-wrap;">' + esc(lines.join('\n')) + '</pre>';
+        if (lines.length > 5) content.innerHTML += '<p class="text-muted">... e altre righe</p>';
+        preview.style.display = 'block';
+    };
+    reader.readAsText(file);
+}
+
+function importUtentiCSV() {
+    var file = document.getElementById('import-csv-file').files[0];
+    if (!file) {
+        showToast('Seleziona un file CSV', 'error');
+        return;
+    }
+
+    var mode = document.getElementById('import-csv-mode').value;
+    var formData = new FormData();
+    formData.append('file', file);
+    formData.append('mode', mode);
+
+    fetch('/api/utenti/import-csv', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            var msg = 'Importati: ' + data.aggiunti + ' nuovi, ' + data.aggiornati + ' aggiornati';
+            if (data.errori && data.errori.length > 0) {
+                msg += '. Errori: ' + data.errori.length;
+            }
+            showToast(msg, 'success');
+            closeModal('modal-import-csv');
+            loadUtenti();
+        })
+        .catch(err => showToast('Errore: ' + err.message, 'error'));
+}
+
+// === Duplica Utente ===
+function duplicaUtente() {
+    var utenteId = document.getElementById('edit-utente-id').value;
+    if (!utenteId) return;
+
+    showConfirmDialog(
+        'Duplica Utente',
+        'Vuoi creare una copia di questo utente?',
+        function() {
+            apiCall('/api/utenti/' + utenteId + '/duplica', { method: 'POST' })
+                .then(function(data) {
+                    showToast('Utente duplicato con ID ' + data.nuovo_id, 'success');
+                    closeModal('modal-edit');
+                    loadUtenti();
+                })
+                .catch(function(err) {
+                    showToast('Errore: ' + err.message, 'error');
+                });
+        },
+        { type: 'info', confirmText: 'Duplica' }
+    );
+}
+
+// === Cambio Scuola ===
+function openCambioScuola() {
+    var utenteId = document.getElementById('edit-utente-id').value;
+    var utente = utentiMap[utenteId];
+    if (!utente) return;
+
+    document.getElementById('cambio-scuola-utente-id').value = utenteId;
+    document.getElementById('cambio-scuola-utente-nome').value = utente.nome + ' ' + (utente.cognome || '');
+    document.getElementById('cambio-scuola-attuale').value = utente.scuola || 'N/D';
+
+    // Popola commesse
+    apiCall('/api/commesse').then(function(commesse) {
+        var select = document.getElementById('cambio-scuola-commessa');
+        select.innerHTML = '<option value="">Seleziona commessa...</option>' +
+            commesse.map(c => '<option value="' + c.id + '">' + esc(c.nome) + '</option>').join('');
+    });
+
+    document.getElementById('cambio-scuola-nuova').innerHTML = '<option value="">Prima seleziona una commessa...</option>';
+    closeModal('modal-edit');
+    openModal('modal-cambio-scuola');
+}
+
+function loadScuolePerCambio() {
+    var commessaId = document.getElementById('cambio-scuola-commessa').value;
+    var select = document.getElementById('cambio-scuola-nuova');
+
+    if (!commessaId) {
+        select.innerHTML = '<option value="">Prima seleziona una commessa...</option>';
+        return;
+    }
+
+    apiCall('/api/scuole?commessa_id=' + commessaId).then(function(scuole) {
+        select.innerHTML = '<option value="">Seleziona scuola...</option>' +
+            scuole.map(s => '<option value="' + s.id + '">' + esc(s.nome_completo.substring(0, 60)) + '</option>').join('');
+    });
+}
+
+function confermaCambioScuola() {
+    var utenteId = document.getElementById('cambio-scuola-utente-id').value;
+    var nuovaScuolaId = document.getElementById('cambio-scuola-nuova').value;
+
+    if (!nuovaScuolaId) {
+        showToast('Seleziona una nuova scuola', 'error');
+        return;
+    }
+
+    apiCall('/api/utenti/' + utenteId + '/cambio-scuola', {
+        method: 'POST',
+        body: JSON.stringify({ scuola_id: parseInt(nuovaScuolaId) })
+    }).then(function() {
+        showToast('Scuola cambiata con successo', 'success');
+        closeModal('modal-cambio-scuola');
+        loadUtenti();
+    }).catch(function(err) {
+        showToast('Errore: ' + err.message, 'error');
+    });
+}
+
+// === Storico Monte Ore ===
+function showStoricoMonteOre(utenteId) {
+    openModal('modal-storico-monte-ore');
+    var content = document.getElementById('storico-monte-ore-content');
+    content.innerHTML = '<div class="text-center py-4"><div class="spinner"></div></div>';
+
+    apiCall('/api/utenti/' + utenteId + '/storico-monte-ore').then(function(data) {
+        var html = '<div style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">';
+        html += '<strong>' + esc(data.utente.nome) + ' ' + esc(data.utente.cognome || '') + '</strong><br>';
+        html += '<span style="font-size: 0.85rem; color: var(--text-secondary);">Monte ore attuale: <strong>' + data.utente.monte_ore_attuale + 'h</strong></span>';
+        html += '</div>';
+
+        if (data.storico.length === 0) {
+            html += '<div class="text-center text-muted py-4">Nessuna modifica registrata</div>';
+        } else {
+            html += '<table class="table" style="font-size: 0.85rem;"><thead><tr><th>Data</th><th>Da</th><th>A</th></tr></thead><tbody>';
+            data.storico.forEach(function(s) {
+                html += '<tr>';
+                html += '<td>' + new Date(s.timestamp).toLocaleDateString('it-IT') + '</td>';
+                html += '<td>' + (s.monte_ore_precedente || '-') + 'h</td>';
+                html += '<td><strong>' + (s.monte_ore_nuovo || '-') + 'h</strong></td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+        }
+
+        content.innerHTML = html;
+    }).catch(function(err) {
+        content.innerHTML = '<div class="text-center text-danger py-4">Errore: ' + err.message + '</div>';
+    });
+}
+
+// === Variazioni Monte Ore ===
+var variazioniUtenteId = null;
+var mesiNomi = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+
+function fmtMeseAnno(meseStr) {
+    if (!meseStr) return '-';
+    var parts = meseStr.split('-');
+    var m = parseInt(parts[1]) - 1;
+    return mesiNomi[m] + ' ' + parts[0];
+}
+
+function openVariazioniMonteOre() {
+    if (!editUtenteId) return;
+    variazioniUtenteId = editUtenteId;
+    openModal('modal-variazioni-monte-ore');
+    loadVariazioniMonteOre();
+}
+
+function loadVariazioniMonteOre() {
+    var list = document.getElementById('variazioni-monte-ore-list');
+    list.innerHTML = '<div class="text-center py-3"><div class="spinner"></div></div>';
+
+    var u = utentiMap[variazioniUtenteId];
+    var nomeUtente = u ? (u.nome + ' ' + (u.cognome || '')) : '';
+
+    apiCall('/api/utenti/' + variazioniUtenteId + '/variazioni-monte-ore').then(function(data) {
+        var variazioni = data.variazioni || [];
+
+        var html = '<div style="padding: 10px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 12px;">';
+        html += '<strong>' + esc(nomeUtente) + '</strong><br>';
+        html += '<span style="font-size:0.85rem; color:var(--text-secondary);">Monte ore base: <strong>' + (u ? u.monte_ore_settimanale : '-') + 'h</strong></span>';
+        html += '</div>';
+
+        if (variazioni.length === 0) {
+            html += '<div class="text-center text-muted py-3" style="font-size:0.85rem;">Nessuna variazione programmata. Il valore base viene usato per tutti i mesi.</div>';
+        } else {
+            html += '<table class="table" style="font-size: 0.85rem;"><thead><tr><th>Da</th><th>Monte Ore</th><th>Nota</th><th></th></tr></thead><tbody>';
+            variazioni.forEach(function(v) {
+                html += '<tr>';
+                html += '<td>' + fmtMeseAnno(v.mese_inizio) + '</td>';
+                html += '<td><strong>' + v.monte_ore + 'h</strong></td>';
+                html += '<td style="color:var(--text-secondary);">' + esc(v.nota || '-') + '</td>';
+                html += '<td style="text-align:right;"><button class="btn btn-sm btn-danger" onclick="deleteVariazioneMO(' + v.id + ')">Elimina</button></td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+        }
+
+        list.innerHTML = html;
+
+        // Mostra hint nel form di modifica utente se ci sono variazioni
+        var helpEl = document.getElementById('edit-monte-ore-help');
+        if (variazioni.length > 0) {
+            helpEl.textContent = variazioni.length + ' variazione/i programmata/e';
+            helpEl.style.display = 'block';
+        } else {
+            helpEl.style.display = 'none';
+        }
+    }).catch(function(err) {
+        list.innerHTML = '<div class="text-center text-danger py-3">Errore: ' + err.message + '</div>';
+    });
+}
+
+function addVariazioneMO() {
+    var monteOre = document.getElementById('var-monte-ore').value;
+    var meseInizio = document.getElementById('var-mese-inizio').value;
+    var nota = document.getElementById('var-nota').value.trim();
+
+    if (!monteOre || isNaN(parseFloat(monteOre)) || parseFloat(monteOre) < 0) {
+        showToast('Monte ore non valido', 'error');
+        return;
+    }
+    if (!meseInizio) {
+        showToast('Seleziona il mese di inizio', 'error');
+        return;
+    }
+
+    apiCall('/api/utenti/' + variazioniUtenteId + '/variazioni-monte-ore', {
+        method: 'POST',
+        body: JSON.stringify({
+            monte_ore: parseFloat(monteOre),
+            mese_inizio: meseInizio,
+            nota: nota || null
+        })
+    }).then(function() {
+        showToast('Variazione aggiunta', 'success');
+        document.getElementById('var-monte-ore').value = '';
+        document.getElementById('var-mese-inizio').value = '';
+        document.getElementById('var-nota').value = '';
+        loadVariazioniMonteOre();
+    }).catch(function(err) {
+        showToast('Errore: ' + err.message, 'error');
+    });
+}
+
+function deleteVariazioneMO(varId) {
+    if (!confirm('Eliminare questa variazione?')) return;
+
+    apiCall('/api/variazioni-monte-ore/' + varId, {
+        method: 'DELETE'
+    }).then(function() {
+        showToast('Variazione eliminata', 'success');
+        loadVariazioniMonteOre();
+    }).catch(function(err) {
+        showToast('Errore: ' + err.message, 'error');
+    });
+}
+</script>
+{% endblock %}

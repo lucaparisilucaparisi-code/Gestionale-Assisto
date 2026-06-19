@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+
+{% block title %}Calendario Scolastico - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Calendario Scolastico</h1>
+    <p class="page-subtitle">Configura i giorni lavorativi per ogni mese dell'anno scolastico</p>
+</div>
+
+<!-- Selezione Anno -->
+<div class="filters">
+    <div class="filter-group">
+        <label class="filter-label">Anno Scolastico</label>
+        <select id="filter-anno" class="form-control" style="width: 180px;">
+        </select>
+    </div>
+
+    <div class="filter-group" style="margin-left: auto; display: flex; gap: 8px;">
+        <button id="btn-copia-precedente" class="btn btn-secondary" style="margin-top: 20px;" title="Copia giorni dall'anno precedente">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Copia da Anno Prec.
+        </button>
+        <button id="btn-calcola-auto" class="btn btn-secondary" style="margin-top: 20px;" title="Calcola giorni automaticamente (22 di default, meno festività)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+            Calcola Auto
+        </button>
+        <button id="btn-new-anno" class="btn btn-primary" style="margin-top: 20px;">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Nuovo Anno
+        </button>
+    </div>
+</div>
+
+<!-- Info -->
+<div class="alert alert-info mb-4">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <div>
+        <strong>Calcolo Media Mensile:</strong><br>
+        Media Mensile = Monte Ore Settimanale × (Giorni Lavorativi × 0,2)<br>
+        Esempio: 10 ore/sett × (16 giorni × 0,2) = 10 × 3,2 = 32 ore mensili<br>
+        <br>
+        <strong>Giugno</strong>: usa due valori distinti — <em>Infanzia</em> (fino al 30/06)
+        e <em>Altri ordini</em> (fino al termine scuole primarie/secondarie). Il sistema applica
+        automaticamente il valore giusto ad ogni utente in base al plesso.
+    </div>
+</div>
+
+<!-- Tabella Calendario -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Giorni Lavorativi per Mese</h2>
+    </div>
+    <div class="card-body">
+        <div id="calendario-container">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuovo Anno -->
+<div class="modal-overlay" id="modal-new-anno">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Crea Nuovo Anno Scolastico</h3>
+            <button class="modal-close" onclick="closeModal('modal-new-anno')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Anno di Inizio</label>
+                <input type="number" id="new-anno-inizio" class="form-control" placeholder="es. 2026" min="2020" max="2050">
+                <p class="form-help">L'anno scolastico sarà creato come "2026-2027"</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-new-anno')">Annulla</button>
+            <button class="btn btn-primary" onclick="createNewAnno()">Crea Anno</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentAnno = '';
+
+const MESI_SCOLASTICI_ORDER = [
+    { mese: 9, nome: 'Settembre', primo: true },
+    { mese: 10, nome: 'Ottobre', primo: true },
+    { mese: 11, nome: 'Novembre', primo: true },
+    { mese: 12, nome: 'Dicembre', primo: true },
+    { mese: 1, nome: 'Gennaio', primo: false },
+    { mese: 2, nome: 'Febbraio', primo: false },
+    { mese: 3, nome: 'Marzo', primo: false },
+    { mese: 4, nome: 'Aprile', primo: false },
+    { mese: 5, nome: 'Maggio', primo: false },
+    { mese: 6, nome: 'Giugno', primo: false }
+];
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadAnniScolastici();
+
+    document.getElementById('filter-anno').addEventListener('change', (e) => {
+        currentAnno = e.target.value;
+        loadCalendario();
+    });
+
+    document.getElementById('btn-new-anno').addEventListener('click', () => {
+        openModal('modal-new-anno');
+    });
+
+    document.getElementById('btn-copia-precedente').addEventListener('click', copiaAnnoPrecedente);
+    document.getElementById('btn-calcola-auto').addEventListener('click', calcolaAutomatico);
+});
+
+async function copiaAnnoPrecedente() {
+    if (!currentAnno) {
+        showToast('Seleziona prima un anno scolastico', 'error');
+        return;
+    }
+
+    const [annoInizio] = currentAnno.split('-').map(Number);
+    const annoPrecedente = `${annoInizio - 1}-${annoInizio}`;
+
+    if (!confirm(`Vuoi copiare i giorni lavorativi dall'anno ${annoPrecedente}?\nI valori attuali verranno sovrascritti.`)) {
+        return;
+    }
+
+    const btn = document.getElementById('btn-copia-precedente');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner" style="width: 16px; height: 16px;"></div> Copiando...';
+
+    try {
+        const result = await apiCall(`/api/calendario/${currentAnno}/copia-precedente`, {
+            method: 'POST'
+        });
+
+        showToast(`Copiati ${result.copiati} mesi dall'anno precedente`, 'success');
+        loadCalendario();
+    } catch (error) {
+        showToast('Errore: ' + error.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Copia da Anno Prec.
+        `;
+    }
+}
+
+async function calcolaAutomatico() {
+    if (!currentAnno) {
+        showToast('Seleziona prima un anno scolastico', 'error');
+        return;
+    }
+
+    if (!confirm('Vuoi calcolare automaticamente i giorni lavorativi?\nVerranno considerati 22 giorni base meno le festività nazionali.\nI valori attuali verranno sovrascritti.')) {
+        return;
+    }
+
+    const btn = document.getElementById('btn-calcola-auto');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner" style="width: 16px; height: 16px;"></div> Calcolando...';
+
+    try {
+        const result = await apiCall(`/api/calendario/${currentAnno}/calcola-auto`, {
+            method: 'POST'
+        });
+
+        showToast(`Calcolati giorni lavorativi per ${result.mesi_calcolati} mesi`, 'success');
+        loadCalendario();
+    } catch (error) {
+        showToast('Errore: ' + error.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+            Calcola Auto
+        `;
+    }
+}
+
+async function loadAnniScolastici() {
+    try {
+        const anni = await apiCall('/api/anni-scolastici');
+        const select = document.getElementById('filter-anno');
+
+        select.innerHTML = anni.map(anno =>
+            `<option value="${anno}">${anno}</option>`
+        ).join('');
+
+        if (anni.length > 0) {
+            currentAnno = anni[0];
+            select.value = currentAnno;
+            loadCalendario();
+        }
+    } catch (error) {
+        showToast('Errore caricamento anni scolastici', 'error');
+    }
+}
+
+async function loadCalendario() {
+    if (!currentAnno) return;
+
+    const container = document.getElementById('calendario-container');
+    container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+    try {
+        const data = await apiCall(`/api/calendario?anno_scolastico=${currentAnno}`);
+        renderCalendario(data);
+    } catch (error) {
+        showToast('Errore caricamento calendario', 'error');
+    }
+}
+
+function renderCalendario(data) {
+    const container = document.getElementById('calendario-container');
+    const [annoInizio, annoFine] = currentAnno.split('-').map(Number);
+
+    // Mappa giorni esistenti (default + altri per giugno)
+    const giorniMap = {};
+    const giorniAltriMap = {};
+    data.calendario.forEach(c => {
+        giorniMap[`${c.mese}-${c.anno}`] = c.giorni_lavorativi;
+        giorniAltriMap[`${c.mese}-${c.anno}`] = c.giorni_lavorativi_altri;
+    });
+
+    let html = `
+        <table class="table">
+            <thead>
+                <tr>
+                    <th style="width: 180px;">Mese</th>
+                    <th style="width: 100px;">Anno</th>
+                    <th style="width: 180px;">Giorni Lavorativi <small style="opacity:.7">(Infanzia)</small></th>
+                    <th style="width: 180px;">Giorni "Altri" <small style="opacity:.7">(solo giugno)</small></th>
+                    <th style="width: 120px;">Coefficiente</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    MESI_SCOLASTICI_ORDER.forEach(m => {
+        const anno = m.primo ? annoInizio : annoFine;
+        const key = `${m.mese}-${anno}`;
+        const giorni = giorniMap[key] || 0;
+        const giorniAltri = giorniAltriMap[key];
+        const coefficiente = (giorni * 0.2).toFixed(1);
+        const isGiugno = m.mese === 6;
+
+        // Campo "altri": editabile solo a giugno
+        const altriInput = isGiugno
+            ? `<input type="number" class="form-control giorni-altri-input"
+                      data-mese="${m.mese}" data-anno="${anno}"
+                      value="${giorniAltri !== null && giorniAltri !== undefined ? giorniAltri : ''}"
+                      placeholder="es. 5" min="0" max="31" style="width: 110px;">`
+            : `<span style="opacity:.4;">—</span>`;
+
+        // Coefficiente: a giugno mostriamo entrambi
+        let coeffCell = `<span class="coefficiente">${coefficiente}</span>`;
+        if (isGiugno) {
+            const coeffAltri = giorniAltri !== null && giorniAltri !== undefined
+                ? (giorniAltri * 0.2).toFixed(1) : '—';
+            coeffCell = `
+                <div style="font-size:0.85rem; line-height:1.4;">
+                    <div>Inf: <strong class="coefficiente">${coefficiente}</strong></div>
+                    <div>Alt: <strong class="coefficiente-altri">${coeffAltri}</strong></div>
+                </div>
+            `;
+        }
+
+        html += `
+            <tr data-mese="${m.mese}" data-anno="${anno}">
+                <td><strong>${m.nome}</strong>${isGiugno ? ' <span style="font-size:0.7rem; padding:2px 6px; background: rgba(10,132,255,.12); border-radius:6px; margin-left:4px;">2 valori</span>' : ''}</td>
+                <td>${anno}</td>
+                <td>
+                    <input type="number" class="form-control giorni-input"
+                           data-mese="${m.mese}" data-anno="${anno}"
+                           value="${giorni}" min="0" max="31" style="width: 110px;">
+                </td>
+                <td>${altriInput}</td>
+                <td>${coeffCell}</td>
+                <td>
+                    <button class="btn btn-sm btn-primary btn-save-giorni"
+                            data-mese="${m.mese}" data-anno="${anno}">
+                        Salva
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+
+    // Event listeners: aggiornamento coefficiente in tempo reale
+    container.querySelectorAll('.giorni-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const giorni = parseInt(e.target.value) || 0;
+            const coeff = (giorni * 0.2).toFixed(1);
+            e.target.closest('tr').querySelector('.coefficiente').textContent = coeff;
+        });
+    });
+
+    container.querySelectorAll('.giorni-altri-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const giorni = parseInt(e.target.value);
+            const coeff = isNaN(giorni) ? '—' : (giorni * 0.2).toFixed(1);
+            const altriEl = e.target.closest('tr').querySelector('.coefficiente-altri');
+            if (altriEl) altriEl.textContent = coeff;
+        });
+    });
+
+    container.querySelectorAll('.btn-save-giorni').forEach(btn => {
+        btn.addEventListener('click', (e) => saveGiorni(e.target));
+    });
+}
+
+async function saveGiorni(btn) {
+    const mese = parseInt(btn.dataset.mese);
+    const anno = parseInt(btn.dataset.anno);
+    const input = document.querySelector(`.giorni-input[data-mese="${mese}"][data-anno="${anno}"]`);
+    const giorni = parseInt(input.value) || 0;
+
+    // Per giugno, raccogli anche il valore "altri" (null se vuoto)
+    let giorniAltri = null;
+    if (mese === 6) {
+        const altriInput = document.querySelector(`.giorni-altri-input[data-mese="${mese}"][data-anno="${anno}"]`);
+        if (altriInput && altriInput.value !== '') {
+            const v = parseInt(altriInput.value);
+            giorniAltri = isNaN(v) ? null : v;
+        }
+    }
+
+    btn.disabled = true;
+    btn.textContent = '...';
+
+    try {
+        await apiCall('/api/calendario', {
+            method: 'POST',
+            body: JSON.stringify({
+                anno_scolastico: currentAnno,
+                mese: mese,
+                anno: anno,
+                giorni_lavorativi: giorni,
+                giorni_lavorativi_altri: giorniAltri
+            })
+        });
+
+        showToast('Giorni lavorativi salvati', 'success');
+        btn.textContent = 'Salvato!';
+        setTimeout(() => {
+            btn.textContent = 'Salva';
+            btn.disabled = false;
+        }, 1500);
+
+    } catch (error) {
+        showToast('Errore nel salvataggio', 'error');
+        btn.textContent = 'Salva';
+        btn.disabled = false;
+    }
+}
+
+async function createNewAnno() {
+    const annoInizio = parseInt(document.getElementById('new-anno-inizio').value);
+
+    if (!annoInizio || annoInizio < 2020 || annoInizio > 2050) {
+        showToast('Inserisci un anno valido', 'error');
+        return;
+    }
+
+    try {
+        const result = await apiCall('/api/anni-scolastici', {
+            method: 'POST',
+            body: JSON.stringify({ anno_inizio: annoInizio })
+        });
+
+        showToast(`Anno scolastico ${result.anno_scolastico} creato`, 'success');
+        closeModal('modal-new-anno');
+
+        // Ricarica lista anni
+        await loadAnniScolastici();
+
+        // Seleziona nuovo anno
+        document.getElementById('filter-anno').value = result.anno_scolastico;
+        currentAnno = result.anno_scolastico;
+        loadCalendario();
+
+    } catch (error) {
+        showToast('Errore nella creazione: ' + error.message, 'error');
+    }
+}
+</script>
+{% endblock %}

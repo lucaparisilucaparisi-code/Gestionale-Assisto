@@ -1,0 +1,27 @@
+{
+    "name": "Assisto - Gestionale OEPAC",
+    "short_name": "Assisto",
+    "description": "Gestionale per il servizio OEPAC - Assistenza Educativa",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#000000",
+    "theme_color": "#0A84FF",
+    "orientation": "any",
+    "icons": [
+        {
+            "src": "/static/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/static/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": ["business", "productivity"],
+    "lang": "it-IT",
+    "dir": "ltr"
+}

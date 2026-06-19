@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="it" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurazione iniziale · Assisto</title>
+    <meta name="theme-color" content="#0A84FF">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/icon.svg') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/worldquant-aesthetic.css') }}">
+</head>
+<body class="auth-body">
+    <main class="auth-shell">
+        <div class="auth-card">
+            <header class="auth-brand">
+                <span class="brand-mark" aria-hidden="true"></span>
+                <div class="brand-text">
+                    <span class="brand-name">Assisto</span>
+                    <span class="brand-tagline">OEPAC · Gestionale</span>
+                </div>
+            </header>
+
+            <div class="auth-welcome">
+                <h1 class="auth-title">Benvenuto</h1>
+                <p class="auth-subtitle">Questa è la prima volta che avvii il gestionale. Crea le tue credenziali di accesso.</p>
+            </div>
+
+            <form id="setup-form" class="auth-form">
+                <div class="auth-field">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" autocomplete="username" required autofocus minlength="3" placeholder="es. admin">
+                    <span class="auth-hint">Minimo 3 caratteri</span>
+                </div>
+                <div class="auth-field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" autocomplete="new-password" required minlength="8">
+                    <span class="auth-hint">Minimo 8 caratteri</span>
+                </div>
+                <div class="auth-field">
+                    <label for="password2">Conferma password</label>
+                    <input type="password" id="password2" name="password2" autocomplete="new-password" required minlength="8">
+                </div>
+                <button type="submit" class="auth-btn auth-btn--primary">
+                    <span>Crea account</span>
+                </button>
+            </form>
+
+            <div id="auth-error" class="auth-error" role="alert"></div>
+
+            <div class="auth-info">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 16v-4"/>
+                    <path d="M12 8h.01"/>
+                </svg>
+                <span>Dopo il primo accesso potrai registrare l'impronta digitale dal profilo.</span>
+            </div>
+        </div>
+
+        <footer class="auth-footer">
+            <p>Sessione locale · Nessun dato trasmesso all'esterno</p>
+        </footer>
+    </main>
+
+    <script>
+    function showError(msg) {
+        const el = document.getElementById('auth-error');
+        el.textContent = msg;
+        el.classList.add('visible');
+        setTimeout(() => el.classList.remove('visible'), 6000);
+    }
+
+    document.getElementById('setup-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        const password2 = document.getElementById('password2').value;
+
+        if (password !== password2) {
+            showError('Le password non coincidono');
+            return;
+        }
+        if (password.length < 8) {
+            showError('La password deve essere almeno 8 caratteri');
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/auth/setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showError(data.error || 'Errore durante la creazione');
+                return;
+            }
+            window.location.href = '/';
+        } catch (err) {
+            showError('Errore di connessione');
+        }
+    });
+    </script>
+</body>
+</html>

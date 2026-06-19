@@ -1,0 +1,964 @@
+{% extends "base.html" %}
+
+{% block title %}Reportistica DD - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Reportistica Locale</h1>
+    <p class="page-subtitle">Gestione Determine Dirigenziali e monitoraggio ore per commessa</p>
+</div>
+
+<!-- Selezione commessa e anno -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h2 class="card-title">Seleziona Commessa</h2>
+    </div>
+    <div class="card-body">
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Commessa</label>
+                <select id="select-commessa" class="form-control">
+                    <option value="">Seleziona una commessa...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Anno Scolastico</label>
+                <select id="select-anno" class="form-control">
+                </select>
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+                <button class="btn btn-primary" onclick="caricaReport()">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Carica Report
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sezione DD -->
+<div class="card mb-4" id="sezione-dd" style="display: none;">
+    <div class="card-header">
+        <h2 class="card-title">Determine Dirigenziali (DD)</h2>
+        <button class="btn btn-primary btn-sm" onclick="mostraModalDD()">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Aggiungi DD
+        </button>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">Le ore annuali delle DD sono gia decurtate dell'11% per assenze previste.</p>
+        <div class="table-container">
+            <table class="table" id="tabella-dd">
+                <thead>
+                    <tr>
+                        <th>N. DD</th>
+                        <th>Data DD</th>
+                        <th>Mese Inizio</th>
+                        <th>Ore Settimanali</th>
+                        <th>Ore Annuali (-11%)</th>
+                        <th>Note</th>
+                        <th>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-dd">
+                </tbody>
+                <tfoot>
+                    <tr class="table-summary">
+                        <td colspan="4"><strong>Totale Ore Annuali</strong></td>
+                        <td id="totale-dd-ore"><strong>0</strong></td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Report mensile -->
+<div class="card mb-4" id="sezione-report" style="display: none;">
+    <div class="card-header">
+        <h2 class="card-title">Report Mensile - <span id="nome-commessa"></span></h2>
+    </div>
+    <div class="card-body">
+        <div class="table-container">
+            <table class="table" id="tabella-report">
+                <thead>
+                    <tr>
+                        <th>Mese</th>
+                        <th>GG Lav.</th>
+                        <th>Progettato</th>
+                        <th>Erogato</th>
+                        <th>Recuperi</th>
+                        <th>Saldo Ore</th>
+                        <th>Max Imponibile</th>
+                        <th>Effettivo</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-report">
+                </tbody>
+                <tfoot>
+                    <tr class="table-summary">
+                        <td><strong>TOTALI</strong></td>
+                        <td id="tot-giorni"></td>
+                        <td id="tot-progettato"></td>
+                        <td id="tot-erogato"></td>
+                        <td id="tot-recuperi"></td>
+                        <td id="tot-saldo"></td>
+                        <td id="tot-max-imp"></td>
+                        <td id="tot-effettivo"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Sezione Recuperi -->
+<div class="card mb-4" id="sezione-recuperi" style="display: none;">
+    <div class="card-header">
+        <h2 class="card-title">Gestione Recuperi</h2>
+        <button class="btn btn-secondary btn-sm" onclick="mostraModalRecupero()">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Aggiungi Recupero
+        </button>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">I recuperi sono ore dislocate agli OEPAC quando avanzano durante i mesi.</p>
+        <div class="table-container">
+            <table class="table" id="tabella-recuperi">
+                <thead>
+                    <tr>
+                        <th>Mese</th>
+                        <th>Ore Recupero</th>
+                        <th>Note</th>
+                        <th>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-recuperi">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Aggiungi DD -->
+<div class="modal-overlay" id="modal-dd">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modal-dd-title">Aggiungi Determina Dirigenziale</h3>
+            <button class="modal-close" onclick="chiudiModalDD()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="dd-id">
+            <div class="form-group">
+                <label class="form-label">Numero DD</label>
+                <input type="text" id="dd-numero" class="form-control" placeholder="Es. DD/2025/001">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Data DD</label>
+                <input type="date" id="dd-data" class="form-control">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Mese Inizio</label>
+                    <select id="dd-mese-inizio" class="form-control">
+                        <option value="9">Settembre</option>
+                        <option value="10">Ottobre</option>
+                        <option value="11">Novembre</option>
+                        <option value="12">Dicembre</option>
+                        <option value="1">Gennaio</option>
+                        <option value="2">Febbraio</option>
+                        <option value="3">Marzo</option>
+                        <option value="4">Aprile</option>
+                        <option value="5">Maggio</option>
+                        <option value="6">Giugno</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Anno Inizio</label>
+                    <input type="number" id="dd-anno-inizio" class="form-control" min="2020" max="2100">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Ore Settimanali</label>
+                    <input type="number" id="dd-ore-settimanali" class="form-control" step="0.01" min="0" placeholder="Es. 20">
+                    <p class="form-help">Ore lavorate a settimana dall'operatore</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ore Annuali (-11%)</label>
+                    <input type="number" id="dd-ore-annuali" class="form-control" step="0.01" min="0">
+                    <p class="form-help">Calcolate automaticamente (modificabili)</p>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Note</label>
+                <textarea id="dd-note" class="form-control" rows="2"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="chiudiModalDD()">Annulla</button>
+            <button class="btn btn-primary" onclick="salvaDD()">Salva</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Aggiungi Recupero -->
+<div class="modal-overlay" id="modal-recupero">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modal-recupero-title">Aggiungi Recupero</h3>
+            <button class="modal-close" onclick="chiudiModalRecupero()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="recupero-id">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Mese</label>
+                    <select id="recupero-mese" class="form-control">
+                        <option value="9">Settembre</option>
+                        <option value="10">Ottobre</option>
+                        <option value="11">Novembre</option>
+                        <option value="12">Dicembre</option>
+                        <option value="1">Gennaio</option>
+                        <option value="2">Febbraio</option>
+                        <option value="3">Marzo</option>
+                        <option value="4">Aprile</option>
+                        <option value="5">Maggio</option>
+                        <option value="6">Giugno</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Anno</label>
+                    <input type="number" id="recupero-anno" class="form-control" min="2020" max="2100">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Ore Recupero</label>
+                <input type="number" id="recupero-ore" class="form-control" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Note</label>
+                <textarea id="recupero-note" class="form-control" rows="2"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="chiudiModalRecupero()">Annulla</button>
+            <button class="btn btn-primary" onclick="salvaRecupero()">Salva</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.table-summary {
+    background: var(--bg-tertiary);
+    font-weight: 600;
+}
+.table-summary td {
+    border-top: 2px solid var(--primary-color);
+}
+.text-success { color: var(--success-color); }
+.text-danger { color: var(--danger-color); }
+.text-warning { color: var(--warning-color); }
+.mb-3 { margin-bottom: 1rem; }
+.mb-4 { margin-bottom: 1.5rem; }
+
+/* Stili per celle editabili */
+.editable-cell {
+    cursor: pointer;
+    transition: background-color 0.2s;
+    position: relative;
+}
+.editable-cell:hover {
+    background-color: var(--bg-hover, rgba(99, 102, 241, 0.1));
+}
+.editable-cell.has-override {
+    background-color: rgba(245, 158, 11, 0.15);
+    font-weight: 600;
+}
+.editable-cell.has-override:hover {
+    background-color: rgba(245, 158, 11, 0.25);
+}
+.override-indicator {
+    color: var(--warning-color, #f59e0b);
+    font-weight: bold;
+    margin-left: 4px;
+}
+/* Compatibilita legacy */
+.progettato-cell { cursor: pointer; transition: background-color 0.2s; position: relative; }
+.progettato-cell:hover { background-color: var(--bg-hover, rgba(99, 102, 241, 0.1)); }
+.progettato-override { background-color: rgba(245, 158, 11, 0.15); font-weight: 600; }
+.progettato-override:hover { background-color: rgba(245, 158, 11, 0.25); }
+
+/* Stile per tooltip ore annuali */
+.ore-annuali-calc {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    display: block;
+}
+</style>
+
+<script>
+const MESI_NOME = {
+    1: 'Gennaio', 2: 'Febbraio', 3: 'Marzo', 4: 'Aprile',
+    5: 'Maggio', 6: 'Giugno', 7: 'Luglio', 8: 'Agosto',
+    9: 'Settembre', 10: 'Ottobre', 11: 'Novembre', 12: 'Dicembre'
+};
+
+let reportCorrente = null;
+
+// Inizializzazione
+document.addEventListener('DOMContentLoaded', async () => {
+    await caricaCommesse();
+    await caricaAnniScolastici();
+});
+
+async function caricaCommesse() {
+    const response = await fetch('/api/commesse');
+    const commesse = await response.json();
+    const select = document.getElementById('select-commessa');
+
+    commesse.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.nome;
+        select.appendChild(opt);
+    });
+}
+
+async function caricaAnniScolastici() {
+    const response = await fetch('/api/anni-scolastici');
+    const anni = await response.json();
+    const select = document.getElementById('select-anno');
+
+    anni.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a;
+        opt.textContent = a;
+        select.appendChild(opt);
+    });
+
+    // Seleziona l'anno corrente
+    const oggi = new Date();
+    const meseCorrente = oggi.getMonth() + 1;
+    const annoCorrente = oggi.getFullYear();
+    const annoScolastico = meseCorrente >= 9
+        ? `${annoCorrente}-${annoCorrente + 1}`
+        : `${annoCorrente - 1}-${annoCorrente}`;
+    select.value = annoScolastico;
+}
+
+async function caricaReport() {
+    const commessaId = document.getElementById('select-commessa').value;
+    const annoScolastico = document.getElementById('select-anno').value;
+
+    if (!commessaId || !annoScolastico) {
+        showToast('Seleziona commessa e anno scolastico', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/reportistica-locale/${commessaId}/${annoScolastico}`);
+        if (!response.ok) throw new Error('Errore caricamento report');
+
+        reportCorrente = await response.json();
+        renderReport();
+
+        // Mostra le sezioni
+        document.getElementById('sezione-dd').style.display = 'block';
+        document.getElementById('sezione-report').style.display = 'block';
+        document.getElementById('sezione-recuperi').style.display = 'block';
+
+    } catch (error) {
+        console.error(error);
+        showToast('Errore nel caricamento del report', 'error');
+    }
+}
+
+function renderReport() {
+    if (!reportCorrente) return;
+
+    document.getElementById('nome-commessa').textContent = reportCorrente.commessa_nome;
+
+    // Render DD
+    renderDD();
+
+    // Render tabella report
+    renderTabellaReport();
+
+    // Render recuperi
+    renderRecuperi();
+}
+
+function renderDD() {
+    const tbody = document.getElementById('tbody-dd');
+    tbody.innerHTML = '';
+
+    let totaleOre = 0;
+
+    reportCorrente.dd_list.forEach(dd => {
+        totaleOre += dd.ore_annuali;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${dd.numero_dd || '-'}</td>
+            <td>${dd.data_dd || '-'}</td>
+            <td>${MESI_NOME[dd.mese_inizio]} ${dd.anno_inizio}</td>
+            <td>${dd.ore_settimanali.toFixed(2)}</td>
+            <td>${dd.ore_annuali.toFixed(2)}</td>
+            <td>${dd.note || '-'}</td>
+            <td>
+                <button class="btn btn-secondary btn-sm" onclick="modificaDD(${dd.id})">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="eliminaDD(${dd.id})">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    document.getElementById('totale-dd-ore').innerHTML = `<strong>${totaleOre.toFixed(2)}</strong>`;
+}
+
+function renderTabellaReport() {
+    const tbody = document.getElementById('tbody-report');
+    tbody.innerHTML = '';
+
+    let totGiorni = 0;
+
+    reportCorrente.mesi.forEach(m => {
+        totGiorni += m.giorni_lavorativi;
+
+        const saldoClass = m.saldo >= 0 ? 'text-success' : 'text-danger';
+
+        // Costruisci celle editabili per ogni campo
+        const giorniCell = buildEditableCell(m, 'giorni_lavorativi', m.giorni_lavorativi, m.giorni_lavorativi_auto, m.giorni_is_override, false);
+        const progCell = buildEditableCell(m, 'ore_progettate', m.ore_progettate, m.ore_progettate_auto, m.is_override, true);
+        const erogCell = buildEditableCell(m, 'ore_erogate', m.ore_erogate, m.ore_erogate_auto, m.erogate_is_override, true);
+        const recCell = buildEditableCell(m, 'ore_recupero', m.ore_recupero, m.ore_recupero_auto, m.recupero_is_override, true);
+        const maxImpCell = buildEditableCurrencyCell(m, 'max_imponibile', m.max_imponibile, m.max_imponibile_auto, m.max_imp_is_override);
+        const effCell = buildEditableCurrencyCell(m, 'effettivo', m.effettivo, m.effettivo_auto, m.effettivo_is_override);
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${MESI_NOME[m.mese]} ${m.anno}</td>
+            ${giorniCell}
+            ${progCell}
+            ${erogCell}
+            ${recCell}
+            <td class="${saldoClass}">${m.saldo >= 0 ? '+' : ''}${m.saldo.toFixed(2)}</td>
+            ${maxImpCell}
+            ${effCell}
+        `;
+        tbody.appendChild(tr);
+    });
+
+    // Totali
+    const t = reportCorrente.totali;
+    const saldoClass = t.saldo >= 0 ? 'text-success' : 'text-danger';
+
+    document.getElementById('tot-giorni').textContent = totGiorni;
+    document.getElementById('tot-progettato').innerHTML = `<strong>${t.progettato.toFixed(2)}</strong>`;
+    document.getElementById('tot-erogato').innerHTML = `<strong>${t.erogato.toFixed(2)}</strong>`;
+    document.getElementById('tot-recuperi').innerHTML = `<strong>${t.recuperi.toFixed(2)}</strong>`;
+    document.getElementById('tot-saldo').innerHTML = `<strong class="${saldoClass}">${t.saldo >= 0 ? '+' : ''}${t.saldo.toFixed(2)}</strong>`;
+    document.getElementById('tot-max-imp').innerHTML = `<strong>${formatCurrency(t.max_imponibile)}</strong>`;
+    document.getElementById('tot-effettivo').innerHTML = `<strong>${formatCurrency(t.effettivo)}</strong>`;
+}
+
+// Helper per costruire celle editabili
+function buildEditableCell(m, campo, valore, valoreAuto, isOverride, decimali) {
+    const overrideClass = isOverride ? 'has-override' : '';
+    const displayValue = decimali ? valore.toFixed(2) : valore;
+    const displayAuto = decimali ? valoreAuto.toFixed(2) : valoreAuto;
+    const title = isOverride
+        ? `Valore modificato (auto: ${displayAuto}). Clicca per modificare.`
+        : 'Clicca per modificare';
+    const indicator = isOverride ? '<span class="override-indicator">*</span>' : '';
+
+    return `<td class="editable-cell ${overrideClass}" title="${title}"
+                onclick="modificaCampo(${m.mese}, ${m.anno}, '${campo}', ${valore}, ${valoreAuto}, ${isOverride}, ${decimali})">
+                <span>${displayValue}</span>${indicator}
+            </td>`;
+}
+
+function buildEditableCurrencyCell(m, campo, valore, valoreAuto, isOverride) {
+    const overrideClass = isOverride ? 'has-override' : '';
+    const title = isOverride
+        ? `Valore modificato (auto: ${formatCurrency(valoreAuto)}). Clicca per modificare.`
+        : 'Clicca per modificare';
+    const indicator = isOverride ? '<span class="override-indicator">*</span>' : '';
+
+    return `<td class="editable-cell ${overrideClass}" title="${title}"
+                onclick="modificaCampo(${m.mese}, ${m.anno}, '${campo}', ${valore}, ${valoreAuto}, ${isOverride}, true, true)">
+                <span>${formatCurrency(valore)}</span>${indicator}
+            </td>`;
+}
+
+// Nomi leggibili dei campi
+const CAMPO_NOMI = {
+    'giorni_lavorativi': 'Giorni Lavorativi',
+    'ore_progettate': 'Ore Progettate',
+    'ore_erogate': 'Ore Erogate',
+    'ore_recupero': 'Ore Recupero',
+    'max_imponibile': 'Max Imponibile',
+    'effettivo': 'Effettivo'
+};
+
+// Funzione generica per modificare qualsiasi campo
+function modificaCampo(mese, anno, campo, valoreAttuale, valoreAuto, isOverride, decimali = true, isCurrency = false) {
+    const meseNome = MESI_NOME[mese];
+    const campoNome = CAMPO_NOMI[campo] || campo;
+
+    const formatVal = (v) => {
+        if (isCurrency) return formatCurrency(v);
+        return decimali ? v.toFixed(2) : v.toString();
+    };
+
+    let messaggio = `Modifica ${campoNome} per ${meseNome} ${anno}:\n`;
+    messaggio += `Valore calcolato automatico: ${formatVal(valoreAuto)}\n`;
+    if (isOverride) {
+        messaggio += `Valore attuale (modificato): ${formatVal(valoreAttuale)}\n`;
+    }
+    messaggio += `\nInserisci il nuovo valore (lascia vuoto per tornare al calcolo automatico):`;
+
+    const defaultVal = decimali ? valoreAttuale.toFixed(2) : valoreAttuale.toString();
+    const nuovoValore = prompt(messaggio, defaultVal);
+
+    if (nuovoValore === null) return; // Annullato
+
+    if (nuovoValore.trim() === '' && isOverride) {
+        // Rimuovi override
+        resetCampo(mese, anno, campo);
+    } else if (nuovoValore.trim() !== '') {
+        const val = parseFloat(nuovoValore.replace(',', '.'));
+        if (isNaN(val) || val < 0) {
+            showToast('Valore non valido', 'error');
+            return;
+        }
+        salvaCampo(mese, anno, campo, val);
+    }
+}
+
+async function salvaCampo(mese, anno, campo, valore) {
+    const commessaId = document.getElementById('select-commessa').value;
+    const annoScolastico = document.getElementById('select-anno').value;
+
+    try {
+        const response = await fetch('/api/report-override', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                commessa_id: parseInt(commessaId),
+                anno_scolastico: annoScolastico,
+                mese: mese,
+                anno: anno,
+                campo: campo,
+                valore: valore
+            })
+        });
+
+        const result = await response.json();
+        if (result.error) throw new Error(result.error);
+
+        const campoNome = CAMPO_NOMI[campo] || campo;
+        showToast(`${campoNome} aggiornato`, 'success');
+        caricaReport(); // Ricarica il report per aggiornare i calcoli
+
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Errore nel salvataggio', 'error');
+    }
+}
+
+async function resetCampo(mese, anno, campo) {
+    const commessaId = document.getElementById('select-commessa').value;
+    const annoScolastico = document.getElementById('select-anno').value;
+
+    try {
+        const response = await fetch(
+            `/api/report-override/${commessaId}/${annoScolastico}/${mese}/${anno}/${campo}`,
+            { method: 'DELETE' }
+        );
+
+        const result = await response.json();
+        if (result.error) throw new Error(result.error);
+
+        const campoNome = CAMPO_NOMI[campo] || campo;
+        showToast(`${campoNome} ripristinato al calcolo automatico`, 'success');
+        caricaReport();
+
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Errore nel ripristino', 'error');
+    }
+}
+
+function renderRecuperi() {
+    const tbody = document.getElementById('tbody-recuperi');
+    tbody.innerHTML = '';
+
+    // Filtra i mesi con recuperi
+    const mesiConRecuperi = reportCorrente.mesi.filter(m => m.ore_recupero > 0);
+
+    if (mesiConRecuperi.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nessun recupero registrato</td></tr>';
+        return;
+    }
+
+    mesiConRecuperi.forEach(m => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${MESI_NOME[m.mese]} ${m.anno}</td>
+            <td>${m.ore_recupero.toFixed(2)}</td>
+            <td>-</td>
+            <td>
+                <button class="btn btn-danger btn-sm" onclick="eliminaRecuperoMese(${m.mese}, ${m.anno})">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value);
+}
+
+// Gestione DD
+function mostraModalDD() {
+    const commessaId = document.getElementById('select-commessa').value;
+    const annoScolastico = document.getElementById('select-anno').value;
+
+    // Verifica che commessa e anno siano selezionati
+    if (!commessaId || !annoScolastico) {
+        showToast('Prima seleziona commessa e anno scolastico e carica il report', 'error');
+        return;
+    }
+
+    document.getElementById('modal-dd-title').textContent = 'Aggiungi Determina Dirigenziale';
+    document.getElementById('dd-id').value = '';
+    document.getElementById('dd-numero').value = '';
+    document.getElementById('dd-data').value = '';
+    document.getElementById('dd-mese-inizio').value = '9';
+
+    // Imposta anno inizio in base all'anno scolastico selezionato
+    const annoInizio = parseInt(annoScolastico.split('-')[0]) || new Date().getFullYear();
+    document.getElementById('dd-anno-inizio').value = annoInizio;
+
+    document.getElementById('dd-ore-settimanali').value = '';
+    document.getElementById('dd-ore-annuali').value = '';
+    document.getElementById('dd-note').value = '';
+
+    // Pulisci preview calcolo
+    updateOreAnnualiPreview('');
+
+    document.getElementById('modal-dd').classList.add('active');
+}
+
+function chiudiModalDD() {
+    document.getElementById('modal-dd').classList.remove('active');
+}
+
+function modificaDD(ddId) {
+    const dd = reportCorrente.dd_list.find(d => d.id === ddId);
+    if (!dd) return;
+
+    document.getElementById('modal-dd-title').textContent = 'Modifica Determina Dirigenziale';
+    document.getElementById('dd-id').value = dd.id;
+    document.getElementById('dd-numero').value = dd.numero_dd || '';
+    document.getElementById('dd-data').value = dd.data_dd || '';
+    document.getElementById('dd-mese-inizio').value = dd.mese_inizio;
+    document.getElementById('dd-anno-inizio').value = dd.anno_inizio;
+    document.getElementById('dd-ore-settimanali').value = dd.ore_settimanali;
+
+    // Mostra preview con valore attuale
+    updateOreAnnualiPreview(`Valore attuale salvato: ${dd.ore_annuali.toFixed(2)} h`);
+    document.getElementById('dd-ore-annuali').value = dd.ore_annuali;
+    document.getElementById('dd-note').value = dd.note || '';
+
+    document.getElementById('modal-dd').classList.add('active');
+}
+
+async function salvaDD() {
+    const ddId = document.getElementById('dd-id').value;
+    const commessaId = document.getElementById('select-commessa').value;
+    const annoScolastico = document.getElementById('select-anno').value;
+
+    // Validazione campi obbligatori
+    if (!commessaId || !annoScolastico) {
+        showToast('Seleziona commessa e anno scolastico', 'error');
+        return;
+    }
+
+    const annoInizio = document.getElementById('dd-anno-inizio').value;
+    const oreSettimanali = document.getElementById('dd-ore-settimanali').value;
+    const oreAnnuali = document.getElementById('dd-ore-annuali').value;
+
+    if (!annoInizio) {
+        showToast('Inserisci l\'anno di inizio', 'error');
+        return;
+    }
+
+    if (!oreSettimanali && !oreAnnuali) {
+        showToast('Inserisci le ore settimanali o annuali', 'error');
+        return;
+    }
+
+    const data = {
+        commessa_id: parseInt(commessaId),
+        anno_scolastico: annoScolastico,
+        mese_inizio: parseInt(document.getElementById('dd-mese-inizio').value),
+        anno_inizio: parseInt(annoInizio),
+        ore_settimanali: parseFloat(oreSettimanali) || 0,
+        ore_annuali: parseFloat(oreAnnuali) || 0,
+        numero_dd: document.getElementById('dd-numero').value || null,
+        data_dd: document.getElementById('dd-data').value || null,
+        note: document.getElementById('dd-note').value || null
+    };
+
+    try {
+        let response;
+        if (ddId) {
+            response = await fetch(`/api/dd/${ddId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+        } else {
+            response = await fetch('/api/dd', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+        }
+
+        const result = await response.json();
+        if (result.error) throw new Error(result.error);
+
+        showToast(ddId ? 'DD aggiornata' : 'DD aggiunta', 'success');
+        chiudiModalDD();
+        caricaReport();
+
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Errore nel salvataggio', 'error');
+    }
+}
+
+async function eliminaDD(ddId) {
+    if (!confirm('Sei sicuro di voler eliminare questa DD?')) return;
+
+    try {
+        const response = await fetch(`/api/dd/${ddId}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (result.error) throw new Error(result.error);
+
+        showToast('DD eliminata', 'success');
+        caricaReport();
+
+    } catch (error) {
+        console.error(error);
+        showToast('Errore nell\'eliminazione', 'error');
+    }
+}
+
+// Gestione Recuperi
+function mostraModalRecupero() {
+    document.getElementById('modal-recupero-title').textContent = 'Aggiungi Recupero';
+    document.getElementById('recupero-id').value = '';
+    document.getElementById('recupero-mese').value = '9';
+
+    // Imposta anno in base all'anno scolastico
+    const annoScolastico = document.getElementById('select-anno').value;
+    const annoInizio = parseInt(annoScolastico.split('-')[0]);
+    document.getElementById('recupero-anno').value = annoInizio;
+
+    document.getElementById('recupero-ore').value = '';
+    document.getElementById('recupero-note').value = '';
+
+    document.getElementById('modal-recupero').classList.add('active');
+}
+
+function chiudiModalRecupero() {
+    document.getElementById('modal-recupero').classList.remove('active');
+}
+
+async function salvaRecupero() {
+    const commessaId = document.getElementById('select-commessa').value;
+    const annoScolastico = document.getElementById('select-anno').value;
+
+    const data = {
+        commessa_id: parseInt(commessaId),
+        anno_scolastico: annoScolastico,
+        mese: parseInt(document.getElementById('recupero-mese').value),
+        anno: parseInt(document.getElementById('recupero-anno').value),
+        ore_recupero: parseFloat(document.getElementById('recupero-ore').value) || 0,
+        note: document.getElementById('recupero-note').value || null
+    };
+
+    try {
+        const response = await fetch('/api/recuperi', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+        if (result.error) throw new Error(result.error);
+
+        showToast('Recupero aggiunto', 'success');
+        chiudiModalRecupero();
+        caricaReport();
+
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Errore nel salvataggio', 'error');
+    }
+}
+
+async function eliminaRecuperoMese(mese, anno) {
+    if (!confirm('Sei sicuro di voler eliminare questo recupero?')) return;
+
+    // TODO: Implementare eliminazione recupero specifico
+    showToast('Funzionalita in sviluppo', 'warning');
+}
+
+// Toast notifications (usa quella esistente se disponibile)
+function showToast(message, type = 'info') {
+    if (typeof window.showToast === 'function') {
+        window.showToast(message, type);
+        return;
+    }
+
+    // Fallback semplice
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 12px 24px;
+        border-radius: 8px;
+        color: white;
+        z-index: 9999;
+        animation: fadeIn 0.3s ease;
+    `;
+
+    if (type === 'success') toast.style.background = 'var(--success-color, #10B981)';
+    else if (type === 'error') toast.style.background = 'var(--danger-color, #EF4444)';
+    else if (type === 'warning') toast.style.background = 'var(--warning-color, #F59E0B)';
+    else toast.style.background = 'var(--primary-color, #6366F1)';
+
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+// ==================== CALCOLO AUTOMATICO ORE ANNUALI ====================
+
+// Calcola le ore annuali automaticamente in base alle ore settimanali e ai giorni lavorativi
+// Mappatura settimane rimanenti per mese di inizio DD
+// Settembre=35, Novembre=25, Marzo=15, Aprile=12 (riferimenti utente)
+const SETTIMANE_PER_MESE = {
+    9: 35,   // Settembre
+    10: 31,  // Ottobre
+    11: 25,  // Novembre
+    12: 21,  // Dicembre
+    1: 18,   // Gennaio
+    2: 16,   // Febbraio
+    3: 15,   // Marzo
+    4: 12,   // Aprile
+    5: 8,    // Maggio
+    6: 4     // Giugno
+};
+
+function calcolaOreAnnuali() {
+    const oreSettimanali = parseFloat(document.getElementById('dd-ore-settimanali').value) || 0;
+    const meseInizio = parseInt(document.getElementById('dd-mese-inizio').value);
+
+    if (oreSettimanali <= 0) {
+        document.getElementById('dd-ore-annuali').value = '';
+        updateOreAnnualiPreview('');
+        return;
+    }
+
+    // Ottieni settimane per il mese di inizio
+    const settimane = SETTIMANE_PER_MESE[meseInizio];
+    if (!settimane) {
+        document.getElementById('dd-ore-annuali').value = '';
+        updateOreAnnualiPreview('Mese non valido');
+        return;
+    }
+
+    // Formula: ore_settimanali * 0.89 (decurtazione 11%) * settimane
+    const oreDecurtate = oreSettimanali * 0.89;
+    const oreAnnuali = oreDecurtate * settimane;
+
+    document.getElementById('dd-ore-annuali').value = oreAnnuali.toFixed(2);
+    updateOreAnnualiPreview(`${oreSettimanali.toFixed(0)} h/sett x 0.89 x ${settimane} sett = ${oreAnnuali.toFixed(2)} h`);
+}
+
+function updateOreAnnualiPreview(text) {
+    let preview = document.getElementById('ore-annuali-preview');
+    if (!preview) {
+        const container = document.getElementById('dd-ore-annuali').parentElement;
+        preview = document.createElement('span');
+        preview.id = 'ore-annuali-preview';
+        preview.className = 'ore-annuali-calc';
+        container.appendChild(preview);
+    }
+    preview.textContent = text;
+}
+
+// Aggiorna automaticamente l'anno quando cambia il mese
+function aggiornaAnnoPerMese() {
+    const annoScolastico = document.getElementById('select-anno').value;
+    if (!annoScolastico) return;
+
+    const annoStart = parseInt(annoScolastico.split('-')[0]);
+    const meseInizio = parseInt(document.getElementById('dd-mese-inizio').value);
+
+    // Mesi 9-12 (set-dic) = primo anno, mesi 1-6 (gen-giu) = secondo anno
+    const annoCorretto = meseInizio >= 9 ? annoStart : annoStart + 1;
+    document.getElementById('dd-anno-inizio').value = annoCorretto;
+
+    // Ricalcola ore annuali
+    calcolaOreAnnuali();
+}
+
+// Aggiungi event listener quando il DOM e pronto
+document.addEventListener('DOMContentLoaded', () => {
+    // Listener per calcolo automatico ore annuali
+    const oreSettimanaliInput = document.getElementById('dd-ore-settimanali');
+    const meseInizioSelect = document.getElementById('dd-mese-inizio');
+    const annoInizioInput = document.getElementById('dd-anno-inizio');
+
+    if (oreSettimanaliInput) {
+        oreSettimanaliInput.addEventListener('input', calcolaOreAnnuali);
+    }
+    if (meseInizioSelect) {
+        // Aggiorna anno e ricalcola quando cambia il mese
+        meseInizioSelect.addEventListener('change', aggiornaAnnoPerMese);
+    }
+    if (annoInizioInput) {
+        annoInizioInput.addEventListener('input', calcolaOreAnnuali);
+    }
+});
+</script>
+{% endblock %}

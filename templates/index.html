@@ -1,0 +1,1080 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-row">
+        <div>
+            <h1 class="page-title">Dashboard</h1>
+            <p class="page-subtitle">Panoramica del servizio OEPAC</p>
+        </div>
+        <div class="header-actions" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <select id="filter-commessa" class="form-control" style="width: auto; min-width: 160px; padding: 8px 12px; font-size: 0.85rem;">
+                <option value="">Tutte le commesse</option>
+            </select>
+            <select id="filter-periodo" class="form-control" style="width: auto; min-width: 180px; padding: 8px 12px; font-size: 0.85rem;">
+            </select>
+            <span class="auto-refresh-indicator" id="auto-refresh-indicator" title="Auto-refresh attivo">
+                <span class="status-dot online"></span>
+                <span class="text-muted text-xs">Live</span>
+            </span>
+            <a href="/import" class="btn btn-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                Import Dati
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Grid - Clickable KPIs -->
+<div class="stats-grid">
+    <a href="/utenti" class="stat-card stat-card-clickable animate-delay-1">
+        <div class="stat-icon blue">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+        </div>
+        <div class="stat-content">
+            <div class="stat-value" id="stat-utenti">0</div>
+            <div class="stat-label">Utenti Totali</div>
+        </div>
+        <div class="stat-arrow">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </div>
+    </a>
+
+    <a href="/utenti" class="stat-card stat-card-clickable animate-delay-2">
+        <div class="stat-icon green">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+        </div>
+        <div class="stat-content">
+            <div class="stat-value" id="stat-scuole">0</div>
+            <div class="stat-label">Scuole / IC</div>
+        </div>
+        <div class="stat-arrow">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </div>
+    </a>
+
+    <a href="/commesse" class="stat-card stat-card-clickable animate-delay-3">
+        <div class="stat-icon purple">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+        </div>
+        <div class="stat-content">
+            <div class="stat-value" id="stat-commesse">0</div>
+            <div class="stat-label">Commesse Attive</div>
+        </div>
+        <div class="stat-arrow">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </div>
+    </a>
+
+    <a href="/rendicontazione" class="stat-card stat-card-clickable animate-delay-4">
+        <div class="stat-icon orange">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        </div>
+        <div class="stat-content">
+            <div class="stat-value" id="stat-monte-ore">0</div>
+            <div class="stat-label">Monte Ore Totale</div>
+        </div>
+        <div class="stat-arrow">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </div>
+    </a>
+</div>
+
+<!-- Da Completare Widget + Charts Row -->
+<div class="flex gap-4" style="flex-wrap: wrap; margin-bottom: 24px;">
+    <!-- Widget Da Completare -->
+    <div class="card" style="flex: 1; min-width: 300px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Da Completare
+            </h2>
+            <span class="badge badge-warning" id="badge-da-completare">0</span>
+        </div>
+        <div class="card-body" style="padding: 0; max-height: 280px; overflow-y: auto;">
+            <div id="lista-da-completare" class="da-completare-list">
+                <div class="empty-state" style="padding: 30px;">
+                    <p class="text-muted text-center">Nessun utente da completare</p>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer" style="padding: 12px 16px;">
+            <a href="/rendicontazione" class="btn btn-sm btn-primary w-full">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Vai a Rendicontazione
+            </a>
+        </div>
+    </div>
+
+    <!-- Distribuzione Commesse -->
+    <div class="card" style="flex: 1; min-width: 300px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                </svg>
+                Distribuzione per Commessa
+            </h2>
+        </div>
+        <div class="card-body">
+            <div class="chart-container" style="height: 180px;">
+                <canvas id="chart-commesse"></canvas>
+            </div>
+            <div class="chart-legend" id="legend-commesse"></div>
+        </div>
+    </div>
+
+    <!-- Trend Mensile -->
+    <div class="card" style="flex: 2; min-width: 400px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+                Trend Ore Erogate
+            </h2>
+        </div>
+        <div class="card-body">
+            <div class="chart-container" style="height: 210px;">
+                <canvas id="chart-trend"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Statistiche Avanzate Row -->
+<div class="flex gap-4" style="flex-wrap: wrap; margin-bottom: 24px;">
+    <!-- Confronto Mese/Mese -->
+    <div class="card" style="flex: 1; min-width: 280px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Confronto Mese
+            </h2>
+        </div>
+        <div class="card-body" id="confronto-mese-container">
+            <div class="text-center text-muted py-4">Caricamento...</div>
+        </div>
+    </div>
+
+    <!-- Top 5 Scuole -->
+    <div class="card" style="flex: 1.5; min-width: 350px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                </svg>
+                Top 5 Scuole
+            </h2>
+        </div>
+        <div class="card-body" style="padding: 0; max-height: 220px; overflow-y: auto;">
+            <div id="top-scuole-list" class="top-scuole-list">
+                <div class="text-center text-muted py-4">Caricamento...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credito/Debito -->
+    <div class="card" style="flex: 1; min-width: 280px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                </svg>
+                Bilancio Ore
+            </h2>
+        </div>
+        <div class="card-body" id="credito-debito-container">
+            <div class="text-center text-muted py-4">Caricamento...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Validazione Dati Panel -->
+<div class="card mb-4" id="validazione-panel">
+    <div class="card-header">
+        <h2 class="card-title">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Validazione Dati
+        </h2>
+        <div class="header-actions" style="display: flex; gap: 8px; align-items: center;">
+            <span class="badge" id="validazione-badge">--</span>
+            <button class="btn btn-sm btn-secondary" onclick="loadValidazione()" title="Aggiorna validazione">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+            </button>
+        </div>
+    </div>
+    <div class="card-body" id="validazione-content" style="padding: 0;">
+        <div class="loading" style="padding: 20px;">
+            <div class="spinner"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Report Rapidi -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h2 class="card-title">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Report Rapidi
+        </h2>
+        <a href="/report" class="btn btn-sm btn-secondary">Tutti i Report</a>
+    </div>
+    <div class="card-body">
+        <div class="report-quick-grid">
+            <a href="/report" class="report-quick-card excel" onclick="event.preventDefault(); quickExportExcel();">
+                <div class="report-quick-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </div>
+                <span class="report-quick-title">Report Completo</span>
+                <span class="report-quick-desc">Mese corrente</span>
+            </a>
+            <a href="/report" class="report-quick-card municipale" onclick="event.preventDefault(); quickExportMunicipale();">
+                <div class="report-quick-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                </div>
+                <span class="report-quick-title">Municipale</span>
+                <span class="report-quick-desc">Tariffa 24,07</span>
+            </a>
+            <a href="/report" class="report-quick-card dipartimentale" onclick="event.preventDefault(); quickExportDipartimentale();">
+                <div class="report-quick-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                </div>
+                <span class="report-quick-title">Dipartimentale</span>
+                <span class="report-quick-desc">Tariffa 25,27</span>
+            </a>
+            <a href="/reportistica-locale" class="report-quick-card locale">
+                <div class="report-quick-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </div>
+                <span class="report-quick-title">Report DD</span>
+                <span class="report-quick-desc">Per commessa</span>
+            </a>
+            <a href="/statistiche" class="report-quick-card stats">
+                <div class="report-quick-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <span class="report-quick-title">Statistiche</span>
+                <span class="report-quick-desc">Analisi avanzate</span>
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Panel -->
+<div class="card mb-4" id="alerts-panel" style="display: none;">
+    <div class="card-header">
+        <h2 class="card-title">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            Alert Automatici
+        </h2>
+        <span class="badge badge-danger" id="alerts-count" style="display: none;">0</span>
+    </div>
+    <div class="card-body" style="padding: 12px; max-height: 300px; overflow-y: auto;">
+        <div id="alerts-list"></div>
+    </div>
+</div>
+
+<!-- Quick Actions & Info -->
+<div class="flex gap-4" style="flex-wrap: wrap;">
+    <!-- Azioni Rapide -->
+    <div class="card" style="flex: 1; min-width: 300px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Azioni Rapide
+            </h2>
+        </div>
+        <div class="card-body">
+            <div class="flex gap-3" style="flex-direction: column;">
+                <a href="/rendicontazione" class="btn btn-secondary w-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Inserisci Ore
+                </a>
+                <a href="/report" class="btn btn-secondary w-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Esporta Report
+                </a>
+                <button id="btn-export-rapido" class="btn btn-success w-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Export Mese Corrente
+                </button>
+                <a href="/commesse" class="btn btn-secondary w-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Gestisci Commesse
+                </a>
+                <a href="/calendario" class="btn btn-secondary w-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Calendario Scolastico
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Sistema -->
+    <div class="card" style="flex: 2; min-width: 400px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Informazioni Sistema
+            </h2>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                    <strong>Come iniziare:</strong><br>
+                    1. Importa il file Excel con i dati degli utenti<br>
+                    2. Configura i giorni lavorativi nel Calendario<br>
+                    3. Inserisci le ore lavorate nella Rendicontazione<br>
+                    4. Esporta i report in Excel
+                </div>
+            </div>
+
+            <h4 class="text-sm font-bold mb-3">Parametri di calcolo:</h4>
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">Costo Orario</div>
+                    <div class="kpi-value text-primary">24,07</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">IVA</div>
+                    <div class="kpi-value">5%</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Tasso Assenza</div>
+                    <div class="kpi-value">11%</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Coeff. Giornaliero</div>
+                    <div class="kpi-value">0,2</div>
+                </div>
+            </div>
+
+            <p class="text-xs text-muted mt-3" id="last-update">
+                Ultimo aggiornamento: --
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let autoRefreshInterval = null;
+let chartCommesse = null;
+let chartTrend = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await initDashboardFilters();
+    await loadDashboardData();
+    startAutoRefresh();
+});
+
+async function initDashboardFilters() {
+    // Popola filtro commessa
+    await populateCommesseSelect('filter-commessa', true);
+
+    // Popola filtro periodo
+    const periodoSelect = document.getElementById('filter-periodo');
+    if (periodoSelect) {
+        const annoScolastico = getCurrentAnnoScolastico();
+        const [annoInizio, annoFine] = annoScolastico.split('-').map(Number);
+        const now = new Date();
+        const currentMese = now.getMonth() + 1;
+        const currentAnno = now.getFullYear();
+
+        let options = '<option value="">Anno completo</option>';
+        MESI_SCOLASTICI.forEach(mese => {
+            const anno = mese >= 9 ? annoInizio : annoFine;
+            const selected = (mese === currentMese && anno === currentAnno) ? 'selected' : '';
+            options += `<option value="${mese}-${anno}" ${selected}>${MESI[mese]} ${anno}</option>`;
+        });
+        periodoSelect.innerHTML = options;
+    }
+
+    // Event listener per i filtri
+    document.getElementById('filter-commessa')?.addEventListener('change', () => loadDashboardData());
+    document.getElementById('filter-periodo')?.addEventListener('change', () => loadDashboardData());
+}
+
+function getActiveFilters() {
+    const commessa = document.getElementById('filter-commessa')?.value || '';
+    const periodo = document.getElementById('filter-periodo')?.value || '';
+    let anno = null, mese = null;
+    if (periodo) {
+        [mese, anno] = periodo.split('-').map(Number);
+    }
+    return { commessa, anno, mese };
+}
+
+async function loadDashboardData() {
+    try {
+        const filters = getActiveFilters();
+        const queryParams = new URLSearchParams();
+        if (filters.commessa) queryParams.set('commessa', filters.commessa);
+        if (filters.anno) queryParams.set('anno', filters.anno);
+        if (filters.mese) queryParams.set('mese', filters.mese);
+        const qs = queryParams.toString() ? `?${queryParams}` : '';
+
+        // Carica statistiche filtrate
+        const stats = await apiCall(`/api/stats/filtered${qs}`);
+        animateCounter(document.getElementById('stat-utenti'), stats.num_utenti || 0, 800);
+        animateCounter(document.getElementById('stat-scuole'), stats.num_scuole || 0, 800);
+
+        // Commesse e monte ore (non filtrabili)
+        const commesse = await apiCall('/api/commesse');
+        animateCounter(document.getElementById('stat-commesse'), commesse.filter(c => c.attiva).length, 800);
+
+        const urlUtenti = filters.commessa ? `/api/utenti?commessa=${encodeURIComponent(filters.commessa)}` : '/api/utenti';
+        const utenti = await apiCall(urlUtenti);
+        const monteOreTotale = utenti.reduce((sum, u) => sum + (u.monte_ore_settimanale || 0), 0);
+        animateCounter(document.getElementById('stat-monte-ore'), Math.round(monteOreTotale), 1000);
+
+        // Utenti da completare
+        await loadUtentiDaCompletare();
+
+        // Alert automatici
+        await loadAlerts();
+
+        // Validazione dati
+        await loadValidazione();
+
+        // Nuovi widget statistiche avanzate
+        await loadConfrontoMese();
+        await loadTopScuole();
+        await loadCreditoDebito();
+
+        // Aggiorna grafici statistiche
+        const statsBase = await apiCall('/api/stats');
+        updateCharts(statsBase.utenti_per_commessa);
+
+        // Aggiorna timestamp
+        updateLastRefresh();
+
+    } catch (error) {
+        console.error('Errore caricamento dati dashboard:', error);
+    }
+}
+
+async function loadUtentiDaCompletare() {
+    try {
+        const now = new Date();
+        const anno = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear();
+        const mese = now.getMonth() + 1;
+
+        const utenti = await apiCall(`/api/stats/utenti-da-completare/${anno}/${mese}`);
+        const container = document.getElementById('lista-da-completare');
+        const badge = document.getElementById('badge-da-completare');
+
+        badge.textContent = utenti.length;
+
+        if (utenti.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state" style="padding: 30px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 40px; height: 40px; color: var(--success); margin: 0 auto 12px; display: block;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p class="text-muted text-center">Tutti gli utenti hanno le ore registrate</p>
+                </div>
+            `;
+            badge.className = 'badge badge-success';
+        } else {
+            badge.className = 'badge badge-warning';
+            let html = '';
+            // Mostra max 8 utenti
+            const utentiToShow = utenti.slice(0, 8);
+            utentiToShow.forEach(u => {
+                html += `
+                    <div class="da-completare-item">
+                        <div class="da-completare-info">
+                            <span class="da-completare-nome">${u.nome} ${u.cognome}</span>
+                            <span class="da-completare-scuola">${u.commessa} - ${u.scuola.substring(0, 30)}${u.scuola.length > 30 ? '...' : ''}</span>
+                        </div>
+                        <span class="badge badge-secondary">${u.monte_ore}h</span>
+                    </div>
+                `;
+            });
+
+            if (utenti.length > 8) {
+                html += `
+                    <div class="da-completare-more">
+                        <span class="text-muted">+ altri ${utenti.length - 8} utenti</span>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Errore caricamento utenti da completare:', error);
+    }
+}
+
+async function loadAlerts() {
+    try {
+        const now = new Date();
+        const filters = getActiveFilters();
+        const anno = filters.anno || now.getFullYear();
+        const mese = filters.mese || (now.getMonth() + 1);
+
+        const data = await apiCall(`/api/alerts?anno=${anno}&mese=${mese}`);
+        const panel = document.getElementById('alerts-panel');
+        const list = document.getElementById('alerts-list');
+        const countBadge = document.getElementById('alerts-count');
+
+        if (data.total_alerts > 0) {
+            panel.style.display = '';
+            countBadge.style.display = '';
+            countBadge.textContent = data.total_alerts;
+
+            const iconMap = {
+                warning: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />',
+                danger: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />',
+                info: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />',
+                success: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />'
+            };
+
+            list.innerHTML = data.alerts.slice(0, 10).map(a => `
+                <div class="alert-item alert-${a.type}" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: 8px; margin-bottom: 8px; background: var(--${a.type === 'danger' ? 'danger' : a.type === 'warning' ? 'warning' : a.type === 'info' ? 'primary' : 'success'}-bg, rgba(var(--${a.type}-rgb), 0.1));">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px; flex-shrink: 0; color: var(--${a.type});">
+                        ${iconMap[a.type] || iconMap.info}
+                    </svg>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-weight: 600; font-size: 0.875rem; color: var(--text-primary);">${escapeHtml(a.title)}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">${escapeHtml(a.message)}</div>
+                        ${a.utenti ? `<div style="font-size: 0.7rem; color: var(--text-tertiary); margin-top: 4px;">${a.utenti.slice(0, 3).map(u => escapeHtml(u)).join(', ')}${a.utenti.length > 3 ? '...' : ''}</div>` : ''}
+                        ${a.progress !== undefined ? `<div style="margin-top: 8px; background: var(--bg-secondary); border-radius: 4px; height: 6px; overflow: hidden;"><div style="width: ${a.progress}%; height: 100%; background: var(--${a.type}); transition: width 0.3s;"></div></div>` : ''}
+                    </div>
+                    ${a.action ? `<a href="${a.action}" class="btn btn-sm btn-${a.type === 'danger' ? 'danger' : 'secondary'}" style="flex-shrink: 0; font-size: 0.7rem; padding: 4px 8px;">${escapeHtml(a.action_label || 'Vai')}</a>` : ''}
+                </div>
+            `).join('');
+
+            if (data.total_alerts > 10) {
+                list.innerHTML += `<p class="text-center text-muted text-xs mt-2">+ altri ${data.total_alerts - 10} alert</p>`;
+            }
+        } else {
+            panel.style.display = 'none';
+        }
+    } catch (e) {
+        console.log('Alerts non disponibili:', e);
+    }
+}
+
+async function updateCharts(utentiPerCommessa) {
+    // Chart Commesse (Doughnut)
+    const ctx1 = document.getElementById('chart-commesse');
+    if (ctx1 && utentiPerCommessa) {
+        const labels = Object.keys(utentiPerCommessa);
+        const data = Object.values(utentiPerCommessa);
+        const colors = ['#0A84FF', '#BF5AF2', '#30D158', '#FF9F0A', '#FF453A', '#64D2FF'];
+
+        if (chartCommesse) chartCommesse.destroy();
+
+        // Colori adattivi al tema per doughnut chart
+        const isDarkDoughnut = document.documentElement.getAttribute('data-theme') !== 'light';
+        const tooltipBgDoughnut = isDarkDoughnut ? 'rgba(28, 28, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+        const tooltipTextDoughnut = isDarkDoughnut ? '#fff' : '#1D1D1F';
+        const tooltipBorderDoughnut = isDarkDoughnut ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+
+        chartCommesse = new Chart(ctx1, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors.slice(0, labels.length),
+                    borderWidth: 0,
+                    hoverOffset: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: tooltipBgDoughnut,
+                        titleColor: tooltipTextDoughnut,
+                        bodyColor: isDarkDoughnut ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.7)',
+                        borderColor: tooltipBorderDoughnut,
+                        borderWidth: 1,
+                        cornerRadius: 8,
+                        padding: 12
+                    }
+                },
+                cutout: '65%',
+                animation: {
+                    animateRotate: true,
+                    animateScale: true
+                }
+            }
+        });
+
+        // Legenda personalizzata
+        const legendContainer = document.getElementById('legend-commesse');
+        legendContainer.innerHTML = labels.map((label, i) =>
+            `<div class="legend-item">
+                <span class="legend-dot" style="background:${colors[i]}"></span>
+                <span>${label} (${data[i]})</span>
+            </div>`
+        ).join('');
+    }
+
+    // Chart Trend (Line) - Carica dati trend (con filtro commessa)
+    try {
+        const filters = getActiveFilters();
+        const trendQs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}` : '';
+        const trendData = await apiCall(`/api/stats/trend${trendQs}`);
+        const ctx2 = document.getElementById('chart-trend');
+
+        if (ctx2 && trendData && trendData.length > 0) {
+            if (chartTrend) chartTrend.destroy();
+
+            const labels = trendData.map(d => d.mese_nome);
+            const oreData = trendData.map(d => d.ore_erogate || 0);
+
+            // Colori adattivi al tema
+            const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+            const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)';
+            const tickColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.6)';
+            const tooltipBg = isDark ? 'rgba(28, 28, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+            const tooltipText = isDark ? '#fff' : '#1D1D1F';
+            const tooltipBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+            const pointBorder = isDark ? '#fff' : '#fff';
+
+            // Gradient per area
+            const gradient = ctx2.getContext('2d').createLinearGradient(0, 0, 0, 200);
+            gradient.addColorStop(0, 'rgba(10, 132, 255, 0.3)');
+            gradient.addColorStop(1, 'rgba(10, 132, 255, 0)');
+
+            chartTrend = new Chart(ctx2, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Ore Erogate',
+                        data: oreData,
+                        borderColor: '#0A84FF',
+                        backgroundColor: gradient,
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#0A84FF',
+                        pointBorderColor: pointBorder,
+                        pointBorderWidth: 2,
+                        pointRadius: 5,
+                        pointHoverRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: tooltipBg,
+                            titleColor: tooltipText,
+                            bodyColor: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.7)',
+                            borderColor: tooltipBorder,
+                            borderWidth: 1,
+                            cornerRadius: 8,
+                            padding: 12,
+                            callbacks: {
+                                label: (ctx) => `${ctx.parsed.y.toLocaleString('it-IT')} ore`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: gridColor },
+                            ticks: { color: tickColor }
+                        },
+                        y: {
+                            grid: { color: gridColor },
+                            ticks: {
+                                color: tickColor,
+                                callback: (value) => value.toLocaleString('it-IT')
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeOutQuart'
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        console.log('Trend data not available:', error);
+    }
+}
+
+function startAutoRefresh() {
+    // Refresh ogni 30 secondi
+    autoRefreshInterval = setInterval(() => {
+        loadDashboardData();
+    }, 30000);
+}
+
+function updateLastRefresh() {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    document.getElementById('last-update').textContent = `Ultimo aggiornamento: ${timeStr}`;
+}
+
+// ==================== NUOVI WIDGET ====================
+
+async function loadConfrontoMese() {
+    const container = document.getElementById('confronto-mese-container');
+    try {
+        const filters = getActiveFilters();
+        const now = new Date();
+        const anno = filters.anno || now.getFullYear();
+        const mese = filters.mese || (now.getMonth() + 1);
+
+        const qs = `?anno=${anno}&mese=${mese}${filters.commessa ? `&commessa=${encodeURIComponent(filters.commessa)}` : ''}`;
+        const data = await apiCall(`/api/stats/confronto-mese${qs}`);
+
+        const variazione = data.variazione.percentuale;
+        const isPositive = variazione >= 0;
+        const varColor = isPositive ? 'var(--success)' : 'var(--danger)';
+        const varIcon = isPositive ? '&#9650;' : '&#9660;';
+
+        container.innerHTML = `
+            <div style="text-align: center; margin-bottom: 16px;">
+                <div style="font-size: 2rem; font-weight: 700; color: ${varColor};">
+                    ${varIcon} ${Math.abs(variazione)}%
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-tertiary);">
+                    vs ${data.mese_precedente.mese_nome}
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; gap: 16px;">
+                <div style="text-align: center; flex: 1;">
+                    <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Corrente</div>
+                    <div style="font-size: 1.1rem; font-weight: 600;">${data.mese_corrente.ore.toLocaleString('it-IT')}h</div>
+                    <div style="font-size: 0.7rem; color: var(--text-secondary);">${data.mese_corrente.utenti_attivi} utenti</div>
+                </div>
+                <div style="text-align: center; flex: 1;">
+                    <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Precedente</div>
+                    <div style="font-size: 1.1rem; font-weight: 600;">${data.mese_precedente.ore.toLocaleString('it-IT')}h</div>
+                    <div style="font-size: 0.7rem; color: var(--text-secondary);">${data.mese_precedente.utenti_attivi} utenti</div>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        container.innerHTML = '<div class="text-center text-muted py-4">Dati non disponibili</div>';
+    }
+}
+
+async function loadTopScuole() {
+    const container = document.getElementById('top-scuole-list');
+    try {
+        const filters = getActiveFilters();
+        const now = new Date();
+        const anno = filters.anno || now.getFullYear();
+        const mese = filters.mese || (now.getMonth() + 1);
+
+        const qs = `?anno=${anno}&mese=${mese}${filters.commessa ? `&commessa=${encodeURIComponent(filters.commessa)}` : ''}`;
+        const data = await apiCall(`/api/stats/top-scuole${qs}`);
+
+        if (data.top_scuole.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted py-4">Nessun dato disponibile</div>';
+            return;
+        }
+
+        const maxOre = Math.max(...data.top_scuole.map(s => s.ore_erogate));
+        const colors = ['#FFD700', '#C0C0C0', '#CD7F32', '#0A84FF', '#0A84FF'];
+
+        container.innerHTML = data.top_scuole.map((s, i) => `
+            <div style="display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border-color); gap: 12px;">
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: ${colors[i]}; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem; color: ${i < 3 ? '#000' : '#fff'};">
+                    ${i + 1}
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: 500; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(s.scuola_full || s.scuola)}">
+                        ${escapeHtml(s.scuola)}
+                    </div>
+                    <div style="font-size: 0.7rem; color: var(--text-tertiary);">${s.num_utenti} utenti - ${s.commessa}</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-weight: 600; font-size: 0.9rem;">${s.ore_erogate.toLocaleString('it-IT')}h</div>
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = '<div class="text-center text-muted py-4">Dati non disponibili</div>';
+    }
+}
+
+async function loadCreditoDebito() {
+    const container = document.getElementById('credito-debito-container');
+    try {
+        const filters = getActiveFilters();
+        const now = new Date();
+        const anno = filters.anno || now.getFullYear();
+        const mese = filters.mese || (now.getMonth() + 1);
+
+        const qs = `?anno=${anno}&mese=${mese}${filters.commessa ? `&commessa=${encodeURIComponent(filters.commessa)}` : ''}`;
+        const data = await apiCall(`/api/stats/credito-debito${qs}`);
+
+        const saldoColor = data.saldo_netto >= 0 ? 'var(--success)' : 'var(--danger)';
+        const saldoLabel = data.saldo_netto >= 0 ? 'Credito netto' : 'Debito netto';
+
+        container.innerHTML = `
+            <div style="text-align: center; margin-bottom: 12px;">
+                <div style="font-size: 1.8rem; font-weight: 700; color: ${saldoColor};">
+                    ${data.saldo_netto >= 0 ? '+' : ''}${data.saldo_netto.toLocaleString('it-IT')}h
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-tertiary);">${saldoLabel}</div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center;">
+                <div style="padding: 8px; background: rgba(16, 185, 129, 0.1); border-radius: 8px;">
+                    <div style="font-size: 1.1rem; font-weight: 600; color: var(--success);">${data.utenti_in_credito}</div>
+                    <div style="font-size: 0.65rem; color: var(--text-tertiary);">In credito</div>
+                </div>
+                <div style="padding: 8px; background: rgba(107, 114, 128, 0.1); border-radius: 8px;">
+                    <div style="font-size: 1.1rem; font-weight: 600;">${data.utenti_in_pari}</div>
+                    <div style="font-size: 0.65rem; color: var(--text-tertiary);">In pari</div>
+                </div>
+                <div style="padding: 8px; background: rgba(239, 68, 68, 0.1); border-radius: 8px;">
+                    <div style="font-size: 1.1rem; font-weight: 600; color: var(--danger);">${data.utenti_in_debito}</div>
+                    <div style="font-size: 0.65rem; color: var(--text-tertiary);">In debito</div>
+                </div>
+            </div>
+            <div style="margin-top: 12px; font-size: 0.7rem; color: var(--text-tertiary); text-align: center;">
+                +${data.totale_credito.toLocaleString('it-IT')}h / -${data.totale_debito.toLocaleString('it-IT')}h
+            </div>
+        `;
+    } catch (e) {
+        container.innerHTML = '<div class="text-center text-muted py-4">Dati non disponibili</div>';
+    }
+}
+
+// Export rapido mese corrente
+document.getElementById('btn-export-rapido')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-export-rapido');
+    const originalHTML = btn.innerHTML;
+
+    btn.innerHTML = `<div class="spinner-small"></div> Generazione...`;
+    btn.disabled = true;
+
+    try {
+        const filters = getActiveFilters();
+        const now = new Date();
+        const anno = filters.anno || now.getFullYear();
+        const mese = filters.mese || (now.getMonth() + 1);
+
+        // Scarica direttamente il file Excel
+        const url = `/api/export/excel/${anno}/${mese}`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `rendicontazione_${anno}_${mese}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showToast('Download avviato', 'success');
+    } catch (e) {
+        showToast('Errore durante l\'export', 'error');
+    } finally {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+    }
+});
+
+// ==================== VALIDAZIONE DATI ====================
+
+async function loadValidazione() {
+    const container = document.getElementById('validazione-content');
+    const badge = document.getElementById('validazione-badge');
+
+    container.innerHTML = '<div class="loading" style="padding: 20px;"><div class="spinner"></div></div>';
+
+    try {
+        const filters = getActiveFilters();
+        const now = new Date();
+        const anno = filters.anno || now.getFullYear();
+        const mese = filters.mese || (now.getMonth() + 1);
+
+        const data = await apiCall(`/api/stats/validazione?anno=${anno}&mese=${mese}`);
+
+        // Aggiorna badge
+        if (data.riepilogo.critiche > 0) {
+            badge.className = 'badge badge-danger';
+            badge.textContent = `${data.riepilogo.critiche} critici`;
+        } else if (data.riepilogo.avvisi > 0) {
+            badge.className = 'badge badge-warning';
+            badge.textContent = `${data.riepilogo.avvisi} avvisi`;
+        } else {
+            badge.className = 'badge badge-success';
+            badge.textContent = 'OK';
+        }
+
+        if (data.anomalie.length === 0) {
+            container.innerHTML = `
+                <div class="validation-success" style="padding: 24px; text-align: center;">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                         style="width: 48px; height: 48px; color: var(--success); margin: 0 auto 12px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p style="color: var(--success); font-weight: 600; margin: 0 0 4px;">Nessuna anomalia rilevata</p>
+                    <p style="color: var(--text-tertiary); font-size: 0.8rem; margin: 0;">
+                        ${MESI[mese]} ${anno} - Tutti i dati sono coerenti
+                    </p>
+                </div>
+            `;
+            return;
+        }
+
+        // Mostra anomalie
+        const iconMap = {
+            danger: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />',
+            warning: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />',
+            info: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />'
+        };
+
+        container.innerHTML = data.anomalie.map(a => `
+            <div class="validation-item validation-${a.tipo}" style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border-color);">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                     style="width: 20px; height: 20px; flex-shrink: 0; color: var(--${a.tipo});">
+                    ${iconMap[a.tipo]}
+                </svg>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-primary);">${escapeHtml(a.titolo)}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">${escapeHtml(a.messaggio)}</div>
+                    ${a.dettagli && a.dettagli.length > 0 ? `
+                        <div style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 6px;">
+                            ${a.dettagli.slice(0, 3).map(d => d.nome || d.commessa || '').filter(Boolean).join(', ')}
+                            ${a.dettagli.length > 3 ? `<span class="text-muted">... e altri ${a.dettagli.length - 3}</span>` : ''}
+                        </div>
+                    ` : ''}
+                </div>
+                <div style="text-align: right; flex-shrink: 0;">
+                    <span class="badge badge-${a.tipo}" style="font-size: 0.7rem;">${a.conteggio}</span>
+                </div>
+            </div>
+        `).join('');
+
+    } catch (e) {
+        console.error('Errore validazione:', e);
+        badge.className = 'badge badge-secondary';
+        badge.textContent = '--';
+        container.innerHTML = '<div class="text-center text-muted py-4">Errore nel caricamento</div>';
+    }
+}
+
+// ==================== QUICK EXPORT ====================
+
+function quickExportExcel() {
+    const filters = getActiveFilters();
+    const now = new Date();
+    const anno = filters.anno || now.getFullYear();
+    const mese = filters.mese || (now.getMonth() + 1);
+
+    const url = `/api/export/excel/${anno}/${mese}`;
+    window.location.href = url;
+    showToast('Download Report Completo in corso...', 'success');
+}
+
+function quickExportMunicipale() {
+    const filters = getActiveFilters();
+    const now = new Date();
+    const anno = filters.anno || now.getFullYear();
+    const mese = filters.mese || (now.getMonth() + 1);
+
+    const url = `/api/export/municipale/${anno}/${mese}`;
+    window.location.href = url;
+    showToast('Download Report Municipale in corso...', 'success');
+}
+
+function quickExportDipartimentale() {
+    const filters = getActiveFilters();
+    const now = new Date();
+    const anno = filters.anno || now.getFullYear();
+    const mese = filters.mese || (now.getMonth() + 1);
+
+    const url = `/api/export/dipartimentale/${anno}/${mese}`;
+    window.location.href = url;
+    showToast('Download Report Dipartimentale in corso...', 'success');
+}
+
+// Cleanup on page leave
+window.addEventListener('beforeunload', () => {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+});
+
+// Aggiorna grafici al cambio tema
+window.addEventListener('themechange', async () => {
+    try {
+        const stats = await apiCall('/api/stats');
+        await updateCharts(stats.utenti_per_commessa);
+    } catch (error) {
+        console.log('Chart refresh on theme change failed:', error);
+    }
+});
+</script>
+{% endblock %}

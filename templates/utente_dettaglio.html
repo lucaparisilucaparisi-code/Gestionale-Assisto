@@ -1,0 +1,921 @@
+{% extends "base.html" %}
+
+{% block title %}Dettaglio Utente - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <a href="/utenti" class="btn btn-ghost btn-sm" title="Torna alla lista">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+        </a>
+        <div>
+            <h1 class="page-title" id="page-title">Dettaglio Utente</h1>
+            <p class="page-subtitle" id="page-subtitle">Caricamento...</p>
+        </div>
+    </div>
+    <div class="header-actions">
+        <select id="anno-scolastico" class="form-control" style="width: 150px;">
+            <option value="2025-2026">2025-2026</option>
+            <option value="2024-2025">2024-2025</option>
+        </select>
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs-container">
+    <div class="tabs">
+        <button class="tab active" data-tab="anagrafica">Anagrafica</button>
+        <button class="tab" data-tab="documenti">Documenti <span class="badge badge-sm" id="badge-documenti">0</span></button>
+        <button class="tab" data-tab="note">Note <span class="badge badge-sm" id="badge-note">0</span></button>
+        <button class="tab" data-tab="assenze">Assenze</button>
+        <button class="tab" data-tab="storico">Storico Ore</button>
+        <button class="tab" data-tab="budget">Budget</button>
+    </div>
+</div>
+
+<!-- Tab Anagrafica -->
+<div class="tab-content active" id="tab-anagrafica">
+    <div class="grid grid-2">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Informazioni Personali</h2>
+            </div>
+            <div class="card-body" id="info-personali">
+                <div class="loading"><div class="spinner"></div></div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Riepilogo Ore</h2>
+            </div>
+            <div class="card-body" id="riepilogo-ore">
+                <div class="loading"><div class="spinner"></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <h2 class="card-title">Andamento Mensile</h2>
+        </div>
+        <div class="card-body">
+            <canvas id="chart-andamento" height="200"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Tab Documenti -->
+<div class="tab-content" id="tab-documenti">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Documenti</h2>
+            <button class="btn btn-primary btn-sm" onclick="openModal('modal-documento')">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Carica Documento
+            </button>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <div class="table-container" id="table-documenti">
+                <div class="loading"><div class="spinner"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab Note -->
+<div class="tab-content" id="tab-note">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Note e Annotazioni</h2>
+            <button class="btn btn-primary btn-sm" onclick="openModal('modal-nota')">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Aggiungi Nota
+            </button>
+        </div>
+        <div class="card-body" id="lista-note">
+            <div class="loading"><div class="spinner"></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab Assenze -->
+<div class="tab-content" id="tab-assenze">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Registro Assenze</h2>
+            <button class="btn btn-primary btn-sm" onclick="openModal('modal-assenza')">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Registra Assenza
+            </button>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <div class="table-container" id="table-assenze">
+                <div class="loading"><div class="spinner"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab Storico -->
+<div class="tab-content" id="tab-storico">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Storico Ore per Mese</h2>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <div class="table-container" id="table-storico">
+                <div class="loading"><div class="spinner"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab Budget -->
+<div class="tab-content" id="tab-budget">
+    <div class="grid grid-2">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Configurazione Budget</h2>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label">Budget Ore Mensile</label>
+                    <input type="number" id="budget-mensile" class="form-control" step="0.5" min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Budget Ore Annuale</label>
+                    <input type="number" id="budget-annuale" class="form-control" step="0.5" min="0">
+                </div>
+                <button class="btn btn-primary" onclick="salvaBudget()">Salva Budget</button>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Stato Budget</h2>
+            </div>
+            <div class="card-body" id="stato-budget">
+                <div class="loading"><div class="spinner"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Carica Documento -->
+<div class="modal-overlay" id="modal-documento">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Carica Documento</h3>
+            <button class="modal-close" onclick="closeModal('modal-documento')">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">File *</label>
+                <input type="file" id="doc-file" class="form-control">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tipo Documento *</label>
+                <select id="doc-tipo" class="form-control">
+                    <option value="PEI">PEI</option>
+                    <option value="Relazione">Relazione</option>
+                    <option value="Verbale">Verbale</option>
+                    <option value="Certificazione">Certificazione</option>
+                    <option value="Altro">Altro</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Descrizione</label>
+                <textarea id="doc-descrizione" class="form-control" rows="2"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Data Scadenza</label>
+                <input type="date" id="doc-scadenza" class="form-control">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-documento')">Annulla</button>
+            <button class="btn btn-primary" onclick="uploadDocumento()">Carica</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Aggiungi Nota -->
+<div class="modal-overlay" id="modal-nota">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Aggiungi Nota</h3>
+            <button class="modal-close" onclick="closeModal('modal-nota')">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Tipo</label>
+                <select id="nota-tipo" class="form-control">
+                    <option value="generale">Generale</option>
+                    <option value="osservazione">Osservazione</option>
+                    <option value="progresso">Progresso</option>
+                    <option value="criticita">Criticita</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Priorita</label>
+                <select id="nota-priorita" class="form-control">
+                    <option value="normale">Normale</option>
+                    <option value="alta">Alta</option>
+                    <option value="bassa">Bassa</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Contenuto *</label>
+                <textarea id="nota-contenuto" class="form-control" rows="4" placeholder="Scrivi la nota..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-nota')">Annulla</button>
+            <button class="btn btn-primary" onclick="aggiungiNota()">Salva</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Registra Assenza -->
+<div class="modal-overlay" id="modal-assenza">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Registra Assenza</h3>
+            <button class="modal-close" onclick="closeModal('modal-assenza')">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Tipo Assenza *</label>
+                <select id="assenza-tipo" class="form-control">
+                    <option value="malattia">Malattia</option>
+                    <option value="permesso">Permesso</option>
+                    <option value="ferie">Ferie</option>
+                    <option value="altro">Altro</option>
+                </select>
+            </div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Data Inizio *</label>
+                    <input type="date" id="assenza-inizio" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Data Fine</label>
+                    <input type="date" id="assenza-fine" class="form-control">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Motivazione</label>
+                <input type="text" id="assenza-motivazione" class="form-control">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Note</label>
+                <textarea id="assenza-note" class="form-control" rows="2"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-assenza')">Annulla</button>
+            <button class="btn btn-primary" onclick="registraAssenza()">Registra</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.tabs-container {
+    margin-bottom: 20px;
+}
+.tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0;
+    overflow-x: auto;
+}
+.tab {
+    padding: 12px 20px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+.tab:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+.tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+.tab-content {
+    display: none;
+}
+.tab-content.active {
+    display: block;
+}
+.badge-sm {
+    font-size: 11px;
+    padding: 2px 6px;
+}
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+}
+.info-item {
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+}
+.info-label {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+}
+.info-value {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.stat-card {
+    text-align: center;
+    padding: 20px;
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+}
+.stat-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--primary);
+}
+.stat-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+.note-card {
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border-left: 4px solid var(--primary);
+}
+.note-card.priorita-alta {
+    border-left-color: var(--danger);
+}
+.note-card.priorita-bassa {
+    border-left-color: var(--text-tertiary);
+}
+.note-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.note-tipo {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--primary);
+}
+.note-data {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+.note-contenuto {
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+.note-actions {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+}
+.progress-bar {
+    height: 12px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+.progress-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 6px;
+    transition: width 0.3s;
+}
+.progress-fill.warning {
+    background: var(--warning);
+}
+.progress-fill.danger {
+    background: var(--danger);
+}
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+}
+</style>
+
+<script>
+const utenteId = {{ utente_id }};
+let utenteData = null;
+let chartAndamento = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadUtenteDettaglio();
+
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const tabId = this.dataset.tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            document.getElementById('tab-' + tabId).classList.add('active');
+        });
+    });
+
+    document.getElementById('anno-scolastico').addEventListener('change', loadUtenteDettaglio);
+});
+
+async function loadUtenteDettaglio() {
+    const annoScolastico = document.getElementById('anno-scolastico').value;
+    try {
+        const response = await fetch(`/api/utente/${utenteId}/dettaglio?anno_scolastico=${annoScolastico}`);
+        const data = await response.json();
+        if (data.error) {
+            showToast(data.error, 'error');
+            return;
+        }
+        utenteData = data;
+        renderAnagrafica(data);
+        renderDocumenti(data.documenti);
+        renderNote(data.note);
+        renderAssenze(data.assenze);
+        renderStorico(data.storico);
+        renderBudget(data.budget);
+        loadVariazioniBadge();
+    } catch (error) {
+        showToast('Errore caricamento dati', 'error');
+    }
+}
+
+async function loadVariazioniBadge() {
+    try {
+        const resp = await fetch('/api/utenti/' + utenteId + '/variazioni-monte-ore');
+        const data = await resp.json();
+        const badge = document.getElementById('variazioni-badge');
+        if (badge && data.variazioni && data.variazioni.length > 0) {
+            const MESI = ['','Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+            let detail = data.variazioni.map(function(v) {
+                var parts = v.mese_inizio.split('-');
+                return v.monte_ore + 'h da ' + MESI[parseInt(parts[1])] + ' ' + parts[0];
+            }).join(', ');
+            badge.innerHTML = '<span class="badge badge-warning" title="' + detail + '" style="font-size:0.75rem;cursor:help;">' + data.variazioni.length + ' variaz.</span>';
+        } else if (badge) {
+            badge.innerHTML = '';
+        }
+    } catch(e) {}
+}
+
+function renderAnagrafica(data) {
+    const u = data.utente;
+    document.getElementById('page-title').textContent = `${u.nome} ${u.cognome}`;
+    document.getElementById('page-subtitle').textContent = `${u.commessa} - ${u.scuola}`;
+
+    document.getElementById('info-personali').innerHTML = `
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Nome Completo</div>
+                <div class="info-value">${u.nome} ${u.cognome}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Nome Puntato</div>
+                <div class="info-value">${u.nome_puntato}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Scuola</div>
+                <div class="info-value">${u.scuola}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Commessa</div>
+                <div class="info-value">${u.commessa}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Monte Ore Settimanale (base)</div>
+                <div class="info-value">${u.monte_ore_settimanale}h <span id="variazioni-badge"></span></div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Stato</div>
+                <div class="info-value">
+                    ${u.lista_attesa ? '<span class="badge badge-warning">Lista Attesa: ' + u.lista_attesa + '</span>' :
+                      u.attivo ? '<span class="badge badge-success">Attivo</span>' : '<span class="badge badge-secondary">Inattivo</span>'}
+                </div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Attivo Da</div>
+                <div class="info-value">${u.data_inizio || 'Non specificato'}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Attivo Fino A</div>
+                <div class="info-value">${u.data_fine || 'Non specificato'}</div>
+            </div>
+        </div>
+    `;
+
+    const t = data.totali;
+    document.getElementById('riepilogo-ore').innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+            <div class="stat-card">
+                <div class="stat-value">${t.totale_ore}</div>
+                <div class="stat-label">Ore Totali</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${t.totale_pasti}</div>
+                <div class="stat-label">Pasti Totali</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${t.mesi_attivi}</div>
+                <div class="stat-label">Mesi Attivi</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${t.media_ore_mese}</div>
+                <div class="stat-label">Media Ore/Mese</div>
+            </div>
+        </div>
+    `;
+
+    renderChartAndamento(data.storico);
+}
+
+function renderChartAndamento(storico) {
+    const ctx = document.getElementById('chart-andamento').getContext('2d');
+    const MESI = ['', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+
+    const labels = storico.map(s => `${MESI[s.mese]} ${s.anno}`);
+    const oreData = storico.map(s => s.ore_lavorate_60 || 0);
+
+    if (chartAndamento) chartAndamento.destroy();
+
+    chartAndamento = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Ore Erogate',
+                data: oreData,
+                borderColor: '#6366f1',
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+}
+
+function renderDocumenti(documenti) {
+    document.getElementById('badge-documenti').textContent = documenti.length;
+
+    if (documenti.length === 0) {
+        document.getElementById('table-documenti').innerHTML = '<div class="empty-state">Nessun documento caricato</div>';
+        return;
+    }
+
+    let html = `<table class="table">
+        <thead><tr>
+            <th>Tipo</th><th>Nome File</th><th>Descrizione</th><th>Scadenza</th><th>Caricato</th><th>Azioni</th>
+        </tr></thead><tbody>`;
+
+    documenti.forEach(d => {
+        const scadenza = d.data_scadenza ? new Date(d.data_scadenza) : null;
+        const isScaduto = scadenza && scadenza < new Date();
+        const scadenzaClass = isScaduto ? 'text-danger' : '';
+
+        html += `<tr>
+            <td><span class="badge">${d.tipo_documento}</span></td>
+            <td>${d.nome_originale}</td>
+            <td>${d.descrizione || '-'}</td>
+            <td class="${scadenzaClass}">${d.data_scadenza || '-'}</td>
+            <td>${new Date(d.data_caricamento).toLocaleDateString('it')}</td>
+            <td>
+                <button class="btn btn-ghost btn-sm" onclick="downloadDocumento(${d.id})" title="Scarica">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                </button>
+                <button class="btn btn-ghost btn-sm text-danger" onclick="deleteDocumento(${d.id})" title="Elimina">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+            </td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    document.getElementById('table-documenti').innerHTML = html;
+}
+
+function renderNote(note) {
+    document.getElementById('badge-note').textContent = note.length;
+
+    if (note.length === 0) {
+        document.getElementById('lista-note').innerHTML = '<div class="empty-state">Nessuna nota presente</div>';
+        return;
+    }
+
+    let html = '';
+    note.forEach(n => {
+        html += `<div class="note-card priorita-${n.priorita}">
+            <div class="note-header">
+                <span class="note-tipo">${n.tipo}</span>
+                <span class="note-data">${new Date(n.data_creazione).toLocaleString('it')}</span>
+            </div>
+            <div class="note-contenuto">${n.contenuto}</div>
+            <div class="note-actions">
+                <button class="btn btn-ghost btn-sm text-danger" onclick="deleteNota(${n.id})">Elimina</button>
+            </div>
+        </div>`;
+    });
+    document.getElementById('lista-note').innerHTML = html;
+}
+
+function renderAssenze(assenze) {
+    if (assenze.length === 0) {
+        document.getElementById('table-assenze').innerHTML = '<div class="empty-state">Nessuna assenza registrata</div>';
+        return;
+    }
+
+    let html = `<table class="table">
+        <thead><tr>
+            <th>Tipo</th><th>Data Inizio</th><th>Data Fine</th><th>Motivazione</th><th>Note</th><th>Azioni</th>
+        </tr></thead><tbody>`;
+
+    assenze.forEach(a => {
+        html += `<tr>
+            <td><span class="badge">${a.tipo}</span></td>
+            <td>${a.data_inizio}</td>
+            <td>${a.data_fine || '-'}</td>
+            <td>${a.motivazione || '-'}</td>
+            <td>${a.note || '-'}</td>
+            <td>
+                <button class="btn btn-ghost btn-sm text-danger" onclick="deleteAssenza(${a.id})">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+            </td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    document.getElementById('table-assenze').innerHTML = html;
+}
+
+function renderStorico(storico) {
+    if (storico.length === 0) {
+        document.getElementById('table-storico').innerHTML = '<div class="empty-state">Nessun dato storico</div>';
+        return;
+    }
+
+    const MESI = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+
+    let html = `<table class="table">
+        <thead><tr>
+            <th>Mese</th><th>Ore Lavorate</th><th>Pasti</th><th>Giorni Lavorativi</th><th>Note</th>
+        </tr></thead><tbody>`;
+
+    storico.forEach(s => {
+        html += `<tr>
+            <td>${MESI[s.mese]} ${s.anno}</td>
+            <td><strong>${s.ore_lavorate_60 || 0}h</strong></td>
+            <td>${s.pasti || 0}</td>
+            <td>${s.giorni_lavorativi || '-'}</td>
+            <td>${s.note || '-'}</td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    document.getElementById('table-storico').innerHTML = html;
+}
+
+function renderBudget(budget) {
+    if (!budget) {
+        document.getElementById('stato-budget').innerHTML = '<div class="empty-state">Budget non configurato</div>';
+        return;
+    }
+
+    document.getElementById('budget-mensile').value = budget.utente.budget_ore_mensile || '';
+    document.getElementById('budget-annuale').value = budget.utente.budget_ore_annuale || budget.budget_annuale || '';
+
+    if (budget.budget_annuale > 0) {
+        const percentuale = budget.percentuale_utilizzata;
+        const progressClass = percentuale > 90 ? 'danger' : percentuale > 70 ? 'warning' : '';
+
+        document.getElementById('stato-budget').innerHTML = `
+            <div class="stat-card" style="margin-bottom: 16px;">
+                <div class="stat-value">${budget.ore_erogate}h</div>
+                <div class="stat-label">Ore Utilizzate su ${budget.budget_annuale}h</div>
+                <div class="progress-bar">
+                    <div class="progress-fill ${progressClass}" style="width: ${Math.min(percentuale, 100)}%"></div>
+                </div>
+                <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary);">
+                    ${percentuale}% utilizzato - ${budget.ore_rimanenti}h rimanenti
+                </div>
+            </div>
+        `;
+    } else {
+        document.getElementById('stato-budget').innerHTML = '<div class="empty-state">Budget annuale non configurato</div>';
+    }
+}
+
+async function uploadDocumento() {
+    const fileInput = document.getElementById('doc-file');
+    if (!fileInput.files[0]) {
+        showToast('Seleziona un file', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('tipo', document.getElementById('doc-tipo').value);
+    formData.append('descrizione', document.getElementById('doc-descrizione').value);
+    formData.append('data_scadenza', document.getElementById('doc-scadenza').value);
+
+    try {
+        const response = await fetch(`/api/utente/${utenteId}/documenti`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+        if (data.success) {
+            showToast('Documento caricato');
+            closeModal('modal-documento');
+            loadUtenteDettaglio();
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (error) {
+        showToast('Errore upload', 'error');
+    }
+}
+
+function downloadDocumento(id) {
+    window.open(`/api/documento/${id}`, '_blank');
+}
+
+async function deleteDocumento(id) {
+    if (!confirm('Eliminare questo documento?')) return;
+    try {
+        const response = await fetch(`/api/documento/${id}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (data.success) {
+            showToast('Documento eliminato');
+            loadUtenteDettaglio();
+        }
+    } catch (error) {
+        showToast('Errore eliminazione', 'error');
+    }
+}
+
+async function aggiungiNota() {
+    const contenuto = document.getElementById('nota-contenuto').value;
+    if (!contenuto) {
+        showToast('Inserisci il contenuto della nota', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/utente/${utenteId}/note`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contenuto: contenuto,
+                tipo: document.getElementById('nota-tipo').value,
+                priorita: document.getElementById('nota-priorita').value
+            })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showToast('Nota aggiunta');
+            closeModal('modal-nota');
+            document.getElementById('nota-contenuto').value = '';
+            loadUtenteDettaglio();
+        }
+    } catch (error) {
+        showToast('Errore', 'error');
+    }
+}
+
+async function deleteNota(id) {
+    if (!confirm('Eliminare questa nota?')) return;
+    try {
+        await fetch(`/api/nota/${id}`, { method: 'DELETE' });
+        showToast('Nota eliminata');
+        loadUtenteDettaglio();
+    } catch (error) {
+        showToast('Errore', 'error');
+    }
+}
+
+async function registraAssenza() {
+    const dataInizio = document.getElementById('assenza-inizio').value;
+    if (!dataInizio) {
+        showToast('Inserisci la data di inizio', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/utente/${utenteId}/assenze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                data_inizio: dataInizio,
+                data_fine: document.getElementById('assenza-fine').value || null,
+                tipo: document.getElementById('assenza-tipo').value,
+                motivazione: document.getElementById('assenza-motivazione').value,
+                note: document.getElementById('assenza-note').value
+            })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showToast('Assenza registrata');
+            closeModal('modal-assenza');
+            loadUtenteDettaglio();
+        }
+    } catch (error) {
+        showToast('Errore', 'error');
+    }
+}
+
+async function deleteAssenza(id) {
+    if (!confirm('Eliminare questa assenza?')) return;
+    try {
+        await fetch(`/api/assenza/${id}`, { method: 'DELETE' });
+        showToast('Assenza eliminata');
+        loadUtenteDettaglio();
+    } catch (error) {
+        showToast('Errore', 'error');
+    }
+}
+
+async function salvaBudget() {
+    try {
+        const response = await fetch(`/api/utente/${utenteId}/budget`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                budget_mensile: parseFloat(document.getElementById('budget-mensile').value) || null,
+                budget_annuale: parseFloat(document.getElementById('budget-annuale').value) || null
+            })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showToast('Budget salvato');
+            loadUtenteDettaglio();
+        }
+    } catch (error) {
+        showToast('Errore', 'error');
+    }
+}
+
+function openModal(id) {
+    document.getElementById(id).classList.add('active');
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+}
+
+function showToast(message, type = 'success') {
+    // Implementazione toast semplice
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: fixed; bottom: 20px; right: 20px; padding: 12px 24px;
+        background: ${type === 'error' ? '#ef4444' : '#10b981'}; color: white;
+        border-radius: 8px; z-index: 9999; animation: fadeIn 0.3s;
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+</script>
+{% endblock %}

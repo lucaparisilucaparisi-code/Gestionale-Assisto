@@ -1,0 +1,593 @@
+{% extends "base.html" %}
+
+{% block title %}Statistiche - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-row">
+        <div>
+            <h1 class="page-title">Statistiche Avanzate</h1>
+            <p class="page-subtitle">Analisi dettagliata del servizio OEPAC</p>
+        </div>
+        <div class="header-actions" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <select id="filter-commessa" class="form-control" style="width: 160px;">
+                <option value="">Tutte le commesse</option>
+            </select>
+            <select id="filter-anno" class="form-control" style="width: 150px;">
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- KPI Row -->
+<div class="kpi-grid mb-4">
+    <div class="kpi-card">
+        <div class="kpi-label">Utenti Totali</div>
+        <div class="kpi-value" id="kpi-utenti">0</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Scuole</div>
+        <div class="kpi-value" id="kpi-scuole">0</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Monte Ore Totale</div>
+        <div class="kpi-value" id="kpi-monte-ore">0</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Commesse Attive</div>
+        <div class="kpi-value" id="kpi-commesse">0</div>
+    </div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="flex gap-4 mb-4" style="flex-wrap: wrap;">
+    <div class="card" style="flex: 1; min-width: 300px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                </svg>
+                Utenti per Commessa
+            </h2>
+        </div>
+        <div class="card-body">
+            <div class="chart-container" style="height: 220px;">
+                <canvas id="chart-distribuzione"></canvas>
+            </div>
+            <div class="chart-legend" id="legend-distribuzione"></div>
+        </div>
+    </div>
+
+    <div class="card" style="flex: 2; min-width: 450px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Ore Erogate vs Previste
+            </h2>
+            <p class="text-muted" style="font-size: 0.75rem; margin: 0;">Previste = Media -11%</p>
+        </div>
+        <div class="card-body">
+            <div class="chart-container" style="height: 280px;">
+                <canvas id="chart-confronto"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Heatmap Row -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h2 class="card-title">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+            </svg>
+            Heatmap Presenza Mensile
+        </h2>
+        <div class="header-actions" style="display: flex; gap: 8px; align-items: center;">
+            <span class="text-muted text-xs">% ore erogate vs previste</span>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div class="heatmap-container" id="heatmap-container">
+            <div class="loading" style="padding: 40px;">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer" style="padding: 12px 16px;">
+        <div style="display: flex; align-items: center; gap: 16px; justify-content: center; flex-wrap: wrap;">
+            <span class="text-xs text-muted">Legenda:</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span class="heatmap-cell" data-level="0" style="width: 24px; height: 20px; font-size: 0.6rem;">0%</span>
+                <span class="heatmap-cell" data-level="1" style="width: 24px; height: 20px; font-size: 0.6rem;">&lt;50</span>
+                <span class="heatmap-cell" data-level="2" style="width: 24px; height: 20px; font-size: 0.6rem;">&lt;80</span>
+                <span class="heatmap-cell" data-level="3" style="width: 24px; height: 20px; font-size: 0.6rem;">&lt;95</span>
+                <span class="heatmap-cell" data-level="4" style="width: 24px; height: 20px; font-size: 0.6rem;">&lt;110</span>
+                <span class="heatmap-cell" data-level="5" style="width: 24px; height: 20px; font-size: 0.6rem;">&ge;110</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="flex gap-4 mb-4" style="flex-wrap: wrap;">
+    <div class="card" style="flex: 1; min-width: 400px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+                Trend Mensile Ore Erogate
+            </h2>
+        </div>
+        <div class="card-body">
+            <div class="chart-container" style="height: 280px;">
+                <canvas id="chart-trend"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="flex: 1; min-width: 350px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                10 Utenti con Meno Ore
+            </h2>
+            <div class="header-actions">
+                <select id="filter-mese-utenti" class="form-control" style="width: 140px; font-size: 0.8rem;">
+                </select>
+            </div>
+        </div>
+        <div class="card-body" id="utenti-meno-ore-container">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confronto Annuale -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h2 class="card-title">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Confronto Annuale
+        </h2>
+        <div class="header-actions" style="display: flex; gap: 8px;">
+            <select id="confronto-mese" class="form-control" style="width: 130px; font-size: 0.8rem;">
+            </select>
+        </div>
+    </div>
+    <div class="card-body" id="confronto-annuale-container">
+        <div class="loading">
+            <div class="spinner"></div>
+        </div>
+    </div>
+</div>
+
+<style>
+.utente-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.utente-item:last-child {
+    border-bottom: none;
+}
+.utente-rank {
+    width: 24px;
+    height: 24px;
+    background: var(--bg-tertiary);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+.utente-rank.alert { background: linear-gradient(135deg, #FF453A, #FF6961); color: white; }
+.utente-rank.warning { background: linear-gradient(135deg, #FF9F0A, #FFB340); color: white; }
+.utente-info {
+    flex: 1;
+    min-width: 0;
+}
+.utente-nome {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.utente-scuola {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.utente-ore {
+    text-align: right;
+    flex-shrink: 0;
+}
+.utente-ore-erogate {
+    font-weight: 700;
+    color: var(--danger);
+    font-size: 0.85rem;
+}
+.utente-ore-previste {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+.utente-differenza {
+    font-weight: 600;
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255, 69, 58, 0.1);
+    color: var(--danger);
+    flex-shrink: 0;
+    min-width: 50px;
+    text-align: center;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentMese = null;
+let currentAnno = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // Popola filtri
+    await populateAnniScolastici('filter-anno');
+    await populateCommesseSelect();
+    populateMesiSelect();
+    populateConfrontoMese();
+
+    // Carica statistiche
+    loadStatistiche();
+
+    // Event listeners
+    document.getElementById('filter-anno').addEventListener('change', loadStatistiche);
+    document.getElementById('filter-commessa').addEventListener('change', loadStatistiche);
+    document.getElementById('filter-mese-utenti').addEventListener('change', loadUtentiMenoOre);
+    document.getElementById('confronto-mese').addEventListener('change', loadConfrontoAnnualeDettaglio);
+});
+
+async function populateCommesseSelect() {
+    try {
+        const commesse = await apiCall('/api/commesse');
+        const select = document.getElementById('filter-commessa');
+        select.innerHTML = '<option value="">Tutte le commesse</option>' +
+            commesse.map(c => `<option value="${c.nome}">${c.nome}</option>`).join('');
+    } catch (e) {
+        console.error('Errore caricamento commesse:', e);
+    }
+}
+
+function populateMesiSelect() {
+    const select = document.getElementById('filter-mese-utenti');
+    const now = new Date();
+    const annoScolastico = document.getElementById('filter-anno').value || '2025-2026';
+    const [annoInizio, annoFine] = annoScolastico.split('-').map(Number);
+
+    const mesi = [
+        { mese: 9, anno: annoInizio, nome: 'Settembre' },
+        { mese: 10, anno: annoInizio, nome: 'Ottobre' },
+        { mese: 11, anno: annoInizio, nome: 'Novembre' },
+        { mese: 12, anno: annoInizio, nome: 'Dicembre' },
+        { mese: 1, anno: annoFine, nome: 'Gennaio' },
+        { mese: 2, anno: annoFine, nome: 'Febbraio' },
+        { mese: 3, anno: annoFine, nome: 'Marzo' },
+        { mese: 4, anno: annoFine, nome: 'Aprile' },
+        { mese: 5, anno: annoFine, nome: 'Maggio' },
+        { mese: 6, anno: annoFine, nome: 'Giugno' }
+    ];
+
+    select.innerHTML = mesi.map(m =>
+        `<option value="${m.anno}-${m.mese}">${m.nome} ${m.anno}</option>`
+    ).join('');
+
+    const meseCurrent = now.getMonth() + 1;
+    const annoCurrent = now.getFullYear();
+
+    for (const m of mesi) {
+        if (m.anno === annoCurrent && m.mese === meseCurrent) {
+            select.value = `${m.anno}-${m.mese}`;
+            break;
+        }
+    }
+
+    if (!select.value) {
+        select.value = `${annoInizio}-10`;
+    }
+}
+
+function populateConfrontoMese() {
+    const select = document.getElementById('confronto-mese');
+    const now = new Date();
+    const mesiNomi = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+                      'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+
+    select.innerHTML = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6].map(m =>
+        `<option value="${m}" ${m === (now.getMonth() + 1) ? 'selected' : ''}>${mesiNomi[m]}</option>`
+    ).join('');
+}
+
+function getFilters() {
+    return {
+        commessa: document.getElementById('filter-commessa')?.value || '',
+        annoScolastico: document.getElementById('filter-anno')?.value || ''
+    };
+}
+
+async function loadStatistiche() {
+    const filters = getFilters();
+    const annoScolastico = filters.annoScolastico;
+
+    populateMesiSelect();
+
+    try {
+        const qs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}` : '';
+        const stats = await apiCall(`/api/stats/advanced${qs}`);
+
+        // Update KPIs
+        animateCounter(document.getElementById('kpi-utenti'), stats.num_utenti || 0);
+        animateCounter(document.getElementById('kpi-scuole'), stats.num_scuole || 0);
+        animateCounter(document.getElementById('kpi-monte-ore'), Math.round(stats.monte_ore_totale || 0));
+        animateCounter(document.getElementById('kpi-commesse'), stats.num_commesse || 0);
+
+        // Distribuzione per commessa
+        if (stats.utenti_per_commessa?.length) {
+            const labels = stats.utenti_per_commessa.map(c => c.nome);
+            const data = stats.utenti_per_commessa.map(c => c.count);
+            ChartManager.createPieChart('chart-distribuzione', data, labels);
+
+            const colors = ['#0A84FF', '#BF5AF2', '#30D158', '#FF9F0A', '#FF453A', '#64D2FF'];
+            document.getElementById('legend-distribuzione').innerHTML = stats.utenti_per_commessa.map((c, i) => `
+                <div class="legend-item">
+                    <span class="legend-dot" style="background: ${colors[i % colors.length]}"></span>
+                    <span>${c.nome}: ${c.count}</span>
+                </div>
+            `).join('');
+        }
+
+        // Trend chart
+        if (stats.trend_mensile?.length) {
+            const labels = stats.trend_mensile.map(t => MESI[t.mese]?.substring(0, 3));
+            const data = stats.trend_mensile.map(t => t.ore_totali || 0);
+            ChartManager.createLineChart('chart-trend', labels, [{
+                label: 'Ore Erogate',
+                data: data
+            }]);
+        }
+
+        // Confronto annuale grafico
+        if (annoScolastico) {
+            loadConfrontoAnnualeChart(annoScolastico);
+        }
+
+        // Heatmap
+        if (annoScolastico) {
+            loadHeatmap(annoScolastico);
+        }
+
+        // Confronto annuale dettaglio
+        loadConfrontoAnnualeDettaglio();
+
+        // Utenti con meno ore
+        loadUtentiMenoOre();
+
+    } catch (error) {
+        console.error('Errore statistiche:', error);
+        showToast('Errore caricamento statistiche', 'error');
+    }
+}
+
+async function loadConfrontoAnnualeChart(annoScolastico) {
+    try {
+        const filters = getFilters();
+        const qs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}` : '';
+        const dati = await apiCall(`/api/stats/ore-confronto/${annoScolastico}${qs}`);
+
+        if (dati && dati.length) {
+            const labels = dati.map(d => d.mese_nome);
+            const oreErogate = dati.map(d => d.ore_erogate);
+            const orePreviste = dati.map(d => d.ore_previste);
+
+            ChartManager.createBarChart('chart-confronto', labels, [
+                { label: 'Ore Erogate', data: oreErogate, backgroundColor: 'rgba(10, 132, 255, 0.8)' },
+                { label: 'Ore Previste (-11%)', data: orePreviste, backgroundColor: 'rgba(191, 90, 242, 0.5)' }
+            ]);
+        }
+    } catch (error) {
+        console.error('Errore caricamento confronto:', error);
+        const mesi = ['Set', 'Ott', 'Nov', 'Dic', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu'];
+        ChartManager.createBarChart('chart-confronto', mesi, [
+            { label: 'Ore Erogate', data: Array(10).fill(0) },
+            { label: 'Ore Previste (-11%)', data: Array(10).fill(0) }
+        ]);
+    }
+}
+
+async function loadHeatmap(annoScolastico) {
+    const container = document.getElementById('heatmap-container');
+    container.innerHTML = '<div class="loading" style="padding: 40px;"><div class="spinner"></div></div>';
+
+    try {
+        const filters = getFilters();
+        const qs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}&limit=30` : '?limit=30';
+        const data = await apiCall(`/api/stats/heatmap/${annoScolastico}${qs}`);
+
+        if (!data.heatmap || data.heatmap.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted py-4">Nessun dato disponibile</div>';
+            return;
+        }
+
+        const mesiNomi = ['', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+
+        let html = '<table class="heatmap-table"><thead><tr><th>Utente</th>';
+        data.mesi.forEach(m => {
+            html += `<th>${mesiNomi[m.mese]}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        data.heatmap.forEach(u => {
+            html += `<tr><td title="${escapeHtml(u.nome)}">${escapeHtml(u.nome.substring(0, 25))}${u.nome.length > 25 ? '...' : ''}</td>`;
+
+            u.mesi.forEach(m => {
+                const level = getHeatmapLevel(m.percentuale);
+                html += `<td><span class="heatmap-cell" data-level="${level}" title="${m.ore}h / ${m.ore_previste}h (${m.percentuale}%)">${m.percentuale > 0 ? Math.round(m.percentuale) : '-'}</span></td>`;
+            });
+
+            html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+
+    } catch (e) {
+        console.error('Errore heatmap:', e);
+        container.innerHTML = '<div class="text-center text-muted py-4">Errore nel caricamento</div>';
+    }
+}
+
+function getHeatmapLevel(percentuale) {
+    if (percentuale === 0) return 0;
+    if (percentuale < 50) return 1;
+    if (percentuale < 80) return 2;
+    if (percentuale < 95) return 3;
+    if (percentuale < 110) return 4;
+    return 5;
+}
+
+async function loadConfrontoAnnualeDettaglio() {
+    const container = document.getElementById('confronto-annuale-container');
+    const mese = parseInt(document.getElementById('confronto-mese').value);
+
+    container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+    try {
+        const filters = getFilters();
+        const qs = `?mese=${mese}${filters.commessa ? `&commessa=${encodeURIComponent(filters.commessa)}` : ''}`;
+        const data = await apiCall(`/api/stats/confronto-annuale-dettaglio${qs}`);
+
+        if (!data.confronto || data.confronto.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted py-4">Nessun dato disponibile</div>';
+            return;
+        }
+
+        const mesiNomi = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+                          'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+
+        let html = `
+            <div class="table-container">
+                <table class="table" style="font-size: 0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Anno Scolastico</th>
+                            <th style="text-align: right;">Utenti</th>
+                            <th style="text-align: right;">Ore Erogate</th>
+                            <th style="text-align: right;">Imponibile</th>
+                            <th style="text-align: right;">Variazione</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        data.confronto.forEach((c, i) => {
+            const varColor = c.variazione === null ? '' : (c.variazione >= 0 ? 'color: var(--success)' : 'color: var(--danger)');
+            const varIcon = c.variazione === null ? '' : (c.variazione >= 0 ? '&#9650;' : '&#9660;');
+
+            html += `
+                <tr ${i === 0 ? 'style="font-weight: 600;"' : ''}>
+                    <td><strong>${c.anno_scolastico}</strong><br><span class="text-muted text-xs">${mesiNomi[c.mese]} ${c.anno}</span></td>
+                    <td style="text-align: right;">${c.num_utenti}</td>
+                    <td style="text-align: right;">${c.ore_erogate.toLocaleString('it-IT')}h</td>
+                    <td style="text-align: right;">${formatCurrency(c.imponibile)}</td>
+                    <td style="text-align: right; ${varColor}">
+                        ${c.variazione !== null ? `${varIcon} ${c.variazione > 0 ? '+' : ''}${c.variazione}%` : '-'}
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+
+    } catch (e) {
+        console.error('Errore confronto annuale:', e);
+        container.innerHTML = '<div class="text-center text-muted py-4">Errore nel caricamento</div>';
+    }
+}
+
+async function loadUtentiMenoOre() {
+    const container = document.getElementById('utenti-meno-ore-container');
+    const meseValue = document.getElementById('filter-mese-utenti').value;
+
+    if (!meseValue) {
+        container.innerHTML = '<div class="empty-state"><p class="text-muted">Seleziona un mese</p></div>';
+        return;
+    }
+
+    const [anno, mese] = meseValue.split('-').map(Number);
+    currentAnno = anno;
+    currentMese = mese;
+
+    container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+    try {
+        const utenti = await apiCall(`/api/stats/utenti-meno-ore/${anno}/${mese}`);
+        renderUtentiMenoOre(utenti);
+    } catch (error) {
+        console.error('Errore caricamento utenti:', error);
+        container.innerHTML = '<div class="empty-state"><p class="text-muted">Errore nel caricamento</p></div>';
+    }
+}
+
+function renderUtentiMenoOre(utenti) {
+    const container = document.getElementById('utenti-meno-ore-container');
+
+    if (!utenti || !utenti.length) {
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 20px;">
+                <p class="text-muted">Nessun dato disponibile per questo mese</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = utenti.map((u, i) => {
+        const rankClass = i < 3 ? 'alert' : (i < 6 ? 'warning' : '');
+        const nome = `${u.nome} ${u.cognome}`;
+        const scuola = (u.scuola || '').substring(0, 35);
+
+        return `
+            <div class="utente-item">
+                <div class="utente-rank ${rankClass}">${i + 1}</div>
+                <div class="utente-info">
+                    <div class="utente-nome" title="${nome}">${nome}</div>
+                    <div class="utente-scuola" title="${u.scuola}">${scuola}${u.scuola?.length > 35 ? '...' : ''}</div>
+                </div>
+                <div class="utente-ore">
+                    <div class="utente-ore-erogate">${u.ore_erogate.toFixed(1)}h</div>
+                    <div class="utente-ore-previste">su ${u.ore_previste.toFixed(1)}h</div>
+                </div>
+                <div class="utente-differenza">${u.differenza.toFixed(1)}h</div>
+            </div>
+        `;
+    }).join('');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,649 @@
+{% extends "base.html" %}
+
+{% block title %}Export Report - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Export Report</h1>
+    <p class="page-subtitle">Genera e scarica report in formato Excel</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Report Mensile</h2>
+    </div>
+    <div class="card-body">
+        <!-- Filtri Base -->
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Anno Scolastico</label>
+                <select id="report-anno" class="form-control">
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Mese</label>
+                <select id="report-mese" class="form-control">
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Commessa</label>
+                <select id="report-commessa" class="form-control">
+                    <option value="">Tutte le commesse</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Filtri Avanzati (collapsible) -->
+        <details class="filter-details" id="filtri-avanzati">
+            <summary class="filter-summary">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                Filtri Avanzati
+                <span class="filter-badge" id="filtri-attivi-badge" style="display: none;">0</span>
+            </summary>
+            <div class="filter-content">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Scuola</label>
+                        <select id="report-scuola" class="form-control">
+                            <option value="">Tutte le scuole</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Cerca Utente</label>
+                        <input type="text" id="report-search-utente" class="form-control" placeholder="Nome o cognome...">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Ore Erogate</label>
+                        <select id="report-filtro-ore" class="form-control">
+                            <option value="">Tutti</option>
+                            <option value="zero">Senza ore (= 0)</option>
+                            <option value="sotto">Sotto le previste</option>
+                            <option value="sopra">Sopra le previste</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: flex-end;">
+                        <button class="btn btn-secondary btn-sm" onclick="resetFiltriAvanzati()">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            Reset Filtri
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </details>
+
+        <div class="form-group mt-3">
+            <label class="form-label">Opzioni</label>
+            <div class="flex gap-4" style="flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="report-privacy">
+                    <span>Nomi puntati (privacy)</span>
+                </label>
+            </div>
+            <p class="form-help">Se selezionato, i nomi saranno in formato M. R.</p>
+        </div>
+    </div>
+    <div class="card-body" style="border-top: 1px solid var(--border-color);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <p class="text-muted mb-0" style="font-size: 0.85rem;">Seleziona il tipo di report da generare:</p>
+            <button class="btn btn-secondary btn-sm" onclick="mostraAnteprima()">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                Anteprima dati
+            </button>
+        </div>
+        <div class="report-cards-grid">
+            <div class="report-card excel" onclick="downloadExcel()">
+                <div class="report-card-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </div>
+                <h3 class="report-card-title">Report Completo</h3>
+                <p class="report-card-desc">Report dettagliato con riepilogo, dettaglio utenti e statistiche per commessa. Formato Excel.</p>
+                <div class="report-card-action">
+                    <span>Scarica Excel</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="report-card municipale" onclick="downloadMunicipale()">
+                <div class="report-card-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                </div>
+                <h3 class="report-card-title">Riepilogo Municipale</h3>
+                <p class="report-card-desc">Report per il Municipio: ore erogate per scuola, tariffa 24,07€, IVA 5%, totali e riepilogo utenti.</p>
+                <div class="report-card-action">
+                    <span>Scarica Excel</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="report-card dipartimentale" onclick="downloadDipartimentale()">
+                <div class="report-card-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                </div>
+                <h3 class="report-card-title">Monitoraggio Dipartimentale</h3>
+                <p class="report-card-desc">Report aggregato per livello scolastico con tariffa 25,27€ (IVA inclusa).</p>
+                <div class="report-card-action">
+                    <span>Scarica Excel</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="report-card word" onclick="downloadWord()">
+                <div class="report-card-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </div>
+                <h3 class="report-card-title">Relazione Mensile</h3>
+                <p class="report-card-desc">Documento Word con relazione mensile dettagliata delle attività svolte.</p>
+                <div class="report-card-action">
+                    <span>Scarica Word</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Anteprima Report -->
+<div class="card mt-4" id="preview-card" style="display: none;">
+    <div class="card-header">
+        <h2 class="card-title">Anteprima Report</h2>
+        <button class="btn btn-secondary btn-sm" onclick="chiudiAnteprima()">Chiudi</button>
+    </div>
+    <div class="card-body" style="max-height: 400px; overflow: auto;">
+        <div id="preview-content"></div>
+    </div>
+</div>
+
+<!-- Confronto Annuale -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h2 class="card-title">Confronto Annuale</h2>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-4">Confronta le ore erogate dello stesso mese in anni scolastici diversi.</p>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Mese da confrontare</label>
+                <select id="confronto-mese" class="form-control">
+                    <option value="9">Settembre</option>
+                    <option value="10">Ottobre</option>
+                    <option value="11">Novembre</option>
+                    <option value="12">Dicembre</option>
+                    <option value="1">Gennaio</option>
+                    <option value="2">Febbraio</option>
+                    <option value="3">Marzo</option>
+                    <option value="4">Aprile</option>
+                    <option value="5">Maggio</option>
+                    <option value="6">Giugno</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Commessa</label>
+                <select id="confronto-commessa" class="form-control">
+                    <option value="">Tutte</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer">
+        <button class="btn btn-primary" onclick="generaConfrontoAnnuale()">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            Genera Confronto
+        </button>
+    </div>
+</div>
+
+<!-- Report Annuale -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h2 class="card-title">Report Annuale</h2>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-4">Genera un report completo per tutto l'anno scolastico con un foglio per ogni mese e un riepilogo annuale.</p>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Anno Scolastico</label>
+                <select id="annual-anno" class="form-control">
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Commessa</label>
+                <select id="annual-commessa" class="form-control">
+                    <option value="">Tutte le commesse</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Opzioni Privacy</label>
+            <div class="flex gap-4">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="annual-privacy">
+                    <span>Mostra nomi puntati (privacy)</span>
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer">
+        <button class="btn btn-primary" onclick="downloadAnnuale()">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Scarica Report Annuale (Excel)
+        </button>
+    </div>
+</div>
+
+<!-- Info Report -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h2 class="card-title">Descrizione Report</h2>
+    </div>
+    <div class="card-body">
+        <h3 style="margin-bottom: 1rem; font-size: 1rem;">Report Disponibili</h3>
+        <table class="table mb-4">
+            <thead>
+                <tr>
+                    <th>Report</th>
+                    <th>Descrizione</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Report Completo</strong></td>
+                    <td>Report dettagliato con riepilogo, dettaglio utenti e statistiche per commessa</td>
+                </tr>
+                <tr>
+                    <td><strong>Riepilogo Municipale</strong></td>
+                    <td>Report per il Municipio: ore erogate per scuola, tariffa 24,07€, IVA 5%, totali e riepilogo utenti</td>
+                </tr>
+                <tr>
+                    <td><strong>Monitoraggio Dipartimentale</strong></td>
+                    <td>Report aggregato per livello scolastico (Infanzia Capitolina/Statale/Paritaria, Primaria/Secondaria Statale/Paritaria) con tariffa 25,27€ (IVA inclusa)</td>
+                </tr>
+                <tr>
+                    <td><strong>Report Annuale</strong></td>
+                    <td>Report completo dell'anno scolastico con un foglio per ogni mese</td>
+                </tr>
+                <tr>
+                    <td><strong>Relazione Mensile (Word)</strong></td>
+                    <td>Documento Word con relazione sull'andamento del servizio: panoramica, dati quantitativi, dati economici, distribuzione per scuola e analisi</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3 style="margin-bottom: 1rem; font-size: 1rem;">Colonne Report Completo</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Colonna</th>
+                    <th>Descrizione</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Media -11%</strong></td>
+                    <td>Ore richieste = Media mensile ridotta dell'11% (tasso assenza)</td>
+                </tr>
+                <tr>
+                    <td><strong>Ore Lavorate (100')</strong></td>
+                    <td>Ore erogate in formato centesimale</td>
+                </tr>
+                <tr>
+                    <td><strong>Imponibile</strong></td>
+                    <td>Ore (100') × 24,07 EUR (tariffa senza IVA)</td>
+                </tr>
+                <tr>
+                    <td><strong>Totale</strong></td>
+                    <td>Imponibile + IVA 5% = Ore × 25,27 EUR</td>
+                </tr>
+                <tr>
+                    <td><strong>Credito/Debito</strong></td>
+                    <td>Media -11% - Ore lavorate (positivo = credito, negativo = debito)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    // Popola anni scolastici
+    await populateAnniScolastici('report-anno');
+    await populateAnniScolastici('annual-anno');
+
+    // Carica commesse dinamicamente
+    await loadCommesse();
+
+    // Listener per cambio anno
+    document.getElementById('report-anno').addEventListener('change', (e) => {
+        populateMesiScolastici('report-mese', e.target.value);
+    });
+
+    // Listener per cambio commessa -> aggiorna scuole
+    document.getElementById('report-commessa').addEventListener('change', loadScuole);
+
+    // Listener per filtri avanzati
+    ['report-scuola', 'report-search-utente', 'report-filtro-ore'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', updateFiltriBadge);
+            if (el.tagName === 'INPUT') {
+                el.addEventListener('input', updateFiltriBadge);
+            }
+        }
+    });
+
+    // Trigger iniziale
+    const annoSelect = document.getElementById('report-anno');
+    if (annoSelect.value) {
+        populateMesiScolastici('report-mese', annoSelect.value);
+    }
+});
+
+async function loadCommesse() {
+    try {
+        const commesse = await apiCall('/api/commesse');
+        const reportSelect = document.getElementById('report-commessa');
+        const annualSelect = document.getElementById('annual-commessa');
+
+        const options = commesse.map(c => `<option value="${c.nome}">${c.nome}</option>`).join('');
+
+        reportSelect.innerHTML = '<option value="">Tutte le commesse</option>' + options;
+        annualSelect.innerHTML = '<option value="">Tutte le commesse</option>' + options;
+    } catch (error) {
+        console.error('Errore caricamento commesse:', error);
+    }
+}
+
+async function loadScuole() {
+    const commessa = document.getElementById('report-commessa').value;
+    const scuolaSelect = document.getElementById('report-scuola');
+
+    try {
+        const qs = commessa ? `?commessa=${encodeURIComponent(commessa)}` : '';
+        const scuole = await apiCall(`/api/scuole/lista${qs}`);
+
+        scuolaSelect.innerHTML = '<option value="">Tutte le scuole</option>' +
+            scuole.map(s => `<option value="${s.scuola}">${s.scuola.substring(0, 50)}${s.scuola.length > 50 ? '...' : ''} (${s.num_utenti})</option>`).join('');
+    } catch (e) {
+        console.error('Errore caricamento scuole:', e);
+    }
+}
+
+function updateFiltriBadge() {
+    let count = 0;
+
+    if (document.getElementById('report-scuola')?.value) count++;
+    if (document.getElementById('report-search-utente')?.value?.trim()) count++;
+    if (document.getElementById('report-filtro-ore')?.value) count++;
+
+    const badge = document.getElementById('filtri-attivi-badge');
+    if (badge) {
+        badge.textContent = count;
+        badge.style.display = count > 0 ? 'inline-flex' : 'none';
+    }
+}
+
+function resetFiltriAvanzati() {
+    document.getElementById('report-scuola').value = '';
+    document.getElementById('report-search-utente').value = '';
+    document.getElementById('report-filtro-ore').value = '';
+    updateFiltriBadge();
+    showToast('Filtri resettati', 'info');
+}
+
+function getReportParams() {
+    const meseAnno = document.getElementById('report-mese').value;
+    if (!meseAnno) {
+        showToast('Seleziona un mese', 'error');
+        return null;
+    }
+
+    const [mese, anno] = meseAnno.split('-');
+    const commessa = document.getElementById('report-commessa').value;
+    const privacy = document.getElementById('report-privacy').checked;
+
+    let params = `?privacy=${privacy}`;
+    if (commessa) {
+        params += `&commessa=${encodeURIComponent(commessa)}`;
+    }
+
+    return { mese, anno, params };
+}
+
+function downloadExcel() {
+    const p = getReportParams();
+    if (!p) return;
+
+    const url = `/api/export/excel/${p.anno}/${p.mese}${p.params}`;
+    window.location.href = url;
+    showToast('Download Report Completo in corso...', 'success');
+}
+
+function downloadMunicipale() {
+    const p = getReportParams();
+    if (!p) return;
+
+    const commessa = document.getElementById('report-commessa').value;
+    let params = '';
+    if (commessa) {
+        params = `?commessa=${encodeURIComponent(commessa)}`;
+    }
+
+    const url = `/api/export/municipale/${p.anno}/${p.mese}${params}`;
+    window.location.href = url;
+    showToast('Download Riepilogo Municipale in corso...', 'success');
+}
+
+function downloadDipartimentale() {
+    const p = getReportParams();
+    if (!p) return;
+
+    const commessa = document.getElementById('report-commessa').value;
+    let params = '';
+    if (commessa) {
+        params = `?commessa=${encodeURIComponent(commessa)}`;
+    }
+
+    const url = `/api/export/dipartimentale/${p.anno}/${p.mese}${params}`;
+    window.location.href = url;
+    showToast('Download Monitoraggio Dipartimentale in corso...', 'success');
+}
+
+function downloadWord() {
+    const p = getReportParams();
+    if (!p) return;
+
+    const commessa = document.getElementById('report-commessa').value;
+    let params = '';
+    if (commessa) {
+        params = `?commessa=${encodeURIComponent(commessa)}`;
+    }
+
+    const url = `/api/export/word/${p.anno}/${p.mese}${params}`;
+    window.location.href = url;
+    showToast('Download Relazione Word in corso...', 'success');
+}
+
+function downloadAnnuale() {
+    const anno = document.getElementById('annual-anno').value;
+    if (!anno) {
+        showToast('Seleziona un anno scolastico', 'error');
+        return;
+    }
+
+    const commessa = document.getElementById('annual-commessa').value;
+    const privacy = document.getElementById('annual-privacy').checked;
+
+    let params = `?privacy=${privacy}`;
+    if (commessa) {
+        params += `&commessa=${encodeURIComponent(commessa)}`;
+    }
+
+    const url = `/api/export/annuale/${anno}${params}`;
+    window.location.href = url;
+    showToast('Download Report Annuale in corso...', 'success');
+}
+
+// === Anteprima Report ===
+async function mostraAnteprima() {
+    const p = getReportParams();
+    if (!p) return;
+
+    const previewCard = document.getElementById('preview-card');
+    const previewContent = document.getElementById('preview-content');
+    previewCard.style.display = 'block';
+    previewContent.innerHTML = '<div class="text-center py-4"><div class="spinner"></div> Caricamento anteprima...</div>';
+
+    try {
+        const commessa = document.getElementById('report-commessa').value;
+        let url = `/api/rendicontazione/${p.anno}/${p.mese}`;
+        if (commessa) url += `?commessa=${encodeURIComponent(commessa)}`;
+
+        const data = await apiCall(url);
+
+        let html = '<table class="table" style="font-size: 0.8rem;"><thead><tr>';
+        html += '<th>Utente</th><th>Scuola</th><th>Monte Ore</th><th>Ore (60\')</th><th>Imponibile</th><th>Totale</th>';
+        html += '</tr></thead><tbody>';
+
+        data.dati.slice(0, 20).forEach(d => {
+            html += `<tr>
+                <td>${escapeHtml(d.nome)} ${escapeHtml(d.cognome || '')}</td>
+                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml((d.scuola || '').substring(0, 30))}</td>
+                <td style="text-align: right;">${d.monte_ore_settimanale}</td>
+                <td style="text-align: right;">${(d.ore_lavorate_60 || 0).toFixed(2)}</td>
+                <td style="text-align: right;">${formatCurrency(d.imponibile_100 || 0)}</td>
+                <td style="text-align: right;">${formatCurrency(d.totale_100 || 0)}</td>
+            </tr>`;
+        });
+
+        if (data.dati.length > 20) {
+            html += `<tr><td colspan="6" class="text-center text-muted">... e altri ${data.dati.length - 20} utenti</td></tr>`;
+        }
+
+        html += '</tbody></table>';
+
+        html += `<div style="margin-top: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+            <strong>Totali:</strong> ${data.totale_generale.num_utenti} utenti,
+            ${data.totale_generale.ore_lavorate_60?.toFixed(2) || 0} ore,
+            ${formatCurrency(data.totale_generale.totale_100 || 0)}
+        </div>`;
+
+        previewContent.innerHTML = html;
+        previewCard.scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+        previewContent.innerHTML = '<div class="text-center text-danger py-4">Errore: ' + err.message + '</div>';
+    }
+}
+
+function chiudiAnteprima() {
+    document.getElementById('preview-card').style.display = 'none';
+}
+
+// === Confronto Annuale ===
+async function generaConfrontoAnnuale() {
+    const mese = document.getElementById('confronto-mese').value;
+    const commessa = document.getElementById('confronto-commessa').value;
+
+    const previewCard = document.getElementById('preview-card');
+    const previewContent = document.getElementById('preview-content');
+    previewCard.style.display = 'block';
+    previewContent.innerHTML = '<div class="text-center py-4"><div class="spinner"></div> Generazione confronto...</div>';
+
+    try {
+        // Ottieni lista anni scolastici
+        const anni = await apiCall('/api/anni-scolastici');
+
+        let html = '<h4 style="margin-bottom: 16px;">Confronto ' + MESI[mese] + ' negli anni</h4>';
+        html += '<table class="table"><thead><tr><th>Anno Scolastico</th><th style="text-align:right">Ore Erogate</th><th style="text-align:right">Utenti</th><th style="text-align:right">Variazione</th></tr></thead><tbody>';
+
+        let datiAnni = [];
+
+        for (const annoScolastico of anni.slice(0, 5)) {
+            const [annoInizio, annoFine] = annoScolastico.split('-').map(Number);
+            const anno = parseInt(mese) >= 9 ? annoInizio : annoFine;
+
+            try {
+                let url = `/api/rendicontazione/${anno}/${mese}`;
+                if (commessa) url += `?commessa=${encodeURIComponent(commessa)}`;
+                const data = await apiCall(url);
+
+                const oreTotal = data.totale_generale.ore_lavorate_60 || 0;
+                const numUtenti = data.totale_generale.num_utenti || 0;
+
+                datiAnni.push({ annoScolastico, oreTotal, numUtenti, anno });
+            } catch (e) {
+                datiAnni.push({ annoScolastico, oreTotal: 0, numUtenti: 0, anno });
+            }
+        }
+
+        datiAnni.forEach((d, i) => {
+            let variazione = '-';
+            if (i > 0 && datiAnni[i-1].oreTotal > 0) {
+                const diff = ((d.oreTotal - datiAnni[i-1].oreTotal) / datiAnni[i-1].oreTotal * 100).toFixed(1);
+                const color = diff >= 0 ? 'var(--success)' : 'var(--danger)';
+                variazione = `<span style="color: ${color}">${diff >= 0 ? '+' : ''}${diff}%</span>`;
+            }
+            html += `<tr>
+                <td><strong>${d.annoScolastico}</strong></td>
+                <td style="text-align: right;">${d.oreTotal.toFixed(2)}</td>
+                <td style="text-align: right;">${d.numUtenti}</td>
+                <td style="text-align: right;">${variazione}</td>
+            </tr>`;
+        });
+
+        html += '</tbody></table>';
+        previewContent.innerHTML = html;
+        previewCard.scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+        previewContent.innerHTML = '<div class="text-center text-danger py-4">Errore: ' + err.message + '</div>';
+    }
+}
+
+// Inizializza commessa per confronto
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const commesse = await apiCall('/api/commesse');
+        const select = document.getElementById('confronto-commessa');
+        if (select) {
+            select.innerHTML = '<option value="">Tutte</option>' +
+                commesse.map(c => `<option value="${c.nome}">${c.nome}</option>`).join('');
+        }
+    } catch (e) {}
+});
+</script>
+{% endblock %}

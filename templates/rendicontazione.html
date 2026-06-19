@@ -1,0 +1,1446 @@
+{% extends "base.html" %}
+
+{% block title %}Rendicontazione - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-content">
+        <h1 class="page-title">Rendicontazione Mensile</h1>
+        <p class="page-subtitle">Inserisci le ore lavorate per ogni utente</p>
+    </div>
+</div>
+
+<!-- Filtri -->
+<div class="filters">
+    <div class="filter-group">
+        <label class="filter-label">Anno Scolastico</label>
+        <select id="filter-anno" class="form-control" style="width: 150px;">
+        </select>
+    </div>
+
+    <div class="filter-group">
+        <label class="filter-label">Mese</label>
+        <select id="filter-mese" class="form-control" style="width: 180px;">
+        </select>
+    </div>
+
+    <div class="filter-group">
+        <label class="filter-label">Commessa</label>
+        <select id="filter-commessa" class="form-control" style="width: 150px;">
+            <option value="">Tutte</option>
+        </select>
+    </div>
+
+    <div class="filter-group filter-group-scuola">
+        <label class="filter-label">Scuola</label>
+        <select id="filter-scuola" class="form-control" style="width: 200px;">
+            <option value="">Tutte le scuole</option>
+        </select>
+    </div>
+
+    <div class="filter-group ml-auto">
+        <label class="filter-label">&nbsp;</label>
+        <button id="btn-load" class="btn btn-primary">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Carica Dati
+        </button>
+    </div>
+</div>
+
+<!-- Info Mese Panel Premium -->
+<div class="info-panel" id="info-mese" style="display: none;">
+    <div class="info-grid">
+        <div class="info-item">
+            <span class="info-label">Periodo</span>
+            <span class="info-value highlight" id="info-periodo">-</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Giorni Lavorativi</span>
+            <span class="info-value" id="info-giorni">-</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Coefficiente</span>
+            <span class="info-value" id="info-coefficiente">-</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Tasso Assenza</span>
+            <span class="info-value">11%</span>
+        </div>
+    </div>
+    <div class="info-item" style="margin-left: auto;">
+        <span class="auto-save-indicator" id="auto-save-indicator">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span id="auto-save-text">Salvataggio automatico attivo</span>
+        </span>
+    </div>
+</div>
+
+<!-- Barra di ricerca Excel-like -->
+<div class="excel-filter-bar" id="search-container" style="display: none;">
+    <div class="excel-filter-input-group">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+        </svg>
+        <input type="text" id="search-input" class="excel-filter-input" placeholder="Filtra per nome, cognome o scuola..." autocomplete="off">
+        <button id="search-clear" class="excel-filter-clear" style="display: none;" title="Cancella filtro (Esc)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+    </div>
+    <div class="excel-filter-results" id="search-results-count"></div>
+</div>
+
+<!-- Alert formato ore -->
+<div class="alert alert-info mb-4" id="format-help" style="display: none;">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <div>
+        <strong>Formato ore:</strong> Puoi inserire <code>1:30</code> o <code>1.30</code> per 1 ora e 30 minuti. Le modifiche vengono salvate automaticamente.
+        <br><span class="text-warning">Le righe in giallo indicano utenti senza ore registrate.</span>
+    </div>
+</div>
+
+<!-- Tabella Rendicontazione -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Dettaglio Utenti
+            <span class="badge badge-secondary ml-2" id="utenti-count" style="display: none;">0</span>
+        </h2>
+        <div class="flex gap-2 items-center flex-wrap">
+            <span class="badge badge-warning" id="badge-senza-ore" style="display: none;" title="Utenti senza ore">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span id="senza-ore-count">0</span> senza ore
+            </span>
+            <button id="btn-compila-media" class="btn btn-secondary btn-sm" style="display: none;" title="Compila tutti gli utenti senza ore con la media prevista">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                Compila con Media
+            </button>
+            <button id="btn-copia-precedente" class="btn btn-secondary btn-sm" style="display: none;" title="Copia ore dal mese precedente per utenti senza ore">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Copia Mese Prec.
+            </button>
+            <button id="btn-esporta-filtrati" class="btn btn-secondary btn-sm" style="display: none;" title="Esporta solo i dati visualizzati">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Esporta Filtrati
+            </button>
+            <button id="btn-save" class="btn btn-success" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Salva Modifiche
+            </button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div class="table-container" id="table-container">
+            <div class="empty-state">
+                <svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h3 class="empty-state-title">Seleziona un periodo</h3>
+                <p class="empty-state-text">Seleziona anno scolastico e mese, poi clicca "Carica Dati"</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Totali Premium -->
+<div class="card mt-4" id="totali-card" style="display: none;">
+    <div class="card-header">
+        <h2 class="card-title">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            Riepilogo Totali
+        </h2>
+    </div>
+    <div class="card-body">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon blue">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-value" id="tot-utenti">0</div>
+                    <div class="stat-label">Utenti Totali</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon purple">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-value" id="tot-ore-60">0.00</div>
+                    <div class="stat-label">Ore Totali (60')</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon cyan">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-value" id="tot-ore-100">0.00</div>
+                    <div class="stat-label">Ore Totali (100')</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-value text-success" id="tot-totale">€ 0,00</div>
+                    <div class="stat-label">Totale con IVA 5%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Storico Utente -->
+<div class="modal-overlay" id="modal-storico">
+    <div class="modal" style="max-width: 600px;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Storico Utente
+            </h3>
+            <button class="modal-close" onclick="closeModal('modal-storico')">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body" id="storico-content">
+            <div class="text-center text-muted py-4">Caricamento...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentData = [];
+let allData = []; // Dati non filtrati per scuola
+let pendingChanges = {};
+let autoSaveTimeout = null;
+let scuoleList = [];
+let differenzeMesePrecedente = {}; // Memorizza le differenze rispetto al mese precedente
+const AUTO_SAVE_DELAY = 2000; // 2 secondi di debounce
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await populateAnniScolastici('filter-anno');
+    await loadCommesse();
+
+    document.getElementById('filter-anno').addEventListener('change', (e) => {
+        populateMesiScolastici('filter-mese', e.target.value);
+    });
+
+    // Trigger initial population
+    const annoSelect = document.getElementById('filter-anno');
+    if (annoSelect.value) {
+        populateMesiScolastici('filter-mese', annoSelect.value);
+    }
+
+    document.getElementById('btn-load').addEventListener('click', loadData);
+    document.getElementById('btn-save').addEventListener('click', saveChanges);
+    document.getElementById('btn-copia-precedente').addEventListener('click', copiaDaMesePrecedente);
+    document.getElementById('btn-compila-media').addEventListener('click', compilaConMedia);
+    document.getElementById('btn-esporta-filtrati').addEventListener('click', esportaFiltrati);
+
+    // Filtro scuola
+    document.getElementById('filter-scuola').addEventListener('change', filterByScuola);
+
+    // Filtro Excel-like semplice e funzionante
+    initExcelFilter();
+});
+
+async function loadCommesse() {
+    try {
+        const commesse = await apiCall('/api/commesse');
+        const select = document.getElementById('filter-commessa');
+        select.innerHTML = '<option value="">Tutte</option>' +
+            commesse.map(c => `<option value="${c.nome}">${c.nome}</option>`).join('');
+    } catch (error) {
+        console.error('Errore caricamento commesse:', error);
+    }
+}
+
+async function loadData() {
+    const annoSelect = document.getElementById('filter-anno');
+    const meseSelect = document.getElementById('filter-mese');
+    const commessaSelect = document.getElementById('filter-commessa');
+
+    if (!meseSelect.value) {
+        showToast('Seleziona un mese', 'error');
+        return;
+    }
+
+    const [mese, anno] = meseSelect.value.split('-').map(Number);
+    const commessa = commessaSelect.value;
+
+    showLoading('table-container', 'Caricamento rendicontazione...');
+
+    try {
+        let url = `/api/rendicontazione/${anno}/${mese}`;
+        if (commessa) {
+            url += `?commessa=${encodeURIComponent(commessa)}`;
+        }
+
+        const data = await apiCall(url);
+
+        // Ordina per nome (che contiene il cognome), poi per cognome (che contiene il nome)
+        data.dati.sort((a, b) => {
+            const nomeA = (a.nome || '').trim();
+            const nomeB = (b.nome || '').trim();
+            const nomeCompare = nomeA.localeCompare(nomeB, 'it', { sensitivity: 'base' });
+            if (nomeCompare !== 0) return nomeCompare;
+            const cognomeA = (a.cognome || '').trim();
+            const cognomeB = (b.cognome || '').trim();
+            return cognomeA.localeCompare(cognomeB, 'it', { sensitivity: 'base' });
+        });
+
+        allData = data.dati; // Salva tutti i dati
+        currentData = data.dati;
+        pendingChanges = {};
+
+        // Popola filtro scuole
+        populateScuoleFilter(data.dati);
+
+        // Reset filtro scuola
+        document.getElementById('filter-scuola').value = '';
+
+        renderTable(data);
+        updateTotals(data.totale_generale);
+        updateSenzaOreBadge(data.dati);
+
+        document.getElementById('info-mese').style.display = 'flex';
+        document.getElementById('format-help').style.display = 'flex';
+        document.getElementById('search-container').style.display = 'flex';
+        document.getElementById('info-periodo').textContent = `${data.mese_nome} ${data.anno}`;
+
+        // Reset filtro quando si caricano nuovi dati
+        resetExcelFilter();
+
+        if (data.dati.length > 0) {
+            // Distinguo infanzia/altri (il plesso contiene "INFANZIA" per l'infanzia)
+            const giorniPerTipo = {};
+            data.dati.forEach(d => {
+                const key = (d.scuola || '').toUpperCase().includes('INFANZIA') ? 'infanzia' : 'altri';
+                if (!giorniPerTipo[key]) giorniPerTipo[key] = d.giorni_lavorativi;
+            });
+
+            const gInf = giorniPerTipo['infanzia'];
+            const gAltri = giorniPerTipo['altri'];
+
+            let labelGiorni, labelCoeff;
+            if (gInf !== undefined && gAltri !== undefined && gInf !== gAltri) {
+                // Mese con valori distinti (tipicamente giugno)
+                labelGiorni = `${gAltri} / ${gInf}`;
+                labelCoeff = `${(gAltri * 0.2).toFixed(1)} / ${(gInf * 0.2).toFixed(1)}`;
+            } else {
+                const g = gInf !== undefined ? gInf : gAltri;
+                labelGiorni = g;
+                labelCoeff = (g * 0.2).toFixed(1);
+            }
+            document.getElementById('info-giorni').textContent = labelGiorni;
+            document.getElementById('info-coefficiente').textContent = labelCoeff;
+        }
+
+        document.getElementById('totali-card').style.display = 'block';
+        document.getElementById('btn-save').disabled = true;
+
+        // Mostra conteggio utenti
+        document.getElementById('utenti-count').textContent = data.dati.length;
+        document.getElementById('utenti-count').style.display = 'inline-flex';
+
+        // Mostra pulsanti se ci sono utenti senza ore
+        const senzaOre = data.dati.filter(d => !d.ore_lavorate_60 || d.ore_lavorate_60 === 0).length;
+        document.getElementById('btn-copia-precedente').style.display = senzaOre > 0 ? 'inline-flex' : 'none';
+        document.getElementById('btn-compila-media').style.display = senzaOre > 0 ? 'inline-flex' : 'none';
+        document.getElementById('btn-esporta-filtrati').style.display = data.dati.length > 0 ? 'inline-flex' : 'none';
+
+        // Carica differenze rispetto al mese precedente
+        await loadDifferenzeMesePrecedente(anno, mese);
+
+    } catch (error) {
+        showToast('Errore nel caricamento dati: ' + error.message, 'error');
+        console.error(error);
+    }
+}
+
+function populateScuoleFilter(dati) {
+    const scuole = [...new Set(dati.map(d => d.scuola))].sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
+    scuoleList = scuole;
+    const select = document.getElementById('filter-scuola');
+    select.innerHTML = '<option value="">Tutte le scuole</option>' +
+        scuole.map(s => `<option value="${s}">${s.length > 40 ? s.substring(0, 40) + '...' : s}</option>`).join('');
+}
+
+async function copiaDaMesePrecedente() {
+    const meseSelect = document.getElementById('filter-mese');
+    if (!meseSelect.value) {
+        showToast('Seleziona prima un mese', 'error');
+        return;
+    }
+
+    const [mese, anno] = meseSelect.value.split('-').map(Number);
+
+    // Calcola nome mese precedente per il messaggio di conferma
+    let mesePrecNome;
+    if (mese === 1) {
+        mesePrecNome = `Dicembre ${anno - 1}`;
+    } else {
+        mesePrecNome = `${MESI[mese - 1]} ${mese <= 8 ? anno : anno}`;
+    }
+
+    showConfirmDialog(
+        'Copia ore da mese precedente',
+        `Vuoi copiare le ore da ${mesePrecNome} per tutti gli utenti che non hanno ancora ore registrate in ${MESI[mese]} ${anno}?`,
+        async () => {
+            const btn = document.getElementById('btn-copia-precedente');
+            setButtonLoading(btn, true);
+
+            try {
+                const response = await apiCall(`/api/rendicontazione/${anno}/${mese}/copia-precedente`, {
+                    method: 'POST',
+                    body: JSON.stringify({ solo_vuoti: true })
+                });
+
+                if (response.copiati > 0) {
+                    showToast(`Copiate le ore di ${response.copiati} utenti da ${response.mese_origine}`, 'success');
+                    // Ricarica i dati
+                    await loadData();
+                } else {
+                    showToast('Nessun utente da aggiornare (tutti hanno già ore o mese precedente vuoto)', 'info');
+                }
+            } catch (error) {
+                showToast('Errore: ' + error.message, 'error');
+            } finally {
+                setButtonLoading(btn, false);
+            }
+        },
+        {
+            confirmText: 'Copia Ore',
+            cancelText: 'Annulla',
+            type: 'info'
+        }
+    );
+}
+
+async function compilaConMedia() {
+    const meseSelect = document.getElementById('filter-mese');
+    if (!meseSelect.value) {
+        showToast('Seleziona prima un mese', 'error');
+        return;
+    }
+
+    const [mese, anno] = meseSelect.value.split('-').map(Number);
+    const senzaOre = currentData.filter(d => !d.ore_lavorate_60 || d.ore_lavorate_60 === 0).length;
+
+    showConfirmDialog(
+        'Compila con Media',
+        `Vuoi compilare le ore di ${senzaOre} utenti senza ore con la loro media prevista (con assenza 11%)?`,
+        async () => {
+            const btn = document.getElementById('btn-compila-media');
+            setButtonLoading(btn, true);
+
+            try {
+                const response = await apiCall(`/api/rendicontazione/${anno}/${mese}/compila-media`, {
+                    method: 'POST',
+                    body: JSON.stringify({})
+                });
+
+                if (response.compilati > 0) {
+                    showToast(`Compilate le ore di ${response.compilati} utenti con la media prevista`, 'success');
+                    await loadData();
+                } else {
+                    showToast('Nessun utente da compilare', 'info');
+                }
+            } catch (error) {
+                showToast('Errore: ' + error.message, 'error');
+            } finally {
+                setButtonLoading(btn, false);
+            }
+        },
+        {
+            confirmText: 'Compila',
+            cancelText: 'Annulla',
+            type: 'info'
+        }
+    );
+}
+
+async function esportaFiltrati() {
+    const meseSelect = document.getElementById('filter-mese');
+    if (!meseSelect.value) {
+        showToast('Seleziona prima un mese', 'error');
+        return;
+    }
+
+    const [mese, anno] = meseSelect.value.split('-').map(Number);
+    const commessaSelect = document.getElementById('filter-commessa');
+    const scuolaSelect = document.getElementById('filter-scuola');
+
+    let url = `/api/export/excel/${anno}/${mese}`;
+    const params = [];
+    if (commessaSelect.value) params.push(`commessa=${encodeURIComponent(commessaSelect.value)}`);
+    if (scuolaSelect.value) params.push(`scuola=${encodeURIComponent(scuolaSelect.value)}`);
+    if (params.length > 0) url += '?' + params.join('&');
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `rendicontazione_filtrata_${anno}_${mese}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showToast('Download avviato', 'success');
+}
+
+async function loadDifferenzeMesePrecedente(anno, mese) {
+    try {
+        const commessaSelect = document.getElementById('filter-commessa');
+        const commessa = commessaSelect.value;
+        let url = `/api/rendicontazione/${anno}/${mese}/confronto-precedente`;
+        if (commessa) url += `?commessa=${encodeURIComponent(commessa)}`;
+
+        const data = await apiCall(url);
+        differenzeMesePrecedente = data.differenze || {};
+
+        // Aggiorna indicatori nella tabella
+        updateDifferenzeIndicators();
+    } catch (e) {
+        console.log('Differenze mese precedente non disponibili:', e);
+        differenzeMesePrecedente = {};
+    }
+}
+
+function updateDifferenzeIndicators() {
+    document.querySelectorAll('tr[data-utente-id]').forEach(row => {
+        const utenteId = parseInt(row.dataset.utenteId);
+        const diff = differenzeMesePrecedente[utenteId];
+
+        if (diff && diff.ore_precedente > 0) {
+            const oreInput = row.querySelector('.ore-input');
+            if (oreInput) {
+                const diffValue = diff.differenza;
+                const diffPerc = diff.differenza_perc;
+
+                // Rimuovi indicatore precedente
+                const oldIndicator = row.querySelector('.diff-indicator');
+                if (oldIndicator) oldIndicator.remove();
+
+                // Aggiungi nuovo indicatore
+                if (Math.abs(diffPerc) > 10) {  // Solo se differenza > 10%
+                    const indicator = document.createElement('span');
+                    indicator.className = 'diff-indicator';
+                    indicator.style.cssText = `
+                        font-size: 0.65rem;
+                        margin-left: 4px;
+                        padding: 1px 4px;
+                        border-radius: 3px;
+                        color: ${diffValue >= 0 ? 'var(--success)' : 'var(--danger)'};
+                        background: ${diffValue >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'};
+                    `;
+                    indicator.textContent = `${diffValue >= 0 ? '+' : ''}${diffPerc}%`;
+                    indicator.title = `Mese prec: ${diff.ore_precedente}h`;
+                    oreInput.parentElement.appendChild(indicator);
+                }
+            }
+        }
+    });
+}
+
+async function showStoricoUtente(utenteId) {
+    openModal('modal-storico');
+    const content = document.getElementById('storico-content');
+    content.innerHTML = '<div class="text-center text-muted py-4"><div class="spinner"></div> Caricamento...</div>';
+
+    try {
+        const data = await apiCall(`/api/utente/${utenteId}/storico`);
+        const u = data.utente;
+
+        let html = `
+            <div style="background: var(--bg-secondary); padding: 16px; border-radius: 12px; margin-bottom: 16px;">
+                <div style="font-weight: 600; font-size: 1.1rem;">${escapeHtml(u.nome)} ${escapeHtml(u.cognome)}</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">
+                    ${escapeHtml(u.scuola || 'Nessuna scuola')} - ${escapeHtml(u.commessa || '')}
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-tertiary); margin-top: 4px;">
+                    Monte ore settimanale: <strong>${u.monte_ore_settimanale || 0}h</strong>
+                </div>
+            </div>
+        `;
+
+        if (data.storico.length === 0) {
+            html += '<div class="text-center text-muted py-4">Nessun dato storico disponibile</div>';
+        } else {
+            html += '<div style="overflow-x: auto;"><table class="table" style="font-size: 0.85rem;">';
+            html += '<thead><tr><th>Periodo</th><th style="text-align:right">Ore</th><th style="text-align:right">Media</th><th style="text-align:right">Cred/Deb</th><th style="text-align:right">Pasti</th></tr></thead><tbody>';
+
+            data.storico.forEach(s => {
+                const cdClass = s.credito_debito >= 0 ? 'text-success' : 'text-danger';
+                html += `
+                    <tr>
+                        <td><strong>${s.mese_nome} ${s.anno}</strong></td>
+                        <td style="text-align:right; font-family: monospace;">${s.ore_lavorate_60.toFixed(2)}</td>
+                        <td style="text-align:right; font-family: monospace; color: var(--text-tertiary);">${s.media_prevista.toFixed(2)}</td>
+                        <td style="text-align:right; font-family: monospace;" class="${cdClass}">${s.credito_debito >= 0 ? '+' : ''}${s.credito_debito.toFixed(2)}</td>
+                        <td style="text-align:right;">${s.pasti}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table></div>';
+
+            // Calcola totali
+            const totOre = data.storico.reduce((s, x) => s + x.ore_lavorate_60, 0);
+            const totCD = data.storico.reduce((s, x) => s + x.credito_debito, 0);
+
+            html += `
+                <div style="display: flex; gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                    <div style="flex: 1; text-align: center;">
+                        <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Tot. Ore</div>
+                        <div style="font-size: 1.2rem; font-weight: 600;">${totOre.toFixed(2)}h</div>
+                    </div>
+                    <div style="flex: 1; text-align: center;">
+                        <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Saldo C/D</div>
+                        <div style="font-size: 1.2rem; font-weight: 600; color: ${totCD >= 0 ? 'var(--success)' : 'var(--danger)'};">
+                            ${totCD >= 0 ? '+' : ''}${totCD.toFixed(2)}h
+                        </div>
+                    </div>
+                    <div style="flex: 1; text-align: center;">
+                        <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Media/Mese</div>
+                        <div style="font-size: 1.2rem; font-weight: 600;">${(totOre / data.storico.length).toFixed(2)}h</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        content.innerHTML = html;
+    } catch (error) {
+        content.innerHTML = `<div class="text-center text-danger py-4">Errore: ${error.message}</div>`;
+    }
+}
+
+function filterByScuola() {
+    const scuolaFilter = document.getElementById('filter-scuola').value;
+
+    if (!scuolaFilter) {
+        currentData = allData;
+    } else {
+        currentData = allData.filter(d => d.scuola === scuolaFilter);
+    }
+
+    // Re-render con i dati filtrati
+    const meseSelect = document.getElementById('filter-mese');
+    const [mese, anno] = meseSelect.value.split('-').map(Number);
+
+    const totali_scuola = calculateTotaliScuola(currentData);
+    const totale_generale = calculateTotaleGenerale(currentData);
+
+    renderTable({
+        dati: currentData,
+        totali_scuola: totali_scuola,
+        totale_generale: totale_generale,
+        mese_nome: document.getElementById('info-periodo').textContent.split(' ')[0],
+        anno: anno
+    });
+    updateTotals(totale_generale);
+    updateSenzaOreBadge(currentData);
+
+    // Aggiorna conteggio
+    document.getElementById('utenti-count').textContent = currentData.length;
+}
+
+function calculateTotaliScuola(dati) {
+    const grouped = {};
+    dati.forEach(d => {
+        if (!grouped[d.scuola]) {
+            grouped[d.scuola] = {
+                scuola: d.scuola,
+                commessa: d.commessa,
+                ore_lavorate_60: 0,
+                ore_lavorate_100: 0,
+                imponibile_100: 0,
+                iva_100: 0,
+                totale_100: 0,
+                pasti: 0,
+                num_utenti: 0
+            };
+        }
+        grouped[d.scuola].ore_lavorate_60 += d.ore_lavorate_60 || 0;
+        grouped[d.scuola].ore_lavorate_100 += d.ore_lavorate_100 || 0;
+        grouped[d.scuola].imponibile_100 += d.imponibile_100 || 0;
+        grouped[d.scuola].iva_100 += d.iva_100 || 0;
+        grouped[d.scuola].totale_100 += d.totale_100 || 0;
+        grouped[d.scuola].pasti += d.pasti || 0;
+        grouped[d.scuola].num_utenti += 1;
+    });
+    return Object.values(grouped);
+}
+
+function calculateTotaleGenerale(dati) {
+    return {
+        num_utenti: dati.length,
+        ore_lavorate_60: dati.reduce((sum, d) => sum + (d.ore_lavorate_60 || 0), 0),
+        ore_lavorate_100: dati.reduce((sum, d) => sum + (d.ore_lavorate_100 || 0), 0),
+        imponibile_100: dati.reduce((sum, d) => sum + (d.imponibile_100 || 0), 0),
+        iva_100: dati.reduce((sum, d) => sum + (d.iva_100 || 0), 0),
+        totale_100: dati.reduce((sum, d) => sum + (d.totale_100 || 0), 0),
+        pasti: dati.reduce((sum, d) => sum + (d.pasti || 0), 0),
+        credito_debito: dati.reduce((sum, d) => sum + (d.credito_debito || 0), 0)
+    };
+}
+
+function updateSenzaOreBadge(dati) {
+    const senzaOre = dati.filter(d => !d.ore_lavorate_60 || d.ore_lavorate_60 === 0).length;
+    const badge = document.getElementById('badge-senza-ore');
+    const count = document.getElementById('senza-ore-count');
+
+    if (senzaOre > 0) {
+        count.textContent = senzaOre;
+        badge.style.display = 'inline-flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function renderTable(data) {
+    const container = document.getElementById('table-container');
+
+    if (data.dati.length === 0) {
+        showEmptyState('table-container', 'Nessun utente trovato', 'Importa prima i dati degli utenti dalla sezione Import Excel');
+        return;
+    }
+
+    // Raggruppa per scuola
+    const grouped = {};
+    data.dati.forEach(row => {
+        if (!grouped[row.scuola_id]) {
+            grouped[row.scuola_id] = {
+                scuola: row.scuola,
+                commessa: row.commessa,
+                utenti: []
+            };
+        }
+        grouped[row.scuola_id].utenti.push(row);
+    });
+
+    // Ordina utenti alfabeticamente per nome (che contiene il cognome) in ogni gruppo
+    Object.values(grouped).forEach(group => {
+        group.utenti.sort((a, b) => {
+            const nomeA = (a.nome || '').trim();
+            const nomeB = (b.nome || '').trim();
+            const nomeCompare = nomeA.localeCompare(nomeB, 'it', { sensitivity: 'base' });
+            if (nomeCompare !== 0) return nomeCompare;
+            const cognomeA = (a.cognome || '').trim();
+            const cognomeB = (b.cognome || '').trim();
+            return cognomeA.localeCompare(cognomeB, 'it', { sensitivity: 'base' });
+        });
+    });
+
+    let html = `
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Utente</th>
+                    <th>A.C.</th>
+                    <th>Monte Ore</th>
+                    <th>Media Mens.</th>
+                    <th>Media -11%</th>
+                    <th style="width:100px">Ore (60')</th>
+                    <th style="width:90px">Ore (100')</th>
+                    <th>Imponibile</th>
+                    <th>IVA 5%</th>
+                    <th>Totale</th>
+                    <th style="width:70px">Pasti</th>
+                    <th style="width:120px; min-width:120px">Cred/Deb</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    Object.values(grouped).forEach(group => {
+        // Header scuola
+        html += `
+            <tr class="scuola-header">
+                <td colspan="12">${group.commessa} - ${group.scuola}</td>
+            </tr>
+        `;
+
+        // Utenti
+        group.utenti.forEach(row => {
+            const creditoClass = row.credito_debito >= 0 ? 'text-success' : 'text-danger';
+            const senzaOreClass = (!row.ore_lavorate_60 || row.ore_lavorate_60 === 0) ? 'utente-senza-ore' : '';
+
+            // Calcola ore max possibili (giorni lavorativi * 8 ore)
+            const oreMaxPossibili = (row.giorni_lavorativi || 22) * 8;
+            const oreAnomale = row.ore_lavorate_60 > oreMaxPossibili;
+            const oreInputClass = oreAnomale ? 'ore-anomale' : '';
+            const warningAttr = oreAnomale ? `data-warning="Ore superiori al massimo possibile (${oreMaxPossibili}h)"` : '';
+
+            html += `
+                <tr data-utente-id="${row.utente_id}" class="${senzaOreClass}">
+                    <td>
+                        <a href="#" onclick="showStoricoUtente(${row.utente_id}); return false;" class="utente-link" title="Clicca per vedere lo storico">
+                            <strong>${row.nome} ${row.cognome}</strong>
+                        </a>
+                    </td>
+                    <td class="text-muted">${row.nome_puntato}</td>
+                    <td class="numeric font-mono">${row.monte_ore_variato ? '<span title="Variazione attiva (base: ' + row.monte_ore_settimanale + 'h)" style="color:var(--warning);cursor:help;">' + row.monte_ore_effettivo + '</span>' : row.monte_ore_settimanale}</td>
+                    <td class="numeric font-mono">${formatNumber(row.media_mensile_60)}</td>
+                    <td class="numeric font-mono">${formatNumber(row.media_con_assenza_60)}</td>
+                    <td ${warningAttr}>
+                        <input type="text" class="table-input ore-input ${oreInputClass}"
+                               data-utente-id="${row.utente_id}"
+                               data-max-ore="${oreMaxPossibili}"
+                               value="${row.ore_lavorate_60 ? decimalToSessagesimal(row.ore_lavorate_60) : ''}"
+                               placeholder="0:00">
+                    </td>
+                    <td class="numeric font-mono ore-100">${formatNumber(row.ore_lavorate_100)}</td>
+                    <td class="currency imponibile">${formatCurrency(row.imponibile_100)}</td>
+                    <td class="currency iva">${formatCurrency(row.iva_100)}</td>
+                    <td class="currency totale">${formatCurrency(row.totale_100)}</td>
+                    <td>
+                        <input type="number" class="table-input pasti-input"
+                               data-utente-id="${row.utente_id}"
+                               value="${row.pasti || ''}"
+                               placeholder="0" min="0">
+                    </td>
+                    <td class="numeric font-mono credito-debito ${creditoClass}">${formatNumber(row.credito_debito)}</td>
+                </tr>
+            `;
+        });
+
+        // Totale scuola
+        const totaleScuola = data.totali_scuola.find(t => t.scuola === group.scuola);
+        if (totaleScuola) {
+            html += `
+                <tr class="scuola-totale">
+                    <td colspan="6" style="text-align:right"><strong>Totale ${group.scuola.substring(0, 30)}${group.scuola.length > 30 ? '...' : ''}</strong></td>
+                    <td class="numeric font-mono"><strong>${formatNumber(totaleScuola.ore_lavorate_100)}</strong></td>
+                    <td class="currency"><strong>${formatCurrency(totaleScuola.imponibile_100)}</strong></td>
+                    <td class="currency"><strong>${formatCurrency(totaleScuola.iva_100)}</strong></td>
+                    <td class="currency"><strong>${formatCurrency(totaleScuola.totale_100)}</strong></td>
+                    <td class="numeric"><strong>${totaleScuola.pasti}</strong></td>
+                    <td></td>
+                </tr>
+            `;
+        }
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+
+    // Event listeners per input ore con auto-save
+    container.querySelectorAll('.ore-input').forEach(input => {
+        input.addEventListener('change', (e) => handleOreChange(e.target));
+        input.addEventListener('input', (e) => {
+            markChanged(e.target);
+            scheduleAutoSave();
+        });
+    });
+
+    container.querySelectorAll('.pasti-input').forEach(input => {
+        input.addEventListener('change', (e) => handlePastiChange(e.target));
+        input.addEventListener('input', (e) => {
+            markChanged(e.target);
+            scheduleAutoSave();
+        });
+    });
+}
+
+function scheduleAutoSave() {
+    // Cancella il timeout precedente
+    if (autoSaveTimeout) {
+        clearTimeout(autoSaveTimeout);
+    }
+
+    // Mostra indicatore "in attesa"
+    const indicator = document.getElementById('auto-save-indicator');
+    const text = document.getElementById('auto-save-text');
+    indicator.className = 'auto-save-indicator';
+    text.textContent = 'Modifiche in sospeso...';
+
+    // Schedula il salvataggio
+    autoSaveTimeout = setTimeout(async () => {
+        // Raccogli TUTTE le modifiche pendenti dagli input PRIMA di salvare
+        // Questo risolve la race condition: l'evento 'change' potrebbe non essere
+        // ancora stato triggerato se l'utente non è uscito dal campo
+        collectPendingChangesFromInputs();
+
+        if (Object.keys(pendingChanges).length > 0) {
+            await autoSave();
+        }
+    }, AUTO_SAVE_DELAY);
+}
+
+/**
+ * Raccoglie le modifiche pendenti direttamente dagli input con classe 'changed'
+ * Questo garantisce che i valori siano sincronizzati anche se l'evento 'change'
+ * non è ancora stato triggerato
+ */
+function collectPendingChangesFromInputs() {
+    // Raccogli ore
+    document.querySelectorAll('.ore-input.changed').forEach(input => {
+        const utenteId = parseInt(input.dataset.utenteId);
+        const rawValue = input.value.trim();
+
+        // Valida e converti
+        if (isValidTimeFormat(rawValue) || rawValue === '') {
+            const ore60 = parseTimeInput(rawValue);
+            if (ore60 >= 0) {
+                if (!pendingChanges[utenteId]) {
+                    pendingChanges[utenteId] = { utente_id: utenteId };
+                }
+                pendingChanges[utenteId].ore_lavorate_60 = ore60;
+            }
+        }
+    });
+
+    // Raccogli pasti
+    document.querySelectorAll('.pasti-input.changed').forEach(input => {
+        const utenteId = parseInt(input.dataset.utenteId);
+        const pasti = parseInt(input.value) || 0;
+
+        if (pasti >= 0) {
+            if (!pendingChanges[utenteId]) {
+                pendingChanges[utenteId] = { utente_id: utenteId };
+            }
+            pendingChanges[utenteId].pasti = pasti;
+        }
+    });
+}
+
+async function autoSave() {
+    const indicator = document.getElementById('auto-save-indicator');
+    const text = document.getElementById('auto-save-text');
+
+    // Mostra "Salvataggio..."
+    indicator.className = 'auto-save-indicator saving';
+    indicator.innerHTML = `
+        <div class="spinner-small"></div>
+        <span id="auto-save-text">Salvataggio...</span>
+    `;
+
+    try {
+        const meseSelect = document.getElementById('filter-mese');
+        const [mese, anno] = meseSelect.value.split('-').map(Number);
+
+        const updates = Object.values(pendingChanges);
+
+        await apiCall(`/api/rendicontazione/${anno}/${mese}/batch`, {
+            method: 'POST',
+            body: JSON.stringify({ updates })
+        });
+
+        // Successo
+        pendingChanges = {};
+        indicator.className = 'auto-save-indicator saved';
+        indicator.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span id="auto-save-text">Salvato</span>
+        `;
+
+        // Reset stile input
+        document.querySelectorAll('.table-input.changed').forEach(input => {
+            input.classList.remove('changed');
+        });
+
+        document.getElementById('btn-save').disabled = true;
+
+        // Torna a stato normale dopo 3 secondi
+        setTimeout(() => {
+            indicator.className = 'auto-save-indicator';
+            indicator.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span id="auto-save-text">Salvataggio automatico attivo</span>
+            `;
+        }, 3000);
+
+    } catch (error) {
+        // Errore
+        indicator.className = 'auto-save-indicator';
+        indicator.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14" style="color: var(--danger)">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span id="auto-save-text" style="color: var(--danger)">Errore salvataggio</span>
+        `;
+        showToast('Errore nel salvataggio automatico', 'error');
+    }
+}
+
+/**
+ * Gestisce il cambio ore con conversione corretta e validazione robusta
+ */
+function handleOreChange(input) {
+    const utenteId = parseInt(input.dataset.utenteId);
+    const row = input.closest('tr');
+    const parentTd = input.closest('td');
+
+    // Validazione input
+    const rawValue = input.value.trim();
+
+    // Verifica formato valido
+    if (rawValue && !isValidTimeFormat(rawValue)) {
+        input.classList.add('input-error');
+        parentTd.setAttribute('data-warning', 'Formato non valido. Usa HH:MM o numero decimale');
+        showToast('Formato ore non valido. Usa formato HH:MM (es: 8:30) o decimale (es: 8.5)', 'error');
+        return;
+    }
+
+    const ore60 = parseTimeInput(rawValue);
+    const maxOre = parseFloat(input.dataset.maxOre) || 176;
+
+    // Reset errori
+    input.classList.remove('input-error');
+
+    // Validazione valore negativo
+    if (ore60 < 0) {
+        input.classList.add('input-error');
+        parentTd.setAttribute('data-warning', 'Le ore non possono essere negative');
+        showToast('Errore: le ore non possono essere negative', 'error');
+        input.value = '0';
+        return;
+    }
+
+    // Verifica ore anomale (warning, non errore)
+    if (ore60 > maxOre) {
+        input.classList.add('ore-anomale');
+        parentTd.setAttribute('data-warning', `Ore superiori al massimo possibile (${maxOre}h)`);
+        showToast(`Attenzione: ore inserite (${ore60.toFixed(2)}) superiori al massimo possibile (${maxOre}h)`, 'warning');
+    } else {
+        input.classList.remove('ore-anomale');
+        parentTd.removeAttribute('data-warning');
+    }
+
+    // Trova dati utente
+    const utente = currentData.find(d => d.utente_id === utenteId);
+    if (!utente) return;
+
+    // Ricalcola
+    const ore100 = ore60;
+    const imponibile = ore100 * 24.07;
+    const iva = imponibile * 0.05;
+    const totale = imponibile + iva;
+    const creditoDebito = utente.media_con_assenza_60 - ore60;
+
+    // Aggiorna celle
+    row.querySelector('.ore-100').textContent = formatNumber(ore100);
+    row.querySelector('.imponibile').textContent = formatCurrency(imponibile);
+    row.querySelector('.iva').textContent = formatCurrency(iva);
+    row.querySelector('.totale').textContent = formatCurrency(totale);
+
+    const creditoCell = row.querySelector('.credito-debito');
+    creditoCell.textContent = formatNumber(creditoDebito);
+    creditoCell.className = `numeric font-mono credito-debito ${creditoDebito >= 0 ? 'text-success' : 'text-danger'}`;
+
+    // Aggiorna classe riga (rimuovi evidenziazione gialla se ora ha ore)
+    if (ore60 > 0) {
+        row.classList.remove('utente-senza-ore');
+    } else {
+        row.classList.add('utente-senza-ore');
+    }
+
+    // Registra modifica
+    if (!pendingChanges[utenteId]) {
+        pendingChanges[utenteId] = { utente_id: utenteId };
+    }
+    pendingChanges[utenteId].ore_lavorate_60 = ore60;
+
+    document.getElementById('btn-save').disabled = false;
+    recalculateTotals();
+    updateSenzaOreBadgeFromDOM();
+}
+
+function updateSenzaOreBadgeFromDOM() {
+    const senzaOre = document.querySelectorAll('tr.utente-senza-ore').length;
+    const badge = document.getElementById('badge-senza-ore');
+    const count = document.getElementById('senza-ore-count');
+
+    if (senzaOre > 0) {
+        count.textContent = senzaOre;
+        badge.style.display = 'inline-flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function handlePastiChange(input) {
+    const utenteId = parseInt(input.dataset.utenteId);
+    let pasti = parseInt(input.value) || 0;
+
+    // Validazione: deve essere un numero intero >= 0
+    if (pasti < 0) {
+        input.classList.add('input-error');
+        showToast('Errore: il numero di pasti non può essere negativo', 'error');
+        pasti = 0;
+        input.value = '0';
+    } else if (!Number.isInteger(parseFloat(input.value)) && input.value.trim() !== '') {
+        input.classList.add('input-error');
+        showToast('Attenzione: i pasti devono essere un numero intero', 'warning');
+        pasti = Math.floor(parseFloat(input.value) || 0);
+        input.value = pasti.toString();
+    } else {
+        input.classList.remove('input-error');
+    }
+
+    // Validazione: limite ragionevole (max 2 pasti al giorno × 31 giorni)
+    const maxPasti = 62;
+    if (pasti > maxPasti) {
+        input.classList.add('ore-anomale');
+        showToast(`Attenzione: numero pasti (${pasti}) superiore al limite mensile (${maxPasti})`, 'warning');
+    } else {
+        input.classList.remove('ore-anomale');
+    }
+
+    if (!pendingChanges[utenteId]) {
+        pendingChanges[utenteId] = { utente_id: utenteId };
+    }
+    pendingChanges[utenteId].pasti = pasti;
+
+    document.getElementById('btn-save').disabled = false;
+    recalculateTotals();
+}
+
+function markChanged(input) {
+    input.classList.add('changed');
+}
+
+function recalculateTotals() {
+    let totOre60 = 0;
+    let totOre100 = 0;
+    let totImponibile = 0;
+    let totPasti = 0;
+
+    document.querySelectorAll('.ore-input').forEach(input => {
+        const ore60 = parseTimeInput(input.value);
+        const ore100 = ore60;
+        totOre60 += ore60;
+        totOre100 += ore100;
+        totImponibile += ore100 * 24.07;
+    });
+
+    document.querySelectorAll('.pasti-input').forEach(input => {
+        totPasti += parseInt(input.value) || 0;
+    });
+
+    // Ore 60' in formato sessagesimale (HH:MM)
+    document.getElementById('tot-ore-60').textContent = formatOreSessionali(totOre60);
+    document.getElementById('tot-ore-100').textContent = formatNumber(totOre100);
+    // Totale con IVA 5%
+    const totaleConIva = totImponibile * 1.05;
+    document.getElementById('tot-totale').textContent = formatCurrency(totaleConIva);
+}
+
+function updateTotals(totale) {
+    document.getElementById('tot-utenti').textContent = totale.num_utenti;
+    // Ore 60' in formato sessagesimale (HH:MM)
+    document.getElementById('tot-ore-60').textContent = formatOreSessionali(totale.ore_lavorate_60);
+    document.getElementById('tot-ore-100').textContent = formatNumber(totale.ore_lavorate_100);
+    // Totale con IVA 5%
+    document.getElementById('tot-totale').textContent = formatCurrency(totale.totale_100);
+}
+
+// Formatta ore totali in formato sessagesimale (es: 16929:35)
+function formatOreSessionali(decimal) {
+    if (!decimal || decimal === 0) return '0:00';
+    const hours = Math.floor(decimal);
+    const minutes = Math.round((decimal - hours) * 60);
+    return `${hours}:${minutes.toString().padStart(2, '0')}`;
+}
+
+// ==================== FUNZIONI VALIDAZIONE ====================
+
+/**
+ * Verifica se il formato delle ore è valido
+ * Formati accettati: HH:MM, H:MM, HH.MM, numero decimale
+ */
+function isValidTimeFormat(value) {
+    if (!value || value.trim() === '') return true; // Vuoto è valido
+
+    const str = value.trim();
+
+    // Formato HH:MM o H:MM
+    if (str.includes(':')) {
+        const parts = str.split(':');
+        if (parts.length !== 2) return false;
+        const hours = parseInt(parts[0]);
+        const minutes = parseInt(parts[1]);
+        return !isNaN(hours) && !isNaN(minutes) && hours >= 0 && minutes >= 0 && minutes < 60;
+    }
+
+    // Numero decimale (con punto o virgola)
+    const num = parseFloat(str.replace(',', '.'));
+    return !isNaN(num) && num >= 0;
+}
+
+// ==================== FILTRO EXCEL-LIKE ====================
+
+function initExcelFilter() {
+    const searchInput = document.getElementById('search-input');
+    const searchClear = document.getElementById('search-clear');
+    const resultsCount = document.getElementById('search-results-count');
+
+    if (!searchInput) return;
+
+    let filterTimeout;
+
+    // Input event con debounce veloce
+    searchInput.addEventListener('input', function() {
+        const query = this.value.trim();
+
+        // Mostra/nascondi pulsante clear
+        searchClear.style.display = query ? 'flex' : 'none';
+
+        // Debounce per performance
+        clearTimeout(filterTimeout);
+        filterTimeout = setTimeout(() => {
+            applyExcelFilter(query);
+        }, 100);
+    });
+
+    // Clear button
+    searchClear.addEventListener('click', function() {
+        searchInput.value = '';
+        searchClear.style.display = 'none';
+        applyExcelFilter('');
+        searchInput.focus();
+    });
+
+    // Keyboard shortcuts
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            searchInput.value = '';
+            searchClear.style.display = 'none';
+            applyExcelFilter('');
+        }
+    });
+}
+
+function applyExcelFilter(query) {
+    const resultsCount = document.getElementById('search-results-count');
+    const normalizedQuery = normalizeText(query);
+
+    // Seleziona tutte le righe utente (con data-utente-id)
+    const userRows = document.querySelectorAll('#table-container tbody tr[data-utente-id]');
+    // Seleziona header scuole e totali
+    const scuolaHeaders = document.querySelectorAll('#table-container tbody tr.scuola-header');
+    const scuolaTotali = document.querySelectorAll('#table-container tbody tr.scuola-totale');
+
+    // Se query vuota, mostra tutto
+    if (!normalizedQuery) {
+        userRows.forEach(row => {
+            row.style.display = '';
+            row.classList.remove('excel-filter-match');
+        });
+        scuolaHeaders.forEach(h => h.style.display = '');
+        scuolaTotali.forEach(t => t.style.display = '');
+
+        resultsCount.innerHTML = '';
+        resultsCount.className = 'excel-filter-results';
+
+        // Ripristina contatore badge
+        document.getElementById('utenti-count').textContent = currentData.length;
+        return;
+    }
+
+    let matchCount = 0;
+    const scuoleWithMatch = new Set();
+
+    // Filtra le righe utente
+    userRows.forEach(row => {
+        // Prendi nome utente dalla prima cella (td:first-child contiene il nome)
+        const nameCell = row.querySelector('td:first-child');
+        const userName = nameCell ? normalizeText(nameCell.textContent) : '';
+
+        // Trova la scuola header associata a questa riga
+        let scuolaHeader = null;
+        let prev = row.previousElementSibling;
+        while (prev) {
+            if (prev.classList.contains('scuola-header')) {
+                scuolaHeader = prev;
+                break;
+            }
+            prev = prev.previousElementSibling;
+        }
+        const scuolaName = scuolaHeader ? normalizeText(scuolaHeader.textContent) : '';
+
+        // Verifica match
+        const isMatch = userName.includes(normalizedQuery) || scuolaName.includes(normalizedQuery);
+
+        if (isMatch) {
+            row.style.display = '';
+            row.classList.add('excel-filter-match');
+            matchCount++;
+            if (scuolaHeader) {
+                scuoleWithMatch.add(scuolaHeader);
+            }
+        } else {
+            row.style.display = 'none';
+            row.classList.remove('excel-filter-match');
+        }
+    });
+
+    // Mostra/nascondi header scuole
+    scuolaHeaders.forEach(header => {
+        header.style.display = scuoleWithMatch.has(header) ? '' : 'none';
+    });
+
+    // Nascondi totali scuola (non rilevanti durante il filtro)
+    scuolaTotali.forEach(totale => {
+        totale.style.display = 'none';
+    });
+
+    // Aggiorna contatore risultati
+    if (matchCount === 0) {
+        resultsCount.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Nessun risultato per "<strong>${escapeHtml(query)}</strong>"
+        `;
+        resultsCount.className = 'excel-filter-results no-results';
+    } else {
+        resultsCount.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            <strong>${matchCount}</strong> utent${matchCount === 1 ? 'e' : 'i'} filtrat${matchCount === 1 ? 'o' : 'i'}
+        `;
+        resultsCount.className = 'excel-filter-results has-results';
+    }
+
+    // Aggiorna badge nella card header
+    document.getElementById('utenti-count').textContent = matchCount + ' filtrati';
+}
+
+function normalizeText(text) {
+    return text
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Rimuove accenti
+        .trim();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function resetExcelFilter() {
+    const searchInput = document.getElementById('search-input');
+    const searchClear = document.getElementById('search-clear');
+
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    if (searchClear) {
+        searchClear.style.display = 'none';
+    }
+
+    // Resetta il contatore
+    const resultsCount = document.getElementById('search-results-count');
+    if (resultsCount) {
+        resultsCount.innerHTML = '';
+        resultsCount.className = 'excel-filter-results';
+    }
+}
+
+async function saveChanges() {
+    const meseSelect = document.getElementById('filter-mese');
+    const [mese, anno] = meseSelect.value.split('-').map(Number);
+
+    const updates = Object.values(pendingChanges);
+    if (updates.length === 0) {
+        showToast('Nessuna modifica da salvare', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('btn-save');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px;"></div> Salvataggio...';
+
+    try {
+        await apiCall(`/api/rendicontazione/${anno}/${mese}/batch`, {
+            method: 'POST',
+            body: JSON.stringify({ updates })
+        });
+
+        showToast('Modifiche salvate con successo!', 'success');
+        pendingChanges = {};
+
+        // Reset stile input
+        document.querySelectorAll('.table-input').forEach(input => {
+            input.classList.remove('changed');
+        });
+
+        btn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            Salva Modifiche
+        `;
+
+        // Aggiorna indicatore auto-save
+        const indicator = document.getElementById('auto-save-indicator');
+        indicator.className = 'auto-save-indicator saved';
+        indicator.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span>Salvato</span>
+        `;
+
+    } catch (error) {
+        showToast('Errore nel salvataggio: ' + error.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            Salva Modifiche
+        `;
+    }
+}
+</script>
+{% endblock %}

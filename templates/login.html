@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="it" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accedi · Assisto</title>
+    <meta name="theme-color" content="#0A84FF">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/icon.svg') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/worldquant-aesthetic.css') }}">
+</head>
+<body class="auth-body">
+    <main class="auth-shell">
+        <div class="auth-card">
+            <header class="auth-brand">
+                <span class="brand-mark" aria-hidden="true"></span>
+                <div class="brand-text">
+                    <span class="brand-name">Assisto</span>
+                    <span class="brand-tagline">OEPAC · Gestionale</span>
+                </div>
+            </header>
+
+            <h1 class="auth-title">Accedi al gestionale</h1>
+            <p class="auth-subtitle">Inserisci le credenziali per continuare</p>
+
+            {% if webauthn_available and has_credentials %}
+            <button type="button" id="btn-webauthn" class="auth-btn auth-btn--webauthn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 11h.01"/>
+                    <path d="M17 7c-2-2-3-2-5-2s-3 0-5 2"/>
+                    <path d="M19 11c0-4-2.5-7-7-7s-7 3-7 7"/>
+                    <path d="M5 11c0 6 4 9 7 11 3-2 7-5 7-11"/>
+                    <path d="M12 15v6"/>
+                </svg>
+                <span>Accedi con impronta</span>
+            </button>
+
+            <div class="auth-divider"><span>oppure</span></div>
+            {% endif %}
+
+            <form id="login-form" class="auth-form" autocomplete="on">
+                <div class="auth-field">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+                </div>
+                <div class="auth-field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" autocomplete="current-password" required>
+                </div>
+                <button type="submit" class="auth-btn auth-btn--primary">
+                    <span>Accedi</span>
+                </button>
+            </form>
+
+            <div id="auth-error" class="auth-error" role="alert"></div>
+        </div>
+
+        <footer class="auth-footer">
+            <p>Sessione locale · Nessun dato trasmesso all'esterno</p>
+        </footer>
+    </main>
+
+    <script>
+    // ==================== WebAuthn helpers ====================
+    function b64urlToBytes(str) {
+        str = str.replace(/-/g, '+').replace(/_/g, '/');
+        while (str.length % 4) str += '=';
+        const bin = atob(str);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return bytes;
+    }
+
+    function bytesToB64url(buf) {
+        const bytes = new Uint8Array(buf);
+        let bin = '';
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function showError(msg) {
+        const el = document.getElementById('auth-error');
+        el.textContent = msg;
+        el.classList.add('visible');
+        setTimeout(() => el.classList.remove('visible'), 6000);
+    }
+
+    // ==================== Login password ====================
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showError(data.error || 'Errore di autenticazione');
+                return;
+            }
+            const params = new URLSearchParams(window.location.search);
+            window.location.href = params.get('next') || '/';
+        } catch (err) {
+            showError('Errore di connessione');
+        }
+    });
+
+    // ==================== Login WebAuthn ====================
+    const btnWebauthn = document.getElementById('btn-webauthn');
+    if (btnWebauthn) {
+        btnWebauthn.addEventListener('click', async () => {
+            btnWebauthn.disabled = true;
+            btnWebauthn.querySelector('span').textContent = 'Verifica in corso...';
+            try {
+                // Step 1: ottieni options
+                const optRes = await fetch('/api/auth/webauthn/authenticate/begin', { method: 'POST' });
+                if (!optRes.ok) {
+                    const err = await optRes.json();
+                    throw new Error(err.error || 'Errore richiesta challenge');
+                }
+                const options = await optRes.json();
+
+                // Converti i campi binari da base64url a ArrayBuffer
+                const publicKey = {
+                    ...options,
+                    challenge: b64urlToBytes(options.challenge),
+                    allowCredentials: (options.allowCredentials || []).map(c => ({
+                        ...c,
+                        id: b64urlToBytes(c.id)
+                    }))
+                };
+
+                // Step 2: richiedi credenziale al browser (Windows Hello)
+                const assertion = await navigator.credentials.get({ publicKey });
+
+                // Prepara il payload per il server
+                const payload = {
+                    id: assertion.id,
+                    rawId: bytesToB64url(assertion.rawId),
+                    type: assertion.type,
+                    response: {
+                        authenticatorData: bytesToB64url(assertion.response.authenticatorData),
+                        clientDataJSON: bytesToB64url(assertion.response.clientDataJSON),
+                        signature: bytesToB64url(assertion.response.signature),
+                        userHandle: assertion.response.userHandle ? bytesToB64url(assertion.response.userHandle) : null,
+                    },
+                    clientExtensionResults: assertion.getClientExtensionResults ? assertion.getClientExtensionResults() : {},
+                };
+
+                // Step 3: invia al server per verifica
+                const verifyRes = await fetch('/api/auth/webauthn/authenticate/complete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ credential: payload })
+                });
+                const data = await verifyRes.json();
+                if (!verifyRes.ok) throw new Error(data.error || 'Verifica fallita');
+
+                const params = new URLSearchParams(window.location.search);
+                window.location.href = params.get('next') || '/';
+            } catch (err) {
+                console.error(err);
+                showError(err.message || 'Accesso con impronta non riuscito');
+                btnWebauthn.disabled = false;
+                btnWebauthn.querySelector('span').textContent = 'Accedi con impronta';
+            }
+        });
+
+        // Auto-prompt impronta se disponibile (opzionale, commentato di default)
+        // setTimeout(() => btnWebauthn.click(), 300);
+    }
+    </script>
+</body>
+</html>

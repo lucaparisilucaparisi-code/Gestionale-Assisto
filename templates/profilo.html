@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block title %}Profilo · Assisto{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-row">
+        <div>
+            <h1 class="page-title">Profilo e Sicurezza</h1>
+            <p class="page-subtitle">Gestisci credenziali e accesso biometrico</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-secondary" id="btn-logout">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                </svg>
+                Esci
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="flex gap-4 mb-4" style="flex-wrap: wrap;">
+    <!-- Card account -->
+    <div class="card" style="flex: 1; min-width: 340px;">
+        <div class="card-header">
+            <h2 class="card-title">Account</h2>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">Username</span>
+                <span class="info-value" id="current-username">—</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Account creato</span>
+                <span class="info-value" id="account-created">—</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Ultimo accesso</span>
+                <span class="info-value" id="last-login">—</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card cambio password -->
+    <div class="card" style="flex: 1; min-width: 340px;">
+        <div class="card-header">
+            <h2 class="card-title">Cambia password</h2>
+        </div>
+        <div class="card-body">
+            <form id="change-password-form">
+                <div class="form-group">
+                    <label class="form-label">Password corrente</label>
+                    <input type="password" id="cp-current" class="form-control" autocomplete="current-password" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nuova password</label>
+                    <input type="password" id="cp-new" class="form-control" autocomplete="new-password" minlength="8" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Conferma nuova password</label>
+                    <input type="password" id="cp-confirm" class="form-control" autocomplete="new-password" minlength="8" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Aggiorna password</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Card impronte / WebAuthn -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h2 class="card-title">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11h.01M17 7c-2-2-3-2-5-2s-3 0-5 2M19 11c0-4-2.5-7-7-7s-7 3-7 7M5 11c0 6 4 9 7 11 3-2 7-5 7-11M12 15v6"/>
+            </svg>
+            Accesso rapido con impronta
+        </h2>
+        <div class="header-actions">
+            <button class="btn btn-primary" id="btn-register-webauthn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Registra impronta
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <p class="text-muted" style="margin-top: 0; margin-bottom: 16px; font-size: 0.875rem;">
+            Registra l'impronta digitale o Windows Hello di questo PC per accedere più rapidamente.
+            Puoi sempre usare username e password come alternativa.
+        </p>
+        <div id="credentials-list">
+            <div class="loading"><div class="spinner"></div></div>
+        </div>
+    </div>
+</div>
+
+<style>
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.info-row:last-child { border-bottom: none; }
+.info-label { color: var(--text-secondary); font-size: 0.875rem; }
+.info-value { color: var(--text-primary); font-weight: 600; font-size: 0.875rem; }
+
+.credential-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    margin-bottom: 10px;
+}
+.credential-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    display: flex; align-items: center; justify-content: center;
+    color: white;
+    flex-shrink: 0;
+}
+.credential-info { flex: 1; min-width: 0; }
+.credential-name { font-weight: 600; font-size: 0.925rem; color: var(--text-primary); }
+.credential-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.credential-empty {
+    text-align: center;
+    padding: 30px 20px;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ==================== WebAuthn helpers ====================
+function b64urlToBytes(str) {
+    str = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
+    const bin = atob(str);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+}
+function bytesToB64url(buf) {
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function formatDate(iso) {
+    if (!iso) return '—';
+    try {
+        const d = new Date(iso);
+        return d.toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' });
+    } catch (e) { return iso; }
+}
+
+// ==================== Carica stato account ====================
+async function loadAccount() {
+    try {
+        const res = await apiCall('/api/auth/status');
+        document.getElementById('current-username').textContent = res.username || '—';
+
+        // Recupera anche dati creazione dal database via endpoint dedicato? Semplifichiamo usando stato corrente
+        if (res.auth_time) {
+            document.getElementById('last-login').textContent = formatDate(res.auth_time);
+        }
+    } catch (e) { console.error(e); }
+}
+
+// ==================== Carica credenziali WebAuthn ====================
+async function loadCredentials() {
+    const container = document.getElementById('credentials-list');
+    try {
+        const data = await apiCall('/api/auth/webauthn/credentials');
+        if (!data.credentials?.length) {
+            container.innerHTML = `<div class="credential-empty">Nessuna impronta registrata. Clicca "Registra impronta" per aggiungerne una.</div>`;
+            return;
+        }
+        container.innerHTML = data.credentials.map(c => `
+            <div class="credential-item">
+                <div class="credential-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11h.01M17 7c-2-2-3-2-5-2s-3 0-5 2M19 11c0-4-2.5-7-7-7s-7 3-7 7M5 11c0 6 4 9 7 11 3-2 7-5 7-11M12 15v6"/>
+                    </svg>
+                </div>
+                <div class="credential-info">
+                    <div class="credential-name">${escapeHtml(c.nome)}</div>
+                    <div class="credential-meta">Registrata ${formatDate(c.data_registrazione)}${c.ultimo_utilizzo ? ' · Ultimo uso ' + formatDate(c.ultimo_utilizzo) : ''}</div>
+                </div>
+                <button class="btn btn-sm btn-danger" onclick="deleteCredential(${c.id}, '${escapeHtml(c.nome)}')">Rimuovi</button>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = `<div class="credential-empty">Errore nel caricamento</div>`;
+    }
+}
+
+async function deleteCredential(id, nome) {
+    if (!confirm(`Rimuovere l'impronta "${nome}"?`)) return;
+    try {
+        const res = await fetch(`/api/auth/webauthn/credentials/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+        showToast('Impronta rimossa', 'success');
+        loadCredentials();
+    } catch (e) {
+        showToast('Errore nella rimozione', 'error');
+    }
+}
+
+// ==================== Registra nuova impronta ====================
+document.getElementById('btn-register-webauthn').addEventListener('click', async () => {
+    if (!window.PublicKeyCredential) {
+        showToast('Il tuo browser non supporta WebAuthn', 'error');
+        return;
+    }
+    const nome = prompt('Nome per questa impronta (es. "PC ufficio"):', 'PC principale');
+    if (!nome) return;
+
+    try {
+        // Step 1: ottieni options dal server
+        const optRes = await fetch('/api/auth/webauthn/register/begin', { method: 'POST' });
+        if (!optRes.ok) {
+            const err = await optRes.json();
+            throw new Error(err.error || 'Errore richiesta');
+        }
+        const options = await optRes.json();
+
+        // Converti campi binari
+        const publicKey = {
+            ...options,
+            challenge: b64urlToBytes(options.challenge),
+            user: {
+                ...options.user,
+                id: b64urlToBytes(options.user.id)
+            },
+            excludeCredentials: (options.excludeCredentials || []).map(c => ({
+                ...c,
+                id: b64urlToBytes(c.id)
+            }))
+        };
+
+        // Step 2: chiedi al browser di creare la credenziale (apre Windows Hello)
+        const credential = await navigator.credentials.create({ publicKey });
+
+        // Step 3: invia al server
+        const payload = {
+            id: credential.id,
+            rawId: bytesToB64url(credential.rawId),
+            type: credential.type,
+            response: {
+                attestationObject: bytesToB64url(credential.response.attestationObject),
+                clientDataJSON: bytesToB64url(credential.response.clientDataJSON),
+                transports: credential.response.getTransports ? credential.response.getTransports() : [],
+            },
+            clientExtensionResults: credential.getClientExtensionResults ? credential.getClientExtensionResults() : {},
+        };
+
+        const verifyRes = await fetch('/api/auth/webauthn/register/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credential: payload, nome })
+        });
+        const data = await verifyRes.json();
+        if (!verifyRes.ok) throw new Error(data.error || 'Registrazione fallita');
+
+        showToast(`Impronta "${nome}" registrata con successo`, 'success');
+        loadCredentials();
+    } catch (err) {
+        console.error(err);
+        showToast(err.message || 'Registrazione fallita', 'error');
+    }
+});
+
+// ==================== Cambio password ====================
+document.getElementById('change-password-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const current = document.getElementById('cp-current').value;
+    const nuova = document.getElementById('cp-new').value;
+    const conferma = document.getElementById('cp-confirm').value;
+
+    if (nuova !== conferma) {
+        showToast('Le nuove password non coincidono', 'error');
+        return;
+    }
+    if (nuova.length < 8) {
+        showToast('La password deve essere almeno 8 caratteri', 'error');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/auth/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_password: current, new_password: nuova })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Errore');
+        showToast('Password aggiornata con successo', 'success');
+        e.target.reset();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+});
+
+// ==================== Logout ====================
+document.getElementById('btn-logout').addEventListener('click', async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/login';
+});
+
+// Init
+loadAccount();
+loadCredentials();
+</script>
+{% endblock %}
