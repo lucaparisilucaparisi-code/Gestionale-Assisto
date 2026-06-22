@@ -3,12 +3,10 @@
 {% block title %}Profilo · Assisto{% endblock %}
 
 {% block content %}
-<div class="page-header">
+{% include '_impostazioni_tabs.html' %}
+<div class="page-header" style="margin-top: -4px;">
     <div class="page-header-row">
-        <div>
-            <h1 class="page-title">Profilo e Sicurezza</h1>
-            <p class="page-subtitle">Gestisci credenziali e accesso biometrico</p>
-        </div>
+        <div></div>
         <div class="header-actions">
             <button class="btn btn-secondary" id="btn-logout">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -20,7 +18,7 @@
     </div>
 </div>
 
-<div class="flex gap-4 mb-4" style="flex-wrap: wrap;">
+<div class="flex gap-4 mb-4 flex-wrap">
     <!-- Card account -->
     <div class="card" style="flex: 1; min-width: 340px;">
         <div class="card-header">

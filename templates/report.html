@@ -3,10 +3,7 @@
 {% block title %}Export Report - Gestionale OEPAC{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1 class="page-title">Export Report</h1>
-    <p class="page-subtitle">Genera e scarica report in formato Excel</p>
-</div>
+{% include '_report_tabs.html' %}
 
 <div class="card">
     <div class="card-header">
@@ -81,8 +78,8 @@
 
         <div class="form-group mt-3">
             <label class="form-label">Opzioni</label>
-            <div class="flex gap-4" style="flex-wrap: wrap;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <div class="flex gap-4 flex-wrap">
+                <label class="flex items-center gap-2 pointer">
                     <input type="checkbox" id="report-privacy">
                     <span>Nomi puntati (privacy)</span>
                 </label>
@@ -91,7 +88,7 @@
         </div>
     </div>
     <div class="card-body" style="border-top: 1px solid var(--border-color);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div class="flex justify-between items-center mb-4">
             <p class="text-muted mb-0" style="font-size: 0.85rem;">Seleziona il tipo di report da generare:</p>
             <button class="btn btn-secondary btn-sm" onclick="mostraAnteprima()">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
@@ -248,7 +245,7 @@
         <div class="form-group">
             <label class="form-label">Opzioni Privacy</label>
             <div class="flex gap-4">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <label class="flex items-center gap-2 pointer">
                     <input type="checkbox" id="annual-privacy">
                     <span>Mostra nomi puntati (privacy)</span>
                 </label>
@@ -544,10 +541,10 @@ async function mostraAnteprima() {
             html += `<tr>
                 <td>${escapeHtml(d.nome)} ${escapeHtml(d.cognome || '')}</td>
                 <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml((d.scuola || '').substring(0, 30))}</td>
-                <td style="text-align: right;">${d.monte_ore_settimanale}</td>
-                <td style="text-align: right;">${(d.ore_lavorate_60 || 0).toFixed(2)}</td>
-                <td style="text-align: right;">${formatCurrency(d.imponibile_100 || 0)}</td>
-                <td style="text-align: right;">${formatCurrency(d.totale_100 || 0)}</td>
+                <td class="text-right">${d.monte_ore_settimanale}</td>
+                <td class="text-right">${(d.ore_lavorate_60 || 0).toFixed(2)}</td>
+                <td class="text-right">${formatCurrency(d.imponibile_100 || 0)}</td>
+                <td class="text-right">${formatCurrency(d.totale_100 || 0)}</td>
             </tr>`;
         });
 
@@ -588,8 +585,8 @@ async function generaConfrontoAnnuale() {
         // Ottieni lista anni scolastici
         const anni = await apiCall('/api/anni-scolastici');
 
-        let html = '<h4 style="margin-bottom: 16px;">Confronto ' + MESI[mese] + ' negli anni</h4>';
-        html += '<table class="table"><thead><tr><th>Anno Scolastico</th><th style="text-align:right">Ore Erogate</th><th style="text-align:right">Utenti</th><th style="text-align:right">Variazione</th></tr></thead><tbody>';
+        let html = '<h4 class="mb-4">Confronto ' + MESI[mese] + ' negli anni</h4>';
+        html += '<table class="table"><thead><tr><th>Anno Scolastico</th><th class="text-right">Ore Erogate</th><th class="text-right">Utenti</th><th class="text-right">Variazione</th></tr></thead><tbody>';
 
         let datiAnni = [];
 
@@ -620,9 +617,9 @@ async function generaConfrontoAnnuale() {
             }
             html += `<tr>
                 <td><strong>${d.annoScolastico}</strong></td>
-                <td style="text-align: right;">${d.oreTotal.toFixed(2)}</td>
-                <td style="text-align: right;">${d.numUtenti}</td>
-                <td style="text-align: right;">${variazione}</td>
+                <td class="text-right">${d.oreTotal.toFixed(2)}</td>
+                <td class="text-right">${d.numUtenti}</td>
+                <td class="text-right">${variazione}</td>
             </tr>`;
         });
 

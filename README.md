@@ -12,11 +12,16 @@ Sistema web locale per la gestione e rendicontazione del servizio OEPAC
 1. **Scarica** il pacchetto ZIP da GitHub ed estrailo in una cartella.
 2. Entra nella cartella `gestionale-oepac`.
 3. **Fai doppio click su `avvia.bat`**.
-4. La prima volta attendi qualche minuto: il sistema installa automaticamente tutto il necessario.
+4. La prima volta attendi qualche minuto: il sistema installa automaticamente
+   tutto il necessario, **incluso Python** se non è già presente sul computer
+   (serve la connessione a internet). Non serve essere amministratore.
 5. Il browser si aprirà da solo su `http://localhost:5000`.
 6. Al primo avvio crea username e password nella pagina di setup.
    Se hai Windows Hello, puoi aggiungere anche l'impronta digitale dal menu
    **Profilo** (in alto a destra).
+
+> Puoi spostare la cartella dove vuoi (anche su un altro PC): al doppio click
+> `avvia.bat` ricontrolla cosa manca e lo reinstalla da solo.
 
 ### macOS / Linux
 
@@ -27,26 +32,33 @@ Sistema web locale per la gestione e rendicontazione del servizio OEPAC
    ```
 3. Apri il browser su `http://localhost:5000`.
 
+> Su macOS/Linux Python di solito è già presente; se manca, lo script ti dice
+> il comando esatto per installarlo. Le dipendenze vengono comunque gestite da solo.
+
 ---
 
 ## Requisiti
 
-- **Python 3.9 o superiore** installato sul sistema
-  ([scarica da python.org](https://www.python.org/downloads/))
-  - Su Windows: durante l'installazione spunta **"Add Python to PATH"**
-- Connessione internet al primo avvio (per installare le dipendenze)
+- **Connessione internet al primo avvio** (per scaricare Python e/o le dipendenze).
+- Su **Windows** non serve installare nulla a mano: `avvia.bat` installa Python
+  automaticamente se manca. In alternativa puoi installarlo da
+  [python.org](https://www.python.org/downloads/) spuntando **"Add Python to PATH"**.
+- Su **macOS/Linux** serve **Python 3.9 o superiore** (quasi sempre già presente).
 
-Tutte le dipendenze Python (`flask`, `pandas`, `openpyxl`, `xlsxwriter`,
-`python-docx`, `pillow`, `webauthn`) vengono installate **automaticamente** da
-`avvia.bat` / `run.sh` la prima volta.
+Python e tutte le dipendenze (`flask`, `pandas`, `openpyxl`, `xlsxwriter`,
+`python-docx`, `pillow`, `webauthn`) vengono predisposti **automaticamente** in un
+ambiente isolato dentro la cartella (`.venv`) da `avvia.bat` / `run.sh` al primo avvio.
 
 ---
 
 ## Funzionalità
 
 - **Autenticazione**: username + password, con opzione impronta digitale (Windows Hello / WebAuthn)
-- **Import Excel**: carica dati utenti da file Excel (Commessa, Scuola, Nome, Monte Ore)
+- **Import Excel anagrafica**: carica dati utenti da file Excel (Commessa, Scuola, Nome, Monte Ore)
+- **Import Excel rendicontazione**: carica ore e pasti mensili dalla prefattura (un foglio per mese), con abbinamento automatico agli utenti già in anagrafica e anteprima prima del salvataggio
 - **Rendicontazione mensile**: inserimento ore lavorate e pasti per ogni utente, con salvataggio automatico
+- **Chiusura mese guidata**: procedura in 4 passi (completezza → anomalie → riepilogo → export)
+- **Dashboard "Stato del mese"**: avanzamento rendicontazione, avvisi e validazione dati in evidenza
 - **Calcoli automatici**:
   - Conversione ore 60' ↔ 100'
   - Media mensile basata su giorni lavorativi
@@ -94,6 +106,7 @@ gestionale-oepac/
 ├── avvia.bat           # Avvio per Windows (doppio click)
 ├── run.sh              # Avvio per macOS/Linux
 ├── app.py              # Applicazione Flask principale
+├── routes_export.py    # Route export/report (Excel, Word)
 ├── database.py         # Gestione database SQLite
 ├── config.py           # Configurazione
 ├── requirements.txt    # Dipendenze Python
@@ -103,6 +116,15 @@ gestionale-oepac/
 ├── uploads/            # File caricati
 └── exports/            # File esportati
 ```
+
+### Organizzazione del menu
+
+- **Principale**: Dashboard
+- **Lavoro mensile**: Rendicontazione · Utenti (assistiti) · Chiusura Mese
+- **Personale**: Dipendenti (operatori OEPAC, con assegnazione agli assistiti)
+- **Analisi**: Report e Statistiche (tab: Export report, Reportistica DD, Statistiche)
+- **Dati**: Import Excel
+- **Configurazione**: Impostazioni (Commesse, Calendario, Profilo)
 
 ## Commesse supportate
 

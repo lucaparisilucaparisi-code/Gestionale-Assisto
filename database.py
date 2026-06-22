@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import shutil
+import json
 from datetime import datetime
 
 import config
@@ -395,6 +396,56 @@ def init_db():
         )
     ''')
 
+    # ==================== MODULO PERSONALE (dipendenti OEPAC) ====================
+
+    # Anagrafica dipendenti (operatori OEPAC). I campi non previsti dall'Excel
+    # finiscono in dati_extra (JSON) per non dover cambiare schema ad ogni import.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS dipendenti (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT NOT NULL,
+            cognome TEXT NOT NULL,
+            codice_fiscale TEXT,
+            email TEXT,
+            telefono TEXT,
+            qualifica TEXT,
+            sede TEXT,
+            commessa_id INTEGER,
+            ore_contrattuali_settimanali REAL,
+            data_assunzione TEXT,
+            data_cessazione TEXT,
+            attivo INTEGER DEFAULT 1,
+            note TEXT,
+            dati_extra TEXT,
+            data_inserimento TEXT NOT NULL,
+            FOREIGN KEY (commessa_id) REFERENCES commesse(id)
+        )
+    ''')
+
+    # Assegnazione assistito (utente) -> operatore (dipendente) con ore settimanali.
+    # Le assegnazioni possono essere miste (piu' operatori per utente). Vincolo
+    # applicativo: la somma delle ore per un utente deve eguagliare il suo monte ore.
+    # valido_da / valido_a gestiscono variazioni nel tempo (NULL = sempre valida).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS assegnazioni (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            utente_id INTEGER NOT NULL,
+            dipendente_id INTEGER NOT NULL,
+            ore_settimanali REAL NOT NULL DEFAULT 0,
+            valido_da TEXT,
+            valido_a TEXT,
+            note TEXT,
+            data_inserimento TEXT NOT NULL,
+            FOREIGN KEY (utente_id) REFERENCES utenti(id) ON DELETE CASCADE,
+            FOREIGN KEY (dipendente_id) REFERENCES dipendenti(id) ON DELETE CASCADE
+        )
+    ''')
+
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_dipendenti_attivo ON dipendenti(attivo)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_dipendenti_nome ON dipendenti(cognome, nome)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_assegnazioni_utente ON assegnazioni(utente_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_assegnazioni_dipendente ON assegnazioni(dipendente_id)')
+
     # ==================== INDICI PER PERFORMANCE ====================
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_utenti_scuola ON utenti(scuola_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_utenti_attivo ON utenti(attivo)')
@@ -495,46 +546,35 @@ def get_all_commesse(only_active=True):
 
 def get_commessa_by_id(commessa_id):
     """Ottiene una commessa per ID"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM commesse WHERE id = ?", (commessa_id,))
-    result = cursor.fetchone()
-    conn.close()
-    return dict(result) if result else None
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM commesse WHERE id = ?", (commessa_id,))
+        result = cursor.fetchone()
+        return dict(result) if result else None
 
 def get_commessa_by_nome(nome):
     """Ottiene una commessa per nome"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM commesse WHERE nome = ?", (nome,))
-    result = cursor.fetchone()
-    conn.close()
-    return dict(result) if result else None
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM commesse WHERE nome = ?", (nome,))
+        result = cursor.fetchone()
+        return dict(result) if result else None
 
 def create_commessa(nome, descrizione=None, colore='#6366f1'):
     """Crea una nuova commessa"""
-    conn = get_db()
-    cursor = conn.cursor()
-
     try:
-        cursor.execute('''
-            INSERT INTO commesse (nome, descrizione, colore, data_creazione)
-            VALUES (?, ?, ?, ?)
-        ''', (nome, descrizione, colore, datetime.now().isoformat()))
-
-        commessa_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return commessa_id
+        with get_db_context() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO commesse (nome, descrizione, colore, data_creazione)
+                VALUES (?, ?, ?, ?)
+            ''', (nome, descrizione, colore, datetime.now().isoformat()))
+            return cursor.lastrowid
     except sqlite3.IntegrityError:
-        conn.close()
         return None
 
 def update_commessa(commessa_id, nome=None, descrizione=None, colore=None, attiva=None):
     """Aggiorna una commessa"""
-    conn = get_db()
-    cursor = conn.cursor()
-
     updates = []
     params = []
 
@@ -553,10 +593,9 @@ def update_commessa(commessa_id, nome=None, descrizione=None, colore=None, attiv
 
     if updates:
         params.append(commessa_id)
-        cursor.execute(f"UPDATE commesse SET {', '.join(updates)} WHERE id = ?", params)
-        conn.commit()
-
-    conn.close()
+        with get_db_context() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"UPDATE commesse SET {', '.join(updates)} WHERE id = ?", params)
 
 def delete_commessa(commessa_id):
     """Elimina una commessa (soft delete)"""
@@ -566,80 +605,70 @@ def delete_commessa(commessa_id):
 
 def get_or_create_scuola(commessa_nome, nome_completo):
     """Ottiene o crea una scuola (e la commessa se non esiste)"""
-    conn = get_db()
-    cursor = conn.cursor()
+    with get_db_context() as conn:
+        cursor = conn.cursor()
 
-    # Trova commessa o creala se non esiste
-    cursor.execute("SELECT id FROM commesse WHERE nome = ?", (commessa_nome,))
-    commessa = cursor.fetchone()
+        # Trova commessa o creala se non esiste
+        cursor.execute("SELECT id FROM commesse WHERE nome = ?", (commessa_nome,))
+        commessa = cursor.fetchone()
 
-    if not commessa:
-        # Crea la commessa automaticamente
-        cursor.execute('''
-            INSERT INTO commesse (nome, descrizione, colore, attiva, data_creazione)
-            VALUES (?, ?, ?, 1, ?)
-        ''', (commessa_nome, f'Commessa {commessa_nome}', '#6366f1', datetime.now().isoformat()))
-        commessa_id = cursor.lastrowid
-        conn.commit()
-    else:
-        commessa_id = commessa['id']
+        if not commessa:
+            # Crea la commessa automaticamente
+            cursor.execute('''
+                INSERT INTO commesse (nome, descrizione, colore, attiva, data_creazione)
+                VALUES (?, ?, ?, 1, ?)
+            ''', (commessa_nome, f'Commessa {commessa_nome}', '#6366f1', datetime.now().isoformat()))
+            commessa_id = cursor.lastrowid
+        else:
+            commessa_id = commessa['id']
 
-    # Cerca scuola esistente
-    cursor.execute(
-        "SELECT id FROM scuole WHERE commessa_id = ? AND nome_completo = ?",
-        (commessa_id, nome_completo)
-    )
-    scuola = cursor.fetchone()
+        # Cerca scuola esistente
+        cursor.execute(
+            "SELECT id FROM scuole WHERE commessa_id = ? AND nome_completo = ?",
+            (commessa_id, nome_completo)
+        )
+        scuola = cursor.fetchone()
 
-    if scuola:
-        conn.close()
-        return scuola['id']
+        if scuola:
+            return scuola['id']
 
-    # Crea nuova scuola
-    cursor.execute(
-        "INSERT INTO scuole (commessa_id, nome_completo) VALUES (?, ?)",
-        (commessa_id, nome_completo)
-    )
-    scuola_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return scuola_id
+        # Crea nuova scuola
+        cursor.execute(
+            "INSERT INTO scuole (commessa_id, nome_completo) VALUES (?, ?)",
+            (commessa_id, nome_completo)
+        )
+        return cursor.lastrowid
 
 # ==================== CRUD UTENTI ====================
 
 def get_or_create_utente(scuola_id, nome, cognome, monte_ore):
     """Ottiene o crea un utente"""
-    conn = get_db()
-    cursor = conn.cursor()
+    with get_db_context() as conn:
+        cursor = conn.cursor()
 
-    # Cerca utente esistente
-    cursor.execute(
-        "SELECT id FROM utenti WHERE scuola_id = ? AND nome = ? AND cognome = ?",
-        (scuola_id, nome, cognome)
-    )
-    utente = cursor.fetchone()
-
-    if utente:
-        # Aggiorna monte ore se diverso
+        # Cerca utente esistente
         cursor.execute(
-            "UPDATE utenti SET monte_ore_settimanale = ? WHERE id = ?",
-            (monte_ore, utente['id'])
+            "SELECT id FROM utenti WHERE scuola_id = ? AND nome = ? AND cognome = ?",
+            (scuola_id, nome, cognome)
         )
-        conn.commit()
-        conn.close()
-        return utente['id']
+        utente = cursor.fetchone()
 
-    # Crea nuovo utente
-    nome_puntato = punteggia_nome(nome, cognome)
-    cursor.execute('''
-        INSERT INTO utenti (scuola_id, nome, cognome, nome_puntato, monte_ore_settimanale, data_inserimento)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (scuola_id, nome, cognome, nome_puntato, monte_ore, datetime.now().isoformat()))
+        if utente:
+            # Aggiorna monte ore se diverso
+            cursor.execute(
+                "UPDATE utenti SET monte_ore_settimanale = ? WHERE id = ?",
+                (monte_ore, utente['id'])
+            )
+            return utente['id']
 
-    utente_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return utente_id
+        # Crea nuovo utente
+        nome_puntato = punteggia_nome(nome, cognome)
+        cursor.execute('''
+            INSERT INTO utenti (scuola_id, nome, cognome, nome_puntato, monte_ore_settimanale, data_inserimento)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (scuola_id, nome, cognome, nome_puntato, monte_ore, datetime.now().isoformat()))
+
+        return cursor.lastrowid
 
 def get_all_utenti(commessa=None, scuola_id=None, include_inactive_period=True, page=None, limit=50):
     """
@@ -850,54 +879,46 @@ def set_calendario(anno_scolastico, mese, anno, giorni, giorni_altri=None):
 
 def get_or_create_rendicontazione(utente_id, anno, mese):
     """Ottiene o crea una rendicontazione mensile"""
-    conn = get_db()
-    cursor = conn.cursor()
-
     # Determina anno scolastico
     if mese >= 9:
         anno_scolastico = f"{anno}-{anno+1}"
     else:
         anno_scolastico = f"{anno-1}-{anno}"
 
-    # Ottieni giorni lavorativi per la scuola dell'utente (distinzione infanzia/altri)
-    cursor.execute('''
-        SELECT s.nome_completo FROM utenti u
-        JOIN scuole s ON u.scuola_id = s.id
-        WHERE u.id = ?
-    ''', (utente_id,))
-    r = cursor.fetchone()
-    scuola_nome = r['nome_completo'] if r else None
-    giorni = get_giorni_per_scuola(anno_scolastico, mese, anno, scuola_nome)
+    with get_db_context() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT * FROM rendicontazione WHERE utente_id = ? AND anno = ? AND mese = ?",
-        (utente_id, anno, mese)
-    )
-    rend = cursor.fetchone()
+        # Ottieni giorni lavorativi per la scuola dell'utente (distinzione infanzia/altri)
+        cursor.execute('''
+            SELECT s.nome_completo FROM utenti u
+            JOIN scuole s ON u.scuola_id = s.id
+            WHERE u.id = ?
+        ''', (utente_id,))
+        r = cursor.fetchone()
+        scuola_nome = r['nome_completo'] if r else None
+        giorni = get_giorni_per_scuola(anno_scolastico, mese, anno, scuola_nome)
 
-    if rend:
-        conn.close()
-        return dict(rend)
+        cursor.execute(
+            "SELECT * FROM rendicontazione WHERE utente_id = ? AND anno = ? AND mese = ?",
+            (utente_id, anno, mese)
+        )
+        rend = cursor.fetchone()
 
-    # Crea nuova rendicontazione
-    cursor.execute('''
-        INSERT INTO rendicontazione (utente_id, anno, mese, giorni_lavorativi, data_inserimento)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (utente_id, anno, mese, giorni, datetime.now().isoformat()))
+        if rend:
+            return dict(rend)
 
-    rend_id = cursor.lastrowid
-    conn.commit()
+        # Crea nuova rendicontazione
+        cursor.execute('''
+            INSERT INTO rendicontazione (utente_id, anno, mese, giorni_lavorativi, data_inserimento)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (utente_id, anno, mese, giorni, datetime.now().isoformat()))
 
-    cursor.execute("SELECT * FROM rendicontazione WHERE id = ?", (rend_id,))
-    result = dict(cursor.fetchone())
-    conn.close()
-    return result
+        rend_id = cursor.lastrowid
+        cursor.execute("SELECT * FROM rendicontazione WHERE id = ?", (rend_id,))
+        return dict(cursor.fetchone())
 
 def update_rendicontazione(utente_id, anno, mese, ore_lavorate=None, pasti=None, note=None):
     """Aggiorna una rendicontazione esistente"""
-    conn = get_db()
-    cursor = conn.cursor()
-
     updates = ["data_modifica = ?"]
     params = [datetime.now().isoformat()]
 
@@ -915,20 +936,86 @@ def update_rendicontazione(utente_id, anno, mese, ore_lavorate=None, pasti=None,
 
     params.extend([utente_id, anno, mese])
 
-    cursor.execute(f'''
-        UPDATE rendicontazione
-        SET {', '.join(updates)}
-        WHERE utente_id = ? AND anno = ? AND mese = ?
-    ''', params)
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            UPDATE rendicontazione
+            SET {', '.join(updates)}
+            WHERE utente_id = ? AND anno = ? AND mese = ?
+        ''', params)
 
-    conn.commit()
-    conn.close()
+
+def update_rendicontazione_batch(anno, mese, updates):
+    """Aggiorna la rendicontazione di più utenti in una SINGOLA transazione.
+
+    updates: lista di dict con chiavi 'utente_id' e, opzionali,
+    'ore_lavorate', 'pasti', 'note'. Le righe mancanti vengono create.
+    In caso di errore nessuna modifica viene applicata (rollback).
+    Ritorna il numero di utenti aggiornati.
+    """
+    if mese >= 9:
+        anno_scolastico = f"{anno}-{anno+1}"
+    else:
+        anno_scolastico = f"{anno-1}-{anno}"
+
+    aggiornati = 0
+    conn = get_db()
+    try:
+        cursor = conn.cursor()
+        now = datetime.now().isoformat()
+
+        for upd in updates:
+            utente_id = upd.get('utente_id')
+            if not utente_id:
+                continue
+
+            # Crea la riga se mancante (equivalente di get_or_create_rendicontazione)
+            cursor.execute(
+                "SELECT 1 FROM rendicontazione WHERE utente_id = ? AND anno = ? AND mese = ?",
+                (utente_id, anno, mese)
+            )
+            if not cursor.fetchone():
+                cursor.execute('''
+                    SELECT s.nome_completo FROM utenti u
+                    JOIN scuole s ON u.scuola_id = s.id
+                    WHERE u.id = ?
+                ''', (utente_id,))
+                r = cursor.fetchone()
+                scuola_nome = r['nome_completo'] if r else None
+                giorni = get_giorni_per_scuola(anno_scolastico, mese, anno, scuola_nome)
+                cursor.execute('''
+                    INSERT INTO rendicontazione (utente_id, anno, mese, giorni_lavorativi, data_inserimento)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (utente_id, anno, mese, giorni, now))
+
+            sets = ["data_modifica = ?"]
+            params = [now]
+            for campo, colonna in (('ore_lavorate', 'ore_lavorate_60'),
+                                   ('pasti', 'pasti'),
+                                   ('note', 'note')):
+                if upd.get(campo) is not None:
+                    sets.append(f"{colonna} = ?")
+                    params.append(upd[campo])
+            params.extend([utente_id, anno, mese])
+
+            cursor.execute(f'''
+                UPDATE rendicontazione
+                SET {', '.join(sets)}
+                WHERE utente_id = ? AND anno = ? AND mese = ?
+            ''', params)
+            aggiornati += 1
+
+        conn.commit()
+        return aggiornati
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
 
 def get_rendicontazione_completa(anno, mese, commessa=None):
     """Ottiene la rendicontazione completa per un mese con tutti i calcoli"""
-    conn = get_db()
-    cursor = conn.cursor()
-
     # Determina anno scolastico
     if mese >= 9:
         anno_scolastico = f"{anno}-{anno+1}"
@@ -971,9 +1058,10 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
 
     query += " ORDER BY c.nome, s.nome_completo, u.cognome, u.nome"
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
 
     # Calcola tutti i valori derivati
     COSTO_ORARIO = config.TARIFFA_ORARIA
@@ -1375,8 +1463,9 @@ def get_ore_erogate_vs_previste(anno_scolastico, commessa=None):
             ore_erogate = row['ore_erogate'] or 0
 
             # Calcola ore previste (media -11%)
-            # Formula: monte_ore_settimanale * giorni_lavorativi * 0.2 * 0.89
+            # Formula: monte_ore_settimanale * giorni_lavorativi * coeff giornaliero * (1 - tasso assenza)
             # Per non-infanzia usa giorni_lavorativi_altri se presente (tipicamente solo giugno)
+            coeff_previste = config.COEFFICIENTE_GIORNALIERO * (1 - config.TASSO_ASSENZA)
             if commessa:
                 cursor.execute('''
                     SELECT
@@ -1384,13 +1473,13 @@ def get_ore_erogate_vs_previste(anno_scolastico, commessa=None):
                             CASE
                                 WHEN UPPER(COALESCE(s.nome_completo, '')) LIKE '%INFANZIA%' THEN cal.giorni_lavorativi
                                 ELSE COALESCE(cal.giorni_lavorativi_altri, cal.giorni_lavorativi)
-                            END, 0) * 0.2 * 0.89) as ore_previste
+                            END, 0) * ?) as ore_previste
                     FROM utenti u
                     JOIN scuole s ON u.scuola_id = s.id
                     JOIN commesse cm ON s.commessa_id = cm.id
                     LEFT JOIN calendario_scolastico cal ON cal.anno_scolastico = ? AND cal.mese = ? AND cal.anno = ?
                     WHERE u.attivo = 1 AND cm.nome = ?
-                ''', (anno_scolastico, mese, anno, commessa))
+                ''', (coeff_previste, anno_scolastico, mese, anno, commessa))
             else:
                 cursor.execute('''
                     SELECT
@@ -1398,12 +1487,12 @@ def get_ore_erogate_vs_previste(anno_scolastico, commessa=None):
                             CASE
                                 WHEN UPPER(COALESCE(s.nome_completo, '')) LIKE '%INFANZIA%' THEN c.giorni_lavorativi
                                 ELSE COALESCE(c.giorni_lavorativi_altri, c.giorni_lavorativi)
-                            END, 0) * 0.2 * 0.89) as ore_previste
+                            END, 0) * ?) as ore_previste
                     FROM utenti u
                     JOIN scuole s ON u.scuola_id = s.id
                     LEFT JOIN calendario_scolastico c ON c.anno_scolastico = ? AND c.mese = ? AND c.anno = ?
                     WHERE u.attivo = 1
-                ''', (anno_scolastico, mese, anno))
+                ''', (coeff_previste, anno_scolastico, mese, anno))
             ore_previste_row = cursor.fetchone()
             ore_previste = ore_previste_row['ore_previste'] or 0
 
@@ -2019,6 +2108,33 @@ def genera_notifiche_automatiche():
                 )
                 notifiche_generate.append(notifica_id)
 
+    # Rendicontazione incompleta: dal giorno 20 del mese segnala gli utenti
+    # ancora senza ore registrate (una sola notifica per mese)
+    oggi = datetime.now()
+    if oggi.day >= 20:
+        anno, mese = oggi.year, oggi.month
+        dati = get_rendicontazione_completa(anno, mese)
+        senza_ore = [d for d in dati if not (d.get('ore_lavorate_60') or 0) > 0]
+        if senza_ore:
+            entita_id = anno * 100 + mese  # chiave univoca per il mese
+            with get_db_context() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id FROM notifiche
+                    WHERE entita = 'rendicontazione_incompleta' AND entita_id = ? AND archiviata = 0
+                ''', (entita_id,))
+                if not cursor.fetchone():
+                    notifica_id = create_notifica(
+                        tipo='rendicontazione_incompleta',
+                        titolo=f"Rendicontazione incompleta: {len(senza_ore)} utenti senza ore",
+                        messaggio=f"Il mese sta per chiudersi e {len(senza_ore)} utenti "
+                                  f"non hanno ancora ore registrate ({oggi.strftime('%m/%Y')})",
+                        entita='rendicontazione_incompleta',
+                        entita_id=entita_id,
+                        priorita='alta'
+                    )
+                    notifiche_generate.append(notifica_id)
+
     return notifiche_generate
 
 
@@ -2298,6 +2414,258 @@ def get_audit_log(limit=100, entita=None):
 
         cursor.execute(query, params)
         return [dict(r) for r in cursor.fetchall()]
+
+
+# ==================== DIPENDENTI (operatori OEPAC) ====================
+
+# Campi "core" della tabella dipendenti; tutto il resto va in dati_extra (JSON).
+DIPENDENTE_CAMPI = [
+    'nome', 'cognome', 'codice_fiscale', 'email', 'telefono', 'qualifica',
+    'sede', 'commessa_id', 'ore_contrattuali_settimanali',
+    'data_assunzione', 'data_cessazione', 'note',
+]
+
+
+def _dipendente_to_dict(row):
+    d = dict(row)
+    extra = d.pop('dati_extra', None)
+    try:
+        d['extra'] = json.loads(extra) if extra else {}
+    except (ValueError, TypeError):
+        d['extra'] = {}
+    return d
+
+
+def get_all_dipendenti(include_inactive=False, search=None, commessa_id=None):
+    """Elenco dipendenti, con ricerca opzionale per nome/cognome/CF."""
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        query = '''
+            SELECT d.*, c.nome as commessa
+            FROM dipendenti d
+            LEFT JOIN commesse c ON d.commessa_id = c.id
+            WHERE 1=1
+        '''
+        params = []
+        if not include_inactive:
+            query += ' AND d.attivo = 1'
+        if commessa_id:
+            query += ' AND d.commessa_id = ?'
+            params.append(commessa_id)
+        if search:
+            query += ' AND (LOWER(d.nome) LIKE ? OR LOWER(d.cognome) LIKE ? OR LOWER(d.codice_fiscale) LIKE ?)'
+            s = f"%{search.lower()}%"
+            params += [s, s, s]
+        query += ' ORDER BY d.cognome, d.nome'
+        cursor.execute(query, params)
+        return [_dipendente_to_dict(r) for r in cursor.fetchall()]
+
+
+def get_dipendente(dipendente_id):
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT d.*, c.nome as commessa
+            FROM dipendenti d
+            LEFT JOIN commesse c ON d.commessa_id = c.id
+            WHERE d.id = ?
+        ''', (dipendente_id,))
+        r = cursor.fetchone()
+        return _dipendente_to_dict(r) if r else None
+
+
+def create_dipendente(data):
+    """Crea un dipendente. data: dict con i campi core + 'extra' (dict) opzionale."""
+    campi = {k: data.get(k) for k in DIPENDENTE_CAMPI}
+    if not (campi.get('nome') and campi.get('cognome')):
+        raise ValueError('Nome e cognome sono obbligatori')
+    extra = data.get('extra') or {}
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cols = list(campi.keys()) + ['dati_extra', 'attivo', 'data_inserimento']
+        vals = list(campi.values()) + [json.dumps(extra, ensure_ascii=False), 1, datetime.now().isoformat()]
+        placeholders = ', '.join('?' * len(cols))
+        cursor.execute(f"INSERT INTO dipendenti ({', '.join(cols)}) VALUES ({placeholders})", vals)
+        return cursor.lastrowid
+
+
+def update_dipendente(dipendente_id, data):
+    sets, params = [], []
+    for k in DIPENDENTE_CAMPI:
+        if k in data:
+            sets.append(f"{k} = ?")
+            params.append(data[k])
+    if 'extra' in data:
+        sets.append("dati_extra = ?")
+        params.append(json.dumps(data['extra'] or {}, ensure_ascii=False))
+    if 'attivo' in data:
+        sets.append("attivo = ?")
+        params.append(1 if data['attivo'] else 0)
+    if not sets:
+        return
+    params.append(dipendente_id)
+    with get_db_context() as conn:
+        conn.cursor().execute(f"UPDATE dipendenti SET {', '.join(sets)} WHERE id = ?", params)
+
+
+def delete_dipendente(dipendente_id):
+    """Disattiva un dipendente (soft delete)."""
+    with get_db_context() as conn:
+        conn.cursor().execute("UPDATE dipendenti SET attivo = 0 WHERE id = ?", (dipendente_id,))
+
+
+# ==================== ASSEGNAZIONI (utente <-> operatore) ====================
+
+def get_assegnazioni_utente(utente_id):
+    """Operatori assegnati a un assistito, con nome operatore."""
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT a.*, d.nome as dip_nome, d.cognome as dip_cognome,
+                   d.attivo as dip_attivo
+            FROM assegnazioni a
+            JOIN dipendenti d ON a.dipendente_id = d.id
+            WHERE a.utente_id = ?
+            ORDER BY d.cognome, d.nome
+        ''', (utente_id,))
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def get_assistiti_dipendente(dipendente_id):
+    """Assistiti seguiti da un operatore, con scuola e ore assegnate."""
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT a.*, u.nome as ut_nome, u.cognome as ut_cognome,
+                   s.nome_completo as scuola, c.nome as commessa
+            FROM assegnazioni a
+            JOIN utenti u ON a.utente_id = u.id
+            LEFT JOIN scuole s ON u.scuola_id = s.id
+            LEFT JOIN commesse c ON s.commessa_id = c.id
+            WHERE a.dipendente_id = ? AND u.attivo = 1
+            ORDER BY u.cognome, u.nome
+        ''', (dipendente_id,))
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def get_bilancio_assegnazioni_utente(utente_id):
+    """Confronta il monte ore settimanale dell'assistito con la somma delle ore
+    assegnate agli operatori. Ritorna monte_ore, assegnate, differenza, stato."""
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT monte_ore_settimanale FROM utenti WHERE id = ?", (utente_id,))
+        r = cursor.fetchone()
+        monte = (r['monte_ore_settimanale'] if r else 0) or 0
+        cursor.execute("SELECT COALESCE(SUM(ore_settimanali), 0) as tot FROM assegnazioni WHERE utente_id = ?", (utente_id,))
+        assegnate = cursor.fetchone()['tot'] or 0
+    diff = round(assegnate - monte, 2)
+    if abs(diff) < 0.01:
+        stato = 'ok'
+    elif diff < 0:
+        stato = 'sotto'   # mancano ore da assegnare
+    else:
+        stato = 'sopra'   # assegnate piu' ore del monte
+    return {'monte_ore': round(monte, 2), 'assegnate': round(assegnate, 2),
+            'differenza': diff, 'stato': stato}
+
+
+def create_assegnazione(utente_id, dipendente_id, ore_settimanali, valido_da=None, valido_a=None, note=None):
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO assegnazioni (utente_id, dipendente_id, ore_settimanali, valido_da, valido_a, note, data_inserimento)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (utente_id, dipendente_id, ore_settimanali, valido_da or None, valido_a or None,
+              note, datetime.now().isoformat()))
+        return cursor.lastrowid
+
+
+def update_assegnazione(assegnazione_id, ore_settimanali=None, valido_da=None, valido_a=None, note=None):
+    sets, params = [], []
+    if ore_settimanali is not None:
+        sets.append("ore_settimanali = ?"); params.append(ore_settimanali)
+    # valido_da/valido_a/note: passa stringa per impostare, '' per azzerare
+    if valido_da is not None:
+        sets.append("valido_da = ?"); params.append(valido_da or None)
+    if valido_a is not None:
+        sets.append("valido_a = ?"); params.append(valido_a or None)
+    if note is not None:
+        sets.append("note = ?"); params.append(note)
+    if not sets:
+        return
+    params.append(assegnazione_id)
+    with get_db_context() as conn:
+        conn.cursor().execute(f"UPDATE assegnazioni SET {', '.join(sets)} WHERE id = ?", params)
+
+
+def delete_assegnazione(assegnazione_id):
+    with get_db_context() as conn:
+        conn.cursor().execute("DELETE FROM assegnazioni WHERE id = ?", (assegnazione_id,))
+
+
+def importa_dipendenti(records):
+    """Importa/aggiorna dipendenti da una lista di record (vedi import_dipendenti).
+    Abbina per Codice Fiscale, altrimenti per nome+cognome. Idempotente.
+    Ritorna {'creati', 'aggiornati', 'errori': [...]}."""
+    import import_dipendenti as imp_mod
+    creati = aggiornati = 0
+    errori = []
+
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        # Indici degli esistenti
+        cursor.execute("SELECT id, nome, cognome, codice_fiscale FROM dipendenti")
+        per_cf, per_nome = {}, {}
+        for row in cursor.fetchall():
+            if row['codice_fiscale']:
+                per_cf[imp_mod.chiave_cf(row['codice_fiscale'])] = row['id']
+            per_nome[imp_mod.chiave_nome(row['nome'], row['cognome'])] = row['id']
+
+        now = datetime.now().isoformat()
+        for rec in records:
+            try:
+                cf = imp_mod.chiave_cf(rec.get('codice_fiscale'))
+                # Con CF presente abbiniamo SOLO per CF (due persone possono avere
+                # lo stesso nome): il fallback per nome vale solo senza CF.
+                if cf:
+                    esistente = per_cf.get(cf)
+                else:
+                    esistente = per_nome.get(imp_mod.chiave_nome(rec.get('nome', ''), rec.get('cognome', '')))
+
+                campi = {k: rec.get(k) for k in DIPENDENTE_CAMPI if k in rec}
+                extra_json = json.dumps(rec.get('extra') or {}, ensure_ascii=False)
+
+                if esistente:
+                    sets = [f"{k} = ?" for k in campi] + ['dati_extra = ?']
+                    params = list(campi.values()) + [extra_json, esistente]
+                    cursor.execute(f"UPDATE dipendenti SET {', '.join(sets)} WHERE id = ?", params)
+                    aggiornati += 1
+                else:
+                    cols = list(campi.keys()) + ['dati_extra', 'attivo', 'data_inserimento']
+                    vals = list(campi.values()) + [extra_json, 1, now]
+                    ph = ', '.join('?' * len(cols))
+                    cursor.execute(f"INSERT INTO dipendenti ({', '.join(cols)}) VALUES ({ph})", vals)
+                    nuovo_id = cursor.lastrowid
+                    creati += 1
+                    if cf:
+                        per_cf[cf] = nuovo_id
+                    per_nome[imp_mod.chiave_nome(rec.get('nome', ''), rec.get('cognome', ''))] = nuovo_id
+            except Exception as e:
+                errori.append(f"{rec.get('cognome','')} {rec.get('nome','')}: {e}")
+
+    return {'creati': creati, 'aggiornati': aggiornati, 'errori': errori}
+
+
+def count_assegnazioni_dipendente(dipendente_id):
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) as n, COALESCE(SUM(ore_settimanali), 0) as ore
+            FROM assegnazioni a JOIN utenti u ON a.utente_id = u.id
+            WHERE a.dipendente_id = ? AND u.attivo = 1
+        ''', (dipendente_id,))
+        r = cursor.fetchone()
+        return {'assistiti': r['n'], 'ore_assegnate': round(r['ore'] or 0, 2)}
 
 
 # ==================== BACKUP ====================

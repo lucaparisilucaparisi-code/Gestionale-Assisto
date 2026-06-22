@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}Scheda Dipendente - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Percorso">
+    <a href="/dipendenti">Dipendenti</a>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    <span id="bc-nome">Scheda</span>
+</nav>
+<div class="page-header">
+    <div class="flex items-center gap-3">
+        <a href="/dipendenti" class="btn btn-ghost btn-sm" title="Torna all'elenco">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+        </a>
+        <div>
+            <h1 class="page-title" id="page-titolo">Caricamento…</h1>
+            <p class="page-subtitle" id="page-sub"></p>
+        </div>
+    </div>
+    <div class="header-actions flex gap-2">
+        <button class="btn btn-secondary" id="btn-modifica">Modifica</button>
+        <button class="btn btn-secondary" id="btn-stato"></button>
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header"><h2 class="card-title">Anagrafica</h2></div>
+        <div class="card-body" id="anagrafica"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Assistiti seguiti</h2>
+            <span class="badge badge-secondary" id="badge-assistiti">0</span>
+        </div>
+        <div class="card-body p-0" id="assistiti"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+</div>
+
+<div class="card mt-4" id="card-extra" style="display:none">
+    <div class="card-header"><h2 class="card-title">Altri dati (da import)</h2></div>
+    <div class="card-body" id="extra"></div>
+</div>
+
+<!-- Modal modifica -->
+<div class="modal-overlay" id="modal-dipendente">
+    <div class="modal" style="max-width: 620px;">
+        <div class="modal-header">
+            <h3 class="modal-title">Modifica Dipendente</h3>
+            <button class="modal-close" onclick="closeModal('modal-dipendente')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Nome *</label><input id="dip-nome" class="form-control"></div>
+                <div class="form-group"><label class="form-label">Cognome *</label><input id="dip-cognome" class="form-control"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Codice Fiscale</label><input id="dip-cf" class="form-control"></div>
+                <div class="form-group"><label class="form-label">Qualifica</label><input id="dip-qualifica" class="form-control"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Email</label><input id="dip-email" class="form-control"></div>
+                <div class="form-group"><label class="form-label">Telefono</label><input id="dip-telefono" class="form-control"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Commessa</label><select id="dip-commessa" class="form-control"><option value="">—</option></select></div>
+                <div class="form-group"><label class="form-label">Ore contrattuali sett.</label><input type="number" id="dip-ore" class="form-control" step="0.5" min="0"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Sede</label><input id="dip-sede" class="form-control"></div>
+                <div class="form-group"><label class="form-label">Data assunzione</label><input type="date" id="dip-assunzione" class="form-control"></div>
+            </div>
+            <div class="form-group"><label class="form-label">Note</label><textarea id="dip-note" class="form-control" rows="2"></textarea></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-dipendente')">Annulla</button>
+            <button class="btn btn-primary" onclick="salva()">Salva</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DIP_ID = {{ dipendente_id }};
+let dip = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    carica();
+    document.getElementById('btn-modifica').addEventListener('click', apriModifica);
+    document.getElementById('btn-stato').addEventListener('click', toggleStato);
+});
+
+function riga(label, val) {
+    return `<div class="info-row" style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-color);gap:16px">
+        <span class="text-muted">${label}</span><span class="font-semibold" style="text-align:right">${val || '—'}</span></div>`;
+}
+
+async function carica() {
+    try {
+        dip = await apiCall(`/api/dipendenti/${DIP_ID}`);
+    } catch (e) {
+        document.getElementById('page-titolo').textContent = 'Dipendente non trovato';
+        return;
+    }
+    document.getElementById('page-titolo').textContent = `${dip.cognome} ${dip.nome}`;
+    document.getElementById('bc-nome').textContent = `${dip.cognome} ${dip.nome}`;
+    document.getElementById('page-sub').textContent = [dip.qualifica, dip.commessa].filter(Boolean).join(' · ') || 'Operatore OEPAC';
+    const bs = document.getElementById('btn-stato');
+    bs.textContent = dip.attivo ? 'Disattiva' : 'Riattiva';
+
+    document.getElementById('anagrafica').innerHTML =
+        riga('Codice Fiscale', escapeHtml(dip.codice_fiscale)) +
+        riga('Email', escapeHtml(dip.email)) +
+        riga('Telefono', escapeHtml(dip.telefono)) +
+        riga('Commessa', escapeHtml(dip.commessa)) +
+        riga('Sede', escapeHtml(dip.sede)) +
+        riga('Ore contrattuali sett.', dip.ore_contrattuali_settimanali != null ? dip.ore_contrattuali_settimanali + 'h' : '') +
+        riga('Ore assegnate sett.', (dip.ore_assegnate || 0) + 'h') +
+        riga('Data assunzione', escapeHtml(dip.data_assunzione)) +
+        (dip.note ? `<div style="margin-top:10px" class="text-muted">${escapeHtml(dip.note)}</div>` : '');
+
+    // Assistiti seguiti
+    document.getElementById('badge-assistiti').textContent = dip.assistiti.length;
+    const a = document.getElementById('assistiti');
+    if (!dip.assistiti.length) {
+        a.innerHTML = '<div class="empty-state"><p class="empty-state-text">Nessun assistito assegnato</p></div>';
+    } else {
+        a.innerHTML = `<table class="table"><thead><tr><th>Assistito</th><th>Scuola</th><th class="text-right">Ore/sett.</th></tr></thead><tbody>
+            ${dip.assistiti.map(u => `<tr>
+                <td><a href="/utente/${u.utente_id}">${escapeHtml(u.ut_cognome)} ${escapeHtml(u.ut_nome)}</a></td>
+                <td class="text-muted text-sm">${escapeHtml((u.scuola || '').substring(0, 40))}</td>
+                <td class="text-right font-mono">${u.ore_settimanali}</td></tr>`).join('')}
+            </tbody></table>`;
+    }
+
+    // Dati extra (da import Excel)
+    const extra = dip.extra || {};
+    const keys = Object.keys(extra).filter(k => extra[k] !== null && extra[k] !== '');
+    if (keys.length) {
+        document.getElementById('card-extra').style.display = '';
+        document.getElementById('extra').innerHTML = '<div class="grid grid-2">' +
+            keys.map(k => riga(escapeHtml(k), escapeHtml(String(extra[k])))).join('') + '</div>';
+    }
+}
+
+async function popolaCommesse() {
+    const commesse = await apiCall('/api/commesse');
+    document.getElementById('dip-commessa').innerHTML = '<option value="">—</option>' +
+        commesse.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('');
+}
+
+async function apriModifica() {
+    await popolaCommesse();
+    document.getElementById('dip-nome').value = dip.nome || '';
+    document.getElementById('dip-cognome').value = dip.cognome || '';
+    document.getElementById('dip-cf').value = dip.codice_fiscale || '';
+    document.getElementById('dip-qualifica').value = dip.qualifica || '';
+    document.getElementById('dip-email').value = dip.email || '';
+    document.getElementById('dip-telefono').value = dip.telefono || '';
+    document.getElementById('dip-commessa').value = dip.commessa_id || '';
+    document.getElementById('dip-ore').value = dip.ore_contrattuali_settimanali ?? '';
+    document.getElementById('dip-sede').value = dip.sede || '';
+    document.getElementById('dip-assunzione').value = dip.data_assunzione || '';
+    document.getElementById('dip-note').value = dip.note || '';
+    openModal('modal-dipendente');
+}
+
+async function salva() {
+    const payload = {
+        nome: document.getElementById('dip-nome').value.trim(),
+        cognome: document.getElementById('dip-cognome').value.trim(),
+        codice_fiscale: document.getElementById('dip-cf').value.trim() || null,
+        qualifica: document.getElementById('dip-qualifica').value.trim() || null,
+        email: document.getElementById('dip-email').value.trim() || null,
+        telefono: document.getElementById('dip-telefono').value.trim() || null,
+        commessa_id: document.getElementById('dip-commessa').value || null,
+        ore_contrattuali_settimanali: document.getElementById('dip-ore').value || null,
+        sede: document.getElementById('dip-sede').value.trim() || null,
+        data_assunzione: document.getElementById('dip-assunzione').value || null,
+        note: document.getElementById('dip-note').value.trim() || null,
+    };
+    if (!payload.nome || !payload.cognome) { showToast('Nome e cognome obbligatori', 'error'); return; }
+    try {
+        await apiCall(`/api/dipendenti/${DIP_ID}`, { method: 'PUT', body: JSON.stringify(payload) });
+        showToast('Salvato', 'success');
+        closeModal('modal-dipendente');
+        carica();
+    } catch (e) { showToast('Errore nel salvataggio', 'error'); }
+}
+
+async function toggleStato() {
+    if (dip.attivo) {
+        if (!confirm('Disattivare questo dipendente?')) return;
+        await apiCall(`/api/dipendenti/${DIP_ID}`, { method: 'DELETE' });
+    } else {
+        await apiCall(`/api/dipendenti/${DIP_ID}`, { method: 'PUT', body: JSON.stringify({ attivo: true }) });
+    }
+    carica();
+}
+</script>
+{% endblock %}

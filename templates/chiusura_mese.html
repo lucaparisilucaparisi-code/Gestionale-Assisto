@@ -1,0 +1,459 @@
+{% extends "base.html" %}
+
+{% block title %}Chiusura Mese - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-row">
+        <div>
+            <h1 class="page-title">Chiusura Mese</h1>
+            <p class="page-subtitle">Procedura guidata: verifica, controlla, riepiloga ed esporta</p>
+        </div>
+        <div class="header-actions flex gap-3 items-center flex-wrap">
+            <select id="filter-anno" class="form-control" style="width: 150px;"></select>
+            <select id="filter-mese" class="form-control" style="width: 170px;"></select>
+        </div>
+    </div>
+</div>
+
+<!-- Stepper -->
+<div class="card mb-4">
+    <div class="card-body" style="padding: 16px;">
+        <div class="chiusura-stepper">
+            <div class="chiusura-step active" data-step="1">
+                <span class="chiusura-step-num">1</span>
+                <span class="chiusura-step-label">Completezza</span>
+            </div>
+            <div class="chiusura-step-line"></div>
+            <div class="chiusura-step" data-step="2">
+                <span class="chiusura-step-num">2</span>
+                <span class="chiusura-step-label">Anomalie</span>
+            </div>
+            <div class="chiusura-step-line"></div>
+            <div class="chiusura-step" data-step="3">
+                <span class="chiusura-step-num">3</span>
+                <span class="chiusura-step-label">Riepilogo</span>
+            </div>
+            <div class="chiusura-step-line"></div>
+            <div class="chiusura-step" data-step="4">
+                <span class="chiusura-step-num">4</span>
+                <span class="chiusura-step-label">Export</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- STEP 1: Completezza -->
+<div class="card mb-4 chiusura-panel" id="panel-1">
+    <div class="card-header">
+        <h2 class="card-title">1 · Verifica completezza</h2>
+        <span class="badge badge-secondary" id="step1-badge">--</span>
+    </div>
+    <div class="card-body">
+        <p class="text-muted" id="step1-testo">Caricamento…</p>
+        <div class="progress-bar" style="height: 8px; border-radius: 4px; overflow: hidden; margin: 12px 0;">
+            <div class="progress-bar-fill" id="step1-bar" style="width: 0%; height: 100%;"></div>
+        </div>
+        <div id="step1-lista" style="max-height: 240px; overflow-y: auto;"></div>
+        <div class="flex gap-2 mt-3 flex-wrap">
+            <button class="btn btn-secondary btn-sm" id="btn-compila-media">Compila vuoti con media prevista</button>
+            <button class="btn btn-secondary btn-sm" id="btn-copia-precedente">Copia ore dal mese precedente</button>
+            <a href="/rendicontazione" class="btn btn-secondary btn-sm">Apri Rendicontazione</a>
+        </div>
+    </div>
+</div>
+
+<!-- STEP 2: Anomalie -->
+<div class="card mb-4 chiusura-panel" id="panel-2" style="display: none;">
+    <div class="card-header">
+        <h2 class="card-title">2 · Controllo anomalie</h2>
+        <span class="badge badge-secondary" id="step2-badge">--</span>
+    </div>
+    <div class="card-body p-0" id="step2-content">
+        <div class="loading" style="padding: 20px;"><div class="spinner"></div></div>
+    </div>
+</div>
+
+<!-- STEP 3: Riepilogo -->
+<div class="card mb-4 chiusura-panel" id="panel-3" style="display: none;">
+    <div class="card-header">
+        <h2 class="card-title">3 · Riepilogo totali</h2>
+    </div>
+    <div class="card-body">
+        <div class="stats-grid" id="step3-totali"></div>
+        <div id="step3-commesse" class="mt-4"></div>
+    </div>
+</div>
+
+<!-- STEP 4: Export -->
+<div class="card mb-4 chiusura-panel" id="panel-4" style="display: none;">
+    <div class="card-header">
+        <h2 class="card-title">4 · Genera gli export</h2>
+        <span class="badge badge-secondary" id="step4-badge">0 generati</span>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">Scarica i documenti del mese. Ogni export viene spuntato dopo il download.</p>
+        <div class="report-quick-grid">
+            <a href="#" class="report-quick-card excel" data-export="excel">
+                <div class="report-quick-icon">✓</div>
+                <span class="report-quick-title">Report Completo</span>
+                <span class="report-quick-desc">Excel multi-foglio</span>
+            </a>
+            <a href="#" class="report-quick-card municipale" data-export="municipale">
+                <div class="report-quick-icon">✓</div>
+                <span class="report-quick-title">Municipale</span>
+                <span class="report-quick-desc">Excel</span>
+            </a>
+            <a href="#" class="report-quick-card dipartimentale" data-export="dipartimentale">
+                <div class="report-quick-icon">✓</div>
+                <span class="report-quick-title">Dipartimentale</span>
+                <span class="report-quick-desc">Excel</span>
+            </a>
+            <a href="#" class="report-quick-card locale" data-export="word">
+                <div class="report-quick-icon">✓</div>
+                <span class="report-quick-title">Relazione</span>
+                <span class="report-quick-desc">Word</span>
+            </a>
+        </div>
+        <div class="alert alert-success mt-4" id="chiusura-completata" style="display: none;">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div><strong>Chiusura completata.</strong> Tutti gli export del mese sono stati generati.</div>
+        </div>
+    </div>
+</div>
+
+<!-- Navigazione step -->
+<div class="flex gap-2 mb-4 justify-between">
+    <button class="btn btn-secondary" id="btn-indietro" disabled>← Indietro</button>
+    <button class="btn btn-primary" id="btn-avanti">Avanti →</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.chiusura-stepper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.chiusura-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.45;
+    transition: opacity 0.2s;
+}
+.chiusura-step.active,
+.chiusura-step.done {
+    opacity: 1;
+}
+.chiusura-step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+.chiusura-step.active .chiusura-step-num {
+    background: var(--primary);
+    color: #fff;
+}
+.chiusura-step.done .chiusura-step-num {
+    background: var(--success);
+    color: #fff;
+}
+.chiusura-step-label {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+.chiusura-step-line {
+    width: 40px;
+    height: 2px;
+    background: var(--border-color);
+}
+.report-quick-card.export-done {
+    outline: 2px solid var(--success);
+    outline-offset: -2px;
+}
+</style>
+<script>
+let stepCorrente = 1;
+const exportFatti = new Set();
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await populateAnniScolastici('filter-anno');
+    populateMesiScolastici('filter-mese', document.getElementById('filter-anno').value);
+
+    document.getElementById('filter-anno').addEventListener('change', (e) => {
+        populateMesiScolastici('filter-mese', e.target.value);
+        ricaricaTutto();
+    });
+    document.getElementById('filter-mese').addEventListener('change', ricaricaTutto);
+
+    document.getElementById('btn-avanti').addEventListener('click', () => vaiAStep(stepCorrente + 1));
+    document.getElementById('btn-indietro').addEventListener('click', () => vaiAStep(stepCorrente - 1));
+    document.querySelectorAll('.chiusura-step').forEach(el => {
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', () => vaiAStep(parseInt(el.dataset.step)));
+    });
+
+    document.getElementById('btn-compila-media').addEventListener('click', compilaConMedia);
+    document.getElementById('btn-copia-precedente').addEventListener('click', copiaMesePrecedente);
+
+    document.querySelectorAll('[data-export]').forEach(card => {
+        card.addEventListener('click', (e) => {
+            e.preventDefault();
+            avviaExport(card.dataset.export, card);
+        });
+    });
+
+    ricaricaTutto();
+});
+
+function getPeriodo() {
+    const v = document.getElementById('filter-mese').value;
+    if (!v) return null;
+    const [mese, anno] = v.split('-').map(Number);
+    return { anno, mese };
+}
+
+function ricaricaTutto() {
+    exportFatti.clear();
+    document.querySelectorAll('.report-quick-card').forEach(c => c.classList.remove('export-done'));
+    document.getElementById('chiusura-completata').style.display = 'none';
+    document.getElementById('step4-badge').textContent = '0 generati';
+    loadStep1();
+    loadStep2();
+    loadStep3();
+}
+
+function vaiAStep(n) {
+    if (n < 1 || n > 4) return;
+    stepCorrente = n;
+    document.querySelectorAll('.chiusura-panel').forEach(p => p.style.display = 'none');
+    document.getElementById(`panel-${n}`).style.display = '';
+    document.querySelectorAll('.chiusura-step').forEach(el => {
+        const s = parseInt(el.dataset.step);
+        el.classList.toggle('active', s === n);
+        el.classList.toggle('done', s < n);
+    });
+    document.getElementById('btn-indietro').disabled = (n === 1);
+    document.getElementById('btn-avanti').disabled = (n === 4);
+}
+
+// ---------- STEP 1 ----------
+async function loadStep1() {
+    const p = getPeriodo();
+    if (!p) return;
+    const badge = document.getElementById('step1-badge');
+    const testo = document.getElementById('step1-testo');
+    const bar = document.getElementById('step1-bar');
+    const lista = document.getElementById('step1-lista');
+
+    try {
+        const data = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}`);
+        const tutti = data.dati || [];
+        const senzaOre = tutti.filter(d => !(d.ore_lavorate_60 > 0));
+        const completati = tutti.length - senzaOre.length;
+        const perc = tutti.length > 0 ? Math.round(completati / tutti.length * 100) : 0;
+
+        bar.style.width = `${perc}%`;
+        bar.style.background = perc >= 100 ? 'var(--success)' : 'var(--warning)';
+        testo.textContent = `${completati} di ${tutti.length} utenti rendicontati (${perc}%)`;
+
+        if (senzaOre.length === 0) {
+            badge.className = 'badge badge-success';
+            badge.textContent = 'Completo';
+            lista.innerHTML = '<p class="text-muted" style="padding: 8px 0;">✓ Tutti gli utenti hanno le ore registrate: puoi passare allo step successivo.</p>';
+        } else {
+            badge.className = 'badge badge-warning';
+            badge.textContent = `${senzaOre.length} senza ore`;
+            lista.innerHTML = senzaOre.slice(0, 15).map(u => `
+                <div class="da-completare-item">
+                    <div class="da-completare-info">
+                        <span class="da-completare-nome">${escapeHtml(u.nome)} ${escapeHtml(u.cognome)}</span>
+                        <span class="da-completare-scuola">${escapeHtml(u.commessa)} - ${escapeHtml((u.scuola || '').substring(0, 40))}</span>
+                    </div>
+                    <span class="badge badge-secondary">${u.monte_ore_settimanale}h</span>
+                </div>
+            `).join('') + (senzaOre.length > 15 ? `<div class="da-completare-more"><span class="text-muted">+ altri ${senzaOre.length - 15}</span></div>` : '');
+        }
+    } catch (e) {
+        testo.textContent = 'Errore nel caricamento';
+        console.error(e);
+    }
+}
+
+async function compilaConMedia() {
+    const p = getPeriodo();
+    if (!p) return;
+    if (!confirm('Compilare tutti gli utenti senza ore con la media prevista (-11%)?')) return;
+    try {
+        const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/compila-media`, {
+            method: 'POST',
+            body: JSON.stringify({})
+        });
+        showToast(`${res.compilati} utenti compilati con la media`, 'success');
+        loadStep1(); loadStep2(); loadStep3();
+    } catch (e) {
+        showToast('Errore nella compilazione', 'error');
+    }
+}
+
+async function copiaMesePrecedente() {
+    const p = getPeriodo();
+    if (!p) return;
+    if (!confirm('Copiare le ore dal mese precedente per gli utenti senza ore?')) return;
+    try {
+        const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/copia-precedente`, {
+            method: 'POST',
+            body: JSON.stringify({ solo_vuoti: true })
+        });
+        showToast(`${res.copiati} utenti copiati da ${res.mese_origine}`, 'success');
+        loadStep1(); loadStep2(); loadStep3();
+    } catch (e) {
+        showToast('Errore nella copia', 'error');
+    }
+}
+
+// ---------- STEP 2 ----------
+async function loadStep2() {
+    const p = getPeriodo();
+    if (!p) return;
+    const badge = document.getElementById('step2-badge');
+    const content = document.getElementById('step2-content');
+
+    try {
+        const data = await apiCall(`/api/stats/validazione?anno=${p.anno}&mese=${p.mese}`);
+
+        if (data.riepilogo.critiche > 0) {
+            badge.className = 'badge badge-danger';
+            badge.textContent = `${data.riepilogo.critiche} critiche`;
+        } else if (data.riepilogo.avvisi > 0) {
+            badge.className = 'badge badge-warning';
+            badge.textContent = `${data.riepilogo.avvisi} avvisi`;
+        } else {
+            badge.className = 'badge badge-success';
+            badge.textContent = 'Nessuna anomalia';
+        }
+
+        if (!data.anomalie.length) {
+            content.innerHTML = '<p class="text-muted" style="padding: 16px;">✓ Nessuna anomalia: i dati del mese sono coerenti.</p>';
+            return;
+        }
+
+        content.innerHTML = data.anomalie.map(a => `
+            <div style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border-color);">
+                <span class="badge badge-${a.tipo}" style="flex-shrink: 0;">${a.conteggio}</span>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: 600; font-size: 0.9rem;">${escapeHtml(a.titolo)}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">${escapeHtml(a.messaggio)}</div>
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        content.innerHTML = '<p class="text-muted" style="padding: 16px;">Errore nel caricamento</p>';
+    }
+}
+
+// ---------- STEP 3 ----------
+async function loadStep3() {
+    const p = getPeriodo();
+    if (!p) return;
+    const totaliEl = document.getElementById('step3-totali');
+    const commesseEl = document.getElementById('step3-commesse');
+
+    try {
+        const data = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}`);
+        const dati = data.dati || [];
+
+        const tot = dati.reduce((acc, d) => {
+            acc.ore60 += d.ore_lavorate_60 || 0;
+            acc.ore100 += d.ore_lavorate_100 || 0;
+            acc.imponibile += d.imponibile_100 || 0;
+            acc.iva += d.iva_100 || 0;
+            acc.totale += d.totale_100 || 0;
+            acc.pasti += d.pasti || 0;
+            return acc;
+        }, { ore60: 0, ore100: 0, imponibile: 0, iva: 0, totale: 0, pasti: 0 });
+
+        const fmtEur = v => v.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+        const fmtH = v => v.toLocaleString('it-IT', { maximumFractionDigits: 2 });
+
+        totaliEl.innerHTML = `
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${dati.length}</div><div class="stat-label">Utenti</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtH(tot.ore60)}</div><div class="stat-label">Ore (60')</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtH(tot.ore100)}</div><div class="stat-label">Ore (100')</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${tot.pasti}</div><div class="stat-label">Pasti</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtEur(tot.imponibile)}</div><div class="stat-label">Imponibile</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value text-success">${fmtEur(tot.totale)}</div><div class="stat-label">Totale con IVA 5%</div></div></div>
+        `;
+
+        // Riepilogo per commessa
+        const perCommessa = {};
+        dati.forEach(d => {
+            const c = d.commessa || '–';
+            if (!perCommessa[c]) perCommessa[c] = { utenti: 0, ore: 0, totale: 0 };
+            perCommessa[c].utenti += 1;
+            perCommessa[c].ore += d.ore_lavorate_60 || 0;
+            perCommessa[c].totale += d.totale_100 || 0;
+        });
+
+        commesseEl.innerHTML = `
+            <div class="table-container">
+                <table class="table" style="font-size: 0.85rem;">
+                    <thead><tr><th>Commessa</th><th class="text-right">Utenti</th><th class="text-right">Ore (60')</th><th class="text-right">Totale</th></tr></thead>
+                    <tbody>
+                        ${Object.entries(perCommessa).map(([nome, v]) => `
+                            <tr>
+                                <td><strong>${escapeHtml(nome)}</strong></td>
+                                <td class="text-right">${v.utenti}</td>
+                                <td class="text-right">${fmtH(v.ore)}</td>
+                                <td class="text-right">${fmtEur(v.totale)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } catch (e) {
+        totaliEl.innerHTML = '<p class="text-muted">Errore nel caricamento</p>';
+        commesseEl.innerHTML = '';
+    }
+}
+
+// ---------- STEP 4 ----------
+function avviaExport(tipo, card) {
+    const p = getPeriodo();
+    if (!p) return;
+
+    const urls = {
+        excel: `/api/export/excel/${p.anno}/${p.mese}`,
+        municipale: `/api/export/municipale/${p.anno}/${p.mese}`,
+        dipartimentale: `/api/export/dipartimentale/${p.anno}/${p.mese}`,
+        word: `/api/export/word/${p.anno}/${p.mese}`
+    };
+    if (!urls[tipo]) return;
+
+    window.location.href = urls[tipo];
+    showToast('Download avviato', 'success');
+
+    exportFatti.add(tipo);
+    card.classList.add('export-done');
+    document.getElementById('step4-badge').textContent = `${exportFatti.size} generati`;
+    if (exportFatti.size >= 4) {
+        document.getElementById('chiusura-completata').style.display = '';
+        document.getElementById('step4-badge').className = 'badge badge-success';
+    }
+}
+</script>
+{% endblock %}

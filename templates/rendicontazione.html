@@ -149,7 +149,7 @@
             </button>
         </div>
     </div>
-    <div class="card-body" style="padding: 0;">
+    <div class="card-body p-0">
         <div class="table-container" id="table-container">
             <div class="empty-state">
                 <svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -280,6 +280,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Filtro Excel-like semplice e funzionante
     initExcelFilter();
+
+    // Carica automaticamente il mese corrente (preselezionato nei filtri)
+    if (document.getElementById('filter-mese').value) {
+        loadData();
+    }
 });
 
 async function loadCommesse() {
@@ -604,7 +609,7 @@ async function showStoricoUtente(utenteId) {
             html += '<div class="text-center text-muted py-4">Nessun dato storico disponibile</div>';
         } else {
             html += '<div style="overflow-x: auto;"><table class="table" style="font-size: 0.85rem;">';
-            html += '<thead><tr><th>Periodo</th><th style="text-align:right">Ore</th><th style="text-align:right">Media</th><th style="text-align:right">Cred/Deb</th><th style="text-align:right">Pasti</th></tr></thead><tbody>';
+            html += '<thead><tr><th>Periodo</th><th class="text-right">Ore</th><th class="text-right">Media</th><th class="text-right">Cred/Deb</th><th class="text-right">Pasti</th></tr></thead><tbody>';
 
             data.storico.forEach(s => {
                 const cdClass = s.credito_debito >= 0 ? 'text-success' : 'text-danger';
@@ -614,7 +619,7 @@ async function showStoricoUtente(utenteId) {
                         <td style="text-align:right; font-family: monospace;">${s.ore_lavorate_60.toFixed(2)}</td>
                         <td style="text-align:right; font-family: monospace; color: var(--text-tertiary);">${s.media_prevista.toFixed(2)}</td>
                         <td style="text-align:right; font-family: monospace;" class="${cdClass}">${s.credito_debito >= 0 ? '+' : ''}${s.credito_debito.toFixed(2)}</td>
-                        <td style="text-align:right;">${s.pasti}</td>
+                        <td class="text-right">${s.pasti}</td>
                     </tr>
                 `;
             });
@@ -846,7 +851,7 @@ function renderTable(data) {
         if (totaleScuola) {
             html += `
                 <tr class="scuola-totale">
-                    <td colspan="6" style="text-align:right"><strong>Totale ${group.scuola.substring(0, 30)}${group.scuola.length > 30 ? '...' : ''}</strong></td>
+                    <td class="text-right" colspan="6"><strong>Totale ${group.scuola.substring(0, 30)}${group.scuola.length > 30 ? '...' : ''}</strong></td>
                     <td class="numeric font-mono"><strong>${formatNumber(totaleScuola.ore_lavorate_100)}</strong></td>
                     <td class="currency"><strong>${formatCurrency(totaleScuola.imponibile_100)}</strong></td>
                     <td class="currency"><strong>${formatCurrency(totaleScuola.iva_100)}</strong></td>

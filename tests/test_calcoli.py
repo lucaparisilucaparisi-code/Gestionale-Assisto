@@ -37,10 +37,11 @@ def test_punteggia_nome():
     assert db.punteggia_nome('', '') == ''
 
 
-# ---------- decimal_to_sessagesimal (in app.py) ----------
+# ---------- decimal_to_sessagesimal (in routes_export.py) ----------
 
 def test_decimal_to_sessagesimal(app_module):
-    f = app_module.decimal_to_sessagesimal
+    import routes_export
+    f = routes_export.decimal_to_sessagesimal
     assert f(0) == '0:00'
     assert f(None) == '0:00'
     assert f(1.5) == '1:30'
@@ -50,10 +51,11 @@ def test_decimal_to_sessagesimal(app_module):
     assert f(0.999) == '1:00'
 
 
-# ---------- get_liste_attesa_ordinate (in app.py) ----------
+# ---------- get_liste_attesa_ordinate (in routes_export.py) ----------
 
 def test_liste_attesa_ordinate_cronologiche(app_module):
     """L'ordine deve seguire l'anno scolastico (Set->Giu) con etichette corrette."""
+    import routes_export
     dati = [
         {'lista_attesa': 'Marzo'},
         {'lista_attesa': 'Novembre'},
@@ -61,7 +63,7 @@ def test_liste_attesa_ordinate_cronologiche(app_module):
         {'lista_attesa': 'Novembre'},  # duplicato
     ]
     # Report di Ottobre 2025 -> anno scolastico inizia nel 2025
-    result = app_module.get_liste_attesa_ordinate(dati, 2025, 10)
+    result = routes_export.get_liste_attesa_ordinate(dati, 2025, 10)
     valori = [r['valore'] for r in result]
     assert valori == ['Novembre', 'Marzo']  # cronologico
     labels = {r['valore']: r['label'] for r in result}
@@ -70,5 +72,6 @@ def test_liste_attesa_ordinate_cronologiche(app_module):
 
 
 def test_liste_attesa_nessuna(app_module):
+    import routes_export
     dati = [{'lista_attesa': None}, {'lista_attesa': ''}]
-    assert app_module.get_liste_attesa_ordinate(dati, 2025, 10) == []
+    assert routes_export.get_liste_attesa_ordinate(dati, 2025, 10) == []

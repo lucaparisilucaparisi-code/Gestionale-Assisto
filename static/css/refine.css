@@ -1,0 +1,265 @@
+/* =====================================================================
+   ASSISTO · DESIGN SYSTEM  (refine.css)
+   Layer unico e autorevole del look "calmo & premium".
+   Caricato per ultimo: sobrieta', coerenza, spazio bianco.
+   Principio: meno effetti, un solo accento, bordi a un capello,
+   numeri tabellari, gerarchia tipografica chiara.
+   ===================================================================== */
+
+:root {
+    /* Un solo accento protagonista (gli altri colori solo per i dati/stati) */
+    --accent: #3B82F6;
+    --accent-hover: #2f6fe0;
+    --accent-soft: rgba(59, 130, 246, 0.12);
+
+    /* Scala di spazi coerente */
+    --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;  --sp-4: 16px;
+    --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
+
+    /* Raggi e bordi sobri */
+    --r-sm: 8px; --r-md: 10px; --r-lg: 14px;
+
+    /* Ombre tenui (niente glow) */
+    --shadow-1: 0 1px 2px rgba(0,0,0,.20), 0 1px 3px rgba(0,0,0,.12);
+    --shadow-2: 0 4px 14px rgba(0,0,0,.22);
+}
+
+/* ---------- 1. Sfondo calmo: via l'aurora, fondo uniforme ---------- */
+body::before { background: none !important; }
+.app-container::before { display: none !important; }
+
+/* ---------- 2. Titoli di pagina: piatti e sobri ---------- */
+.page-title {
+    background: none !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    background-clip: border-box !important;
+    -webkit-background-clip: border-box !important;
+    color: var(--text-primary) !important;
+    font-weight: 650 !important;
+    font-size: 1.6rem !important;
+    letter-spacing: -0.02em !important;
+    line-height: 1.2 !important;
+}
+.page-subtitle {
+    color: var(--text-tertiary) !important;
+    font-size: 0.92rem !important;
+    font-weight: 400 !important;
+    margin-top: 2px;
+}
+.page-header { margin-bottom: var(--sp-5); }
+
+/* ---------- 3. Pulsanti: tinta unita, niente gradienti/glow/shimmer ---------- */
+.btn {
+    border-radius: var(--r-sm) !important;
+    font-weight: 550;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+    box-shadow: none !important;
+}
+.btn::after, .btn::before { display: none !important; }   /* via shimmer/ripple decorativi */
+
+.btn-primary {
+    background: var(--accent) !important;
+    border: 1px solid var(--accent) !important;
+    color: #fff !important;
+}
+.btn-primary:hover { background: var(--accent-hover) !important; border-color: var(--accent-hover) !important; }
+
+.btn-secondary {
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+}
+.btn-secondary:hover { background: var(--bg-card-solid) !important; border-color: var(--border-light) !important; }
+
+.btn-success { background: #16a34a !important; border: 1px solid #16a34a !important; color: #fff !important; }
+.btn-success:hover { background: #15893f !important; }
+.btn-danger  { background: #dc2626 !important; border: 1px solid #dc2626 !important; color: #fff !important; }
+.btn-danger:hover { background: #c11f1f !important; }
+
+/* Marchio: quadratino in tinta accento (niente gradiente sgargiante) */
+.brand-mark { background: var(--accent) !important; }
+
+/* ---------- 4. Card: solide, bordo a un capello, ombra tenue ---------- */
+.card {
+    background: var(--bg-card-solid) !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow: var(--shadow-1) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-radius: var(--r-lg) !important;
+}
+.card::before, .card::after { display: none !important; }   /* via bordi luminosi animati */
+.card-header { border-bottom: 1px solid var(--border-color); }
+.card-header::before, .card-header::after { display: none !important; }   /* via la riga sfumata */
+.card-title {
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+    color: var(--text-primary) !important;
+}
+.card-title svg { color: var(--text-tertiary); }
+
+/* ---------- 5. Tabelle: quiete e leggibili ---------- */
+.table td, .table th { border-color: var(--border-color) !important; }
+.table th {
+    font-size: 0.7rem !important;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary) !important;
+    font-weight: 600 !important;
+}
+.table tbody tr:hover { background: var(--accent-soft) !important; }
+/* Numeri sempre tabellari e ben allineati */
+.table td, .stat-value, .kpi-value, .stat-content .stat-value,
+.table-input, .badge, td.numeric, .font-mono {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+}
+/* Le tabelle scrollano in orizzontale: niente azioni tagliate fuori schermo */
+.table-container, .table-responsive { overflow-x: auto; }
+
+/* ---------- 6. Badge di stato: colori semantici fissi, sobri ---------- */
+.badge {
+    border-radius: 6px !important;
+    font-weight: 600;
+    box-shadow: none !important;
+    border: 1px solid transparent;
+}
+.badge-primary,
+.badge-secondary { background: var(--bg-tertiary) !important; color: var(--text-secondary) !important; border-color: var(--border-color); }
+.badge-success { background: rgba(22,163,74,.15) !important;  color: #4ade80 !important; }
+.badge-warning { background: rgba(245,158,11,.15) !important; color: #fbbf24 !important; }
+.badge-danger  { background: rgba(220,38,38,.15) !important;  color: #f87171 !important; }
+
+/* ---------- 7. Barra filtri coerente ---------- */
+.filters { gap: var(--sp-3); align-items: flex-end; }
+.form-control, .filter-group select, .filter-group input {
+    border-radius: var(--r-sm) !important;
+    border: 1px solid var(--border-color) !important;
+    background: var(--bg-input) !important;
+}
+.form-control:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--accent-soft) !important;
+    outline: none !important;
+}
+
+/* ---------- 8. Stat / KPI card: piatte ---------- */
+.stat-card, .kpi-card {
+    background: var(--bg-card-solid) !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow: var(--shadow-1) !important;
+    backdrop-filter: none !important;
+    border-radius: var(--r-md) !important;
+}
+.stat-card::before, .stat-card::after, .kpi-card::before { display: none !important; }
+.stat-card:hover { border-color: var(--border-light) !important; transform: none !important; }
+.kpi-value, .stat-value { letter-spacing: -0.02em; }
+/* Valori KPI uniformi: via il gradiente sul testo (colore solo dove ha
+   significato: successo/errore/avviso). */
+.kpi-value, .stat-value {
+    background: none !important;
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+.kpi-value:not(.text-success):not(.text-danger):not(.text-warning):not(.text-primary),
+.stat-value:not(.text-success):not(.text-danger):not(.text-warning) {
+    color: var(--text-primary) !important;
+}
+.kpi-card:hover .kpi-value { transform: none !important; }
+
+/* ---------- 9. Topbar / sidebar: piu' quieti ---------- */
+.topbar { backdrop-filter: none !important; background: var(--bg-primary) !important; border-bottom: 1px solid var(--border-color); }
+.sidebar { background: var(--bg-sidebar) !important; border-right: 1px solid var(--border-color); }
+.nav-link.active { background: var(--accent-soft) !important; color: var(--accent) !important; }
+.nav-link.active svg { color: var(--accent) !important; }
+.nav-section-title { letter-spacing: 0.08em; font-size: 0.66rem; }
+
+/* ---------- 10. Tabs (report, import, dettaglio utente) ---------- */
+.tab.active { color: var(--accent) !important; border-bottom-color: var(--accent) !important; }
+
+/* ---------- 10b. Breadcrumb ---------- */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    color: var(--text-tertiary);
+    margin-bottom: var(--sp-3);
+}
+.breadcrumb a { color: var(--text-tertiary); text-decoration: none; }
+.breadcrumb a:hover { color: var(--accent); }
+.breadcrumb svg { opacity: 0.5; }
+.breadcrumb span { color: var(--text-secondary); }
+
+/* ---------- 10c. Sezioni collassabili (progressive disclosure) ---------- */
+details.section { border-top: 1px solid var(--border-color); margin-top: var(--sp-4); }
+details.section > summary {
+    cursor: pointer;
+    list-style: none;
+    padding: var(--sp-4) 0 var(--sp-2);
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+}
+details.section > summary::-webkit-details-marker { display: none; }
+details.section > summary::before {
+    content: "›";
+    font-size: 1.1rem;
+    transition: transform .15s ease;
+    display: inline-block;
+    color: var(--text-tertiary);
+}
+details.section[open] > summary::before { transform: rotate(90deg); }
+
+/* ---------- 11. Polish degli stati ---------- */
+
+/* Comparsa morbida del contenuto a ogni pagina */
+.content-area > * { animation: ds-fade-in .28s ease both; }
+@keyframes ds-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Transizioni coerenti e leggere */
+.card, .stat-card, .kpi-card, .btn, .nav-link, .tab, .table tbody tr, .badge {
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+
+/* Empty state sobrio e centrato, con spazio per una call-to-action */
+.empty-state { padding: var(--sp-6) var(--sp-4); text-align: center; }
+.empty-state-icon { width: 44px; height: 44px; color: var(--text-quaternary); margin: 0 auto var(--sp-3); }
+.empty-state-title { font-size: 1rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+.empty-state-text { color: var(--text-tertiary); font-size: 0.88rem; }
+
+/* Spinner piu' sobrio */
+.spinner { border-width: 2px !important; }
+
+/* Skeleton loader (placeholder durante i caricamenti) */
+.skeleton {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+}
+.skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+    animation: ds-shimmer 1.3s infinite;
+}
+.skeleton-line { height: 12px; margin: 8px 0; }
+.skeleton-line.sm { width: 40%; }
+.skeleton-line.md { width: 70%; }
+@keyframes ds-shimmer { 100% { transform: translateX(100%); } }
+
+/* ---------- 12. Meno animazioni: rispetta chi le riduce ---------- */
+@media (prefers-reduced-motion: reduce) {
+    *, .content-area > * { animation: none !important; transition: none !important; }
+}
+
+/* ---------- 13. Utility minime mancanti (per migrare inline esatti) ---------- */
+.p-0 { padding: 0 !important; }
+.pointer { cursor: pointer; }

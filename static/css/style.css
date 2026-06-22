@@ -30,11 +30,11 @@
     --bg-input: #1C1C1E;
     --bg-sidebar: rgba(0, 0, 0, 0.95);
 
-    /* Text Colors */
+    /* Text Colors - opacità minime per leggibilità WCAG AA su sfondi scuri */
     --text-primary: #FFFFFF;
-    --text-secondary: rgba(255, 255, 255, 0.7);
-    --text-tertiary: rgba(255, 255, 255, 0.55);
-    --text-quaternary: rgba(255, 255, 255, 0.35);
+    --text-secondary: rgba(255, 255, 255, 0.82);
+    --text-tertiary: rgba(255, 255, 255, 0.65);
+    --text-quaternary: rgba(255, 255, 255, 0.45);
 
     /* Borders */
     --border-color: rgba(255, 255, 255, 0.1);
@@ -146,14 +146,6 @@
         0 4px 14px rgba(10, 132, 255, 0.25),
         inset 0 1px 0 rgba(255, 255, 255, 0.4),
         inset 0 -1px 0 rgba(0, 0, 0, 0.08);
-}
-
-[data-theme="light"] .sidebar-title {
-    color: #1C1C1E;
-}
-
-[data-theme="light"] .sidebar-subtitle {
-    color: #636366;
 }
 
 [data-theme="light"] .nav-section-title {
@@ -393,22 +385,6 @@
     background: var(--bg-card-solid);
     border: 1px solid #D1D1D6;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-[data-theme="light"] .info-panel-title {
-    color: #1C1C1E;
-}
-
-[data-theme="light"] .info-panel-row {
-    border-bottom-color: #E5E5EA;
-}
-
-[data-theme="light"] .info-panel-label {
-    color: #636366;
-}
-
-[data-theme="light"] .info-panel-value {
-    color: #1C1C1E;
 }
 
 [data-theme="light"] .filters {
@@ -936,32 +912,6 @@ body {
     .topbar-logo {
         display: flex;
     }
-}
-
-.sidebar-toggle {
-    width: 32px;
-    height: 32px;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--text-tertiary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: var(--transition-fast);
-    flex-shrink: 0;
-}
-
-.sidebar-toggle:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-}
-
-.sidebar-toggle svg {
-    width: 18px;
-    height: 18px;
-    transition: transform var(--transition);
 }
 
 .sidebar.collapsed .sidebar-toggle svg {
@@ -2212,21 +2162,6 @@ select.form-control {
     padding: 0;
 }
 
-.search-input-container {
-    position: relative;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.search-input-container svg {
-    position: absolute;
-    left: 20px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 20px;
-    height: 20px;
-    color: var(--text-quaternary);
-}
-
 .search-input {
     width: 100%;
     padding: 20px 20px 20px 52px;
@@ -2605,12 +2540,6 @@ select.form-control {
     color: var(--text-primary);
     font-family: 'JetBrains Mono', monospace;
     line-height: 1.2;
-}
-
-.kpi-change {
-    font-size: 0.7rem;
-    margin-top: 6px;
-    font-weight: 500;
 }
 
 .kpi-change.up { color: var(--success); }
@@ -3311,17 +3240,6 @@ a.stat-card-clickable:hover .stat-arrow {
     border-top: 1px solid var(--border-color);
 }
 
-/* ==================== AUTO-REFRESH INDICATOR ==================== */
-.auto-refresh-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: var(--bg-tertiary);
-    border-radius: var(--radius);
-    border: 1px solid var(--border-color);
-}
-
 /* ==================== RENDICONTAZIONE ENHANCEMENTS ==================== */
 
 /* Utenti senza ore - evidenziati in giallo */
@@ -3461,13 +3379,6 @@ a.stat-card-clickable:hover .stat-arrow {
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
     margin-bottom: 16px;
-}
-
-.search-input-wrapper {
-    flex: 1;
-    position: relative;
-    display: flex;
-    align-items: center;
 }
 
 .search-icon {
@@ -3965,30 +3876,6 @@ tr.search-match {
     font-variant-numeric: tabular-nums;
 }
 
-/* Floating action indicator */
-.fab-indicator {
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    width: 56px;
-    height: 56px;
-    background: var(--primary);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    box-shadow: var(--shadow-lg), 0 0 20px var(--primary-glow);
-    cursor: pointer;
-    transition: all 0.3s ease;
-    z-index: 100;
-}
-
-.fab-indicator:hover {
-    transform: scale(1.1);
-    box-shadow: var(--shadow-xl), 0 0 30px var(--primary-glow);
-}
-
 /* ==================== TOAST MIGLIORATI ==================== */
 
 .toast {
@@ -4077,4 +3964,111 @@ tr.search-match {
     .command-kbd {
         display: none;
     }
+}
+
+/* ==================== TABS (globali: dettaglio utente, report) ==================== */
+
+.tabs-container {
+    margin-bottom: 20px;
+}
+
+.tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0;
+    overflow-x: auto;
+}
+
+.tab {
+    padding: 12px 20px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+
+.tab:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+
+.tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.badge-sm {
+    font-size: 11px;
+    padding: 2px 6px;
+}
+
+/* ==================== FILTRI RESPONSIVE ==================== */
+/* Le barre filtri usano larghezze fisse inline: su schermi piccoli
+   forziamo l'impilamento verticale a piena larghezza. */
+
+@media (max-width: 768px) {
+    .filters,
+    .form-row,
+    .header-actions {
+        flex-wrap: wrap;
+    }
+
+    .filters .filter-group,
+    .filters select,
+    .filters input,
+    .header-actions select,
+    .header-actions input {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .card-header .flex {
+        flex-wrap: wrap;
+    }
+}
+
+/* ==================== RENDICONTAZIONE: COLONNA UTENTE FISSA ==================== */
+/* Mantiene visibile il nome utente durante lo scroll orizzontale della tabella */
+
+#table-container .table thead th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 11;
+}
+
+#table-container .table tbody tr:not(.scuola-header):not(.scuola-totale) td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--bg-card-solid);
+}
+
+#table-container .table tbody tr.utente-senza-ore:not(.scuola-header) td:first-child {
+    background: linear-gradient(rgba(255, 159, 10, 0.08), rgba(255, 159, 10, 0.08)), var(--bg-card-solid);
+}
+
+[data-theme="light"] #table-container .table tbody tr:not(.scuola-header):not(.scuola-totale) td:first-child {
+    background: #FFFFFF;
+}
+
+[data-theme="light"] #table-container .table tbody tr.utente-senza-ore:not(.scuola-header) td:first-child {
+    background: linear-gradient(rgba(255, 159, 10, 0.10), rgba(255, 159, 10, 0.10)), #FFFFFF;
 }

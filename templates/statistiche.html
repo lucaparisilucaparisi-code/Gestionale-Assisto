@@ -3,20 +3,14 @@
 {% block title %}Statistiche - Gestionale OEPAC{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div class="page-header-row">
-        <div>
-            <h1 class="page-title">Statistiche Avanzate</h1>
-            <p class="page-subtitle">Analisi dettagliata del servizio OEPAC</p>
-        </div>
-        <div class="header-actions" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-            <select id="filter-commessa" class="form-control" style="width: 160px;">
-                <option value="">Tutte le commesse</option>
-            </select>
-            <select id="filter-anno" class="form-control" style="width: 150px;">
-            </select>
-        </div>
-    </div>
+{% include '_report_tabs.html' %}
+
+<div class="header-actions mb-4" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
+    <select id="filter-commessa" class="form-control" style="width: 160px;">
+        <option value="">Tutte le commesse</option>
+    </select>
+    <select id="filter-anno" class="form-control" style="width: 150px;">
+    </select>
 </div>
 
 <!-- KPI Row -->
@@ -40,7 +34,7 @@
 </div>
 
 <!-- Charts Row 1 -->
-<div class="flex gap-4 mb-4" style="flex-wrap: wrap;">
+<div class="flex gap-4 mb-4 flex-wrap">
     <div class="card" style="flex: 1; min-width: 300px;">
         <div class="card-header">
             <h2 class="card-title">
@@ -85,11 +79,11 @@
             </svg>
             Heatmap Presenza Mensile
         </h2>
-        <div class="header-actions" style="display: flex; gap: 8px; align-items: center;">
+        <div class="header-actions flex gap-2 items-center">
             <span class="text-muted text-xs">% ore erogate vs previste</span>
         </div>
     </div>
-    <div class="card-body" style="padding: 0;">
+    <div class="card-body p-0">
         <div class="heatmap-container" id="heatmap-container">
             <div class="loading" style="padding: 40px;">
                 <div class="spinner"></div>
@@ -97,9 +91,9 @@
         </div>
     </div>
     <div class="card-footer" style="padding: 12px 16px;">
-        <div style="display: flex; align-items: center; gap: 16px; justify-content: center; flex-wrap: wrap;">
+        <div class="flex items-center gap-4 justify-center flex-wrap">
             <span class="text-xs text-muted">Legenda:</span>
-            <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="flex gap-2 items-center">
                 <span class="heatmap-cell" data-level="0" style="width: 24px; height: 20px; font-size: 0.6rem;">0%</span>
                 <span class="heatmap-cell" data-level="1" style="width: 24px; height: 20px; font-size: 0.6rem;">&lt;50</span>
                 <span class="heatmap-cell" data-level="2" style="width: 24px; height: 20px; font-size: 0.6rem;">&lt;80</span>
@@ -112,7 +106,7 @@
 </div>
 
 <!-- Charts Row 2 -->
-<div class="flex gap-4 mb-4" style="flex-wrap: wrap;">
+<div class="flex gap-4 mb-4 flex-wrap">
     <div class="card" style="flex: 1; min-width: 400px;">
         <div class="card-header">
             <h2 class="card-title">
@@ -150,6 +144,56 @@
     </div>
 </div>
 
+<!-- Widget Mese Corrente -->
+<div class="flex gap-4 mb-4 flex-wrap">
+    <!-- Confronto Mese/Mese -->
+    <div class="card" style="flex: 1; min-width: 280px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Confronto Mese
+            </h2>
+        </div>
+        <div class="card-body" id="confronto-mese-container">
+            <div class="text-center text-muted py-4">Caricamento...</div>
+        </div>
+    </div>
+
+    <!-- Top 5 Scuole -->
+    <div class="card" style="flex: 1.5; min-width: 350px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                </svg>
+                Top 5 Scuole
+            </h2>
+        </div>
+        <div class="card-body" style="padding: 0; max-height: 220px; overflow-y: auto;">
+            <div id="top-scuole-list" class="top-scuole-list">
+                <div class="text-center text-muted py-4">Caricamento...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credito/Debito -->
+    <div class="card" style="flex: 1; min-width: 280px;">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                </svg>
+                Bilancio Ore
+            </h2>
+        </div>
+        <div class="card-body" id="credito-debito-container">
+            <div class="text-center text-muted py-4">Caricamento...</div>
+        </div>
+    </div>
+</div>
+
 <!-- Confronto Annuale -->
 <div class="card mb-4">
     <div class="card-header">
@@ -159,7 +203,7 @@
             </svg>
             Confronto Annuale
         </h2>
-        <div class="header-actions" style="display: flex; gap: 8px;">
+        <div class="header-actions flex gap-2">
             <select id="confronto-mese" class="form-control" style="width: 130px; font-size: 0.8rem;">
             </select>
         </div>
@@ -389,6 +433,11 @@ async function loadStatistiche() {
         // Utenti con meno ore
         loadUtentiMenoOre();
 
+        // Widget mese corrente (spostati dalla dashboard)
+        loadConfrontoMese();
+        loadTopScuole();
+        loadCreditoDebito();
+
     } catch (error) {
         console.error('Errore statistiche:', error);
         showToast('Errore caricamento statistiche', 'error');
@@ -497,10 +546,10 @@ async function loadConfrontoAnnualeDettaglio() {
                     <thead>
                         <tr>
                             <th>Anno Scolastico</th>
-                            <th style="text-align: right;">Utenti</th>
-                            <th style="text-align: right;">Ore Erogate</th>
-                            <th style="text-align: right;">Imponibile</th>
-                            <th style="text-align: right;">Variazione</th>
+                            <th class="text-right">Utenti</th>
+                            <th class="text-right">Ore Erogate</th>
+                            <th class="text-right">Imponibile</th>
+                            <th class="text-right">Variazione</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -511,11 +560,11 @@ async function loadConfrontoAnnualeDettaglio() {
             const varIcon = c.variazione === null ? '' : (c.variazione >= 0 ? '&#9650;' : '&#9660;');
 
             html += `
-                <tr ${i === 0 ? 'style="font-weight: 600;"' : ''}>
+                <tr class="font-semibold" ${i === 0 ? '' : ''}>
                     <td><strong>${c.anno_scolastico}</strong><br><span class="text-muted text-xs">${mesiNomi[c.mese]} ${c.anno}</span></td>
-                    <td style="text-align: right;">${c.num_utenti}</td>
-                    <td style="text-align: right;">${c.ore_erogate.toLocaleString('it-IT')}h</td>
-                    <td style="text-align: right;">${formatCurrency(c.imponibile)}</td>
+                    <td class="text-right">${c.num_utenti}</td>
+                    <td class="text-right">${c.ore_erogate.toLocaleString('it-IT')}h</td>
+                    <td class="text-right">${formatCurrency(c.imponibile)}</td>
                     <td style="text-align: right; ${varColor}">
                         ${c.variazione !== null ? `${varIcon} ${c.variazione > 0 ? '+' : ''}${c.variazione}%` : '-'}
                     </td>
@@ -588,6 +637,133 @@ function renderUtentiMenoOre(utenti) {
             </div>
         `;
     }).join('');
+}
+
+// ==================== WIDGET MESE CORRENTE (ex dashboard) ====================
+
+function getMeseCorrente() {
+    const now = new Date();
+    return { anno: now.getFullYear(), mese: now.getMonth() + 1 };
+}
+
+async function loadConfrontoMese() {
+    const container = document.getElementById('confronto-mese-container');
+    try {
+        const filters = getFilters();
+        const { anno, mese } = getMeseCorrente();
+
+        const qs = `?anno=${anno}&mese=${mese}${filters.commessa ? `&commessa=${encodeURIComponent(filters.commessa)}` : ''}`;
+        const data = await apiCall(`/api/stats/confronto-mese${qs}`);
+
+        const variazione = data.variazione.percentuale;
+        const isPositive = variazione >= 0;
+        const varColor = isPositive ? 'var(--success)' : 'var(--danger)';
+        const varIcon = isPositive ? '&#9650;' : '&#9660;';
+
+        container.innerHTML = `
+            <div class="text-center mb-4">
+                <div style="font-size: 2rem; font-weight: 700; color: ${varColor};">
+                    ${varIcon} ${Math.abs(variazione)}%
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-tertiary);">
+                    vs ${data.mese_precedente.mese_nome}
+                </div>
+            </div>
+            <div class="flex justify-between gap-4">
+                <div style="text-align: center; flex: 1;">
+                    <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Corrente</div>
+                    <div style="font-size: 1.1rem; font-weight: 600;">${data.mese_corrente.ore.toLocaleString('it-IT')}h</div>
+                    <div style="font-size: 0.7rem; color: var(--text-secondary);">${data.mese_corrente.utenti_attivi} utenti</div>
+                </div>
+                <div style="text-align: center; flex: 1;">
+                    <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Precedente</div>
+                    <div style="font-size: 1.1rem; font-weight: 600;">${data.mese_precedente.ore.toLocaleString('it-IT')}h</div>
+                    <div style="font-size: 0.7rem; color: var(--text-secondary);">${data.mese_precedente.utenti_attivi} utenti</div>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        container.innerHTML = '<div class="text-center text-muted py-4">Dati non disponibili</div>';
+    }
+}
+
+async function loadTopScuole() {
+    const container = document.getElementById('top-scuole-list');
+    try {
+        const filters = getFilters();
+        const { anno, mese } = getMeseCorrente();
+
+        const qs = `?anno=${anno}&mese=${mese}${filters.commessa ? `&commessa=${encodeURIComponent(filters.commessa)}` : ''}`;
+        const data = await apiCall(`/api/stats/top-scuole${qs}`);
+
+        if (data.top_scuole.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted py-4">Nessun dato disponibile</div>';
+            return;
+        }
+
+        const colors = ['#FFD700', '#C0C0C0', '#CD7F32', '#0A84FF', '#0A84FF'];
+
+        container.innerHTML = data.top_scuole.map((s, i) => `
+            <div style="display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border-color); gap: 12px;">
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: ${colors[i]}; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem; color: ${i < 3 ? '#000' : '#fff'};">
+                    ${i + 1}
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: 500; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(s.scuola_full || s.scuola)}">
+                        ${escapeHtml(s.scuola)}
+                    </div>
+                    <div style="font-size: 0.7rem; color: var(--text-tertiary);">${s.num_utenti} utenti - ${escapeHtml(s.commessa)}</div>
+                </div>
+                <div class="text-right">
+                    <div style="font-weight: 600; font-size: 0.9rem;">${s.ore_erogate.toLocaleString('it-IT')}h</div>
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = '<div class="text-center text-muted py-4">Dati non disponibili</div>';
+    }
+}
+
+async function loadCreditoDebito() {
+    const container = document.getElementById('credito-debito-container');
+    try {
+        const filters = getFilters();
+        const { anno, mese } = getMeseCorrente();
+
+        const qs = `?anno=${anno}&mese=${mese}${filters.commessa ? `&commessa=${encodeURIComponent(filters.commessa)}` : ''}`;
+        const data = await apiCall(`/api/stats/credito-debito${qs}`);
+
+        const saldoColor = data.saldo_netto >= 0 ? 'var(--success)' : 'var(--danger)';
+        const saldoLabel = data.saldo_netto >= 0 ? 'Credito netto' : 'Debito netto';
+
+        container.innerHTML = `
+            <div class="text-center mb-3">
+                <div style="font-size: 1.8rem; font-weight: 700; color: ${saldoColor};">
+                    ${data.saldo_netto >= 0 ? '+' : ''}${data.saldo_netto.toLocaleString('it-IT')}h
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-tertiary);">${saldoLabel}</div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center;">
+                <div style="padding: 8px; background: rgba(16, 185, 129, 0.1); border-radius: 8px;">
+                    <div style="font-size: 1.1rem; font-weight: 600; color: var(--success);">${data.utenti_in_credito}</div>
+                    <div style="font-size: 0.65rem; color: var(--text-tertiary);">In credito</div>
+                </div>
+                <div style="padding: 8px; background: rgba(107, 114, 128, 0.1); border-radius: 8px;">
+                    <div style="font-size: 1.1rem; font-weight: 600;">${data.utenti_in_pari}</div>
+                    <div style="font-size: 0.65rem; color: var(--text-tertiary);">In pari</div>
+                </div>
+                <div style="padding: 8px; background: rgba(239, 68, 68, 0.1); border-radius: 8px;">
+                    <div style="font-size: 1.1rem; font-weight: 600; color: var(--danger);">${data.utenti_in_debito}</div>
+                    <div style="font-size: 0.65rem; color: var(--text-tertiary);">In debito</div>
+                </div>
+            </div>
+            <div style="margin-top: 12px; font-size: 0.7rem; color: var(--text-tertiary); text-align: center;">
+                +${data.totale_credito.toLocaleString('it-IT')}h / -${data.totale_debito.toLocaleString('it-IT')}h
+            </div>
+        `;
+    } catch (e) {
+        container.innerHTML = '<div class="text-center text-muted py-4">Dati non disponibili</div>';
+    }
 }
 </script>
 {% endblock %}

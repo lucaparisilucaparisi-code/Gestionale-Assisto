@@ -5,8 +5,34 @@
 {% block content %}
 <div class="page-header">
     <h1 class="page-title">Import Dati Excel</h1>
-    <p class="page-subtitle">Carica il file Excel con i dati degli utenti</p>
+    <p class="page-subtitle">Carica i dati da file Excel: anagrafica utenti oppure rendicontazione mensile</p>
 </div>
+
+<div class="tabs-container">
+    <nav class="tabs" aria-label="Tipo di import">
+        <button type="button" class="tab active" data-import-tab="anagrafica">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            Anagrafica utenti
+        </button>
+        <button type="button" class="tab" data-import-tab="rendicontazione">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Rendicontazione mensile
+        </button>
+        <button type="button" class="tab" data-import-tab="dipendenti">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            Dipendenti OEPAC
+        </button>
+    </nav>
+</div>
+
+<!-- ============ TAB ANAGRAFICA UTENTI ============ -->
+<div id="tab-anagrafica" class="import-tab-panel">
 
 <!-- Azioni rapide -->
 <div class="filters" style="justify-content: flex-end;">
@@ -58,11 +84,11 @@
             <div class="form-group mt-3">
                 <label class="form-label">Modalità Import</label>
                 <div style="display: flex; gap: 20px; margin-top: 8px;">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <label class="flex items-center gap-2 pointer">
                         <input type="radio" name="import_mode" value="update" checked>
                         <span><strong>Aggiorna esistenti</strong> - Aggiorna utenti esistenti e crea nuovi</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <label class="flex items-center gap-2 pointer">
                         <input type="radio" name="import_mode" value="skip">
                         <span><strong>Solo nuovi</strong> - Salta utenti già presenti</span>
                     </label>
@@ -108,7 +134,7 @@
             </div>
 
             <!-- Riepilogo anteprima -->
-            <div id="preview-summary" class="mt-3" style="display: flex; gap: 16px;">
+            <div id="preview-summary" class="mt-3 flex gap-4">
                 <span class="badge badge-success" id="preview-new-count">0 nuovi</span>
                 <span class="badge badge-warning" id="preview-update-count">0 da aggiornare</span>
                 <span class="badge badge-secondary" id="preview-skip-count">0 da saltare</span>
@@ -117,7 +143,7 @@
 
         <div id="upload-result" class="hidden mt-4"></div>
     </div>
-    <div class="card-footer" style="display: flex; gap: 12px;">
+    <div class="card-footer flex gap-3">
         <button id="btn-preview" class="btn btn-secondary" disabled>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -134,9 +160,141 @@
     </div>
 </div>
 
+</div><!-- /tab-anagrafica -->
+
+<!-- ============ TAB RENDICONTAZIONE MENSILE ============ -->
+<div id="tab-rendicontazione" class="import-tab-panel" style="display: none;">
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Carica Rendicontazione Mensile</h2>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+                <strong>Come funziona:</strong><br>
+                Carica il file con un <strong>foglio per mese</strong> (es. "Estratto Settembre"). Le colonne attese sono
+                <strong>Commessa</strong>, <strong>Scuola</strong>, <strong>Utenti</strong>, <strong>Totale ore lavorate in 100'</strong>, <strong>Pasti</strong>.
+                Il mese e l'anno vengono letti dal titolo di ogni foglio.<br>
+                Le ore e i pasti vengono assegnati agli <strong>utenti già presenti</strong> in anagrafica (abbinamento per nome).
+                Gli utenti non trovati vengono elencati e saltati: non vengono creati.
+            </div>
+        </div>
+
+        <div class="file-upload" id="rend-file-upload">
+            <input type="file" id="rend-file-input" accept=".xlsx,.xls">
+            <svg class="file-upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <p class="file-upload-text">
+                <strong>Clicca per selezionare</strong> o trascina qui il file Excel della prefattura
+            </p>
+            <p class="text-xs text-muted mt-2">Formati supportati: .xlsx, .xls</p>
+        </div>
+
+        <div id="rend-file-info" class="hidden mt-4">
+            <div class="alert alert-success">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div><strong>File selezionato:</strong> <span id="rend-file-name"></span></div>
+            </div>
+
+            <div class="form-group mt-3">
+                <label class="form-label">Se un mese ha già delle ore registrate</label>
+                <div style="display: flex; gap: 20px; margin-top: 8px; flex-wrap: wrap;">
+                    <label class="flex items-center gap-2 pointer">
+                        <input type="radio" name="rend_mode" value="solo_vuoti" checked>
+                        <span><strong>Compila solo i vuoti</strong> - non tocca chi ha già ore</span>
+                    </label>
+                    <label class="flex items-center gap-2 pointer">
+                        <input type="radio" name="rend_mode" value="overwrite">
+                        <span><strong>Sovrascrivi</strong> - usa sempre i valori dell'Excel</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div id="rend-progress" class="hidden mt-4">
+            <div class="loading"><div class="spinner"></div></div>
+            <p class="text-center text-muted mt-2" id="rend-progress-text">Analisi file...</p>
+        </div>
+
+        <!-- Anteprima -->
+        <div id="rend-preview-section" class="hidden mt-4">
+            <div id="rend-preview-summary" class="mb-3"></div>
+            <div id="rend-preview-fogli"></div>
+        </div>
+
+        <div id="rend-result" class="hidden mt-4"></div>
+    </div>
+    <div class="card-footer flex gap-3">
+        <button id="rend-btn-preview" class="btn btn-secondary" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            Anteprima
+        </button>
+        <button id="rend-btn-import" class="btn btn-primary hidden" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            Conferma Importazione
+        </button>
+    </div>
+</div>
+</div><!-- /tab-rendicontazione -->
+
+<!-- ============ TAB DIPENDENTI OEPAC ============ -->
+<div id="tab-dipendenti" class="import-tab-panel" style="display: none;">
+<div class="card">
+    <div class="card-header"><h2 class="card-title">Importa Anagrafica Dipendenti</h2></div>
+    <div class="card-body">
+        <div class="alert alert-info mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <div>
+                <strong>Come funziona:</strong> carica l'Excel degli operatori (una riga per dipendente, intestazioni in prima riga).
+                Vengono riconosciute le colonne <strong>Cognome, Nome, Codice Fiscale, Email, Cellulare, Qualifica, Monte ore contrattuale, Data Assunzione</strong>;
+                tutte le altre (genere, nascita, CCNL, livello, contratto…) vengono conservate nei <strong>dati extra</strong> della scheda.
+                L'abbinamento avviene sul <strong>Codice Fiscale</strong>: chi c'è già viene aggiornato, gli altri creati. Nessun duplicato.
+            </div>
+        </div>
+
+        <div class="file-upload" id="dip-file-upload">
+            <input type="file" id="dip-file-input" accept=".xlsx,.xls">
+            <svg class="file-upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+            <p class="file-upload-text"><strong>Clicca per selezionare</strong> o trascina qui l'Excel dei dipendenti</p>
+            <p class="text-xs text-muted mt-2">Formati supportati: .xlsx, .xls</p>
+        </div>
+
+        <div id="dip-file-info" class="hidden mt-4">
+            <div class="alert alert-success">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <div><strong>File selezionato:</strong> <span id="dip-file-name"></span></div>
+            </div>
+        </div>
+
+        <div id="dip-progress" class="hidden mt-4">
+            <div class="loading"><div class="spinner"></div></div>
+            <p class="text-center text-muted mt-2" id="dip-progress-text">Analisi file...</p>
+        </div>
+
+        <div id="dip-preview" class="hidden mt-4"></div>
+        <div id="dip-result" class="hidden mt-4"></div>
+    </div>
+    <div class="card-footer flex gap-3">
+        <button id="dip-btn-preview" class="btn btn-secondary" disabled>Anteprima</button>
+        <button id="dip-btn-import" class="btn btn-primary hidden" disabled>Conferma Importazione</button>
+    </div>
+</div>
+</div><!-- /tab-dipendenti -->
+
 <!-- Cronologia Import -->
 <div class="card mt-4">
-    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div class="card-header flex justify-between items-center">
         <h2 class="card-title">Cronologia Import</h2>
         <button id="btn-refresh-cronologia" class="btn btn-sm btn-secondary">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
@@ -176,10 +334,10 @@
             </div>
         </div>
 
-        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+        <div class="flex gap-4 flex-wrap">
             <!-- Esporta -->
             <div style="flex: 1; min-width: 280px; padding: 20px; background: var(--bg-secondary); border-radius: 12px;">
-                <h4 style="margin-bottom: 12px;">
+                <h4 class="mb-3">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" style="vertical-align: middle;">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
@@ -198,7 +356,7 @@
 
             <!-- Importa -->
             <div style="flex: 1; min-width: 280px; padding: 20px; background: var(--bg-secondary); border-radius: 12px;">
-                <h4 style="margin-bottom: 12px;">
+                <h4 class="mb-3">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" style="vertical-align: middle;">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                     </svg>
@@ -223,21 +381,21 @@
                 <strong>Anteprima importazione:</strong>
                 <div id="migrazione-preview-content"></div>
             </div>
-            <div style="display: flex; gap: 12px; margin-top: 12px;">
+            <div class="flex gap-3 mt-3">
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <label class="flex items-center gap-2 pointer">
                         <input type="radio" name="migrazione_mode" value="merge" checked>
                         <span><strong>Unisci</strong> - Aggiorna esistenti e aggiungi nuovi</span>
                     </label>
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <label class="flex items-center gap-2 pointer">
                         <input type="radio" name="migrazione_mode" value="skip">
                         <span><strong>Solo nuovi</strong> - Non modificare dati esistenti</span>
                     </label>
                 </div>
             </div>
-            <div style="margin-top: 16px;">
+            <div class="mt-4">
                 <button id="btn-conferma-migrazione" class="btn btn-primary">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
@@ -303,9 +461,119 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-scarica-template').addEventListener('click', scaricaTemplate);
     document.getElementById('btn-refresh-cronologia').addEventListener('click', loadCronologiaImport);
 
+    // Tab switching (Anagrafica / Rendicontazione)
+    document.querySelectorAll('[data-import-tab]').forEach(btn => {
+        btn.addEventListener('click', () => switchImportTab(btn.dataset.importTab));
+    });
+
+    // Import rendicontazione
+    initFileUpload('rend-file-upload', 'rend-file-input', handleRendFileSelect);
+    document.getElementById('rend-btn-preview').addEventListener('click', previewRendicontazione);
+    document.getElementById('rend-btn-import').addEventListener('click', importRendicontazione);
+
+    // Import dipendenti
+    initFileUpload('dip-file-upload', 'dip-file-input', handleDipFileSelect);
+    document.getElementById('dip-btn-preview').addEventListener('click', previewDipendenti);
+    document.getElementById('dip-btn-import').addEventListener('click', importDipendenti);
+
+    // Se arrivo con #dipendenti nell'URL apro direttamente quel tab
+    if (location.hash === '#dipendenti') switchImportTab('dipendenti');
+
     // Carica cronologia import
     loadCronologiaImport();
 });
+
+function switchImportTab(tab) {
+    document.querySelectorAll('[data-import-tab]').forEach(b => {
+        b.classList.toggle('active', b.dataset.importTab === tab);
+    });
+    ['anagrafica', 'rendicontazione', 'dipendenti'].forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        if (el) el.style.display = (t === tab) ? '' : 'none';
+    });
+}
+
+// ==================== IMPORT DIPENDENTI ====================
+let dipFile = null;
+
+function handleDipFileSelect(file) {
+    if (!file.name.match(/\.(xlsx|xls)$/i)) { showToast('Formato non valido (.xlsx/.xls)', 'error'); return; }
+    dipFile = file;
+    document.getElementById('dip-file-name').textContent = file.name;
+    document.getElementById('dip-file-info').classList.remove('hidden');
+    document.getElementById('dip-btn-preview').disabled = false;
+    document.getElementById('dip-btn-import').classList.add('hidden');
+    document.getElementById('dip-preview').classList.add('hidden');
+    document.getElementById('dip-result').classList.add('hidden');
+}
+
+async function previewDipendenti() {
+    if (!dipFile) return;
+    const prog = document.getElementById('dip-progress');
+    document.getElementById('dip-progress-text').textContent = 'Analisi file...';
+    prog.classList.remove('hidden');
+    document.getElementById('dip-btn-preview').disabled = true;
+    try {
+        const fd = new FormData(); fd.append('file', dipFile);
+        const resp = await fetch('/api/import-dipendenti/preview', { method: 'POST', body: fd });
+        const d = await resp.json();
+        if (!resp.ok) throw new Error(d.error || 'Errore anteprima');
+        const pv = document.getElementById('dip-preview');
+        pv.innerHTML = `
+            <div class="alert alert-info">
+                <div><strong>${d.totale}</strong> operatori nel file:
+                    <span class="text-success">${d.nuovi} nuovi</span>,
+                    <span class="text-warning">${d.aggiornati} da aggiornare</span> (abbinati per Codice Fiscale).
+                    ${d.colonne_extra.length ? `<br><span class="text-muted text-sm">Dati extra conservati: ${d.colonne_extra.map(escapeHtml).join(', ')}</span>` : ''}
+                </div>
+            </div>
+            <div class="table-responsive" style="max-height:320px;overflow-y:auto">
+                <table class="table"><thead><tr><th>Stato</th><th>Cognome e Nome</th><th>Codice Fiscale</th><th>Qualifica</th><th class="text-right">Ore</th></tr></thead><tbody>
+                    ${d.esempi.map(e => `<tr>
+                        <td><span class="badge badge-${e.stato === 'nuovo' ? 'success' : 'warning'}">${e.stato}</span></td>
+                        <td>${escapeHtml(e.nome)}</td><td class="font-mono text-sm">${escapeHtml(e.cf)}</td>
+                        <td>${escapeHtml(e.qualifica)}</td><td class="text-right font-mono">${e.ore ?? '—'}</td></tr>`).join('')}
+                    ${d.totale > d.esempi.length ? `<tr><td colspan="5" class="text-center text-muted">… e altri ${d.totale - d.esempi.length}</td></tr>` : ''}
+                </tbody></table>
+            </div>`;
+        pv.classList.remove('hidden');
+        document.getElementById('dip-btn-import').classList.remove('hidden');
+        document.getElementById('dip-btn-import').disabled = (d.totale === 0);
+    } catch (e) {
+        showToast('Errore: ' + e.message, 'error');
+    } finally {
+        prog.classList.add('hidden');
+        document.getElementById('dip-btn-preview').disabled = false;
+    }
+}
+
+async function importDipendenti() {
+    if (!dipFile) return;
+    const prog = document.getElementById('dip-progress');
+    document.getElementById('dip-progress-text').textContent = 'Importazione in corso...';
+    prog.classList.remove('hidden');
+    document.getElementById('dip-btn-import').disabled = true;
+    try {
+        const fd = new FormData(); fd.append('file', dipFile);
+        const resp = await fetch('/api/import-dipendenti', { method: 'POST', body: fd });
+        const d = await resp.json();
+        if (!resp.ok) throw new Error(d.error || 'Errore import');
+        document.getElementById('dip-result').innerHTML = `
+            <div class="alert alert-success">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <div><strong>Import completato:</strong> ${d.creati} creati, ${d.aggiornati} aggiornati.
+                    ${d.errori_count ? `<br>${d.errori_count} righe con errori.` : ''}
+                    <br><a href="/dipendenti">Vai all'anagrafica dipendenti →</a></div>
+            </div>`;
+        document.getElementById('dip-result').classList.remove('hidden');
+        showToast(`${d.creati} creati, ${d.aggiornati} aggiornati`, 'success');
+        loadCronologiaImport();
+    } catch (e) {
+        showToast('Errore: ' + e.message, 'error');
+    } finally {
+        prog.classList.add('hidden');
+    }
+}
 
 async function scaricaTemplate() {
     const btn = document.getElementById('btn-scarica-template');
@@ -610,6 +878,184 @@ async function uploadFile() {
     }
 }
 
+// ==================== IMPORT RENDICONTAZIONE MENSILE ====================
+
+let rendFile = null;
+
+function handleRendFileSelect(file) {
+    if (!file.name.match(/\.(xlsx|xls)$/i)) {
+        showToast('Formato file non valido. Usa .xlsx o .xls', 'error');
+        return;
+    }
+    rendFile = file;
+    document.getElementById('rend-file-name').textContent = file.name;
+    document.getElementById('rend-file-info').classList.remove('hidden');
+    document.getElementById('rend-btn-preview').disabled = false;
+    document.getElementById('rend-btn-import').classList.add('hidden');
+    document.getElementById('rend-preview-section').classList.add('hidden');
+    document.getElementById('rend-result').classList.add('hidden');
+}
+
+async function previewRendicontazione() {
+    if (!rendFile) return;
+    const progress = document.getElementById('rend-progress');
+    const progressText = document.getElementById('rend-progress-text');
+    const btn = document.getElementById('rend-btn-preview');
+
+    progressText.textContent = 'Analisi file e abbinamento utenti...';
+    progress.classList.remove('hidden');
+    document.getElementById('rend-preview-section').classList.add('hidden');
+    btn.disabled = true;
+
+    try {
+        const formData = new FormData();
+        formData.append('file', rendFile);
+        const resp = await fetch('/api/import-rendicontazione/preview', { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Errore anteprima');
+
+        renderRendPreview(data);
+        document.getElementById('rend-preview-section').classList.remove('hidden');
+        document.getElementById('rend-btn-import').classList.remove('hidden');
+        document.getElementById('rend-btn-import').disabled = (data.totale_match === 0);
+    } catch (error) {
+        showToast('Errore: ' + error.message, 'error');
+    } finally {
+        progress.classList.add('hidden');
+        btn.disabled = false;
+    }
+}
+
+function renderRendPreview(data) {
+    const summary = document.getElementById('rend-preview-summary');
+    summary.innerHTML = `
+        <div class="alert ${data.totale_match > 0 ? 'alert-info' : 'alert-warning'}">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <div>
+                <strong>${data.totale_match}</strong> rendicontazioni pronte da importare.
+                ${data.totale_non_trovati > 0 ? `<span class="text-warning">${data.totale_non_trovati} righe non abbinate</span> (utenti non in anagrafica, saltate).` : ''}
+                ${data.totale_ambigui > 0 ? ` <span class="text-warning">${data.totale_ambigui} ambigue</span> (omonimi non risolti).` : ''}
+            </div>
+        </div>
+    `;
+
+    const fogliDiv = document.getElementById('rend-preview-fogli');
+    fogliDiv.innerHTML = data.fogli.map(f => {
+        if (!f.periodo_valido) {
+            return `<div class="alert alert-danger mb-3">
+                <div><strong>${escapeHtml(f.foglio)}</strong>: impossibile riconoscere mese/anno dal foglio. Verrà ignorato.</div>
+            </div>`;
+        }
+        const nonTrovatiEsempi = f.esempi_non_trovati.length
+            ? `<details class="mt-2"><summary class="text-muted pointer">Mostra alcuni non abbinati (${f.n_non_trovati})</summary>
+                 <div class="text-xs text-muted" style="margin-top:6px; line-height:1.6;">
+                    ${f.esempi_non_trovati.map(v => `${escapeHtml(v.nome)} <span style="opacity:0.6">(${escapeHtml(v.commessa)})</span>`).join(' · ')}
+                    ${f.n_non_trovati > f.esempi_non_trovati.length ? ` … e altri ${f.n_non_trovati - f.esempi_non_trovati.length}` : ''}
+                 </div></details>`
+            : '';
+        const ambiguiEsempi = f.n_ambigui
+            ? `<div class="text-xs text-warning" style="margin-top:6px;">Omonimi non risolti: ${f.esempi_ambigui.map(v => escapeHtml(v.nome)).join(', ')}</div>`
+            : '';
+        return `
+            <div class="card mb-3">
+                <div class="card-header flex justify-between items-center flex-wrap gap-2">
+                    <h3 class="card-title" style="margin:0;">${escapeHtml(f.mese_nome)} ${f.anno}</h3>
+                    <div class="flex gap-2 flex-wrap">
+                        <span class="badge badge-success">${f.n_match} da importare</span>
+                        ${f.n_non_trovati ? `<span class="badge badge-warning">${f.n_non_trovati} non abbinati</span>` : ''}
+                        ${f.n_ambigui ? `<span class="badge badge-danger">${f.n_ambigui} ambigui</span>` : ''}
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 240px; overflow-y:auto;">
+                        <table class="table">
+                            <thead><tr><th>Utente</th><th>Scuola</th><th class="text-right">Ore</th><th class="text-right">Pasti</th></tr></thead>
+                            <tbody>
+                                ${f.anteprima_match.map(m => `
+                                    <tr>
+                                        <td>${escapeHtml(m.utente_nome || m.nome)}</td>
+                                        <td class="text-xs text-muted">${escapeHtml(m.scuola)}</td>
+                                        <td style="text-align:right; font-family:monospace;">${m.ore}</td>
+                                        <td style="text-align:right; font-family:monospace;">${m.pasti}</td>
+                                    </tr>`).join('')}
+                                ${f.n_match > f.anteprima_match.length ? `<tr><td colspan="4" class="text-muted text-center">… e altri ${f.n_match - f.anteprima_match.length} utenti</td></tr>` : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="padding: 10px 16px;">${nonTrovatiEsempi}${ambiguiEsempi}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function importRendicontazione() {
+    if (!rendFile) return;
+    const progress = document.getElementById('rend-progress');
+    const progressText = document.getElementById('rend-progress-text');
+    const result = document.getElementById('rend-result');
+    const btn = document.getElementById('rend-btn-import');
+    const modalita = document.querySelector('input[name="rend_mode"]:checked')?.value || 'solo_vuoti';
+
+    progressText.textContent = 'Importazione in corso...';
+    progress.classList.remove('hidden');
+    result.classList.add('hidden');
+    btn.disabled = true;
+
+    try {
+        const formData = new FormData();
+        formData.append('file', rendFile);
+        formData.append('modalita', modalita);
+        const resp = await fetch('/api/import-rendicontazione', { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Errore importazione');
+
+        result.innerHTML = `
+            <div class="alert alert-success">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                    <strong>Import completato:</strong> ${data.totale_scritti} rendicontazioni salvate.
+                    ${data.totale_saltati_gia_pieni > 0 ? `<br>${data.totale_saltati_gia_pieni} saltate (mese già compilato).` : ''}
+                    ${data.totale_non_trovati > 0 ? `<br>${data.totale_non_trovati} righe non abbinate (utenti non in anagrafica).` : ''}
+                </div>
+            </div>
+            <div class="table-responsive mt-3">
+                <table class="table">
+                    <thead><tr><th>Mese</th><th class="text-right">Salvate</th><th class="text-right">Saltate (piene)</th><th class="text-right">Non abbinate</th></tr></thead>
+                    <tbody>
+                        ${data.dettaglio.map(d => d.errore
+                            ? `<tr><td>${escapeHtml(d.foglio)}</td><td colspan="3" class="text-danger">${escapeHtml(d.errore)}</td></tr>`
+                            : `<tr><td>${escapeHtml(d.mese_nome)} ${d.anno}</td><td class="text-right">${d.scritti}</td><td class="text-right">${d.saltati_gia_pieni}</td><td class="text-right">${d.non_trovati}</td></tr>`
+                        ).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        result.classList.remove('hidden');
+        showToast(`${data.totale_scritti} rendicontazioni importate`, 'success');
+        loadCronologiaImport();
+        document.getElementById('rend-btn-import').disabled = true;
+    } catch (error) {
+        result.innerHTML = `
+            <div class="alert alert-danger">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div><strong>Errore durante l'importazione:</strong><br>${escapeHtml(error.message)}</div>
+            </div>
+        `;
+        result.classList.remove('hidden');
+        showToast('Errore durante l\'importazione', 'error');
+    } finally {
+        progress.classList.add('hidden');
+        btn.disabled = false;
+    }
+}
+
 // ==================== MIGRAZIONE DATI ====================
 
 let migrazioneFile = null;
@@ -693,11 +1139,11 @@ async function handleMigrazioneFile(e) {
 
         const previewContent = document.getElementById('migrazione-preview-content');
         previewContent.innerHTML = `
-            <div style="margin-top: 8px;">
+            <div class="mt-2">
                 <strong>File:</strong> ${escapeHtml(file.name)}<br>
                 <strong>Versione:</strong> ${data.versione || 'N/D'}<br>
                 <strong>Data esportazione:</strong> ${data.data_esportazione ? new Date(data.data_esportazione).toLocaleString('it-IT') : 'N/D'}<br>
-                <div style="margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap;">
+                <div class="mt-3 flex gap-4 flex-wrap">
                     <span class="badge badge-primary">${data.riepilogo.commesse} Commesse</span>
                     <span class="badge badge-primary">${data.riepilogo.scuole} Scuole</span>
                     <span class="badge badge-primary">${data.riepilogo.utenti} Utenti</span>
@@ -754,7 +1200,7 @@ async function confermaMigrazione() {
                 </svg>
                 <div>
                     <strong>Migrazione completata!</strong><br>
-                    <div style="margin-top: 8px;">
+                    <div class="mt-2">
                         <strong>Importati:</strong>
                         ${data.stats.commesse.importate} commesse,
                         ${data.stats.scuole.importate} scuole,

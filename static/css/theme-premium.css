@@ -1,0 +1,463 @@
+/* ==================== WORLDQUANT-INSPIRED AESTHETIC (LITE) ==================== */
+/* Layer finale ottimizzato per performance:
+   - Aurora mesh STATICO (niente animazione continua)
+   - Niente noise SVG
+   - backdrop-filter ridotto al minimo indispensabile
+   - GPU hints solo dove serve davvero
+   Mantiene il look premium: gradient text, bordi luminosi su hover,
+   glassmorphism leggero su topbar/sidebar/auth-card.
+*/
+
+:root {
+    --aurora-1: rgba(10, 132, 255, 0.16);
+    --aurora-2: rgba(191, 90, 242, 0.12);
+    --aurora-3: rgba(48, 209, 88, 0.08);
+    --aurora-4: rgba(100, 210, 255, 0.10);
+
+    --gradient-hero: linear-gradient(135deg, #ffffff 0%, #a8c7ff 40%, #bf5af2 100%);
+    --gradient-accent: linear-gradient(135deg, #0A84FF 0%, #BF5AF2 100%);
+    --gradient-border-card: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02));
+
+    --ring-primary: 0 0 0 1px rgba(10, 132, 255, 0.35), 0 0 18px rgba(10, 132, 255, 0.12);
+}
+
+[data-theme="light"] {
+    --aurora-1: rgba(10, 132, 255, 0.10);
+    --aurora-2: rgba(191, 90, 242, 0.07);
+    --aurora-3: rgba(48, 209, 88, 0.05);
+    --aurora-4: rgba(100, 210, 255, 0.07);
+    --gradient-hero: linear-gradient(135deg, #0A84FF 0%, #5E2BA3 60%, #0b1a2d 100%);
+    --gradient-border-card: linear-gradient(135deg, rgba(0,0,0,0.08), rgba(0,0,0,0.02));
+}
+
+/* ==================== AURORA MESH STATICO ==================== */
+/* Niente animazione: la GPU non viene stressata.
+   Lo sfondo e' fisso, elegante, con quattro bolle radiali. */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 50% 40% at 15% 10%, var(--aurora-1), transparent 60%),
+        radial-gradient(ellipse 45% 35% at 85% 20%, var(--aurora-2), transparent 65%),
+        radial-gradient(ellipse 55% 45% at 75% 95%, var(--aurora-3), transparent 65%),
+        radial-gradient(ellipse 40% 30% at 10% 90%, var(--aurora-4), transparent 65%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Il gradient del container originale viene ridotto */
+.app-container::before { opacity: 0.35; }
+
+/* ==================== HERO TYPOGRAPHY ==================== */
+.page-title {
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+    font-size: clamp(1.9rem, 2.4vw + 1rem, 2.6rem);
+}
+
+.page-subtitle {
+    color: var(--text-secondary);
+    font-size: 1.02rem;
+    font-weight: 400;
+    letter-spacing: -0.005em;
+}
+
+/* ==================== CARDS (senza blur: solidi con trasparenza) ==================== */
+.card {
+    position: relative;
+    background: rgba(28, 28, 30, 0.88);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow:
+        0 1px 0 rgba(255,255,255,0.04) inset,
+        0 16px 32px -20px rgba(0, 0, 0, 0.5),
+        0 2px 4px rgba(0,0,0,0.2);
+    transition: transform 250ms ease, box-shadow 250ms ease, border-color 250ms ease;
+    will-change: auto;
+}
+
+/* Disabilita lo shine effect ::after che, pur non animato costantemente,
+   aggiunge un layer in piu' di composizione su ogni card */
+.card::after { display: none; }
+
+/* Bordo gradient SOLO su hover: nessun pseudo-element sempre attivo */
+.card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(10, 132, 255, 0.28);
+    box-shadow:
+        0 1px 0 rgba(255,255,255,0.06) inset,
+        0 24px 48px -24px rgba(0, 0, 0, 0.65),
+        0 2px 8px rgba(0,0,0,0.25);
+}
+
+[data-theme="light"] .card {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(11, 26, 45, 0.06);
+    box-shadow:
+        0 1px 0 rgba(255,255,255,0.8) inset,
+        0 14px 28px -22px rgba(31, 41, 55, 0.18),
+        0 1px 3px rgba(31,41,55,0.05);
+}
+
+/* ==================== STAT CARDS ==================== */
+.stat-value {
+    background: linear-gradient(180deg, var(--text-primary) 0%, rgba(255,255,255,0.6) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+}
+
+[data-theme="light"] .stat-value {
+    background: linear-gradient(180deg, #0b1a2d 0%, rgba(11,26,45,0.65) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.stat-label {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+}
+
+/* Linea accent: solo un bordo statico, niente pseudo animato */
+.stat-card {
+    position: relative;
+    isolation: isolate;
+}
+
+/* ==================== BUTTONS ==================== */
+.btn-primary {
+    background: var(--gradient-accent);
+    border: none;
+    box-shadow: 0 4px 12px -4px rgba(10, 132, 255, 0.5);
+    letter-spacing: -0.005em;
+    font-weight: 600;
+}
+
+.btn-primary:hover {
+    box-shadow: 0 6px 18px -6px rgba(10, 132, 255, 0.65);
+    filter: brightness(1.05);
+}
+
+.btn-primary:active { filter: brightness(0.98); }
+
+/* Secondary senza blur */
+.btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning) {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    transition: background 150ms ease, border-color 150ms ease;
+}
+
+.btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning):hover {
+    background: rgba(255,255,255,0.09);
+    border-color: rgba(255,255,255,0.16);
+}
+
+[data-theme="light"] .btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning) {
+    background: rgba(11, 26, 45, 0.04);
+    border-color: rgba(11, 26, 45, 0.08);
+}
+
+/* ==================== TOPBAR & SIDEBAR ==================== */
+/* Blur leggero, solo qui: superfici piccole e fisse, impatto minimo */
+.topbar {
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+[data-theme="light"] .topbar {
+    background: rgba(255, 255, 255, 0.85);
+    border-bottom: 1px solid rgba(11, 26, 45, 0.06);
+}
+
+.sidebar {
+    background: rgba(0, 0, 0, 0.85);
+    /* Niente backdrop-filter qui: e' una colonna alta, costa troppo */
+    border-right: 1px solid rgba(255,255,255,0.06);
+}
+
+[data-theme="light"] .sidebar {
+    background: rgba(255, 255, 255, 0.92);
+    border-right: 1px solid rgba(11, 26, 45, 0.06);
+}
+
+/* Nav link accent */
+.nav-link {
+    position: relative;
+    transition: background 150ms ease, color 150ms ease;
+}
+
+.nav-link::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 10px; bottom: 10px;
+    width: 2px;
+    background: var(--gradient-accent);
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+
+.nav-link.active::before,
+.nav-link:hover::before {
+    opacity: 1;
+}
+
+.nav-link.active {
+    color: var(--text-primary);
+    background: linear-gradient(90deg, rgba(10,132,255,0.10), rgba(10,132,255,0.02));
+}
+
+/* ==================== LOGO / BRAND ==================== */
+.brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: var(--gradient-accent);
+    position: relative;
+    box-shadow: 0 4px 12px -4px rgba(10,132,255,0.5);
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.brand-mark::after {
+    content: 'A';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1rem;
+    color: white;
+    letter-spacing: -0.02em;
+}
+
+.brand-mark--sm {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+}
+
+.brand-mark--sm::after { font-size: 0.85rem; }
+
+.brand-name {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-size: 1.05rem;
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.brand-name--sm { font-size: 0.95rem; }
+
+.brand-tagline {
+    display: block;
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+    font-weight: 500;
+}
+
+.brand-text { display: inline-flex; flex-direction: column; line-height: 1.15; }
+
+.sidebar-logo, .topbar-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: inherit;
+}
+
+/* ==================== FORM / INPUT ==================== */
+.form-control:focus,
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: rgba(10, 132, 255, 0.6);
+    box-shadow: var(--ring-primary);
+}
+
+/* ==================== SCROLLBAR ==================== */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.08);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); background-clip: padding-box; border: 2px solid transparent; }
+
+[data-theme="light"] *::-webkit-scrollbar-thumb { background: rgba(11,26,45,0.12); background-clip: padding-box; border: 2px solid transparent; }
+[data-theme="light"] *::-webkit-scrollbar-thumb:hover { background: rgba(11,26,45,0.22); background-clip: padding-box; border: 2px solid transparent; }
+
+/* ==================== TABLE ==================== */
+.table th {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+}
+
+.table tbody tr {
+    transition: background 120ms ease;
+}
+
+.table tbody tr:hover {
+    background: rgba(10,132,255,0.05);
+}
+
+/* ==================== BADGES ==================== */
+.badge,
+.chip {
+    letter-spacing: 0.02em;
+    font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* ==================== ANIMAZIONI INGRESSO (solo 1 volta) ==================== */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translate3d(0, 10px, 0); }
+    to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.page-header,
+.stats-grid > * {
+    animation: fadeInUp 400ms ease both;
+}
+
+.stats-grid > *:nth-child(1) { animation-delay: 30ms; }
+.stats-grid > *:nth-child(2) { animation-delay: 60ms; }
+.stats-grid > *:nth-child(3) { animation-delay: 90ms; }
+.stats-grid > *:nth-child(4) { animation-delay: 120ms; }
+.stats-grid > *:nth-child(5) { animation-delay: 150ms; }
+.stats-grid > *:nth-child(6) { animation-delay: 180ms; }
+
+@media (prefers-reduced-motion: reduce) {
+    .page-header,
+    .stats-grid > * { animation: none; }
+}
+
+/* ==================== FOCUS VISIBLE ==================== */
+:focus-visible {
+    outline: 2px solid rgba(10,132,255,0.6);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+/* ==================== AUTH PAGES ==================== */
+.auth-card {
+    background: rgba(28, 28, 30, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow:
+        0 1px 0 rgba(255,255,255,0.05) inset,
+        0 20px 60px -18px rgba(0,0,0,0.55);
+}
+
+[data-theme="light"] .auth-card {
+    background: rgba(255,255,255,0.92);
+    border: 1px solid rgba(11,26,45,0.06);
+}
+
+.auth-title {
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.03em;
+    font-weight: 700;
+}
+
+/* ==================== PERFORMANCE OVERRIDES ==================== */
+/* Riduce blur costosi lasciati dai CSS precedenti.
+   Manteniamo il blur SOLO su: topbar, sidebar, auth-card, modal, command-palette.
+   Su tutto il resto -> disabilitato o fortemente ridotto. */
+
+.stat-card,
+.stat-card-clickable,
+.card-header,
+.card-body,
+.card-footer,
+.dropdown-menu,
+.tooltip,
+.popover,
+.toast {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Sidebar: niente blur (colonna alta, costa molto) */
+.sidebar {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Floating particles layer: rimosso, spreca memoria GPU */
+.content-area::before { display: none !important; }
+
+/* Animazioni infinite meno critiche: disabilitate.
+   Rimangono attive solo quelle realmente informative (spinner, status dot live). */
+.stat-arrow,
+.empty-state-icon {
+    animation: none !important;
+}
+
+/* Badge pulse e simili: statici, niente CPU sprecata */
+.badge.pulse,
+.chip.pulse,
+.warning-pulse {
+    animation: none !important;
+}
+
+/* GPU acceleration mirata solo dove serve (hover transform) */
+.card,
+.btn,
+.nav-link,
+.stat-card {
+    transform: translateZ(0);
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 768px) {
+    .page-title { font-size: 1.75rem; }
+    /* Su mobile: niente aurora (risparmio batteria) */
+    body::before { display: none; }
+}
+
+/* Dispositivi a bassa potenza: ulteriore alleggerimento */
+@media (max-width: 480px), (prefers-reduced-motion: reduce) {
+    .topbar {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: var(--bg-primary) !important;
+    }
+    .auth-card {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+}

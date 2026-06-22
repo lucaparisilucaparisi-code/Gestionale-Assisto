@@ -6,7 +6,7 @@
 <div class="page-header">
     <h1 class="page-title">Gestione Utenti</h1>
     <p class="page-subtitle">Visualizza e gestisci gli utenti del servizio</p>
-    <div class="header-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <div class="header-actions flex gap-2 flex-wrap">
         <button class="btn btn-secondary btn-sm" onclick="exportUtentiCSV()" title="Esporta lista utenti in CSV">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -77,7 +77,7 @@
         <h2 class="card-title">Elenco Utenti</h2>
         <span class="badge badge-primary" id="count-badge">0 utenti</span>
     </div>
-    <div class="card-body" style="padding: 0;">
+    <div class="card-body p-0">
         <div class="table-container" id="table-container">
             <div class="loading">
                 <div class="spinner"></div>
@@ -168,7 +168,7 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Monte Ore Settimanale (base) *</label>
-                <div style="display: flex; gap: 8px; align-items: center;">
+                <div class="flex gap-2 items-center">
                     <input type="number" id="edit-monte-ore" class="form-control" placeholder="es. 15" step="0.5" min="0" style="flex:1;">
                     <button type="button" class="btn btn-sm btn-secondary" onclick="openVariazioniMonteOre()" title="Gestisci incrementi/decrementi programmati">Variazioni</button>
                 </div>
@@ -208,7 +208,7 @@
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeModal('modal-edit')">Annulla</button>
-            <button class="btn btn-danger btn-sm" onclick="duplicaUtente()" style="margin-right: auto;" title="Crea una copia di questo utente">Duplica</button>
+            <button class="btn btn-danger btn-sm mr-auto" onclick="duplicaUtente()" title="Crea una copia di questo utente">Duplica</button>
             <button class="btn btn-warning btn-sm" onclick="openCambioScuola()" title="Cambia la scuola dell'utente">Cambia Scuola</button>
             <button class="btn btn-primary" onclick="saveEditUtente()">Salva Modifiche</button>
         </div>
@@ -325,16 +325,16 @@
 
             <h4 style="font-size: 0.95rem; margin-bottom: 12px;">Nuova variazione</h4>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                <div class="form-group" style="margin-bottom: 8px;">
+                <div class="form-group mb-2">
                     <label class="form-label">Nuovo monte ore *</label>
                     <input type="number" id="var-monte-ore" class="form-control" placeholder="es. 18" step="0.5" min="0" max="40">
                 </div>
-                <div class="form-group" style="margin-bottom: 8px;">
+                <div class="form-group mb-2">
                     <label class="form-label">A partire da *</label>
                     <input type="month" id="var-mese-inizio" class="form-control">
                 </div>
             </div>
-            <div class="form-group" style="margin-bottom: 12px;">
+            <div class="form-group mb-3">
                 <label class="form-label">Nota (opzionale)</label>
                 <input type="text" id="var-nota" class="form-control" placeholder="es. Incremento delibera n. 123">
             </div>
@@ -500,7 +500,7 @@ function renderTable(utenti) {
             + '<td><a href="/utente/' + u.id + '" style="color:var(--primary);text-decoration:none;"><strong>' + esc(u.nome) + '</strong></a></td>'
             + '<td><a href="/utente/' + u.id + '" style="color:var(--primary);text-decoration:none;"><strong>' + esc(u.cognome) + '</strong></a></td>'
             + '<td>' + esc(u.nome_puntato) + '</td>'
-            + '<td style="text-align:center;">' + u.monte_ore_settimanale + '</td>'
+            + '<td class="text-center">' + u.monte_ore_settimanale + '</td>'
             + '<td>' + periodo + '</td>'
             + '<td>' + lista + '</td>'
             + '<td style="white-space:nowrap;">'
@@ -518,7 +518,7 @@ function renderTable(utenti) {
         + '<th>Cognome</th>'
         + '<th>Nome</th>'
         + '<th>N. Puntati</th>'
-        + '<th style="text-align:center;">Monte Ore</th>'
+        + '<th class="text-center">Monte Ore</th>'
         + '<th>Periodo</th>'
         + '<th>Lista Attesa</th>'
         + '<th>Azioni</th>'
@@ -889,7 +889,7 @@ function loadVariazioniMonteOre() {
                 html += '<td>' + fmtMeseAnno(v.mese_inizio) + '</td>';
                 html += '<td><strong>' + v.monte_ore + 'h</strong></td>';
                 html += '<td style="color:var(--text-secondary);">' + esc(v.nota || '-') + '</td>';
-                html += '<td style="text-align:right;"><button class="btn btn-sm btn-danger" onclick="deleteVariazioneMO(' + v.id + ')">Elimina</button></td>';
+                html += '<td class="text-right"><button class="btn btn-sm btn-danger" onclick="deleteVariazioneMO(' + v.id + ')">Elimina</button></td>';
                 html += '</tr>';
             });
             html += '</tbody></table>';

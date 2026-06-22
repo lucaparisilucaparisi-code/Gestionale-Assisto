@@ -3,12 +3,10 @@
 {% block title %}Gestione Commesse - Gestionale OEPAC{% endblock %}
 
 {% block content %}
-<div class="page-header">
+{% include '_impostazioni_tabs.html' %}
+<div class="page-header" style="margin-top: -4px;">
     <div class="page-header-row">
-        <div>
-            <h1 class="page-title">Gestione Commesse</h1>
-            <p class="page-subtitle">Crea e gestisci le commesse del servizio</p>
-        </div>
+        <div></div>
         <div class="header-actions">
             <button class="btn btn-primary" onclick="openModal('modal-nuova-commessa')">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
@@ -62,7 +60,7 @@
 
             <div class="form-group">
                 <label class="form-label">Colore</label>
-                <div class="flex gap-2" style="flex-wrap: wrap;">
+                <div class="flex gap-2 flex-wrap">
                     <button class="color-btn active" data-color="#0A84FF" style="background: #0A84FF;"></button>
                     <button class="color-btn" data-color="#BF5AF2" style="background: #BF5AF2;"></button>
                     <button class="color-btn" data-color="#30D158" style="background: #30D158;"></button>
@@ -106,7 +104,7 @@
 
             <div class="form-group">
                 <label class="form-label">Colore</label>
-                <div class="flex gap-2 edit-colors" style="flex-wrap: wrap;">
+                <div class="flex gap-2 edit-colors flex-wrap">
                     <button class="color-btn" data-color="#0A84FF" style="background: #0A84FF;"></button>
                     <button class="color-btn" data-color="#BF5AF2" style="background: #BF5AF2;"></button>
                     <button class="color-btn" data-color="#30D158" style="background: #30D158;"></button>

@@ -54,15 +54,6 @@
     100% { background-position: -200% 0; }
 }
 
-/* ==================== SEARCH INPUT WRAPPER ==================== */
-.search-input-wrapper {
-    display: flex;
-    align-items: center;
-    flex: 1;
-    gap: 10px;
-    position: relative;
-}
-
 /* ==================== SEARCH ICON ==================== */
 .search-icon {
     width: 20px;

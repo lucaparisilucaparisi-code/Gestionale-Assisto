@@ -3,8 +3,13 @@
 {% block title %}Dettaglio Utente - Gestionale OEPAC{% endblock %}
 
 {% block content %}
+<nav class="breadcrumb" aria-label="Percorso">
+    <a href="/utenti">Utenti</a>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    <span id="breadcrumb-nome">Dettaglio</span>
+</nav>
 <div class="page-header">
-    <div style="display: flex; align-items: center; gap: 12px;">
+    <div class="flex items-center gap-3">
         <a href="/utenti" class="btn btn-ghost btn-sm" title="Torna alla lista">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -27,6 +32,7 @@
 <div class="tabs-container">
     <div class="tabs">
         <button class="tab active" data-tab="anagrafica">Anagrafica</button>
+        <button class="tab" data-tab="assegnazioni">Assegnazioni OEPAC <span class="badge badge-sm" id="badge-assegnazioni">0</span></button>
         <button class="tab" data-tab="documenti">Documenti <span class="badge badge-sm" id="badge-documenti">0</span></button>
         <button class="tab" data-tab="note">Note <span class="badge badge-sm" id="badge-note">0</span></button>
         <button class="tab" data-tab="assenze">Assenze</button>
@@ -65,6 +71,79 @@
     </div>
 </div>
 
+<!-- Tab Assegnazioni OEPAC -->
+<div class="tab-content" id="tab-assegnazioni">
+    <div class="card mb-4" id="bilancio-card">
+        <div class="card-body">
+            <div class="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                    <div class="text-muted text-sm">Monte ore settimanale dell'assistito</div>
+                    <div style="font-size:1.4rem;font-weight:700" id="bil-monte">—</div>
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="text-muted"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14"/></svg>
+                <div>
+                    <div class="text-muted text-sm">Ore assegnate agli operatori</div>
+                    <div style="font-size:1.4rem;font-weight:700" id="bil-assegnate">—</div>
+                </div>
+                <div id="bil-stato"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Operatori assegnati</h2>
+            <button class="btn btn-primary btn-sm" onclick="apriAssegnazione()">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                Assegna operatore
+            </button>
+        </div>
+        <div class="card-body p-0" id="lista-assegnazioni"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+</div>
+
+<!-- Modal Assegnazione -->
+<div class="modal-overlay" id="modal-assegnazione">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title" id="ass-titolo">Assegna operatore</h3>
+            <button class="modal-close" onclick="closeModal('modal-assegnazione')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="ass-id">
+            <div class="form-group">
+                <label class="form-label">Operatore OEPAC *</label>
+                <select id="ass-dipendente" class="form-control"></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Ore settimanali *</label>
+                <input type="number" id="ass-ore" class="form-control" step="0.5" min="0">
+                <small class="text-muted" id="ass-suggerimento"></small>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Valida da</label>
+                    <input type="date" id="ass-da" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Valida fino a</label>
+                    <input type="date" id="ass-a" class="form-control">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Note</label>
+                <input type="text" id="ass-note" class="form-control">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-assegnazione')">Annulla</button>
+            <button class="btn btn-primary" onclick="salvaAssegnazione()">Salva</button>
+        </div>
+    </div>
+</div>
+
 <!-- Tab Documenti -->
 <div class="tab-content" id="tab-documenti">
     <div class="card">
@@ -77,7 +156,7 @@
                 Carica Documento
             </button>
         </div>
-        <div class="card-body" style="padding: 0;">
+        <div class="card-body p-0">
             <div class="table-container" id="table-documenti">
                 <div class="loading"><div class="spinner"></div></div>
             </div>
@@ -115,7 +194,7 @@
                 Registra Assenza
             </button>
         </div>
-        <div class="card-body" style="padding: 0;">
+        <div class="card-body p-0">
             <div class="table-container" id="table-assenze">
                 <div class="loading"><div class="spinner"></div></div>
             </div>
@@ -129,7 +208,7 @@
         <div class="card-header">
             <h2 class="card-title">Storico Ore per Mese</h2>
         </div>
-        <div class="card-body" style="padding: 0;">
+        <div class="card-body p-0">
             <div class="table-container" id="table-storico">
                 <div class="loading"><div class="spinner"></div></div>
             </div>
@@ -286,48 +365,6 @@
 </div>
 
 <style>
-.tabs-container {
-    margin-bottom: 20px;
-}
-.tabs {
-    display: flex;
-    gap: 4px;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0;
-    overflow-x: auto;
-}
-.tab {
-    padding: 12px 20px;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-weight: 500;
-    border-bottom: 2px solid transparent;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    white-space: nowrap;
-}
-.tab:hover {
-    color: var(--text-primary);
-    background: var(--bg-tertiary);
-}
-.tab.active {
-    color: var(--primary);
-    border-bottom-color: var(--primary);
-}
-.tab-content {
-    display: none;
-}
-.tab-content.active {
-    display: block;
-}
-.badge-sm {
-    font-size: 11px;
-    padding: 2px 6px;
-}
 .info-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -435,6 +472,7 @@ let chartAndamento = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     loadUtenteDettaglio();
+    loadAssegnazioni();
 
     // Tab switching
     document.querySelectorAll('.tab').forEach(tab => {
@@ -472,6 +510,113 @@ async function loadUtenteDettaglio() {
     }
 }
 
+// ==================== ASSEGNAZIONI OEPAC ====================
+let assegnazioniData = { assegnazioni: [], bilancio: null };
+let dipendentiCache = null;
+
+async function loadAssegnazioni() {
+    try {
+        assegnazioniData = await apiCall(`/api/utente/${utenteId}/assegnazioni`);
+    } catch (e) {
+        document.getElementById('lista-assegnazioni').innerHTML = '<div class="empty-state"><p class="empty-state-text">Errore nel caricamento</p></div>';
+        return;
+    }
+    renderAssegnazioni();
+}
+
+function renderAssegnazioni() {
+    const b = assegnazioniData.bilancio || { monte_ore: 0, assegnate: 0, differenza: 0, stato: 'ok' };
+    document.getElementById('badge-assegnazioni').textContent = assegnazioniData.assegnazioni.length;
+    document.getElementById('bil-monte').textContent = b.monte_ore + 'h';
+    document.getElementById('bil-assegnate').textContent = b.assegnate + 'h';
+    const stato = document.getElementById('bil-stato');
+    if (b.stato === 'ok') {
+        stato.innerHTML = '<span class="badge badge-success">Bilanciato</span>';
+    } else if (b.stato === 'sotto') {
+        stato.innerHTML = `<span class="badge badge-warning">Mancano ${Math.abs(b.differenza)}h da assegnare</span>`;
+    } else {
+        stato.innerHTML = `<span class="badge badge-danger">${b.differenza}h oltre il monte ore</span>`;
+    }
+
+    const c = document.getElementById('lista-assegnazioni');
+    if (!assegnazioniData.assegnazioni.length) {
+        c.innerHTML = '<div class="empty-state"><p class="empty-state-text">Nessun operatore assegnato. Assegna gli operatori fino a coprire il monte ore.</p></div>';
+        return;
+    }
+    c.innerHTML = `<table class="table"><thead><tr>
+        <th>Operatore</th><th class="text-right">Ore/sett.</th><th>Validità</th><th></th></tr></thead><tbody>
+        ${assegnazioniData.assegnazioni.map(a => {
+            const periodo = (a.valido_da || a.valido_a)
+                ? `${a.valido_da || '…'} → ${a.valido_a || 'sempre'}` : 'Sempre';
+            return `<tr ${a.dip_attivo ? '' : 'style="opacity:.55"'}>
+                <td><a href="/dipendente/${a.dipendente_id}">${escapeHtml(a.dip_cognome)} ${escapeHtml(a.dip_nome)}</a></td>
+                <td class="text-right font-mono">${a.ore_settimanali}</td>
+                <td class="text-muted text-sm">${escapeHtml(periodo)}${a.note ? ' · ' + escapeHtml(a.note) : ''}</td>
+                <td class="text-right">
+                    <button class="btn btn-sm btn-secondary" onclick='apriAssegnazione(${a.id})'>Modifica</button>
+                    <button class="btn btn-sm btn-danger" onclick='rimuoviAssegnazione(${a.id})'>×</button>
+                </td></tr>`;
+        }).join('')}
+        </tbody></table>`;
+}
+
+async function apriAssegnazione(id) {
+    if (!dipendentiCache) {
+        try { dipendentiCache = await apiCall('/api/dipendenti'); } catch (e) { dipendentiCache = []; }
+    }
+    if (!dipendentiCache.length) {
+        showToast('Nessun dipendente in anagrafica: aggiungili prima da "Dipendenti"', 'error');
+        return;
+    }
+    document.getElementById('ass-dipendente').innerHTML = dipendentiCache
+        .map(d => `<option value="${d.id}">${escapeHtml(d.cognome)} ${escapeHtml(d.nome)}</option>`).join('');
+    const b = assegnazioniData.bilancio || {};
+    const mancanti = b.differenza != null ? Math.max(-b.differenza, 0) : 0;
+    document.getElementById('ass-suggerimento').textContent = mancanti > 0 ? `Mancano ${mancanti}h per bilanciare il monte ore.` : '';
+
+    const ass = id ? assegnazioniData.assegnazioni.find(a => a.id === id) : null;
+    document.getElementById('ass-titolo').textContent = ass ? 'Modifica assegnazione' : 'Assegna operatore';
+    document.getElementById('ass-id').value = ass ? ass.id : '';
+    document.getElementById('ass-dipendente').value = ass ? ass.dipendente_id : (dipendentiCache[0] && dipendentiCache[0].id);
+    document.getElementById('ass-dipendente').disabled = !!ass;
+    document.getElementById('ass-ore').value = ass ? ass.ore_settimanali : (mancanti > 0 ? mancanti : '');
+    document.getElementById('ass-da').value = ass ? (ass.valido_da || '') : '';
+    document.getElementById('ass-a').value = ass ? (ass.valido_a || '') : '';
+    document.getElementById('ass-note').value = ass ? (ass.note || '') : '';
+    openModal('modal-assegnazione');
+}
+
+async function salvaAssegnazione() {
+    const id = document.getElementById('ass-id').value;
+    const payload = {
+        dipendente_id: document.getElementById('ass-dipendente').value,
+        ore_settimanali: document.getElementById('ass-ore').value || 0,
+        valido_da: document.getElementById('ass-da').value || '',
+        valido_a: document.getElementById('ass-a').value || '',
+        note: document.getElementById('ass-note').value.trim(),
+    };
+    try {
+        if (id) {
+            await apiCall(`/api/assegnazioni/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        } else {
+            await apiCall(`/api/utente/${utenteId}/assegnazioni`, { method: 'POST', body: JSON.stringify(payload) });
+        }
+        closeModal('modal-assegnazione');
+        showToast('Assegnazione salvata', 'success');
+        loadAssegnazioni();
+    } catch (e) {
+        showToast('Errore: ' + (e.message || 'salvataggio non riuscito'), 'error');
+    }
+}
+
+async function rimuoviAssegnazione(id) {
+    if (!confirm('Rimuovere questa assegnazione?')) return;
+    try {
+        await apiCall(`/api/assegnazioni/${id}`, { method: 'DELETE' });
+        loadAssegnazioni();
+    } catch (e) { showToast('Errore nella rimozione', 'error'); }
+}
+
 async function loadVariazioniBadge() {
     try {
         const resp = await fetch('/api/utenti/' + utenteId + '/variazioni-monte-ore');
@@ -494,6 +639,7 @@ function renderAnagrafica(data) {
     const u = data.utente;
     document.getElementById('page-title').textContent = `${u.nome} ${u.cognome}`;
     document.getElementById('page-subtitle').textContent = `${u.commessa} - ${u.scuola}`;
+    document.getElementById('breadcrumb-nome').textContent = `${u.nome} ${u.cognome}`;
 
     document.getElementById('info-personali').innerHTML = `
         <div class="info-grid">
@@ -730,7 +876,7 @@ function renderBudget(budget) {
         const progressClass = percentuale > 90 ? 'danger' : percentuale > 70 ? 'warning' : '';
 
         document.getElementById('stato-budget').innerHTML = `
-            <div class="stat-card" style="margin-bottom: 16px;">
+            <div class="stat-card mb-4">
                 <div class="stat-value">${budget.ore_erogate}h</div>
                 <div class="stat-label">Ore Utilizzate su ${budget.budget_annuale}h</div>
                 <div class="progress-bar">

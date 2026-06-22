@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}Dipendenti - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-row">
+        <div>
+            <h1 class="page-title">Dipendenti</h1>
+            <p class="page-subtitle">Anagrafica degli operatori OEPAC</p>
+        </div>
+        <div class="header-actions flex gap-2 items-center flex-wrap">
+            <a href="/import#dipendenti" class="btn btn-secondary">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                Importa da Excel
+            </a>
+            <button class="btn btn-primary" onclick="apriNuovo()">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Nuovo Dipendente
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="filters">
+    <div class="filter-group">
+        <label class="filter-label">Cerca</label>
+        <input type="text" id="filter-q" class="form-control" placeholder="Nome, cognome o C.F." style="width: 240px;">
+    </div>
+    <div class="filter-group">
+        <label class="filter-label">Commessa</label>
+        <select id="filter-commessa" class="form-control" style="width: 180px;">
+            <option value="">Tutte</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label class="filter-label">&nbsp;</label>
+        <label class="pointer flex items-center gap-2">
+            <input type="checkbox" id="filter-inattivi"> <span>Mostra disattivati</span>
+        </label>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Elenco Dipendenti</h2>
+        <span class="badge badge-secondary" id="count-badge">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-container" id="tabella-dipendenti">
+            <div class="loading"><div class="spinner"></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Dipendente -->
+<div class="modal-overlay" id="modal-dipendente">
+    <div class="modal" style="max-width: 620px;">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modal-titolo">Nuovo Dipendente</h3>
+            <button class="modal-close" onclick="closeModal('modal-dipendente')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="dip-id">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Nome *</label>
+                    <input type="text" id="dip-nome" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cognome *</label>
+                    <input type="text" id="dip-cognome" class="form-control">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Codice Fiscale</label>
+                    <input type="text" id="dip-cf" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Qualifica</label>
+                    <input type="text" id="dip-qualifica" class="form-control" placeholder="es. OEPAC">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="dip-email" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Telefono</label>
+                    <input type="text" id="dip-telefono" class="form-control">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Commessa</label>
+                    <select id="dip-commessa" class="form-control"><option value="">—</option></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ore contrattuali settimanali</label>
+                    <input type="number" id="dip-ore" class="form-control" step="0.5" min="0">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Sede</label>
+                    <input type="text" id="dip-sede" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Data assunzione</label>
+                    <input type="date" id="dip-assunzione" class="form-control">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Note</label>
+                <textarea id="dip-note" class="form-control" rows="2"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-dipendente')">Annulla</button>
+            <button class="btn btn-primary" onclick="salvaDipendente()">Salva</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let dipendenti = [];
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await popolaCommesse();
+    carica();
+    let t;
+    document.getElementById('filter-q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(carica, 250); });
+    document.getElementById('filter-commessa').addEventListener('change', carica);
+    document.getElementById('filter-inattivi').addEventListener('change', carica);
+});
+
+async function popolaCommesse() {
+    try {
+        const commesse = await apiCall('/api/commesse');
+        const opts = '<option value="">—</option>' + commesse.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('');
+        document.getElementById('dip-commessa').innerHTML = opts;
+        document.getElementById('filter-commessa').innerHTML = '<option value="">Tutte</option>' +
+            commesse.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('');
+    } catch (e) { console.error(e); }
+}
+
+async function carica() {
+    const q = document.getElementById('filter-q').value.trim();
+    const commessa = document.getElementById('filter-commessa').value;
+    const tutti = document.getElementById('filter-inattivi').checked ? '1' : '0';
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (commessa) params.set('commessa_id', commessa);
+    if (tutti === '1') params.set('tutti', '1');
+    try {
+        dipendenti = await apiCall('/api/dipendenti?' + params.toString());
+        render();
+    } catch (e) {
+        document.getElementById('tabella-dipendenti').innerHTML = '<div class="empty-state"><p class="empty-state-text">Errore nel caricamento</p></div>';
+    }
+}
+
+function render() {
+    document.getElementById('count-badge').textContent = dipendenti.length;
+    const c = document.getElementById('tabella-dipendenti');
+    if (!dipendenti.length) {
+        c.innerHTML = '<div class="empty-state"><h3 class="empty-state-title">Nessun dipendente</h3><p class="empty-state-text">Aggiungi un operatore o importa l\'anagrafica da Excel.</p></div>';
+        return;
+    }
+    c.innerHTML = `
+        <table class="table">
+            <thead><tr>
+                <th>Cognome e Nome</th><th>Qualifica</th><th>Commessa</th>
+                <th class="text-right">Ore contr.</th><th class="text-right">Assistiti</th>
+                <th class="text-right">Ore assegn.</th><th></th>
+            </tr></thead>
+            <tbody>
+                ${dipendenti.map(d => `
+                    <tr>
+                        <td><a href="/dipendente/${d.id}" class="font-semibold">${escapeHtml(d.cognome)} ${escapeHtml(d.nome)}</a>
+                            ${d.attivo ? '' : '<span class="badge badge-secondary" style="margin-left:6px">disattivato</span>'}</td>
+                        <td>${escapeHtml(d.qualifica || '—')}</td>
+                        <td>${escapeHtml(d.commessa || '—')}</td>
+                        <td class="text-right font-mono">${d.ore_contrattuali_settimanali != null ? d.ore_contrattuali_settimanali : '—'}</td>
+                        <td class="text-right font-mono">${d.assistiti}</td>
+                        <td class="text-right font-mono">${d.ore_assegnate}</td>
+                        <td class="text-right">
+                            <button class="btn btn-sm btn-secondary" onclick='apriModifica(${d.id})' title="Modifica">Modifica</button>
+                        </td>
+                    </tr>`).join('')}
+            </tbody>
+        </table>`;
+}
+
+function apriNuovo() {
+    document.getElementById('modal-titolo').textContent = 'Nuovo Dipendente';
+    ['dip-id','dip-nome','dip-cognome','dip-cf','dip-qualifica','dip-email','dip-telefono','dip-ore','dip-sede','dip-assunzione','dip-note'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('dip-commessa').value = '';
+    openModal('modal-dipendente');
+}
+
+function apriModifica(id) {
+    const d = dipendenti.find(x => x.id === id);
+    if (!d) return;
+    document.getElementById('modal-titolo').textContent = 'Modifica Dipendente';
+    document.getElementById('dip-id').value = d.id;
+    document.getElementById('dip-nome').value = d.nome || '';
+    document.getElementById('dip-cognome').value = d.cognome || '';
+    document.getElementById('dip-cf').value = d.codice_fiscale || '';
+    document.getElementById('dip-qualifica').value = d.qualifica || '';
+    document.getElementById('dip-email').value = d.email || '';
+    document.getElementById('dip-telefono').value = d.telefono || '';
+    document.getElementById('dip-commessa').value = d.commessa_id || '';
+    document.getElementById('dip-ore').value = d.ore_contrattuali_settimanali ?? '';
+    document.getElementById('dip-sede').value = d.sede || '';
+    document.getElementById('dip-assunzione').value = d.data_assunzione || '';
+    document.getElementById('dip-note').value = d.note || '';
+    openModal('modal-dipendente');
+}
+
+async function salvaDipendente() {
+    const id = document.getElementById('dip-id').value;
+    const payload = {
+        nome: document.getElementById('dip-nome').value.trim(),
+        cognome: document.getElementById('dip-cognome').value.trim(),
+        codice_fiscale: document.getElementById('dip-cf').value.trim() || null,
+        qualifica: document.getElementById('dip-qualifica').value.trim() || null,
+        email: document.getElementById('dip-email').value.trim() || null,
+        telefono: document.getElementById('dip-telefono').value.trim() || null,
+        commessa_id: document.getElementById('dip-commessa').value || null,
+        ore_contrattuali_settimanali: document.getElementById('dip-ore').value || null,
+        sede: document.getElementById('dip-sede').value.trim() || null,
+        data_assunzione: document.getElementById('dip-assunzione').value || null,
+        note: document.getElementById('dip-note').value.trim() || null,
+    };
+    if (!payload.nome || !payload.cognome) { showToast('Nome e cognome obbligatori', 'error'); return; }
+    try {
+        if (id) {
+            await apiCall(`/api/dipendenti/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+            showToast('Dipendente aggiornato', 'success');
+        } else {
+            await apiCall('/api/dipendenti', { method: 'POST', body: JSON.stringify(payload) });
+            showToast('Dipendente creato', 'success');
+        }
+        closeModal('modal-dipendente');
+        carica();
+    } catch (e) {
+        showToast('Errore: ' + (e.message || 'salvataggio non riuscito'), 'error');
+    }
+}
+</script>
+{% endblock %}

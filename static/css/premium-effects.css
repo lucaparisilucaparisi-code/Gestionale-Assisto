@@ -859,17 +859,6 @@
     border-color: var(--primary);
 }
 
-/* ==================== AUTO REFRESH INDICATOR ==================== */
-.auto-refresh-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    background: var(--bg-card);
-    border-radius: var(--radius);
-    border: 1px solid var(--border-color);
-}
-
 .status-dot {
     width: 8px;
     height: 8px;
@@ -1476,42 +1465,6 @@ select.form-control:focus {
     100% { transform: translateX(100%); }
 }
 
-/* === Floating Action Button Enhanced === */
-.fab {
-    position: relative;
-    overflow: visible;
-}
-
-.fab::after {
-    content: '';
-    position: absolute;
-    inset: -4px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--primary), var(--secondary));
-    opacity: 0;
-    filter: blur(12px);
-    z-index: -1;
-    transition: opacity 0.3s ease;
-}
-
-.fab:hover::after {
-    opacity: 0.6;
-}
-
-.fab-container.open .fab {
-    animation: fabRotate 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes fabRotate {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(135deg); }
-}
-
-/* FAB action - usa transizioni CSS invece di animazioni */
-.fab-action {
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
 /* === Page Header Animation === */
 /* Animazioni header rimosse per stabilità - usano transizioni CSS native */
 .page-header {
@@ -1589,13 +1542,6 @@ tr.utente-senza-ore {
     transition: stroke-dashoffset 0.5s ease;
 }
 
-/* === Typing Effect Cursor === */
-.typing-cursor::after {
-    content: '|';
-    animation: blink 1s step-end infinite;
-    color: var(--primary);
-}
-
 @keyframes blink {
     0%, 50% { opacity: 1; }
     51%, 100% { opacity: 0; }
@@ -1623,11 +1569,6 @@ tr.utente-senza-ore {
     40% { transform: translateX(6px); }
     60% { transform: translateX(-4px); }
     80% { transform: translateX(4px); }
-}
-
-/* === Success Checkmark Animation === */
-.success-checkmark {
-    animation: checkmarkDraw 0.5s ease forwards;
 }
 
 @keyframes checkmarkDraw {
