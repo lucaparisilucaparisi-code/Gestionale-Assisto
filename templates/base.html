@@ -95,6 +95,20 @@
                     <span>Dipendenti</span>
                 </a>
 
+                <a href="/turni" class="nav-link {% if request.path == '/turni' %}active{% endif %}">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Turni</span>
+                </a>
+
+                <a href="/sostituzioni" class="nav-link {% if request.path == '/sostituzioni' %}active{% endif %}">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14v-1a4 4 0 00-4-4h-4m0 0l3 3m-3-3l3-3" />
+                    </svg>
+                    <span>Sostituzioni</span>
+                </a>
+
                 <div class="nav-section">
                     <div class="nav-section-title">Analisi</div>
                 </div>
@@ -242,6 +256,24 @@
                         <div class="command-item-content">
                             <span class="command-item-title">Dipendenti</span>
                             <span class="command-item-desc">Anagrafica operatori OEPAC</span>
+                        </div>
+                    </div>
+                    <div class="command-item" data-action="navigate" data-url="/turni">
+                        <div class="command-item-icon purple">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        </div>
+                        <div class="command-item-content">
+                            <span class="command-item-title">Turni</span>
+                            <span class="command-item-desc">Planner turni settimanali</span>
+                        </div>
+                    </div>
+                    <div class="command-item" data-action="navigate" data-url="/sostituzioni">
+                        <div class="command-item-icon orange">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14v-1a4 4 0 00-4-4h-4m0 0l3 3m-3-3l3-3" /></svg>
+                        </div>
+                        <div class="command-item-content">
+                            <span class="command-item-title">Sostituzioni</span>
+                            <span class="command-item-desc">Assenze e coperture</span>
                         </div>
                     </div>
                     <div class="command-item" data-action="navigate" data-url="/report">

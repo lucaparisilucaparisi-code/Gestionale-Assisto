@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}Turni - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Planner Turni</h1>
+    <p class="page-subtitle">Orario settimanale ricorrente degli operatori, con variazioni per periodo</p>
+</div>
+
+<div class="tabs-container">
+    <nav class="tabs" aria-label="Viste turni">
+        <button type="button" class="tab active" data-vista="operatore">Per operatore</button>
+        <button type="button" class="tab" data-vista="giorno">Vista giornaliera</button>
+    </nav>
+</div>
+
+<!-- VISTA PER OPERATORE -->
+<div id="vista-operatore">
+    <div class="filters">
+        <div class="filter-group">
+            <label class="filter-label">Operatore</label>
+            <select id="sel-operatore" class="form-control" style="min-width: 280px;"></select>
+        </div>
+        <div class="filter-group" style="margin-left:auto; align-self:flex-end;">
+            <button class="btn btn-primary" id="btn-nuovo-turno" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                Nuovo turno
+            </button>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="riepilogo-op" style="display:none">
+        <div class="card-body flex items-center justify-between flex-wrap gap-3">
+            <div><span class="text-muted text-sm">Ore settimanali pianificate</span>
+                <div style="font-size:1.4rem;font-weight:700"><span id="ore-pianif">0</span>h</div></div>
+            <div id="ore-contr-box" style="display:none"><span class="text-muted text-sm">Ore contrattuali</span>
+                <div style="font-size:1.4rem;font-weight:700"><span id="ore-contr">—</span>h</div></div>
+            <div id="ore-stato"></div>
+        </div>
+    </div>
+
+    <div id="settimana"></div>
+</div>
+
+<!-- VISTA GIORNALIERA -->
+<div id="vista-giorno" style="display:none">
+    <div class="filters">
+        <div class="filter-group">
+            <label class="filter-label">Giorno</label>
+            <select id="sel-giorno" class="form-control" style="width:180px;"></select>
+        </div>
+        <div class="filter-group">
+            <label class="filter-label">Scuola (opzionale)</label>
+            <select id="sel-scuola-giorno" class="form-control" style="min-width:240px;"><option value="">Tutte</option></select>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h2 class="card-title">Turni del giorno</h2><span class="badge badge-secondary" id="giorno-count">0</span></div>
+        <div class="card-body p-0" id="giorno-lista"><div class="empty-state"><p class="empty-state-text">Seleziona un giorno</p></div></div>
+    </div>
+</div>
+
+<!-- Modal turno -->
+<div class="modal-overlay" id="modal-turno">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title" id="turno-titolo">Nuovo turno</h3>
+            <button class="modal-close" onclick="closeModal('modal-turno')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="turno-id">
+            <div class="form-group">
+                <label class="form-label">Giorno *</label>
+                <select id="turno-giorno" class="form-control"></select>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Dalle *</label><input type="time" id="turno-da" class="form-control"></div>
+                <div class="form-group"><label class="form-label">Alle *</label><input type="time" id="turno-a" class="form-control"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Scuola</label>
+                <select id="turno-scuola" class="form-control"><option value="">—</option></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Assistito (opzionale)</label>
+                <select id="turno-utente" class="form-control"><option value="">—</option></select>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Valido da</label><input type="date" id="turno-vda" class="form-control"></div>
+                <div class="form-group"><label class="form-label">Valido fino a</label><input type="date" id="turno-va" class="form-control"></div>
+            </div>
+            <p class="text-muted text-sm">Lascia vuote le date per un turno sempre valido. Compilale per una variazione a partire da una data o per un periodo.</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-turno')">Annulla</button>
+            <button class="btn btn-primary" onclick="salvaTurno()">Salva</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let GIORNI = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'];
+let opCorrente = null;       // dipendente selezionato
+let opInfo = null;           // dettaglio (per ore contrattuali e assistiti)
+let scuole = [];
+let turniCorrente = [];      // turni dell'operatore già caricati (per la modifica senza re-fetch)
+
+document.addEventListener('DOMContentLoaded', async () => {
+    document.querySelectorAll('[data-vista]').forEach(b => b.addEventListener('click', () => switchVista(b.dataset.vista)));
+    document.getElementById('btn-nuovo-turno').addEventListener('click', () => apriTurno());
+    document.getElementById('sel-operatore').addEventListener('change', onSelOperatore);
+    document.getElementById('sel-giorno').addEventListener('change', caricaGiorno);
+    document.getElementById('sel-scuola-giorno').addEventListener('change', caricaGiorno);
+
+    // popola select giorno
+    const gopts = GIORNI.map((g,i) => `<option value="${i}">${g}</option>`).join('');
+    document.getElementById('turno-giorno').innerHTML = gopts;
+    document.getElementById('sel-giorno').innerHTML = gopts;
+
+    scuole = await apiCall('/api/scuole').catch(() => []);
+    const sopts = '<option value="">—</option>' + scuole.map(s => `<option value="${s.id}">${escapeHtml(s.nome_completo)}</option>`).join('');
+    document.getElementById('turno-scuola').innerHTML = sopts;
+    document.getElementById('sel-scuola-giorno').innerHTML = '<option value="">Tutte</option>' + scuole.map(s => `<option value="${s.id}">${escapeHtml(s.nome_completo)}</option>`).join('');
+
+    const dips = await apiCall('/api/dipendenti').catch(() => []);
+    document.getElementById('sel-operatore').innerHTML = '<option value="">— scegli un operatore —</option>' +
+        dips.map(d => `<option value="${d.id}">${escapeHtml(d.cognome)} ${escapeHtml(d.nome)}</option>`).join('');
+});
+
+function switchVista(v) {
+    document.querySelectorAll('[data-vista]').forEach(b => b.classList.toggle('active', b.dataset.vista === v));
+    document.getElementById('vista-operatore').style.display = v === 'operatore' ? '' : 'none';
+    document.getElementById('vista-giorno').style.display = v === 'giorno' ? '' : 'none';
+}
+
+async function onSelOperatore() {
+    const id = document.getElementById('sel-operatore').value;
+    opCorrente = id || null;
+    document.getElementById('btn-nuovo-turno').disabled = !id;
+    if (!id) { document.getElementById('settimana').innerHTML = ''; document.getElementById('riepilogo-op').style.display = 'none'; return; }
+    opInfo = await apiCall(`/api/dipendenti/${id}`).catch(() => null);
+    // opzioni assistiti per il form turno
+    const uopts = '<option value="">—</option>' + (opInfo && opInfo.assistiti ? opInfo.assistiti.map(a => `<option value="${a.utente_id}">${escapeHtml(a.ut_cognome)} ${escapeHtml(a.ut_nome)}</option>`).join('') : '');
+    document.getElementById('turno-utente').innerHTML = uopts;
+    caricaSettimana();
+}
+
+async function caricaSettimana() {
+    const data = await apiCall(`/api/dipendenti/${opCorrente}/turni`);
+    turniCorrente = data.turni;
+    document.getElementById('riepilogo-op').style.display = '';
+    document.getElementById('ore-pianif').textContent = data.ore_pianificate;
+    const contr = opInfo && opInfo.ore_contrattuali_settimanali;
+    const box = document.getElementById('ore-contr-box'), stato = document.getElementById('ore-stato');
+    if (contr != null) {
+        box.style.display = ''; document.getElementById('ore-contr').textContent = contr;
+        const diff = Math.round((data.ore_pianificate - contr) * 100) / 100;
+        stato.innerHTML = Math.abs(diff) < 0.01 ? '<span class="badge badge-success">In linea col contratto</span>'
+            : diff < 0 ? `<span class="badge badge-warning">${Math.abs(diff)}h sotto il contratto</span>`
+            : `<span class="badge badge-danger">${diff}h oltre il contratto</span>`;
+    } else { box.style.display = 'none'; stato.innerHTML = ''; }
+
+    const perGiorno = {};
+    data.turni.forEach(t => { (perGiorno[t.giorno] = perGiorno[t.giorno] || []).push(t); });
+    let html = '<div class="grid-settimana">';
+    for (let g = 0; g < 7; g++) {
+        const turni = perGiorno[g] || [];
+        if (g >= 5 && turni.length === 0) continue; // nascondi weekend vuoto
+        html += `<div class="card giorno-col"><div class="card-header"><h3 class="card-title">${GIORNI[g]}</h3></div><div class="card-body p-0">`;
+        if (!turni.length) {
+            html += '<div class="empty-state" style="padding:16px"><p class="empty-state-text text-sm">Nessun turno</p></div>';
+        } else {
+            html += turni.map(t => {
+                const periodo = (t.valido_da || t.valido_a) ? `<div class="text-xs text-warning">${t.valido_da || '…'} → ${t.valido_a || 'sempre'}</div>` : '';
+                const dove = [t.scuola, (t.ut_cognome ? t.ut_cognome + ' ' + t.ut_nome : null)].filter(Boolean).map(escapeHtml).join(' · ');
+                return `<div class="turno-item">
+                    <div class="flex justify-between items-center gap-2">
+                        <strong class="font-mono">${t.ora_inizio}–${t.ora_fine}</strong>
+                        <span>
+                            <button class="btn btn-sm btn-secondary" onclick='apriTurno(${t.id})'>✎</button>
+                            <button class="btn btn-sm btn-danger" onclick='eliminaTurno(${t.id})'>×</button>
+                        </span>
+                    </div>
+                    ${dove ? `<div class="text-sm text-muted">${dove}</div>` : ''}
+                    ${periodo}
+                </div>`;
+            }).join('');
+        }
+        html += '</div></div>';
+    }
+    html += '</div>';
+    document.getElementById('settimana').innerHTML = html;
+}
+
+function apriTurno(id) {
+    // il turno (se in modifica) è già in memoria: niente fetch asincrono
+    const t = id ? turniCorrente.find(x => x.id === id) : null;
+    document.getElementById('turno-titolo').textContent = id ? 'Modifica turno' : 'Nuovo turno';
+    document.getElementById('turno-id').value = id || '';
+    document.getElementById('turno-giorno').value = t ? t.giorno : '0';
+    document.getElementById('turno-da').value = t ? t.ora_inizio : '';
+    document.getElementById('turno-a').value = t ? t.ora_fine : '';
+    document.getElementById('turno-scuola').value = (t && t.scuola_id) || '';
+    document.getElementById('turno-utente').value = (t && t.utente_id) || '';
+    document.getElementById('turno-vda').value = (t && t.valido_da) || '';
+    document.getElementById('turno-va').value = (t && t.valido_a) || '';
+    openModal('modal-turno');
+}
+
+async function salvaTurno() {
+    const id = document.getElementById('turno-id').value;
+    const payload = {
+        giorno: parseInt(document.getElementById('turno-giorno').value),
+        ora_inizio: document.getElementById('turno-da').value,
+        ora_fine: document.getElementById('turno-a').value,
+        scuola_id: document.getElementById('turno-scuola').value || null,
+        utente_id: document.getElementById('turno-utente').value || null,
+        valido_da: document.getElementById('turno-vda').value || null,
+        valido_a: document.getElementById('turno-va').value || null,
+    };
+    if (!payload.ora_inizio || !payload.ora_fine) { showToast('Inserisci gli orari', 'error'); return; }
+    if (payload.ora_inizio >= payload.ora_fine) { showToast("L'ora di fine deve essere dopo l'inizio", 'error'); return; }
+    try {
+        if (id) await apiCall(`/api/turni/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        else await apiCall(`/api/dipendenti/${opCorrente}/turni`, { method: 'POST', body: JSON.stringify(payload) });
+        closeModal('modal-turno'); showToast('Turno salvato', 'success'); caricaSettimana();
+    } catch (e) { showToast('Errore: ' + (e.message || ''), 'error'); }
+}
+
+async function eliminaTurno(id) {
+    if (!confirm('Eliminare questo turno?')) return;
+    await apiCall(`/api/turni/${id}`, { method: 'DELETE' });
+    caricaSettimana();
+}
+
+async function caricaGiorno() {
+    const g = document.getElementById('sel-giorno').value;
+    const sc = document.getElementById('sel-scuola-giorno').value;
+    const qs = new URLSearchParams({ giorno: g }); if (sc) qs.set('scuola_id', sc);
+    const turni = await apiCall('/api/turni/giorno?' + qs.toString());
+    document.getElementById('giorno-count').textContent = turni.length;
+    const c = document.getElementById('giorno-lista');
+    if (!turni.length) { c.innerHTML = '<div class="empty-state"><p class="empty-state-text">Nessun turno in questo giorno</p></div>'; return; }
+    c.innerHTML = `<table class="table"><thead><tr><th>Orario</th><th>Operatore</th><th>Scuola</th><th>Assistito</th></tr></thead><tbody>
+        ${turni.map(t => `<tr>
+            <td class="font-mono">${t.ora_inizio}–${t.ora_fine}</td>
+            <td>${escapeHtml(t.dip_cognome)} ${escapeHtml(t.dip_nome)}</td>
+            <td class="text-muted text-sm">${escapeHtml((t.scuola||'—').substring(0,40))}</td>
+            <td class="text-sm">${t.ut_cognome ? escapeHtml(t.ut_cognome+' '+t.ut_nome) : '—'}</td></tr>`).join('')}
+        </tbody></table>`;
+}
+</script>
+<style>
+.grid-settimana { display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:16px; }
+.giorno-col .card-title { font-size:0.95rem; }
+.turno-item { padding:10px 14px; border-bottom:1px solid var(--border-color); }
+.turno-item:last-child { border-bottom:none; }
+</style>
+{% endblock %}

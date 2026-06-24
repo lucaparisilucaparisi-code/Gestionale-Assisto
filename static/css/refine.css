@@ -263,3 +263,11 @@ details.section[open] > summary::before { transform: rotate(90deg); }
 /* ---------- 13. Utility minime mancanti (per migrare inline esatti) ---------- */
 .p-0 { padding: 0 !important; }
 .pointer { cursor: pointer; }
+
+/* Griglie a colonne usate nelle schede di dettaglio (erano usate ma mai definite) */
+.grid { display: grid; gap: var(--sp-4); }
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 860px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+}

@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import re
 import shutil
 import json
 from datetime import datetime
@@ -445,6 +446,69 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_dipendenti_nome ON dipendenti(cognome, nome)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_assegnazioni_utente ON assegnazioni(utente_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_assegnazioni_dipendente ON assegnazioni(dipendente_id)')
+
+    # Turni settimanali ricorrenti degli operatori. giorno: 0=Lun .. 6=Dom.
+    # ora_inizio/ora_fine in 'HH:MM'. valido_da/valido_a (date) gestiscono le
+    # variazioni nel tempo (NULL = sempre valido).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS turni (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dipendente_id INTEGER NOT NULL,
+            giorno INTEGER NOT NULL,
+            ora_inizio TEXT NOT NULL,
+            ora_fine TEXT NOT NULL,
+            scuola_id INTEGER,
+            utente_id INTEGER,
+            valido_da TEXT,
+            valido_a TEXT,
+            note TEXT,
+            data_inserimento TEXT NOT NULL,
+            FOREIGN KEY (dipendente_id) REFERENCES dipendenti(id) ON DELETE CASCADE,
+            FOREIGN KEY (scuola_id) REFERENCES scuole(id),
+            FOREIGN KEY (utente_id) REFERENCES utenti(id)
+        )
+    ''')
+
+    # Assenze degli operatori (per la gestione delle sostituzioni)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS assenze_dipendenti (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dipendente_id INTEGER NOT NULL,
+            data_inizio TEXT NOT NULL,
+            data_fine TEXT,
+            tipo TEXT,
+            motivazione TEXT,
+            note TEXT,
+            data_registrazione TEXT NOT NULL,
+            FOREIGN KEY (dipendente_id) REFERENCES dipendenti(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Sostituzioni: copertura di un turno in una data specifica da parte di un
+    # altro operatore (per coprire un'assenza).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sostituzioni (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            turno_id INTEGER,
+            data TEXT NOT NULL,
+            assente_id INTEGER NOT NULL,
+            sostituto_id INTEGER,
+            assenza_id INTEGER,
+            stato TEXT DEFAULT 'da_coprire',
+            note TEXT,
+            data_inserimento TEXT NOT NULL,
+            FOREIGN KEY (turno_id) REFERENCES turni(id) ON DELETE CASCADE,
+            FOREIGN KEY (assente_id) REFERENCES dipendenti(id),
+            FOREIGN KEY (sostituto_id) REFERENCES dipendenti(id),
+            FOREIGN KEY (assenza_id) REFERENCES assenze_dipendenti(id) ON DELETE CASCADE
+        )
+    ''')
+
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_turni_dipendente ON turni(dipendente_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_turni_giorno ON turni(giorno)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_turni_scuola ON turni(scuola_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_assenze_dip ON assenze_dipendenti(dipendente_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_sostituzioni_data ON sostituzioni(data)')
 
     # ==================== INDICI PER PERFORMANCE ====================
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_utenti_scuola ON utenti(scuola_id)')
@@ -2570,6 +2634,8 @@ def get_bilancio_assegnazioni_utente(utente_id):
 
 
 def create_assegnazione(utente_id, dipendente_id, ore_settimanali, valido_da=None, valido_a=None, note=None):
+    if (ore_settimanali or 0) < 0:
+        raise ValueError('Le ore settimanali non possono essere negative')
     with get_db_context() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -2583,6 +2649,8 @@ def create_assegnazione(utente_id, dipendente_id, ore_settimanali, valido_da=Non
 def update_assegnazione(assegnazione_id, ore_settimanali=None, valido_da=None, valido_a=None, note=None):
     sets, params = [], []
     if ore_settimanali is not None:
+        if ore_settimanali < 0:
+            raise ValueError('Le ore settimanali non possono essere negative')
         sets.append("ore_settimanali = ?"); params.append(ore_settimanali)
     # valido_da/valido_a/note: passa stringa per impostare, '' per azzerare
     if valido_da is not None:
@@ -2666,6 +2734,414 @@ def count_assegnazioni_dipendente(dipendente_id):
         ''', (dipendente_id,))
         r = cursor.fetchone()
         return {'assistiti': r['n'], 'ore_assegnate': round(r['ore'] or 0, 2)}
+
+
+def count_assegnazioni_bulk():
+    """Conteggio assistiti e ore assegnate per TUTTI i dipendenti in una query.
+    Ritorna {dipendente_id: {'assistiti': n, 'ore_assegnate': ore}}."""
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT a.dipendente_id, COUNT(*) as n, COALESCE(SUM(a.ore_settimanali), 0) as ore
+            FROM assegnazioni a JOIN utenti u ON a.utente_id = u.id
+            WHERE u.attivo = 1
+            GROUP BY a.dipendente_id
+        ''')
+        return {r['dipendente_id']: {'assistiti': r['n'], 'ore_assegnate': round(r['ore'] or 0, 2)}
+                for r in cursor.fetchall()}
+
+
+# ==================== TURNI (planner settimanale) ====================
+
+GIORNI_NOMI = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
+
+
+def _norm_ora(s):
+    """Normalizza un orario in 'HH:MM' (così il confronto fra stringhe è corretto)."""
+    s = (str(s) if s is not None else '').strip()
+    m = re.match(r'^(\d{1,2}):(\d{2})', s)
+    if not m:
+        return s
+    return f"{int(m.group(1)):02d}:{m.group(2)}"
+
+
+def _turno_valido_in_data(t, data_str):
+    """Il turno è valido nella data (YYYY-MM-DD) data la finestra valido_da/valido_a?"""
+    if t.get('valido_da') and data_str < t['valido_da']:
+        return False
+    if t.get('valido_a') and data_str > t['valido_a']:
+        return False
+    return True
+
+
+def _overlap(a_in, a_fin, b_in, b_fin):
+    """True se gli intervalli [a_in,a_fin) e [b_in,b_fin) si sovrappongono (orari 'HH:MM')."""
+    return a_in < b_fin and b_in < a_fin
+
+
+def _ora_valida(s):
+    return bool(re.match(r'^([01]\d|2[0-3]):[0-5]\d$', _norm_ora(s)))
+
+
+def _periodi_sovrapposti(da1, a1, da2, a2):
+    """Due finestre di validità (date 'YYYY-MM-DD', None = aperta) si sovrappongono?"""
+    da1, a1 = da1 or '0000-00-00', a1 or '9999-99-99'
+    da2, a2 = da2 or '0000-00-00', a2 or '9999-99-99'
+    return da1 <= a2 and da2 <= a1
+
+
+def _verifica_turno(cursor, dipendente_id, giorno, ora_inizio, ora_fine,
+                    valido_da, valido_a, escludi_id=None):
+    """Valida orari e segnala sovrapposizioni con altri turni dello stesso
+    operatore nello stesso giorno (con finestre di validità sovrapposte).
+    Solleva ValueError con messaggio chiaro."""
+    oi, of = _norm_ora(ora_inizio), _norm_ora(ora_fine)
+    if not _ora_valida(oi) or not _ora_valida(of):
+        raise ValueError('Orario non valido')
+    if oi >= of:
+        raise ValueError("L'ora di fine deve essere successiva a quella di inizio")
+    if valido_da and valido_a and valido_da > valido_a:
+        raise ValueError('La data "valido da" deve precedere "valido a"')
+    cursor.execute('SELECT id, ora_inizio, ora_fine, valido_da, valido_a FROM turni WHERE dipendente_id = ? AND giorno = ?',
+                   (dipendente_id, int(giorno)))
+    for r in cursor.fetchall():
+        if escludi_id and r['id'] == escludi_id:
+            continue
+        if _overlap(oi, of, r['ora_inizio'], r['ora_fine']) and \
+           _periodi_sovrapposti(valido_da, valido_a, r['valido_da'], r['valido_a']):
+            raise ValueError(f"Si sovrappone a un turno esistente ({r['ora_inizio']}–{r['ora_fine']})")
+
+
+def get_turni_dipendente(dipendente_id, data=None):
+    """Turni settimanali di un operatore (opzionalmente validi in una data)."""
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT t.*, s.nome_completo as scuola, u.nome as ut_nome, u.cognome as ut_cognome
+            FROM turni t
+            LEFT JOIN scuole s ON t.scuola_id = s.id
+            LEFT JOIN utenti u ON t.utente_id = u.id
+            WHERE t.dipendente_id = ?
+            ORDER BY t.giorno, t.ora_inizio
+        ''', (dipendente_id,))
+        turni = [dict(r) for r in cursor.fetchall()]
+    if data:
+        turni = [t for t in turni if _turno_valido_in_data(t, data)]
+    return turni
+
+
+def get_turni_giorno(giorno, data=None, scuola_id=None):
+    """Tutti i turni in un giorno della settimana (vista giornaliera)."""
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        q = '''
+            SELECT t.*, s.nome_completo as scuola,
+                   d.nome as dip_nome, d.cognome as dip_cognome,
+                   u.nome as ut_nome, u.cognome as ut_cognome
+            FROM turni t
+            JOIN dipendenti d ON t.dipendente_id = d.id
+            LEFT JOIN scuole s ON t.scuola_id = s.id
+            LEFT JOIN utenti u ON t.utente_id = u.id
+            WHERE t.giorno = ? AND d.attivo = 1
+        '''
+        params = [giorno]
+        if scuola_id:
+            q += ' AND t.scuola_id = ?'
+            params.append(scuola_id)
+        q += ' ORDER BY t.ora_inizio, d.cognome'
+        cursor.execute(q, params)
+        turni = [dict(r) for r in cursor.fetchall()]
+    if data:
+        turni = [t for t in turni if _turno_valido_in_data(t, data)]
+    return turni
+
+
+def create_turno(dipendente_id, giorno, ora_inizio, ora_fine, scuola_id=None,
+                 utente_id=None, valido_da=None, valido_a=None, note=None):
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        _verifica_turno(cursor, dipendente_id, giorno, ora_inizio, ora_fine,
+                        valido_da or None, valido_a or None)
+        cursor.execute('''
+            INSERT INTO turni (dipendente_id, giorno, ora_inizio, ora_fine, scuola_id,
+                               utente_id, valido_da, valido_a, note, data_inserimento)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (dipendente_id, int(giorno), _norm_ora(ora_inizio), _norm_ora(ora_fine),
+              scuola_id or None, utente_id or None, valido_da or None, valido_a or None,
+              note, datetime.now().isoformat()))
+        return cursor.lastrowid
+
+
+def update_turno(turno_id, **campi):
+    consentiti = ['giorno', 'ora_inizio', 'ora_fine', 'scuola_id', 'utente_id',
+                  'valido_da', 'valido_a', 'note']
+    sets, params = [], []
+    for k in consentiti:
+        if k in campi:
+            v = campi[k]
+            if k in ('ora_inizio', 'ora_fine'):
+                v = _norm_ora(v)
+            if k in ('scuola_id', 'utente_id', 'valido_da', 'valido_a'):
+                v = v or None
+            sets.append(f"{k} = ?")
+            params.append(v)
+    if not sets:
+        return
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM turni WHERE id = ?", (turno_id,))
+        cur = cursor.fetchone()
+        if not cur:
+            return
+        m = dict(cur)
+        m.update({k: campi[k] for k in consentiti if k in campi})
+        _verifica_turno(cursor, m['dipendente_id'], m['giorno'], m['ora_inizio'],
+                        m['ora_fine'], m['valido_da'] or None, m['valido_a'] or None,
+                        escludi_id=turno_id)
+        params.append(turno_id)
+        cursor.execute(f"UPDATE turni SET {', '.join(sets)} WHERE id = ?", params)
+
+
+def delete_turno(turno_id):
+    with get_db_context() as conn:
+        conn.cursor().execute("DELETE FROM turni WHERE id = ?", (turno_id,))
+
+
+def ore_settimanali_pianificate(dipendente_id):
+    """Somma (in ore) della durata dei turni settimanali di un operatore."""
+    tot = 0.0
+    for t in get_turni_dipendente(dipendente_id):
+        try:
+            hi, mi = map(int, t['ora_inizio'].split(':'))
+            hf, mf = map(int, t['ora_fine'].split(':'))
+            tot += max(0, (hf * 60 + mf) - (hi * 60 + mi)) / 60.0
+        except (ValueError, AttributeError):
+            pass
+    return round(tot, 2)
+
+
+# ==================== ASSENZE DIPENDENTI ====================
+
+def get_assenze_dipendente(dipendente_id):
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''SELECT * FROM assenze_dipendenti WHERE dipendente_id = ?
+                          ORDER BY data_inizio DESC''', (dipendente_id,))
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def dipendente_assente_in_data(dipendente_id, data_str):
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT 1 FROM assenze_dipendenti
+            WHERE dipendente_id = ? AND data_inizio <= ?
+              AND (data_fine IS NULL OR data_fine >= ?) LIMIT 1
+        ''', (dipendente_id, data_str, data_str))
+        return cursor.fetchone() is not None
+
+
+def create_assenza_dipendente(dipendente_id, data_inizio, data_fine=None, tipo=None,
+                              motivazione=None, note=None):
+    if data_fine and data_fine < data_inizio:
+        raise ValueError('La data di fine non può precedere quella di inizio')
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO assenze_dipendenti (dipendente_id, data_inizio, data_fine, tipo,
+                                            motivazione, note, data_registrazione)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (dipendente_id, data_inizio, data_fine or None, tipo, motivazione, note,
+              datetime.now().isoformat()))
+        return cursor.lastrowid
+
+
+def delete_assenza_dipendente(assenza_id):
+    with get_db_context() as conn:
+        conn.cursor().execute("DELETE FROM assenze_dipendenti WHERE id = ?", (assenza_id,))
+
+
+def get_turni_occorrenze(dipendente_id, data_inizio, data_fine):
+    """Espande i turni settimanali di un operatore nelle occorrenze concrete
+    (date) comprese nel periodo [data_inizio, data_fine]. Utile per sapere quali
+    turni vanno coperti durante un'assenza."""
+    from datetime import timedelta
+    d0 = datetime.strptime(data_inizio, '%Y-%m-%d').date()
+    d1 = datetime.strptime(data_fine, '%Y-%m-%d').date()
+    turni = get_turni_dipendente(dipendente_id)
+    occorrenze = []
+    giorno_corr = d0
+    while giorno_corr <= d1:
+        ds = giorno_corr.isoformat()
+        wd = giorno_corr.weekday()  # 0=Lun
+        for t in turni:
+            if t['giorno'] == wd and _turno_valido_in_data(t, ds):
+                occ = dict(t)
+                occ['data'] = ds
+                occorrenze.append(occ)
+        giorno_corr += timedelta(days=1)
+    return occorrenze
+
+
+# ==================== SOSTITUZIONI ====================
+
+def _scuole_operatore(dipendente_id):
+    """Insieme degli id-scuola dove l'operatore opera (da turni o assegnazioni)."""
+    scuole = set()
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT scuola_id FROM turni WHERE dipendente_id = ? AND scuola_id IS NOT NULL", (dipendente_id,))
+        scuole.update(r['scuola_id'] for r in cursor.fetchall())
+        cursor.execute('''SELECT DISTINCT u.scuola_id FROM assegnazioni a
+                          JOIN utenti u ON a.utente_id = u.id
+                          WHERE a.dipendente_id = ? AND u.scuola_id IS NOT NULL''', (dipendente_id,))
+        scuole.update(r['scuola_id'] for r in cursor.fetchall())
+    return scuole
+
+
+def suggerisci_sostituti(scuola_id, giorno, ora_inizio, ora_fine, data, escludi_id):
+    """Operatori candidati a sostituire, ordinati per criterio:
+    1) liberi in quella fascia E che operano in quella scuola
+    2) liberi in quella fascia (altrove)
+    'libero' = nessun turno sovrapposto valido in quella data e non assente.
+    Tutti i dati vengono caricati in blocco (poche query) e filtrati in memoria."""
+    ora_inizio, ora_fine = _norm_ora(ora_inizio), _norm_ora(ora_fine)
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        # Assenti nella data (1 query)
+        cursor.execute('''SELECT dipendente_id FROM assenze_dipendenti
+                          WHERE data_inizio <= ? AND (data_fine IS NULL OR data_fine >= ?)''',
+                       (data, data))
+        assenti = {r['dipendente_id'] for r in cursor.fetchall()}
+
+        # Turni di quel giorno validi nella data, per dipendente (1 query)
+        cursor.execute('''SELECT dipendente_id, ora_inizio, ora_fine FROM turni
+                          WHERE giorno = ?
+                            AND (valido_da IS NULL OR valido_da <= ?)
+                            AND (valido_a IS NULL OR valido_a >= ?)''',
+                       (giorno, data, data))
+        turni_per_dip = {}
+        for r in cursor.fetchall():
+            turni_per_dip.setdefault(r['dipendente_id'], []).append((r['ora_inizio'], r['ora_fine']))
+
+        # Scuole di ogni operatore (turni + assegnazioni) in 1 query
+        cursor.execute('''
+            SELECT dipendente_id, scuola_id FROM turni WHERE scuola_id IS NOT NULL
+            UNION
+            SELECT a.dipendente_id, u.scuola_id FROM assegnazioni a
+            JOIN utenti u ON a.utente_id = u.id WHERE u.scuola_id IS NOT NULL
+        ''')
+        scuole_per_dip = {}
+        for r in cursor.fetchall():
+            scuole_per_dip.setdefault(r['dipendente_id'], set()).add(r['scuola_id'])
+
+    candidati = []
+    for d in get_all_dipendenti():
+        if d['id'] == escludi_id or d['id'] in assenti:
+            continue
+        occupato = any(_overlap(ora_inizio, ora_fine, oi, of)
+                       for oi, of in turni_per_dip.get(d['id'], []))
+        if occupato:
+            continue
+        stessa_scuola = bool(scuola_id) and scuola_id in scuole_per_dip.get(d['id'], set())
+        candidati.append({
+            'id': d['id'],
+            'nome': f"{d['cognome']} {d['nome']}",
+            'stessa_scuola': stessa_scuola,
+            'priorita': 1 if stessa_scuola else 2,
+        })
+    candidati.sort(key=lambda c: (c['priorita'], c['nome']))
+    return candidati
+
+
+def get_sostituzioni(data_inizio=None, data_fine=None, solo_da_coprire=False):
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        q = '''
+            SELECT so.*, t.giorno, t.ora_inizio, t.ora_fine, t.scuola_id,
+                   sc.nome_completo as scuola,
+                   da.cognome as assente_cognome, da.nome as assente_nome,
+                   ds.cognome as sost_cognome, ds.nome as sost_nome
+            FROM sostituzioni so
+            LEFT JOIN turni t ON so.turno_id = t.id
+            LEFT JOIN scuole sc ON t.scuola_id = sc.id
+            LEFT JOIN dipendenti da ON so.assente_id = da.id
+            LEFT JOIN dipendenti ds ON so.sostituto_id = ds.id
+            WHERE 1=1
+        '''
+        params = []
+        if data_inizio:
+            q += ' AND so.data >= ?'; params.append(data_inizio)
+        if data_fine:
+            q += ' AND so.data <= ?'; params.append(data_fine)
+        if solo_da_coprire:
+            q += " AND so.stato = 'da_coprire'"
+        q += ' ORDER BY so.data, t.ora_inizio'
+        cursor.execute(q, params)
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def crea_sostituzioni_per_assenza(assenza_id):
+    """Per ogni occorrenza di turno coperta dall'assenza crea una riga
+    sostituzione 'da_coprire' (se non esiste già). Ritorna quante create."""
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM assenze_dipendenti WHERE id = ?", (assenza_id,))
+        a = cursor.fetchone()
+        if not a:
+            return 0
+        a = dict(a)
+    data_fine = a['data_fine'] or a['data_inizio']
+    occ = get_turni_occorrenze(a['dipendente_id'], a['data_inizio'], data_fine)
+    create = 0
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        for o in occ:
+            cursor.execute('''SELECT 1 FROM sostituzioni WHERE turno_id = ? AND data = ? LIMIT 1''',
+                           (o['id'], o['data']))
+            if cursor.fetchone():
+                continue
+            cursor.execute('''
+                INSERT INTO sostituzioni (turno_id, data, assente_id, assenza_id, stato, data_inserimento)
+                VALUES (?, ?, ?, ?, 'da_coprire', ?)
+            ''', (o['id'], o['data'], a['dipendente_id'], assenza_id, datetime.now().isoformat()))
+            create += 1
+    return create
+
+
+def assegna_sostituto(sostituzione_id, sostituto_id):
+    """Assegna un sostituto, ma solo se è davvero disponibile in quella fascia
+    (non assente, nessun turno sovrapposto). Solleva ValueError altrimenti."""
+    s = get_sostituzione(sostituzione_id)
+    if not s:
+        raise ValueError('Sostituzione non trovata')
+    if s.get('giorno') is not None:
+        disponibili = {c['id'] for c in suggerisci_sostituti(
+            s.get('scuola_id'), s['giorno'], s['ora_inizio'], s['ora_fine'],
+            s['data'], escludi_id=s['assente_id'])}
+        if sostituto_id not in disponibili:
+            raise ValueError('Operatore non disponibile in quella fascia (occupato o assente)')
+    with get_db_context() as conn:
+        conn.cursor().execute(
+            "UPDATE sostituzioni SET sostituto_id = ?, stato = 'coperta' WHERE id = ?",
+            (sostituto_id, sostituzione_id))
+
+
+def annulla_sostituto(sostituzione_id):
+    with get_db_context() as conn:
+        conn.cursor().execute(
+            "UPDATE sostituzioni SET sostituto_id = NULL, stato = 'da_coprire' WHERE id = ?",
+            (sostituzione_id,))
+
+
+def get_sostituzione(sostituzione_id):
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''SELECT so.*, t.giorno, t.ora_inizio, t.ora_fine, t.scuola_id
+                          FROM sostituzioni so LEFT JOIN turni t ON so.turno_id = t.id
+                          WHERE so.id = ?''', (sostituzione_id,))
+        r = cursor.fetchone()
+        return dict(r) if r else None
 
 
 # ==================== BACKUP ====================

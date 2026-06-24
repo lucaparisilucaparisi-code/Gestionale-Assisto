@@ -588,9 +588,11 @@ async function apriAssegnazione(id) {
 
 async function salvaAssegnazione() {
     const id = document.getElementById('ass-id').value;
+    const ore = parseFloat(document.getElementById('ass-ore').value || 0);
+    if (isNaN(ore) || ore < 0) { showToast('Inserisci un numero di ore valido (≥ 0)', 'error'); return; }
     const payload = {
         dipendente_id: document.getElementById('ass-dipendente').value,
-        ore_settimanali: document.getElementById('ass-ore').value || 0,
+        ore_settimanali: ore,
         valido_da: document.getElementById('ass-da').value || '',
         valido_a: document.getElementById('ass-a').value || '',
         note: document.getElementById('ass-note').value.trim(),

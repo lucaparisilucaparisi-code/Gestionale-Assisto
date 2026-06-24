@@ -604,6 +604,18 @@ def dipendente_dettaglio_page(dipendente_id):
     return render_template('dipendente_dettaglio.html', dipendente_id=dipendente_id)
 
 
+@app.route('/turni')
+def turni_page():
+    """Planner turni settimanali degli operatori"""
+    return render_template('turni.html')
+
+
+@app.route('/sostituzioni')
+def sostituzioni_page():
+    """Assenze degli operatori e gestione delle sostituzioni"""
+    return render_template('sostituzioni.html')
+
+
 @app.route('/impostazioni')
 def impostazioni_page():
     """Area Impostazioni: porta alla prima sezione (Commesse)."""
@@ -1181,8 +1193,9 @@ def api_get_dipendenti():
     search = request.args.get('q')
     commessa_id = request.args.get('commessa_id', type=int)
     dipendenti = db.get_all_dipendenti(include_inactive=include_inactive, search=search, commessa_id=commessa_id)
+    conteggi = db.count_assegnazioni_bulk()
     for d in dipendenti:
-        d.update(db.count_assegnazioni_dipendente(d['id']))
+        d.update(conteggi.get(d['id'], {'assistiti': 0, 'ore_assegnate': 0}))
     return jsonify(dipendenti)
 
 
@@ -1336,8 +1349,11 @@ def api_create_assegnazione(utente_id):
         ore = float(data.get('ore_settimanali') or 0)
     except (ValueError, TypeError):
         return jsonify({'error': 'Ore non valide'}), 400
-    aid = db.create_assegnazione(utente_id, dipendente_id, ore,
-                                 data.get('valido_da'), data.get('valido_a'), data.get('note'))
+    try:
+        aid = db.create_assegnazione(utente_id, dipendente_id, ore,
+                                     data.get('valido_da'), data.get('valido_a'), data.get('note'))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     db.log_audit('create', 'assegnazione', aid, f"utente {utente_id} -> dip {dipendente_id} ({ore}h)")
     return jsonify({'success': True, 'id': aid, 'bilancio': db.get_bilancio_assegnazioni_utente(utente_id)})
 
@@ -1346,19 +1362,141 @@ def api_create_assegnazione(utente_id):
 def api_update_assegnazione(assegnazione_id):
     data = request.json or {}
     ore = data.get('ore_settimanali')
-    db.update_assegnazione(
-        assegnazione_id,
-        ore_settimanali=float(ore) if ore is not None else None,
-        valido_da=data.get('valido_da'),
-        valido_a=data.get('valido_a'),
-        note=data.get('note'),
-    )
+    try:
+        db.update_assegnazione(
+            assegnazione_id,
+            ore_settimanali=float(ore) if ore is not None else None,
+            valido_da=data.get('valido_da'),
+            valido_a=data.get('valido_a'),
+            note=data.get('note'),
+        )
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     return jsonify({'success': True})
 
 
 @app.route('/api/assegnazioni/<int:assegnazione_id>', methods=['DELETE'])
 def api_delete_assegnazione(assegnazione_id):
     db.delete_assegnazione(assegnazione_id)
+    return jsonify({'success': True})
+
+
+# ==================== API TURNI ====================
+
+@app.route('/api/dipendenti/<int:dipendente_id>/turni', methods=['GET'])
+def api_get_turni_dipendente(dipendente_id):
+    return jsonify({
+        'turni': db.get_turni_dipendente(dipendente_id),
+        'ore_pianificate': db.ore_settimanali_pianificate(dipendente_id),
+        'giorni': db.GIORNI_NOMI,
+    })
+
+
+@app.route('/api/dipendenti/<int:dipendente_id>/turni', methods=['POST'])
+def api_create_turno(dipendente_id):
+    d = request.json or {}
+    if d.get('giorno') is None or not d.get('ora_inizio') or not d.get('ora_fine'):
+        return jsonify({'error': 'Giorno e orari sono obbligatori'}), 400
+    try:
+        tid = db.create_turno(dipendente_id, d['giorno'], d['ora_inizio'], d['ora_fine'],
+                              d.get('scuola_id'), d.get('utente_id'),
+                              d.get('valido_da'), d.get('valido_a'), d.get('note'))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    return jsonify({'success': True, 'id': tid})
+
+
+@app.route('/api/turni/<int:turno_id>', methods=['PUT'])
+def api_update_turno(turno_id):
+    try:
+        db.update_turno(turno_id, **(request.json or {}))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    return jsonify({'success': True})
+
+
+@app.route('/api/turni/<int:turno_id>', methods=['DELETE'])
+def api_delete_turno(turno_id):
+    db.delete_turno(turno_id)
+    return jsonify({'success': True})
+
+
+@app.route('/api/turni/giorno')
+def api_turni_giorno():
+    """Vista giornaliera: tutti i turni di un giorno della settimana."""
+    giorno = request.args.get('giorno', type=int)
+    data = request.args.get('data')
+    scuola_id = request.args.get('scuola_id', type=int)
+    if giorno is None:
+        return jsonify({'error': 'Giorno obbligatorio'}), 400
+    return jsonify(db.get_turni_giorno(giorno, data=data, scuola_id=scuola_id))
+
+
+# ==================== API ASSENZE DIPENDENTI ====================
+
+@app.route('/api/dipendenti/<int:dipendente_id>/assenze', methods=['GET'])
+def api_get_assenze_dip(dipendente_id):
+    return jsonify(db.get_assenze_dipendente(dipendente_id))
+
+
+@app.route('/api/dipendenti/<int:dipendente_id>/assenze', methods=['POST'])
+def api_create_assenza_dip(dipendente_id):
+    d = request.json or {}
+    if not d.get('data_inizio'):
+        return jsonify({'error': 'Data inizio obbligatoria'}), 400
+    try:
+        aid = db.create_assenza_dipendente(dipendente_id, d['data_inizio'], d.get('data_fine'),
+                                           d.get('tipo'), d.get('motivazione'), d.get('note'))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    # Genera automaticamente le sostituzioni da coprire per i turni nel periodo
+    create = db.crea_sostituzioni_per_assenza(aid)
+    db.log_audit('create', 'assenza_dipendente', aid, f"dip {dipendente_id}, {create} turni da coprire")
+    return jsonify({'success': True, 'id': aid, 'turni_da_coprire': create})
+
+
+@app.route('/api/assenze-dipendenti/<int:assenza_id>', methods=['DELETE'])
+def api_delete_assenza_dip(assenza_id):
+    db.delete_assenza_dipendente(assenza_id)
+    return jsonify({'success': True})
+
+
+# ==================== API SOSTITUZIONI ====================
+
+@app.route('/api/sostituzioni', methods=['GET'])
+def api_get_sostituzioni():
+    return jsonify(db.get_sostituzioni(
+        data_inizio=request.args.get('da'),
+        data_fine=request.args.get('a'),
+        solo_da_coprire=request.args.get('da_coprire') == '1',
+    ))
+
+
+@app.route('/api/sostituzioni/<int:sostituzione_id>/candidati', methods=['GET'])
+def api_candidati_sostituzione(sostituzione_id):
+    s = db.get_sostituzione(sostituzione_id)
+    if not s:
+        return jsonify({'error': 'Sostituzione non trovata'}), 404
+    candidati = db.suggerisci_sostituti(s.get('scuola_id'), s['giorno'], s['ora_inizio'],
+                                        s['ora_fine'], s['data'], escludi_id=s['assente_id'])
+    return jsonify({'candidati': candidati})
+
+
+@app.route('/api/sostituzioni/<int:sostituzione_id>/assegna', methods=['POST'])
+def api_assegna_sostituto(sostituzione_id):
+    d = request.json or {}
+    if not d.get('sostituto_id'):
+        return jsonify({'error': 'Sostituto obbligatorio'}), 400
+    try:
+        db.assegna_sostituto(sostituzione_id, d['sostituto_id'])
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    return jsonify({'success': True})
+
+
+@app.route('/api/sostituzioni/<int:sostituzione_id>/annulla', methods=['POST'])
+def api_annulla_sostituto(sostituzione_id):
+    db.annulla_sostituto(sostituzione_id)
     return jsonify({'success': True})
 
 

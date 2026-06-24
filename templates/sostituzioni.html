@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}Assenze e Sostituzioni - Gestionale OEPAC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Assenze e Sostituzioni</h1>
+    <p class="page-subtitle">Registra le assenze degli operatori e assegna i sostituti ai turni scoperti</p>
+</div>
+
+<!-- Registra assenza -->
+<div class="card mb-4">
+    <div class="card-header"><h2 class="card-title">Registra un'assenza</h2></div>
+    <div class="card-body">
+        <div class="form-row">
+            <div class="form-group" style="flex:2">
+                <label class="form-label">Operatore *</label>
+                <select id="ass-operatore" class="form-control"></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Dal *</label>
+                <input type="date" id="ass-da" class="form-control">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Al</label>
+                <input type="date" id="ass-a" class="form-control">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tipo</label>
+                <select id="ass-tipo" class="form-control">
+                    <option value="malattia">Malattia</option>
+                    <option value="ferie">Ferie</option>
+                    <option value="permesso">Permesso</option>
+                    <option value="altro">Altro</option>
+                </select>
+            </div>
+        </div>
+        <div class="flex justify-between items-center flex-wrap gap-2">
+            <span class="text-muted text-sm">Registrando l'assenza, i turni dell'operatore nel periodo vengono messi automaticamente tra quelli da coprire.</span>
+            <button class="btn btn-primary" id="btn-registra">Registra assenza</button>
+        </div>
+    </div>
+</div>
+
+<!-- Turni da coprire -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Turni da coprire</h2>
+        <div class="flex gap-2 items-center">
+            <label class="pointer flex items-center gap-2 text-sm"><input type="checkbox" id="solo-scoperti" checked> Solo da coprire</label>
+            <span class="badge badge-secondary" id="sost-count">0</span>
+        </div>
+    </div>
+    <div class="card-body p-0" id="lista-sost"><div class="loading"><div class="spinner"></div></div></div>
+</div>
+
+<!-- Modal candidati sostituto -->
+<div class="modal-overlay" id="modal-cand">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Scegli il sostituto</h3>
+            <button class="modal-close" onclick="closeModal('modal-cand')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+        </div>
+        <div class="modal-body">
+            <p class="text-muted text-sm mb-3" id="cand-info"></p>
+            <div id="cand-lista"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let GIORNI = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'];
+let sostCorrente = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const dips = await apiCall('/api/dipendenti').catch(() => []);
+    document.getElementById('ass-operatore').innerHTML = '<option value="">— scegli —</option>' +
+        dips.map(d => `<option value="${d.id}">${escapeHtml(d.cognome)} ${escapeHtml(d.nome)}</option>`).join('');
+    document.getElementById('btn-registra').addEventListener('click', registraAssenza);
+    document.getElementById('solo-scoperti').addEventListener('change', caricaSostituzioni);
+    caricaSostituzioni();
+});
+
+async function registraAssenza() {
+    const op = document.getElementById('ass-operatore').value;
+    const da = document.getElementById('ass-da').value;
+    if (!op || !da) { showToast('Operatore e data inizio obbligatori', 'error'); return; }
+    const payload = {
+        data_inizio: da,
+        data_fine: document.getElementById('ass-a').value || null,
+        tipo: document.getElementById('ass-tipo').value,
+    };
+    try {
+        const r = await apiCall(`/api/dipendenti/${op}/assenze`, { method: 'POST', body: JSON.stringify(payload) });
+        showToast(`Assenza registrata: ${r.turni_da_coprire} turni da coprire`, 'success');
+        document.getElementById('ass-da').value = ''; document.getElementById('ass-a').value = '';
+        caricaSostituzioni();
+    } catch (e) { showToast('Errore: ' + (e.message || ''), 'error'); }
+}
+
+async function caricaSostituzioni() {
+    const soloScoperti = document.getElementById('solo-scoperti').checked;
+    const qs = soloScoperti ? '?da_coprire=1' : '';
+    let sost;
+    try { sost = await apiCall('/api/sostituzioni' + qs); }
+    catch (e) {
+        document.getElementById('lista-sost').innerHTML = '<div class="empty-state"><h3 class="empty-state-title text-danger">Errore di caricamento</h3><p class="empty-state-text">Non è stato possibile recuperare i turni da coprire. Riprova.</p></div>';
+        return;
+    }
+    document.getElementById('sost-count').textContent = sost.length;
+    const c = document.getElementById('lista-sost');
+    if (!sost.length) {
+        c.innerHTML = '<div class="empty-state"><h3 class="empty-state-title">Nessun turno da coprire</h3><p class="empty-state-text">Registra un\'assenza per generare i turni scoperti.</p></div>';
+        return;
+    }
+    c.innerHTML = `<table class="table"><thead><tr>
+        <th>Data</th><th>Orario</th><th>Scuola</th><th>Operatore assente</th><th>Sostituto</th><th></th>
+        </tr></thead><tbody>
+        ${sost.map(s => {
+            const giorno = (s.giorno != null) ? GIORNI[s.giorno] : '';
+            const orario = (s.ora_inizio) ? `${s.ora_inizio}–${s.ora_fine}` : '—';
+            const coperta = s.stato === 'coperta' && s.sost_cognome;
+            return `<tr>
+                <td>${escapeHtml(s.data)}<div class="text-xs text-muted">${giorno}</div></td>
+                <td class="font-mono">${orario}</td>
+                <td class="text-sm text-muted">${escapeHtml((s.scuola||'—').substring(0,32))}</td>
+                <td>${escapeHtml((s.assente_cognome||'')+' '+(s.assente_nome||''))}</td>
+                <td>${coperta ? `<span class="badge badge-success">${escapeHtml(s.sost_cognome+' '+s.sost_nome)}</span>` : '<span class="badge badge-warning">da coprire</span>'}</td>
+                <td class="text-right">
+                    ${coperta
+                        ? `<button class="btn btn-sm btn-secondary" onclick="annulla(${s.id})">Cambia</button>`
+                        : `<button class="btn btn-sm btn-primary" onclick="trovaSostituto(${s.id})">Trova sostituto</button>`}
+                </td></tr>`;
+        }).join('')}
+        </tbody></table>`;
+}
+
+async function trovaSostituto(id) {
+    sostCorrente = id;
+    document.getElementById('cand-info').textContent = 'Operatori liberi in quella fascia. In cima quelli che operano già nella stessa scuola.';
+    document.getElementById('cand-lista').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    openModal('modal-cand');
+    try {
+        const r = await apiCall(`/api/sostituzioni/${id}/candidati`);
+        if (!r.candidati.length) {
+            document.getElementById('cand-lista').innerHTML = '<div class="empty-state"><p class="empty-state-text">Nessun operatore disponibile in questa fascia oraria.</p></div>';
+            return;
+        }
+        document.getElementById('cand-lista').innerHTML = r.candidati.map(c => `
+            <div class="flex justify-between items-center" style="padding:10px 0;border-bottom:1px solid var(--border-color)">
+                <div>${escapeHtml(c.nome)} ${c.stessa_scuola ? '<span class="badge badge-success" style="margin-left:6px">stessa scuola</span>' : '<span class="badge badge-secondary" style="margin-left:6px">altra scuola</span>'}</div>
+                <button class="btn btn-sm btn-primary" onclick="assegna(${c.id})">Assegna</button>
+            </div>`).join('');
+    } catch (e) {
+        document.getElementById('cand-lista').innerHTML = '<div class="empty-state"><p class="empty-state-text">Errore nel calcolo dei candidati</p></div>';
+    }
+}
+
+async function assegna(sostitutoId) {
+    try {
+        await apiCall(`/api/sostituzioni/${sostCorrente}/assegna`, { method: 'POST', body: JSON.stringify({ sostituto_id: sostitutoId }) });
+        closeModal('modal-cand'); showToast('Sostituto assegnato', 'success'); caricaSostituzioni();
+    } catch (e) { showToast('Errore', 'error'); }
+}
+
+async function annulla(id) {
+    await apiCall(`/api/sostituzioni/${id}/annulla`, { method: 'POST', body: JSON.stringify({}) });
+    caricaSostituzioni();
+}
+</script>
+{% endblock %}
