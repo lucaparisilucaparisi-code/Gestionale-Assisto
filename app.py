@@ -885,6 +885,12 @@ def api_import_excel():
     if not file.filename.endswith(('.xlsx', '.xls')):
         return jsonify({'error': 'Formato file non valido. Usa .xlsx o .xls'}), 400
 
+    # Rete di sicurezza: snapshot del DB prima di scrivere, per poter annullare
+    # l'import ripristinando questo backup.
+    backup_pre_import = db.create_backup()
+    if backup_pre_import:
+        logger.info(f"Backup pre-import creato: {backup_pre_import}")
+
     try:
         logger.info(f"Lettura file: {file.filename}")
 
@@ -1127,7 +1133,12 @@ def api_import_rendicontazione():
         analisi = _analizza_rendicontazione(file)
     except Exception as e:
         logger.error(f"Errore lettura rendicontazione: {e}", exc_info=True)
-        return jsonify({'error': f'Errore lettura file: {str(e)}'}), 500
+        return jsonify({'error': 'Errore nella lettura del file Excel. Controlla che sia un file valido.'}), 500
+
+    # Rete di sicurezza: snapshot del DB prima di scrivere le ore (annullabile via restore)
+    backup_pre_import = db.create_backup()
+    if backup_pre_import:
+        logger.info(f"Backup pre-import rendicontazione creato: {backup_pre_import}")
 
     dettaglio = []
     tot_scritti = tot_saltati_pieni = tot_non_trovati = tot_ambigui = 0
@@ -3095,6 +3106,15 @@ def api_get_backups():
     return jsonify(backups)
 
 
+@app.route('/api/backup/download/<path:backup_name>', methods=['GET'])
+def api_download_backup(backup_name):
+    """Scarica un file di backup, per salvarlo dove si vuole (chiavetta, cloud...)."""
+    backup_path = db.percorso_backup_valido(backup_name)
+    if not backup_path:
+        return jsonify({'error': 'Backup non trovato'}), 404
+    return send_file(backup_path, as_attachment=True, download_name=backup_name)
+
+
 @app.route('/api/backup/restore', methods=['POST'])
 def api_restore_backup():
     """Ripristina un backup"""
@@ -4994,12 +5014,30 @@ def api_stats_heatmap(anno_scolastico):
                 {'mese': 6, 'anno': anno_fine}
             ]
 
-            # Cache variazioni monte ore per ogni mese
+            # Pre-calcolo per evitare una query per ogni (utente x mese): variazioni
+            # monte ore e giorni di calendario una volta per mese, e le ore erogate
+            # di tutti gli utenti in un'unica query bulk.
             variazioni_per_mese = {}
+            giorni_per_mese = {}
             for m in mesi_scolastici:
                 variazioni_per_mese[(m['mese'], m['anno'])] = db.get_monte_ore_effettivo_bulk(m['anno'], m['mese'])
+                giorni_per_mese[(m['mese'], m['anno'])] = db.get_calendario(anno_scolastico, m['mese'], m['anno'])
 
-            # Per ogni utente, ottieni le ore erogate per ogni mese
+            ore_map = {}
+            utente_ids = [u['id'] for u in utenti]
+            if utente_ids:
+                ph = ','.join('?' * len(utente_ids))
+                cursor = conn.execute(f"""
+                    SELECT utente_id, anno, mese, COALESCE(SUM(ore_lavorate_60), 0) as ore
+                    FROM rendicontazione
+                    WHERE utente_id IN ({ph})
+                      AND ((anno = ? AND mese >= 9) OR (anno = ? AND mese <= 6))
+                    GROUP BY utente_id, anno, mese
+                """, utente_ids + [anno_inizio, anno_fine])
+                for r in cursor.fetchall():
+                    ore_map[(r['utente_id'], r['anno'], r['mese'])] = r['ore']
+
+            # Componi la heatmap: nessuna query dentro il loop
             heatmap_data = []
             for utente in utenti:
                 utente_data = {
@@ -5011,23 +5049,16 @@ def api_stats_heatmap(anno_scolastico):
                 }
 
                 for m in mesi_scolastici:
-                    cursor = conn.execute("""
-                        SELECT COALESCE(SUM(ore_lavorate_60), 0) as ore
-                        FROM rendicontazione
-                        WHERE utente_id = ? AND anno = ? AND mese = ?
-                    """, [utente['id'], m['anno'], m['mese']])
-
-                    ore = cursor.fetchone()['ore']
+                    ore = ore_map.get((utente['id'], m['anno'], m['mese']), 0)
 
                     # Monte ore effettivo (con variazione se presente)
                     var_mese = variazioni_per_mese.get((m['mese'], m['anno']), {})
                     monte_ore_eff = var_mese.get(utente['id'], utente['monte_ore_settimanale'] or 0)
 
-                    # Calcola ore previste per il mese (formula centralizzata)
-                    giorni_lav = db.get_calendario(anno_scolastico, m['mese'], m['anno'])
+                    # Ore previste per il mese (formula centralizzata)
+                    giorni_lav = giorni_per_mese[(m['mese'], m['anno'])]
                     _, ore_previste_ridotte = db.calcola_media_prevista(monte_ore_eff, giorni_lav)
 
-                    # Calcola percentuale completamento
                     percentuale = (ore / ore_previste_ridotte * 100) if ore_previste_ridotte > 0 else 0
 
                     utente_data['mesi'].append({
@@ -5046,7 +5077,7 @@ def api_stats_heatmap(anno_scolastico):
             })
     except Exception as e:
         logger.error(f"Errore heatmap: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore nel calcolo della heatmap'}), 500
 
 
 @app.route('/api/stats/scuole-dettaglio')
