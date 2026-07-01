@@ -2335,15 +2335,19 @@ def api_get_rendicontazione(anno, mese):
     dati = db.get_rendicontazione_completa(anno, mese, commessa)
     totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
 
-    # Calcola totali generali
+    # Calcola totali generali. Imponibile/IVA/totale sono ricalcolati UNA volta
+    # sulla somma delle ore (stesso metodo di export e totali per scuola): sommare
+    # i per-riga gia' arrotondati divergerebbe di centesimi dai documenti ufficiali.
+    ore_totali_100 = sum(d['ore_lavorate_100'] or 0 for d in dati)
+    imponibile_tot, iva_tot, totale_tot = config.calcola_fatturazione(ore_totali_100)
     totale_generale = {
         'ore_lavorate_60': sum(d['ore_lavorate_60'] or 0 for d in dati),
-        'ore_lavorate_100': sum(d['ore_lavorate_100'] or 0 for d in dati),
-        'imponibile_100': sum(d['imponibile_100'] or 0 for d in dati),
-        'iva_100': sum(d['iva_100'] or 0 for d in dati),
-        'totale_100': sum(d['totale_100'] or 0 for d in dati),
+        'ore_lavorate_100': ore_totali_100,
+        'imponibile_100': imponibile_tot,
+        'iva_100': iva_tot,
+        'totale_100': totale_tot,
         'pasti': sum(d['pasti'] or 0 for d in dati),
-        'credito_debito': sum(d['credito_debito'] or 0 for d in dati),
+        'credito_debito': round(sum(d['credito_debito'] or 0 for d in dati), 2),
         'num_utenti': len(dati)
     }
 
@@ -2541,7 +2545,8 @@ def api_storico_utente(utente_id):
 
         for r in cursor.fetchall():
             monte_ore = _get_monte_ore_mese(r['anno'], r['mese'])
-            giorni = r['giorni_lavorativi'] or config.GIORNI_LAVORATIVI_DEFAULT
+            # Regola unica condivisa con la vista mensile (calendario -> default)
+            giorni = db.risolvi_giorni_lavorativi(r['giorni_lavorativi'])
             media_60, media_assenza = db.calcola_media_prevista(monte_ore, giorni)
             ore = r['ore_lavorate_60'] or 0
             credito_debito = media_assenza - ore
@@ -5050,10 +5055,10 @@ def api_stats_scuole_dettaglio():
             """
 
             if anno and mese:
+                # Solo le ore in SQL: imponibile/totale-IVA derivati in Python da
+                # config (mai costanti tariffa/IVA hardcoded nelle query).
                 query += """,
-                    COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate,
-                    COALESCE(SUM(r.ore_lavorate_60 * 24.07), 0) as imponibile,
-                    COALESCE(SUM(r.ore_lavorate_60 * 25.27), 0) as totale_iva
+                    COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate
                 """
 
             query += """
@@ -5094,10 +5099,17 @@ def api_stats_scuole_dettaglio():
             cursor = conn.execute(query, params)
             scuole = [dict(row) for row in cursor.fetchall()]
 
+            # Deriva imponibile e totale IVA-inclusa dalle ore, via config
+            if anno and mese:
+                for s in scuole:
+                    imponibile, _iva, totale = config.calcola_fatturazione(s.get('ore_erogate', 0))
+                    s['imponibile'] = imponibile
+                    s['totale_iva'] = totale
+
             return jsonify({'scuole': scuole})
     except Exception as e:
         logger.error(f"Errore stats scuole: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore nel calcolo delle statistiche'}), 500
 
 
 @app.route('/api/stats/validazione')
@@ -5291,8 +5303,7 @@ def api_stats_confronto_annuale_dettaglio():
                 query = """
                     SELECT
                         COUNT(DISTINCT r.utente_id) as num_utenti,
-                        COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate,
-                        COALESCE(SUM(r.ore_lavorate_60 * 24.07), 0) as imponibile
+                        COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate
                     FROM rendicontazione r
                     JOIN utenti u ON r.utente_id = u.id
                 """
@@ -5317,7 +5328,7 @@ def api_stats_confronto_annuale_dettaglio():
                     'mese': mese,
                     'num_utenti': dati['num_utenti'],
                     'ore_erogate': round(dati['ore_erogate'], 2),
-                    'imponibile': round(dati['imponibile'], 2)
+                    'imponibile': config.calcola_fatturazione(dati['ore_erogate'])[0]
                 })
 
             # Calcola variazioni percentuali

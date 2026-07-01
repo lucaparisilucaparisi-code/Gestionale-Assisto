@@ -362,19 +362,13 @@ def api_export_excel(anno, mese):
     dati = db.get_rendicontazione_completa(anno, mese, commessa)
     totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
 
-    # Costanti per calcolo fatturazione
-    TARIFFA = config.TARIFFA_ORARIA
-    IVA_PERC = config.IVA_PERCENTUALE
-
     # Calcola totali ore
     ore_totali_60 = sum(d['ore_lavorate_60'] or 0 for d in dati)
     ore_totali_100 = sum(d['ore_lavorate_100'] or 0 for d in dati)
     ore_previste = sum(d['media_con_assenza_60'] or 0 for d in dati)
 
     # Calcolo fatturazione corretto (sul totale, non somma di arrotondamenti)
-    imponibile_totale = round(ore_totali_100 * TARIFFA, 2)
-    iva_totale = round(imponibile_totale * IVA_PERC, 2)
-    totale_lordo = round(imponibile_totale + iva_totale, 2)
+    imponibile_totale, iva_totale, totale_lordo = config.calcola_fatturazione(ore_totali_100)
 
     # Calcola statistiche avanzate
     totale_generale = {
@@ -897,8 +891,12 @@ def api_export_annuale(anno_scolastico):
             utenti_aggregati[utente_key]['ore_erogate_totali'] += d['ore_lavorate_60'] or 0
             utenti_aggregati[utente_key]['monte_ore_previsto_totale'] += d['media_con_assenza_60'] or 0
             utenti_aggregati[utente_key]['pasti_totali'] += d['pasti'] or 0
-            utenti_aggregati[utente_key]['imponibile_totale'] += d['imponibile_100'] or 0
             utenti_aggregati[utente_key]['mesi_attivi'] += 1
+
+    # Imponibile per-utente calcolato UNA volta sul totale ore (non somma di
+    # arrotondamenti mensili): cosi' la somma della colonna quadra col totale annuale.
+    for u in utenti_aggregati.values():
+        u['imponibile_totale'] = config.calcola_fatturazione(u['ore_erogate_totali'])[0]
 
     # Calcola totali annuali
     totale_ore_60 = sum(
@@ -917,9 +915,7 @@ def api_export_annuale(anno_scolastico):
         sum(d['pasti'] or 0 for d in m['dati'])
         for m in tutti_dati_anno.values()
     )
-    imponibile_annuale = round(totale_ore_100 * TARIFFA, 2)
-    iva_annuale = round(imponibile_annuale * IVA_PERC, 2)
-    totale_lordo_annuale = round(imponibile_annuale + iva_annuale, 2)
+    imponibile_annuale, iva_annuale, totale_lordo_annuale = config.calcola_fatturazione(totale_ore_100)
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -1973,9 +1969,7 @@ def api_export_word(anno, mese):
     credito_debito = sum(d['credito_debito'] or 0 for d in dati)
 
     # Calcolo fatturazione
-    imponibile_totale = round(ore_totali_100 * TARIFFA, 2)
-    iva_totale = round(imponibile_totale * IVA_PERC, 2)
-    totale_lordo = round(imponibile_totale + iva_totale, 2)
+    imponibile_totale, iva_totale, totale_lordo = config.calcola_fatturazione(ore_totali_100)
 
     # Percentuale completamento
     perc_completamento = (ore_totali_60 / ore_previste * 100) if ore_previste > 0 else 0

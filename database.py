@@ -893,6 +893,18 @@ def get_calendario(anno_scolastico, mese, anno):
         return result['giorni_lavorativi'] if result else 0
 
 
+def risolvi_giorni_lavorativi(giorni_calendario):
+    """Regola UNICA per i giorni lavorativi effettivi di un mese.
+
+    Usa il valore da calendario (per tipo scuola) se presente e > 0, altrimenti
+    il fallback config.GIORNI_LAVORATIVI_DEFAULT. Il valore eventualmente salvato
+    in rendicontazione e' solo una cache potenzialmente obsoleta e non viene usato
+    come fonte. Va richiamata da TUTTI i percorsi (vista mensile, storico utente,
+    aggregati) affinche' mostrino lo stesso numero ed evitino incoerenze
+    (es. vista mensile a 0 giorni e storico a 22 per un mese senza calendario)."""
+    return giorni_calendario if giorni_calendario else config.GIORNI_LAVORATIVI_DEFAULT
+
+
 def get_calendario_full(anno_scolastico, mese, anno):
     """Ottiene (giorni_lavorativi, giorni_lavorativi_altri) per un mese.
     Il secondo e' None se non impostato -> si usa lo stesso di giorni_lavorativi."""
@@ -1127,11 +1139,6 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
-    # Calcola tutti i valori derivati
-    COSTO_ORARIO = config.TARIFFA_ORARIA
-    TASSO_ASSENZA = config.TASSO_ASSENZA
-    IVA = config.IVA_PERCENTUALE
-
     risultati = []
     # Cache del calendario per non rifare la query ad ogni riga
     giorni_default_cal, giorni_altri_cal = get_calendario_full(anno_scolastico, mese, anno)
@@ -1150,8 +1157,8 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
         else:
             giorni_cal = giorni_altri_cal if giorni_altri_cal is not None else giorni_default_cal
 
-        # Fallback al valore salvato solo se il calendario non ha dati
-        giorni = giorni_cal if giorni_cal else (row_dict['giorni_lavorativi'] or 0)
+        # Regola unica condivisa (calendario -> default), coerente con lo storico
+        giorni = risolvi_giorni_lavorativi(giorni_cal)
 
         # Monte ore: usa variazione se presente, altrimenti valore base
         utente_id = row_dict['utente_id']
@@ -1170,14 +1177,9 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
         media_mensile_100 = media_mensile
         media_con_assenza_100 = media_con_assenza
 
-        # Calcoli economici (su ore in formato decimale/centesimale)
-        imponibile_100 = ore_lavorate_100 * COSTO_ORARIO
-        iva_100 = imponibile_100 * IVA
-        totale_100 = imponibile_100 + iva_100
-
-        imponibile_60 = ore_lavorate_60 * COSTO_ORARIO
-        iva_60 = imponibile_60 * IVA
-        totale_60 = imponibile_60 + iva_60
+        # Calcoli economici (helper unico: stessa formula ovunque)
+        imponibile_100, iva_100, totale_100 = config.calcola_fatturazione(ore_lavorate_100)
+        imponibile_60, iva_60, totale_60 = config.calcola_fatturazione(ore_lavorate_60)
 
         # Credito/Debito = Media -11% MENO Ore lavorate
         credito_debito = media_con_assenza - ore_lavorate_60
@@ -1207,10 +1209,6 @@ def get_totali_per_scuola(anno, mese, commessa=None):
     """Ottiene i totali aggregati per scuola con calcolo fatturazione corretto"""
     dati = get_rendicontazione_completa(anno, mese, commessa)
 
-    # Costanti per calcolo fatturazione
-    COSTO_ORARIO = config.TARIFFA_ORARIA
-    IVA = config.IVA_PERCENTUALE
-
     totali = {}
     for row in dati:
         scuola_id = row['scuola_id']
@@ -1234,9 +1232,7 @@ def get_totali_per_scuola(anno, mese, commessa=None):
     # Calcola imponibile, iva e totale sul totale delle ore (metodo contabile corretto)
     for scuola_id in totali:
         ore = totali[scuola_id]['ore_lavorate_100']
-        imponibile = round(ore * COSTO_ORARIO, 2)
-        iva = round(imponibile * IVA, 2)
-        totale = round(imponibile + iva, 2)
+        imponibile, iva, totale = config.calcola_fatturazione(ore)
         totali[scuola_id]['imponibile_100'] = imponibile
         totali[scuola_id]['iva_100'] = iva
         totali[scuola_id]['totale_100'] = totale
