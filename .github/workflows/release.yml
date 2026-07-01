@@ -1,16 +1,14 @@
 name: Release
 
-# Crea automaticamente una "Release" (pagina con pulsante di download) SENZA
-# bisogno di pushare tag manualmente. Si attiva in due modi:
-#  1. quando il file VERSION cambia su main (ogni nuova versione = bump di VERSION);
-#  2. manualmente dal pulsante "Run workflow" (workflow_dispatch).
-# Il tag vX.Y.Z viene creato dalla release stessa, a partire dal contenuto di VERSION.
+# Crea automaticamente una "Release" (pagina con pulsante di download) leggendo
+# il numero di versione dal file VERSION. Il workflow gira ad ogni push su main,
+# ma crea la release SOLO se non esiste gia' una release per quella versione:
+# quindi per pubblicare una nuova versione basta incrementare il file VERSION.
+# (Nessun push di tag manuale: il tag vX.Y.Z lo crea la release stessa.)
 on:
-  workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - "VERSION"
+  workflow_dispatch:
 
 permissions:
   contents: write   # necessario per creare tag e release
@@ -25,7 +23,19 @@ jobs:
         id: v
         run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
 
+      - name: La release esiste gia'?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.v.outputs.version }}" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Crea la Release
+        if: steps.check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ steps.v.outputs.version }}"
