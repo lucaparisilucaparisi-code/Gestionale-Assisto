@@ -70,3 +70,12 @@ def test_rendicontazione_endpoint(client, sample_data):
     body = r.get_json()
     assert 'dati' in body
     assert 'totale_generale' in body
+
+
+def test_profilo_page_con_pannello_backup(client):
+    """La pagina Profilo si renderizza e include il pannello backup."""
+    r = client.get('/profilo')
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert 'Backup e sicurezza dati' in html
+    assert 'btn-create-backup' in html

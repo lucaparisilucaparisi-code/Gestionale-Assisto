@@ -94,6 +94,31 @@
     </div>
 </div>
 
+<!-- Card backup / sicurezza dati -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h2 class="card-title">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10a2 2 0 002 2h12a2 2 0 002-2V7M4 7l2-3h12l2 3M4 7h16M9 12h6"/>
+            </svg>
+            Backup e sicurezza dati
+        </h2>
+        <div class="header-actions">
+            <button class="btn btn-primary" id="btn-create-backup">Crea backup ora</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <p class="text-muted" style="margin-top: 0; margin-bottom: 16px; font-size: 0.875rem;">
+            Salva una copia del database quando vuoi e <strong>scaricala dove preferisci</strong>
+            (chiavetta, cartella cloud). Prima di ogni import viene creato un backup automatico,
+            così puoi sempre tornare indietro ripristinandolo.
+        </p>
+        <div id="backup-list">
+            <div class="loading"><div class="spinner"></div></div>
+        </div>
+    </div>
+</div>
+
 <style>
 .info-row {
     display: flex;
@@ -308,6 +333,57 @@ document.getElementById('change-password-form').addEventListener('submit', async
     }
 });
 
+// ==================== Backup e sicurezza dati ====================
+async function loadBackups() {
+    const container = document.getElementById('backup-list');
+    try {
+        const backups = await apiCall('/api/backup');
+        if (!backups.length) {
+            container.innerHTML = `<div class="credential-empty">Nessun backup presente. Clicca "Crea backup ora".</div>`;
+            return;
+        }
+        container.innerHTML = backups.map(b => `
+            <div class="credential-item">
+                <div class="credential-info">
+                    <div class="credential-name">${escapeHtml(b.nome)}</div>
+                    <div class="credential-meta">${escapeHtml(String(b.data))} · ${escapeHtml(String(b.dimensione))} KB</div>
+                </div>
+                <a class="btn btn-sm btn-secondary" href="/api/backup/download/${encodeURIComponent(b.nome)}">Scarica</a>
+                <button class="btn btn-sm btn-danger" onclick="restoreBackup('${escapeHtml(b.nome)}')">Ripristina</button>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = `<div class="credential-empty">Errore nel caricamento dei backup</div>`;
+    }
+}
+
+document.getElementById('btn-create-backup').addEventListener('click', async () => {
+    try {
+        const res = await fetch('/api/backup', { method: 'POST' });
+        if (!res.ok) throw new Error();
+        showToast('Backup creato', 'success');
+        loadBackups();
+    } catch (e) {
+        showToast('Errore nella creazione del backup', 'error');
+    }
+});
+
+async function restoreBackup(nome) {
+    if (!confirm(`Ripristinare il backup "${nome}"?\n\nATTENZIONE: i dati attuali verranno sostituiti con quelli del backup. Prima del ripristino viene comunque creato un backup di sicurezza.`)) return;
+    try {
+        const res = await fetch('/api/backup/restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ backup: nome, confirm: 'CONFERMA' })
+        });
+        if (!res.ok) throw new Error();
+        showToast('Backup ripristinato. Ricarico la pagina…', 'success');
+        setTimeout(() => location.reload(), 1500);
+    } catch (e) {
+        showToast('Errore nel ripristino', 'error');
+    }
+}
+
 // ==================== Logout ====================
 document.getElementById('btn-logout').addEventListener('click', async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -317,5 +393,6 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
 // Init
 loadAccount();
 loadCredentials();
+loadBackups();
 </script>
 {% endblock %}
