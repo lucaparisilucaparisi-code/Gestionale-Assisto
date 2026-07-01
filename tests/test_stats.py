@@ -44,3 +44,9 @@ def test_endpoint_dettaglio_utente_dopo_estrazione(client, sample_data):
                 f'/api/utente/{uid}/note',
                 f'/api/utente/{uid}/assenze']:
         assert client.get(url).status_code == 200
+
+
+def test_stats_dashboard_dopo_estrazione(client, sample_data):
+    """Endpoint dashboard/stats spostati (usano MESI_* globali) rispondono."""
+    for url in ['/api/stats/trend', '/api/stats/confronto-mese']:
+        assert client.get(url).status_code == 200
