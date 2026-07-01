@@ -601,14 +601,14 @@ def init_db():
     conn.commit()
     conn.close()
 
-def punteggia_nome(nome, cognome):
+def punteggia_nome(nome: str, cognome: str) -> str:
     """Converte nome e cognome in formato puntato per privacy (es. Mario Rossi -> M. R.)"""
     nome_iniziale = nome[0].upper() + '.' if nome else ''
     cognome_iniziale = cognome[0].upper() + '.' if cognome else ''
     return f"{nome_iniziale} {cognome_iniziale}".strip()
 
 
-def calcola_media_prevista(monte_ore, giorni_lavorativi):
+def calcola_media_prevista(monte_ore: float, giorni_lavorativi: float) -> tuple:
     """Calcola la media mensile prevista di ore a partire dal monte ore settimanale.
 
     Formula unica usata in tutta l'applicazione:
@@ -921,7 +921,7 @@ def get_calendario(anno_scolastico, mese, anno):
         return result['giorni_lavorativi'] if result else 0
 
 
-def risolvi_giorni_lavorativi(giorni_calendario):
+def risolvi_giorni_lavorativi(giorni_calendario) -> int:
     """Regola UNICA per i giorni lavorativi effettivi di un mese.
 
     Usa il valore da calendario (per tipo scuola) se presente e > 0, altrimenti

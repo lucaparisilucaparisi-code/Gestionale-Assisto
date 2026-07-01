@@ -20,7 +20,7 @@ IVA_PERCENTUALE = 0.05
 COEFFICIENTE_GIORNALIERO = 0.2
 
 
-def calcola_fatturazione(ore):
+def calcola_fatturazione(ore) -> tuple:
     """Calcolo di fatturazione unico (imponibile, IVA, totale) dalle ore in 100'.
 
     E' l'unica fonte di verita' per imponibile/IVA/totale: si arrotonda UNA sola
