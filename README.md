@@ -7,6 +7,11 @@ Sistema web locale per la gestione e rendicontazione del servizio OEPAC
 
 ## Avvio rapido (per utenti non tecnici)
 
+> **Scarico più facile:** vai alla pagina
+> [**Releases**](https://github.com/lucaparisilucaparisi-code/Gestionale-Assisto/releases/latest)
+> e scarica **Source code (zip)** dall'ultima versione. È il modo più immediato per
+> avere sempre la versione aggiornata con un solo clic.
+
 ### Windows
 
 1. **Scarica** il pacchetto ZIP da GitHub ed estrailo in una cartella.
