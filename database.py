@@ -3243,23 +3243,28 @@ def get_backups_list():
     return backups
 
 
+def percorso_backup_valido(backup_name):
+    """Ritorna il percorso assoluto di un backup se il nome e' sicuro e il file
+    esiste, altrimenti None. Difesa UNICA contro path traversal, condivisa da
+    download e restore: accetta solo un basename presente nella lista ufficiale
+    (get_backups_list filtra gia' per pattern 'gestionale_backup_*.db')."""
+    if not backup_name or backup_name != os.path.basename(backup_name):
+        logger.warning(f"Nome backup non valido (possibile path traversal): {backup_name!r}")
+        return None
+    if backup_name not in [b['nome'] for b in get_backups_list()]:
+        logger.warning(f"Backup inesistente o non riconosciuto: {backup_name!r}")
+        return None
+    path = os.path.join(config.BACKUP_FOLDER, backup_name)
+    return path if os.path.exists(path) else None
+
+
 def restore_backup(backup_name):
     """Ripristina un backup.
 
-    Valida il nome per prevenire path traversal: deve essere un semplice basename
-    (nessun '..' o percorso) e corrispondere a un backup realmente presente nella
-    cartella dei backup, cosi' da non poter caricare come DB un file arbitrario."""
-    if not backup_name or backup_name != os.path.basename(backup_name):
-        logger.warning(f"Nome backup non valido (possibile path traversal): {backup_name!r}")
-        return False
-    # get_backups_list() filtra gia' per pattern 'gestionale_backup_*.db': la
-    # verifica di appartenenza vincola quindi anche il naming atteso.
-    if backup_name not in [b['nome'] for b in get_backups_list()]:
-        logger.warning(f"Backup inesistente o non riconosciuto: {backup_name!r}")
-        return False
-
-    backup_path = os.path.join(config.BACKUP_FOLDER, backup_name)
-    if not os.path.exists(backup_path):
+    Valida il nome (vedi percorso_backup_valido) per non poter caricare come DB
+    un file arbitrario."""
+    backup_path = percorso_backup_valido(backup_name)
+    if not backup_path:
         return False
 
     try:

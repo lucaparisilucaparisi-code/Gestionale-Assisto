@@ -147,8 +147,16 @@ Tutto è salvato localmente nel file `gestionale.db` dentro la cartella del
 gestionale. Fai una copia di quel file per avere un backup.
 
 **Come reimposto la password?**
-Cancella il file `gestionale.db` (perderai i dati!) oppure apri la pagina
-**Profilo** dal menu.
+Se sei loggato, cambiala dalla pagina **Profilo** dal menu.
+Se l'hai **dimenticata**, NON serve cancellare i dati: fai doppio click su
+**`reimposta_password.bat`** (Windows) oppure esegui `python reset_password.py`
+(macOS/Linux) nella cartella del gestionale, e imposta una nuova password. I tuoi
+dati restano intatti.
+
+**Come salvo un backup dove voglio (chiavetta, cloud)?**
+Dal gestionale ogni backup può essere **scaricato** come file `.db` e messo dove
+preferisci. In più, prima di ogni import viene creato automaticamente un backup
+di sicurezza, così puoi sempre tornare indietro ripristinandolo.
 
 **L'impronta non funziona / dice "WebAuthn non disponibile"**
 Assicurati di avere Windows Hello configurato e chiudi/riapri `avvia.bat` così
