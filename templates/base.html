@@ -34,6 +34,7 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+    <a href="#main-content" class="skip-link">Salta al contenuto principale</a>
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
@@ -150,12 +151,13 @@
         </aside>
 
         <!-- Main Content -->
-        <main class="main-content">
+        <main class="main-content" id="main-content">
             <!-- Top Bar -->
             <header class="topbar">
                 <div class="topbar-left">
-                    <button class="mobile-menu-btn" id="mobile-menu-btn">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <button class="mobile-menu-btn" id="mobile-menu-btn"
+                            aria-label="Apri menu di navigazione" aria-controls="sidebar" aria-expanded="false">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                         </svg>
                     </button>
@@ -196,7 +198,7 @@
     </div>
 
     <!-- Toast Container -->
-    <div class="toast-container" id="toast-container"></div>
+    <div class="toast-container" id="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <!-- Command Palette (⌘K) -->
     <div class="command-palette-overlay" id="command-palette-overlay">
@@ -369,9 +371,9 @@
     </div>
 
     <!-- Global Loading Overlay -->
-    <div class="global-loading-overlay" id="global-loading">
+    <div class="global-loading-overlay" id="global-loading" role="status" aria-live="polite" aria-hidden="true">
         <div class="global-loading-content">
-            <div class="spinner"></div>
+            <div class="spinner" aria-hidden="true"></div>
             <span class="loading-text" id="global-loading-text">Caricamento...</span>
         </div>
     </div>
