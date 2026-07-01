@@ -1,7 +1,6 @@
 import sqlite3
 import os
 import re
-import shutil
 import json
 from datetime import datetime
 
@@ -10,29 +9,47 @@ import config
 DATABASE_PATH = config.DATABASE_PATH
 logger = config.setup_logging()
 
+def _connect():
+    """Factory UNICA di connessione SQLite con impostazioni sicure comuni.
+
+    - row_factory=Row per accesso per nome colonna;
+    - PRAGMA foreign_keys=ON: in SQLite l'enforcement e' OFF di default, quindi
+      le FOREIGN KEY ... ON DELETE CASCADE dichiarate non verrebbero applicate
+      (lasciando righe orfane, es. in sostituzioni alla cancellazione di un turno);
+    - busy_timeout: attende invece di fallire subito con 'database is locked';
+    - journal_mode=WAL: piu' robusto a interruzioni e a letture/scritture concorrenti.
+    """
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON')
+    conn.execute('PRAGMA busy_timeout = 5000')
+    conn.execute('PRAGMA journal_mode = WAL')
+    return conn
+
+
 class DBConnection:
     """Context manager per connessioni database sicure"""
     def __init__(self):
         self.conn = None
 
     def __enter__(self):
-        self.conn = sqlite3.connect(DATABASE_PATH)
-        self.conn.row_factory = sqlite3.Row
+        self.conn = _connect()
         return self.conn
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.conn:
             if exc_type is None:
                 self.conn.commit()
+            else:
+                # Su errore annulla esplicitamente la transazione parziale
+                self.conn.rollback()
             self.conn.close()
         return False
 
 
 def get_db():
     """Ottiene connessione al database (legacy, preferire DBConnection context manager)"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return _connect()
 
 
 def get_db_context():
@@ -570,17 +587,28 @@ def init_db():
             VALUES (?, ?, ?, ?)
         ''', cal)
 
+    # Bonifica orfani storici creati quando l'enforcement FK era spento (es. righe
+    # in sostituzioni che puntano a un turno cancellato): vanno rimosse prima che
+    # l'enforcement (ora attivo) le faccia emergere.
+    cursor.execute('''
+        DELETE FROM sostituzioni
+        WHERE turno_id IS NOT NULL AND turno_id NOT IN (SELECT id FROM turni)
+    ''')
+
+    # Versione schema: baseline per future migrazioni numerate (PRAGMA user_version).
+    cursor.execute('PRAGMA user_version = 1')
+
     conn.commit()
     conn.close()
 
-def punteggia_nome(nome, cognome):
+def punteggia_nome(nome: str, cognome: str) -> str:
     """Converte nome e cognome in formato puntato per privacy (es. Mario Rossi -> M. R.)"""
     nome_iniziale = nome[0].upper() + '.' if nome else ''
     cognome_iniziale = cognome[0].upper() + '.' if cognome else ''
     return f"{nome_iniziale} {cognome_iniziale}".strip()
 
 
-def calcola_media_prevista(monte_ore, giorni_lavorativi):
+def calcola_media_prevista(monte_ore: float, giorni_lavorativi: float) -> tuple:
     """Calcola la media mensile prevista di ore a partire dal monte ore settimanale.
 
     Formula unica usata in tutta l'applicazione:
@@ -893,6 +921,18 @@ def get_calendario(anno_scolastico, mese, anno):
         return result['giorni_lavorativi'] if result else 0
 
 
+def risolvi_giorni_lavorativi(giorni_calendario) -> int:
+    """Regola UNICA per i giorni lavorativi effettivi di un mese.
+
+    Usa il valore da calendario (per tipo scuola) se presente e > 0, altrimenti
+    il fallback config.GIORNI_LAVORATIVI_DEFAULT. Il valore eventualmente salvato
+    in rendicontazione e' solo una cache potenzialmente obsoleta e non viene usato
+    come fonte. Va richiamata da TUTTI i percorsi (vista mensile, storico utente,
+    aggregati) affinche' mostrino lo stesso numero ed evitino incoerenze
+    (es. vista mensile a 0 giorni e storico a 22 per un mese senza calendario)."""
+    return giorni_calendario if giorni_calendario else config.GIORNI_LAVORATIVI_DEFAULT
+
+
 def get_calendario_full(anno_scolastico, mese, anno):
     """Ottiene (giorni_lavorativi, giorni_lavorativi_altri) per un mese.
     Il secondo e' None se non impostato -> si usa lo stesso di giorni_lavorativi."""
@@ -1127,11 +1167,6 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
-    # Calcola tutti i valori derivati
-    COSTO_ORARIO = config.TARIFFA_ORARIA
-    TASSO_ASSENZA = config.TASSO_ASSENZA
-    IVA = config.IVA_PERCENTUALE
-
     risultati = []
     # Cache del calendario per non rifare la query ad ogni riga
     giorni_default_cal, giorni_altri_cal = get_calendario_full(anno_scolastico, mese, anno)
@@ -1150,8 +1185,8 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
         else:
             giorni_cal = giorni_altri_cal if giorni_altri_cal is not None else giorni_default_cal
 
-        # Fallback al valore salvato solo se il calendario non ha dati
-        giorni = giorni_cal if giorni_cal else (row_dict['giorni_lavorativi'] or 0)
+        # Regola unica condivisa (calendario -> default), coerente con lo storico
+        giorni = risolvi_giorni_lavorativi(giorni_cal)
 
         # Monte ore: usa variazione se presente, altrimenti valore base
         utente_id = row_dict['utente_id']
@@ -1170,14 +1205,9 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
         media_mensile_100 = media_mensile
         media_con_assenza_100 = media_con_assenza
 
-        # Calcoli economici (su ore in formato decimale/centesimale)
-        imponibile_100 = ore_lavorate_100 * COSTO_ORARIO
-        iva_100 = imponibile_100 * IVA
-        totale_100 = imponibile_100 + iva_100
-
-        imponibile_60 = ore_lavorate_60 * COSTO_ORARIO
-        iva_60 = imponibile_60 * IVA
-        totale_60 = imponibile_60 + iva_60
+        # Calcoli economici (helper unico: stessa formula ovunque)
+        imponibile_100, iva_100, totale_100 = config.calcola_fatturazione(ore_lavorate_100)
+        imponibile_60, iva_60, totale_60 = config.calcola_fatturazione(ore_lavorate_60)
 
         # Credito/Debito = Media -11% MENO Ore lavorate
         credito_debito = media_con_assenza - ore_lavorate_60
@@ -1207,10 +1237,6 @@ def get_totali_per_scuola(anno, mese, commessa=None):
     """Ottiene i totali aggregati per scuola con calcolo fatturazione corretto"""
     dati = get_rendicontazione_completa(anno, mese, commessa)
 
-    # Costanti per calcolo fatturazione
-    COSTO_ORARIO = config.TARIFFA_ORARIA
-    IVA = config.IVA_PERCENTUALE
-
     totali = {}
     for row in dati:
         scuola_id = row['scuola_id']
@@ -1234,9 +1260,7 @@ def get_totali_per_scuola(anno, mese, commessa=None):
     # Calcola imponibile, iva e totale sul totale delle ore (metodo contabile corretto)
     for scuola_id in totali:
         ore = totali[scuola_id]['ore_lavorate_100']
-        imponibile = round(ore * COSTO_ORARIO, 2)
-        iva = round(imponibile * IVA, 2)
-        totale = round(imponibile + iva, 2)
+        imponibile, iva, totale = config.calcola_fatturazione(ore)
         totali[scuola_id]['imponibile_100'] = imponibile
         totali[scuola_id]['iva_100'] = iva
         totali[scuola_id]['totale_100'] = totale
@@ -3155,7 +3179,22 @@ def create_backup():
     backup_path = os.path.join(config.BACKUP_FOLDER, backup_name)
 
     try:
-        shutil.copy2(DATABASE_PATH, backup_path)
+        # API di backup online di SQLite: produce una copia consistente anche
+        # con DB in uso e journal WAL (a differenza di copiare solo il file .db,
+        # che potrebbe perdere le modifiche ancora nel -wal).
+        if not os.path.exists(DATABASE_PATH):
+            logger.warning("Backup saltato: database non ancora presente")
+            return None
+        src = sqlite3.connect(DATABASE_PATH)
+        try:
+            dst = sqlite3.connect(backup_path)
+            try:
+                with dst:
+                    src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
         logger.info(f"Backup creato: {backup_name}")
 
         # Pulizia backup vecchi
@@ -3205,7 +3244,20 @@ def get_backups_list():
 
 
 def restore_backup(backup_name):
-    """Ripristina un backup"""
+    """Ripristina un backup.
+
+    Valida il nome per prevenire path traversal: deve essere un semplice basename
+    (nessun '..' o percorso) e corrispondere a un backup realmente presente nella
+    cartella dei backup, cosi' da non poter caricare come DB un file arbitrario."""
+    if not backup_name or backup_name != os.path.basename(backup_name):
+        logger.warning(f"Nome backup non valido (possibile path traversal): {backup_name!r}")
+        return False
+    # get_backups_list() filtra gia' per pattern 'gestionale_backup_*.db': la
+    # verifica di appartenenza vincola quindi anche il naming atteso.
+    if backup_name not in [b['nome'] for b in get_backups_list()]:
+        logger.warning(f"Backup inesistente o non riconosciuto: {backup_name!r}")
+        return False
+
     backup_path = os.path.join(config.BACKUP_FOLDER, backup_name)
     if not os.path.exists(backup_path):
         return False
@@ -3213,7 +3265,18 @@ def restore_backup(backup_name):
     try:
         # Crea backup del db corrente prima di ripristinare
         create_backup()
-        shutil.copy2(backup_path, DATABASE_PATH)
+        # Ripristino via API di backup: copia il contenuto del backup nel DB
+        # attivo in modo consistente con WAL (evita di lasciare un -wal orfano).
+        src = sqlite3.connect(backup_path)
+        try:
+            dst = sqlite3.connect(DATABASE_PATH)
+            try:
+                with dst:
+                    src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
         logger.info(f"Backup ripristinato: {backup_name}")
         return True
     except Exception as e:
@@ -3644,7 +3707,7 @@ def get_report_locale_commessa(commessa_id, anno_scolastico):
     # Ottieni dati base
     dd_list = get_dd_by_commessa(commessa_id, anno_scolastico)
     calendario = get_calendario_completo(anno_scolastico)
-    recuperi = get_recuperi_by_commessa(commessa_id, anno_scolastico)
+    get_recuperi_by_commessa(commessa_id, anno_scolastico)
 
     # Ottieni tutti gli override del progettato (tabella legacy)
     progettato_overrides = get_all_progettato_override(commessa_id, anno_scolastico)

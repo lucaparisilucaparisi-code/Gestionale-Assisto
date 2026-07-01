@@ -1,0 +1,22 @@
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+exclude = [".venv", "venv", "build", "dist", "static/js/vendor"]
+
+[tool.ruff.lint]
+# Attiviamo pyflakes (F) + errori pycodestyle (E/W): catturano bug reali
+# (nomi non definiti, import/variabili morte). Le regole puramente stilistiche
+# rumorose sul codice esistente sono ignorate per non bloccare la CI da subito;
+# vanno ripulite gradualmente.
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # lunghezza riga (codebase esistente)
+    "E701",  # piu' statement su una riga con ':'
+    "E702",  # piu' statement su una riga con ';'
+    "E741",  # nomi variabili ambigui (l/I/O)
+    "E722",  # bare except: debito noto, da ripulire gradualmente
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

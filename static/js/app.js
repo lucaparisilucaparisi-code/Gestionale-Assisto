@@ -69,12 +69,20 @@ const SidebarManager = {
                 !this.sidebar.contains(e.target) &&
                 !this.mobileBtn?.contains(e.target)) {
                 this.sidebar.classList.remove('open');
+                this._syncExpanded();
             }
         });
     },
 
     toggleMobile() {
         this.sidebar?.classList.toggle('open');
+        this._syncExpanded();
+    },
+
+    _syncExpanded() {
+        // Mantiene aria-expanded del bottone allineato allo stato della sidebar
+        const open = this.sidebar?.classList.contains('open') ? 'true' : 'false';
+        this.mobileBtn?.setAttribute('aria-expanded', open);
     }
 };
 

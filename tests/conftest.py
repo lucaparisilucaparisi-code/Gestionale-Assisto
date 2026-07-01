@@ -6,7 +6,6 @@ così i test non toccano mai `gestionale.db` reale e non creano backup.
 import os
 import sys
 import tempfile
-import importlib
 
 import pytest
 

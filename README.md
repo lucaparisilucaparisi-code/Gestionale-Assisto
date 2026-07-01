@@ -86,7 +86,9 @@ ambiente isolato dentro la cartella (`.venv`) da `avvia.bat` / `run.sh` al primo
 - **Ore 100'** = Ore 60' × 100 / 60
 - **Imponibile** = Ore 100' × 24,07 €
 - **Totale** = Imponibile + (Imponibile × 5%)
-- **Credito/Debito** = Ore Lavorate - Media con Assenza
+- **Credito/Debito** = Media con Assenza − Ore Lavorate
+  - valore **positivo** = **debito** di ore (ha lavorato meno del previsto, ore da recuperare)
+  - valore **negativo** = **credito** di ore (ha lavorato più del previsto)
 
 ---
 

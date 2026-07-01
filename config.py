@@ -19,6 +19,23 @@ TASSO_ASSENZA = 0.11
 IVA_PERCENTUALE = 0.05
 COEFFICIENTE_GIORNALIERO = 0.2
 
+
+def calcola_fatturazione(ore) -> tuple:
+    """Calcolo di fatturazione unico (imponibile, IVA, totale) dalle ore in 100'.
+
+    E' l'unica fonte di verita' per imponibile/IVA/totale: si arrotonda UNA sola
+    volta sull'aggregato invece di sommare valori gia' arrotondati, cosi' anteprima
+    a schermo, statistiche ed export producono gli stessi numeri (niente divergenze
+    di centesimi). Non hardcodare mai la tariffa o il moltiplicatore IVA altrove.
+
+    Ritorna: (imponibile, iva, totale) arrotondati a 2 decimali.
+    """
+    ore = ore or 0
+    imponibile = round(ore * TARIFFA_ORARIA, 2)
+    iva = round(imponibile * IVA_PERCENTUALE, 2)
+    totale = round(imponibile + iva, 2)
+    return imponibile, iva, totale
+
 # ==================== PARAMETRI CALCOLO / REPORT ====================
 # Giorni lavorativi di fallback se il calendario non ha dati per il mese
 GIORNI_LAVORATIVI_DEFAULT = 22
@@ -77,9 +94,13 @@ def setup_logging():
     if logger.handlers:
         return logger
 
-    # File handler
-    file_handler = logging.FileHandler(
+    # File handler con rotazione: evita che oepac.log cresca all'infinito
+    # (5 file da ~1MB = max ~5MB conservati).
+    from logging.handlers import RotatingFileHandler
+    file_handler = RotatingFileHandler(
         os.path.join(LOG_FOLDER, 'oepac.log'),
+        maxBytes=1_000_000,
+        backupCount=5,
         encoding='utf-8'
     )
     file_handler.setLevel(logging.INFO)

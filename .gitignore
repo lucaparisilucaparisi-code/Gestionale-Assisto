@@ -1,0 +1,42 @@
+# ==================== Dati e segreti (MAI committare) ====================
+# Database applicativo con dati personali (operatori OEPAC e alunni minori)
+gestionale.db
+gestionale.db-wal
+gestionale.db-shm
+# Chiave di firma delle sessioni Flask
+.flask_secret_key
+
+# ==================== Cartelle runtime ====================
+uploads/
+exports/
+backups/
+logs/
+*.log
+
+# ==================== File generati / export ====================
+*.xlsx
+*.xlsm
+
+# ==================== Ambiente Python ====================
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ==================== Build / packaging ====================
+build/
+dist/
+*.spec
+
+# ==================== Editor / OS ====================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

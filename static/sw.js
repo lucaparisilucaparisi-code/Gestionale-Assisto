@@ -3,7 +3,9 @@
  * Gestione cache avanzata e modalità offline
  */
 
-const CACHE_VERSION = 'v2';
+// Incrementare ad ogni modifica di CSS/JS/HTML: forza l'aggiornamento della
+// cache (l'handler activate elimina le versioni precedenti) evitando asset stale.
+const CACHE_VERSION = 'v3';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `dynamic-${CACHE_VERSION}`;
 const API_CACHE = `api-${CACHE_VERSION}`;

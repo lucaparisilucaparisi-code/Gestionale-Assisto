@@ -8,10 +8,10 @@ dipartimentale e la relazione Word.
 import io
 from datetime import datetime
 
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, send_file
 import pandas as pd
 from docx import Document
-from docx.shared import Inches, Pt, Cm, RGBColor
+from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn
@@ -362,19 +362,13 @@ def api_export_excel(anno, mese):
     dati = db.get_rendicontazione_completa(anno, mese, commessa)
     totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
 
-    # Costanti per calcolo fatturazione
-    TARIFFA = config.TARIFFA_ORARIA
-    IVA_PERC = config.IVA_PERCENTUALE
-
     # Calcola totali ore
     ore_totali_60 = sum(d['ore_lavorate_60'] or 0 for d in dati)
     ore_totali_100 = sum(d['ore_lavorate_100'] or 0 for d in dati)
     ore_previste = sum(d['media_con_assenza_60'] or 0 for d in dati)
 
     # Calcolo fatturazione corretto (sul totale, non somma di arrotondamenti)
-    imponibile_totale = round(ore_totali_100 * TARIFFA, 2)
-    iva_totale = round(imponibile_totale * IVA_PERC, 2)
-    totale_lordo = round(imponibile_totale + iva_totale, 2)
+    imponibile_totale, iva_totale, totale_lordo = config.calcola_fatturazione(ore_totali_100)
 
     # Calcola statistiche avanzate
     totale_generale = {
@@ -411,9 +405,7 @@ def api_export_excel(anno, mese):
         PRIMARY_DARK = config.PRIMARY_DARK
         SUCCESS_COLOR = config.SUCCESS_COLOR
         DANGER_COLOR = config.DANGER_COLOR
-        WARNING_COLOR = config.WARNING_COLOR
         DARK_COLOR = config.DARK_COLOR
-        LIGHT_COLOR = config.LIGHT_COLOR
 
         # Formato titolo principale
         title_fmt = workbook.add_format({
@@ -897,8 +889,12 @@ def api_export_annuale(anno_scolastico):
             utenti_aggregati[utente_key]['ore_erogate_totali'] += d['ore_lavorate_60'] or 0
             utenti_aggregati[utente_key]['monte_ore_previsto_totale'] += d['media_con_assenza_60'] or 0
             utenti_aggregati[utente_key]['pasti_totali'] += d['pasti'] or 0
-            utenti_aggregati[utente_key]['imponibile_totale'] += d['imponibile_100'] or 0
             utenti_aggregati[utente_key]['mesi_attivi'] += 1
+
+    # Imponibile per-utente calcolato UNA volta sul totale ore (non somma di
+    # arrotondamenti mensili): cosi' la somma della colonna quadra col totale annuale.
+    for u in utenti_aggregati.values():
+        u['imponibile_totale'] = config.calcola_fatturazione(u['ore_erogate_totali'])[0]
 
     # Calcola totali annuali
     totale_ore_60 = sum(
@@ -917,9 +913,7 @@ def api_export_annuale(anno_scolastico):
         sum(d['pasti'] or 0 for d in m['dati'])
         for m in tutti_dati_anno.values()
     )
-    imponibile_annuale = round(totale_ore_100 * TARIFFA, 2)
-    iva_annuale = round(imponibile_annuale * IVA_PERC, 2)
-    totale_lordo_annuale = round(imponibile_annuale + iva_annuale, 2)
+    imponibile_annuale, iva_annuale, totale_lordo_annuale = config.calcola_fatturazione(totale_ore_100)
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -930,9 +924,7 @@ def api_export_annuale(anno_scolastico):
         PRIMARY_DARK = config.PRIMARY_DARK
         SUCCESS_COLOR = config.SUCCESS_COLOR
         DANGER_COLOR = config.DANGER_COLOR
-        WARNING_COLOR = config.WARNING_COLOR
         DARK_COLOR = config.DARK_COLOR
-        LIGHT_COLOR = config.LIGHT_COLOR
 
         # Formato titolo principale
         title_fmt = workbook.add_format({
@@ -973,7 +965,7 @@ def api_export_annuale(anno_scolastico):
         })
 
         # Formato header alternativo (grigio)
-        header_alt_fmt = workbook.add_format({
+        workbook.add_format({
             'bold': True,
             'font_size': 10,
             'font_color': 'white',
@@ -1152,7 +1144,7 @@ def api_export_annuale(anno_scolastico):
             'valign': 'vcenter'
         })
 
-        kpi_box_fmt = workbook.add_format({
+        workbook.add_format({
             'bg_color': '#F1F5F9',
             'border': 1,
             'border_color': '#E2E8F0'
@@ -1163,7 +1155,7 @@ def api_export_annuale(anno_scolastico):
 
         # Titolo
         ws_dashboard.set_row(0, 45)
-        ws_dashboard.merge_range('A1:H1', f'RIEPILOGO ANNUALE OEPAC', title_fmt)
+        ws_dashboard.merge_range('A1:H1', 'RIEPILOGO ANNUALE OEPAC', title_fmt)
         ws_dashboard.write('A2', f'Anno Scolastico {anno_scolastico}', subtitle_fmt)
         if commessa:
             ws_dashboard.write('A3', f'Commessa: {commessa}', subtitle_fmt)
@@ -1525,7 +1517,7 @@ def api_export_municipale(anno, mese):
         # Titolo
         ws.set_row(0, 36)
         ws.merge_range(0, 0, 0, N_COLS - 1,
-            f"RIEPILOGO MUNICIPALE", s['title'])
+            "RIEPILOGO MUNICIPALE", s['title'])
 
         # Sottotitolo (mese / anno scolastico / commessa)
         sottotitolo = f"{MESI_NOME[mese].upper()} {anno}   ·   A.S. {anno_scolastico}"
@@ -1973,9 +1965,7 @@ def api_export_word(anno, mese):
     credito_debito = sum(d['credito_debito'] or 0 for d in dati)
 
     # Calcolo fatturazione
-    imponibile_totale = round(ore_totali_100 * TARIFFA, 2)
-    iva_totale = round(imponibile_totale * IVA_PERC, 2)
-    totale_lordo = round(imponibile_totale + iva_totale, 2)
+    imponibile_totale, iva_totale, totale_lordo = config.calcola_fatturazione(ore_totali_100)
 
     # Percentuale completamento
     perc_completamento = (ore_totali_60 / ore_previste * 100) if ore_previste > 0 else 0
@@ -2061,7 +2051,7 @@ def api_export_word(anno, mese):
     intro.add_run(f"Nel mese di {MESI_NOME[mese]} {anno}, relativo all'anno scolastico {anno_scolastico}, "
                   f"il servizio OEPAC ha assistito un totale di ").bold = False
     intro.add_run(f"{len(dati)} utenti").bold = True
-    intro.add_run(f" distribuiti su ")
+    intro.add_run(" distribuiti su ")
     intro.add_run(f"{len(totali_scuola)} scuole").bold = True
     intro.add_run(".")
 

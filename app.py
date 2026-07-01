@@ -9,7 +9,6 @@ import io
 import json
 import csv
 import hashlib
-import base64
 import secrets
 from functools import wraps
 from io import StringIO
@@ -17,12 +16,6 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, make_response, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import pandas as pd
-from docx import Document
-from docx.shared import Inches, Pt, Cm, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
 
 # WebAuthn (impronta digitale / Windows Hello)
 try:
@@ -38,8 +31,6 @@ try:
         AuthenticatorSelectionCriteria,
         UserVerificationRequirement,
         ResidentKeyRequirement,
-        RegistrationCredential,
-        AuthenticationCredential,
     )
     from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
     WEBAUTHN_AVAILABLE = True
@@ -87,9 +78,12 @@ def _load_or_generate_secret_key():
             pass  # Windows: chmod non applicabile
         return new_key
     except OSError as e:
-        # Fallback: deterministico (meno sicuro ma funzionante)
-        logger.warning(f"Impossibile persistere secret_key ({e}), uso fallback deterministico")
-        return hashlib.sha256(config.DATABASE_PATH.encode()).hexdigest()
+        # Fallback SICURO: chiave casuale solo in memoria. Le sessioni si
+        # invalideranno ai riavvii, ma la chiave non e' mai indovinabile.
+        # Non derivare MAI il secret_key da un valore prevedibile (es. il path
+        # del DB): renderebbe forgiabili i cookie di sessione firmati.
+        logger.warning(f"Impossibile persistere secret_key ({e}), uso chiave casuale in memoria")
+        return secrets.token_bytes(32)
 
 
 app.secret_key = _load_or_generate_secret_key()
@@ -102,6 +96,9 @@ os.makedirs(config.BACKUP_FOLDER, exist_ok=True)
 # Configurazione sessione (sicurezza)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# Secure e' opt-in: su http://localhost romperebbe il cookie; attivarlo solo
+# quando si serve dietro HTTPS (OEPAC_HTTPS=1).
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('OEPAC_HTTPS', '0') == '1'
 app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 8  # 8 ore
 
 # Inizializza database
@@ -150,6 +147,30 @@ def require_authentication():
         return redirect(url_for('login_page', next=request.path))
 
 
+@app.errorhandler(404)
+def handle_404(e):
+    """Risposta coerente per risorsa non trovata (JSON per le API)."""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Risorsa non trovata', 'code': 'NOT_FOUND'}), 404
+    return "Pagina non trovata. <a href='/'>Torna alla home</a>", 404
+
+
+@app.errorhandler(Exception)
+def handle_unexpected(e):
+    """Handler centralizzato per eccezioni non gestite.
+
+    Logga i dettagli lato server e restituisce un messaggio generico al client,
+    senza esporre str(e) (che potrebbe rivelare schema DB o percorsi). Le eccezioni
+    HTTP esplicite (abort/404...) mantengono il loro codice."""
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    logger.error(f"Errore non gestito su {request.method} {request.path}: {e}", exc_info=True)
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Errore interno del server', 'code': 'INTERNAL_ERROR'}), 500
+    return "Errore interno del server", 500
+
+
 def login_required(f):
     """Decorator: richiede che l'utente sia autenticato.
     Se non configurato, reindirizza a /setup. Se non loggato, a /login."""
@@ -169,6 +190,9 @@ def login_required(f):
 
 def _login_user(metodo):
     """Imposta la sessione come autenticata."""
+    # Rigenera il contesto di sessione al login (difesa anti session-fixation):
+    # eventuali valori pre-login non vengono promossi a sessione autenticata.
+    session.clear()
     session.permanent = True
     session['authenticated'] = True
     session['auth_method'] = metodo
@@ -717,7 +741,7 @@ def api_import_cronologia():
                 })
 
             return jsonify({'cronologia': cronologia})
-    except Exception as e:
+    except Exception:
         # Se la tabella non esiste, la creiamo
         try:
             with db.get_db_context() as conn:
@@ -1668,7 +1692,7 @@ def api_update_utente(utente_id):
             params.append(utente_id)
             cursor.execute(f"UPDATE utenti SET {', '.join(updates)} WHERE id = ?", params)
 
-        db.log_audit('modifica', 'utente', utente_id, dettagli=f'Aggiornamento utente', dati_precedenti=dati_precedenti, dati_nuovi=data)
+        db.log_audit('modifica', 'utente', utente_id, dettagli='Aggiornamento utente', dati_precedenti=dati_precedenti, dati_nuovi=data)
         logger.info(f"Utente aggiornato: ID {utente_id}")
 
         return jsonify({'success': True})
@@ -2326,15 +2350,19 @@ def api_get_rendicontazione(anno, mese):
     dati = db.get_rendicontazione_completa(anno, mese, commessa)
     totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
 
-    # Calcola totali generali
+    # Calcola totali generali. Imponibile/IVA/totale sono ricalcolati UNA volta
+    # sulla somma delle ore (stesso metodo di export e totali per scuola): sommare
+    # i per-riga gia' arrotondati divergerebbe di centesimi dai documenti ufficiali.
+    ore_totali_100 = sum(d['ore_lavorate_100'] or 0 for d in dati)
+    imponibile_tot, iva_tot, totale_tot = config.calcola_fatturazione(ore_totali_100)
     totale_generale = {
         'ore_lavorate_60': sum(d['ore_lavorate_60'] or 0 for d in dati),
-        'ore_lavorate_100': sum(d['ore_lavorate_100'] or 0 for d in dati),
-        'imponibile_100': sum(d['imponibile_100'] or 0 for d in dati),
-        'iva_100': sum(d['iva_100'] or 0 for d in dati),
-        'totale_100': sum(d['totale_100'] or 0 for d in dati),
+        'ore_lavorate_100': ore_totali_100,
+        'imponibile_100': imponibile_tot,
+        'iva_100': iva_tot,
+        'totale_100': totale_tot,
         'pasti': sum(d['pasti'] or 0 for d in dati),
-        'credito_debito': sum(d['credito_debito'] or 0 for d in dati),
+        'credito_debito': round(sum(d['credito_debito'] or 0 for d in dati), 2),
         'num_utenti': len(dati)
     }
 
@@ -2532,7 +2560,8 @@ def api_storico_utente(utente_id):
 
         for r in cursor.fetchall():
             monte_ore = _get_monte_ore_mese(r['anno'], r['mese'])
-            giorni = r['giorni_lavorativi'] or config.GIORNI_LAVORATIVI_DEFAULT
+            # Regola unica condivisa con la vista mensile (calendario -> default)
+            giorni = db.risolvi_giorni_lavorativi(r['giorni_lavorativi'])
             media_60, media_assenza = db.calcola_media_prevista(monte_ore, giorni)
             ore = r['ore_lavorate_60'] or 0
             credito_debito = media_assenza - ore
@@ -3573,7 +3602,7 @@ def api_undo():
                     params.append(uid)
                     cursor.execute(f"UPDATE utenti SET {', '.join(set_parts)} WHERE id = ?", params)
 
-                db.log_audit('undo', 'utente', uid, f'Ripristinati dati precedenti')
+                db.log_audit('undo', 'utente', uid, 'Ripristinati dati precedenti')
                 return jsonify({'success': True, 'message': 'Modifica annullata'})
 
             return jsonify({'error': 'Tipo azione non supportato per undo'}), 400
@@ -4439,7 +4468,7 @@ def api_update_budget_utente(utente_id):
             budget_mensile=data.get('budget_mensile'),
             budget_annuale=data.get('budget_annuale')
         )
-        db.log_audit('update', 'budget', utente_id, f'Budget aggiornato')
+        db.log_audit('update', 'budget', utente_id, 'Budget aggiornato')
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -4907,7 +4936,7 @@ def api_set_report_override():
 def api_delete_report_override(commessa_id, anno_scolastico, mese, anno, campo):
     """Rimuove l'override di un campo (torna al calcolo automatico)"""
     if campo not in CAMPI_OVERRIDE_VALIDI:
-        return jsonify({'error': f'Campo non valido'}), 400
+        return jsonify({'error': 'Campo non valido'}), 400
 
     try:
         db.delete_report_override(commessa_id, anno_scolastico, mese, anno, campo)
@@ -5041,10 +5070,10 @@ def api_stats_scuole_dettaglio():
             """
 
             if anno and mese:
+                # Solo le ore in SQL: imponibile/totale-IVA derivati in Python da
+                # config (mai costanti tariffa/IVA hardcoded nelle query).
                 query += """,
-                    COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate,
-                    COALESCE(SUM(r.ore_lavorate_60 * 24.07), 0) as imponibile,
-                    COALESCE(SUM(r.ore_lavorate_60 * 25.27), 0) as totale_iva
+                    COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate
                 """
 
             query += """
@@ -5085,10 +5114,17 @@ def api_stats_scuole_dettaglio():
             cursor = conn.execute(query, params)
             scuole = [dict(row) for row in cursor.fetchall()]
 
+            # Deriva imponibile e totale IVA-inclusa dalle ore, via config
+            if anno and mese:
+                for s in scuole:
+                    imponibile, _iva, totale = config.calcola_fatturazione(s.get('ore_erogate', 0))
+                    s['imponibile'] = imponibile
+                    s['totale_iva'] = totale
+
             return jsonify({'scuole': scuole})
     except Exception as e:
         logger.error(f"Errore stats scuole: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore nel calcolo delle statistiche'}), 500
 
 
 @app.route('/api/stats/validazione')
@@ -5282,8 +5318,7 @@ def api_stats_confronto_annuale_dettaglio():
                 query = """
                     SELECT
                         COUNT(DISTINCT r.utente_id) as num_utenti,
-                        COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate,
-                        COALESCE(SUM(r.ore_lavorate_60 * 24.07), 0) as imponibile
+                        COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate
                     FROM rendicontazione r
                     JOIN utenti u ON r.utente_id = u.id
                 """
@@ -5308,7 +5343,7 @@ def api_stats_confronto_annuale_dettaglio():
                     'mese': mese,
                     'num_utenti': dati['num_utenti'],
                     'ore_erogate': round(dati['ore_erogate'], 2),
-                    'imponibile': round(dati['imponibile'], 2)
+                    'imponibile': config.calcola_fatturazione(dati['ore_erogate'])[0]
                 })
 
             # Calcola variazioni percentuali
@@ -5443,4 +5478,11 @@ if __name__ == '__main__':
         app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
     else:
         logger.info("  Premi Ctrl+C per terminare")
-        app.run(debug=True, host='0.0.0.0', port=5000)
+        # Default SICURI anche in esecuzione da sorgente: nessuna esposizione di
+        # rete (solo loopback) e nessun debugger interattivo Werkzeug (che
+        # consentirebbe esecuzione di codice arbitrario a chi raggiunge la porta).
+        # Per lo sviluppo si possono attivare esplicitamente via variabili
+        # d'ambiente: FLASK_DEBUG=1 abilita debugger+reloader, OEPAC_HOST cambia il bind.
+        host = os.environ.get('OEPAC_HOST', '127.0.0.1')
+        debug = os.environ.get('FLASK_DEBUG', '0') == '1'
+        app.run(host=host, port=5000, debug=debug, use_reloader=debug)
