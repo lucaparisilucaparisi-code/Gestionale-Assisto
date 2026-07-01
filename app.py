@@ -5014,12 +5014,30 @@ def api_stats_heatmap(anno_scolastico):
                 {'mese': 6, 'anno': anno_fine}
             ]
 
-            # Cache variazioni monte ore per ogni mese
+            # Pre-calcolo per evitare una query per ogni (utente x mese): variazioni
+            # monte ore e giorni di calendario una volta per mese, e le ore erogate
+            # di tutti gli utenti in un'unica query bulk.
             variazioni_per_mese = {}
+            giorni_per_mese = {}
             for m in mesi_scolastici:
                 variazioni_per_mese[(m['mese'], m['anno'])] = db.get_monte_ore_effettivo_bulk(m['anno'], m['mese'])
+                giorni_per_mese[(m['mese'], m['anno'])] = db.get_calendario(anno_scolastico, m['mese'], m['anno'])
 
-            # Per ogni utente, ottieni le ore erogate per ogni mese
+            ore_map = {}
+            utente_ids = [u['id'] for u in utenti]
+            if utente_ids:
+                ph = ','.join('?' * len(utente_ids))
+                cursor = conn.execute(f"""
+                    SELECT utente_id, anno, mese, COALESCE(SUM(ore_lavorate_60), 0) as ore
+                    FROM rendicontazione
+                    WHERE utente_id IN ({ph})
+                      AND ((anno = ? AND mese >= 9) OR (anno = ? AND mese <= 6))
+                    GROUP BY utente_id, anno, mese
+                """, utente_ids + [anno_inizio, anno_fine])
+                for r in cursor.fetchall():
+                    ore_map[(r['utente_id'], r['anno'], r['mese'])] = r['ore']
+
+            # Componi la heatmap: nessuna query dentro il loop
             heatmap_data = []
             for utente in utenti:
                 utente_data = {
@@ -5031,23 +5049,16 @@ def api_stats_heatmap(anno_scolastico):
                 }
 
                 for m in mesi_scolastici:
-                    cursor = conn.execute("""
-                        SELECT COALESCE(SUM(ore_lavorate_60), 0) as ore
-                        FROM rendicontazione
-                        WHERE utente_id = ? AND anno = ? AND mese = ?
-                    """, [utente['id'], m['anno'], m['mese']])
-
-                    ore = cursor.fetchone()['ore']
+                    ore = ore_map.get((utente['id'], m['anno'], m['mese']), 0)
 
                     # Monte ore effettivo (con variazione se presente)
                     var_mese = variazioni_per_mese.get((m['mese'], m['anno']), {})
                     monte_ore_eff = var_mese.get(utente['id'], utente['monte_ore_settimanale'] or 0)
 
-                    # Calcola ore previste per il mese (formula centralizzata)
-                    giorni_lav = db.get_calendario(anno_scolastico, m['mese'], m['anno'])
+                    # Ore previste per il mese (formula centralizzata)
+                    giorni_lav = giorni_per_mese[(m['mese'], m['anno'])]
                     _, ore_previste_ridotte = db.calcola_media_prevista(monte_ore_eff, giorni_lav)
 
-                    # Calcola percentuale completamento
                     percentuale = (ore / ore_previste_ridotte * 100) if ore_previste_ridotte > 0 else 0
 
                     utente_data['mesi'].append({
@@ -5066,7 +5077,7 @@ def api_stats_heatmap(anno_scolastico):
             })
     except Exception as e:
         logger.error(f"Errore heatmap: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore nel calcolo della heatmap'}), 500
 
 
 @app.route('/api/stats/scuole-dettaglio')
