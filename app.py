@@ -87,9 +87,12 @@ def _load_or_generate_secret_key():
             pass  # Windows: chmod non applicabile
         return new_key
     except OSError as e:
-        # Fallback: deterministico (meno sicuro ma funzionante)
-        logger.warning(f"Impossibile persistere secret_key ({e}), uso fallback deterministico")
-        return hashlib.sha256(config.DATABASE_PATH.encode()).hexdigest()
+        # Fallback SICURO: chiave casuale solo in memoria. Le sessioni si
+        # invalideranno ai riavvii, ma la chiave non e' mai indovinabile.
+        # Non derivare MAI il secret_key da un valore prevedibile (es. il path
+        # del DB): renderebbe forgiabili i cookie di sessione firmati.
+        logger.warning(f"Impossibile persistere secret_key ({e}), uso chiave casuale in memoria")
+        return secrets.token_bytes(32)
 
 
 app.secret_key = _load_or_generate_secret_key()
@@ -102,6 +105,9 @@ os.makedirs(config.BACKUP_FOLDER, exist_ok=True)
 # Configurazione sessione (sicurezza)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# Secure e' opt-in: su http://localhost romperebbe il cookie; attivarlo solo
+# quando si serve dietro HTTPS (OEPAC_HTTPS=1).
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('OEPAC_HTTPS', '0') == '1'
 app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 8  # 8 ore
 
 # Inizializza database
@@ -169,6 +175,9 @@ def login_required(f):
 
 def _login_user(metodo):
     """Imposta la sessione come autenticata."""
+    # Rigenera il contesto di sessione al login (difesa anti session-fixation):
+    # eventuali valori pre-login non vengono promossi a sessione autenticata.
+    session.clear()
     session.permanent = True
     session['authenticated'] = True
     session['auth_method'] = metodo
@@ -5443,4 +5452,11 @@ if __name__ == '__main__':
         app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
     else:
         logger.info("  Premi Ctrl+C per terminare")
-        app.run(debug=True, host='0.0.0.0', port=5000)
+        # Default SICURI anche in esecuzione da sorgente: nessuna esposizione di
+        # rete (solo loopback) e nessun debugger interattivo Werkzeug (che
+        # consentirebbe esecuzione di codice arbitrario a chi raggiunge la porta).
+        # Per lo sviluppo si possono attivare esplicitamente via variabili
+        # d'ambiente: FLASK_DEBUG=1 abilita debugger+reloader, OEPAC_HOST cambia il bind.
+        host = os.environ.get('OEPAC_HOST', '127.0.0.1')
+        debug = os.environ.get('FLASK_DEBUG', '0') == '1'
+        app.run(host=host, port=5000, debug=debug, use_reloader=debug)

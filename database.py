@@ -3205,7 +3205,20 @@ def get_backups_list():
 
 
 def restore_backup(backup_name):
-    """Ripristina un backup"""
+    """Ripristina un backup.
+
+    Valida il nome per prevenire path traversal: deve essere un semplice basename
+    (nessun '..' o percorso) e corrispondere a un backup realmente presente nella
+    cartella dei backup, cosi' da non poter caricare come DB un file arbitrario."""
+    if not backup_name or backup_name != os.path.basename(backup_name):
+        logger.warning(f"Nome backup non valido (possibile path traversal): {backup_name!r}")
+        return False
+    # get_backups_list() filtra gia' per pattern 'gestionale_backup_*.db': la
+    # verifica di appartenenza vincola quindi anche il naming atteso.
+    if backup_name not in [b['nome'] for b in get_backups_list()]:
+        logger.warning(f"Backup inesistente o non riconosciuto: {backup_name!r}")
+        return False
+
     backup_path = os.path.join(config.BACKUP_FOLDER, backup_name)
     if not os.path.exists(backup_path):
         return False
