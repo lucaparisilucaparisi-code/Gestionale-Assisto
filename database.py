@@ -1,7 +1,6 @@
 import sqlite3
 import os
 import re
-import shutil
 import json
 from datetime import datetime
 
@@ -10,29 +9,47 @@ import config
 DATABASE_PATH = config.DATABASE_PATH
 logger = config.setup_logging()
 
+def _connect():
+    """Factory UNICA di connessione SQLite con impostazioni sicure comuni.
+
+    - row_factory=Row per accesso per nome colonna;
+    - PRAGMA foreign_keys=ON: in SQLite l'enforcement e' OFF di default, quindi
+      le FOREIGN KEY ... ON DELETE CASCADE dichiarate non verrebbero applicate
+      (lasciando righe orfane, es. in sostituzioni alla cancellazione di un turno);
+    - busy_timeout: attende invece di fallire subito con 'database is locked';
+    - journal_mode=WAL: piu' robusto a interruzioni e a letture/scritture concorrenti.
+    """
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON')
+    conn.execute('PRAGMA busy_timeout = 5000')
+    conn.execute('PRAGMA journal_mode = WAL')
+    return conn
+
+
 class DBConnection:
     """Context manager per connessioni database sicure"""
     def __init__(self):
         self.conn = None
 
     def __enter__(self):
-        self.conn = sqlite3.connect(DATABASE_PATH)
-        self.conn.row_factory = sqlite3.Row
+        self.conn = _connect()
         return self.conn
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.conn:
             if exc_type is None:
                 self.conn.commit()
+            else:
+                # Su errore annulla esplicitamente la transazione parziale
+                self.conn.rollback()
             self.conn.close()
         return False
 
 
 def get_db():
     """Ottiene connessione al database (legacy, preferire DBConnection context manager)"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return _connect()
 
 
 def get_db_context():
@@ -569,6 +586,17 @@ def init_db():
             (anno_scolastico, mese, anno, giorni_lavorativi)
             VALUES (?, ?, ?, ?)
         ''', cal)
+
+    # Bonifica orfani storici creati quando l'enforcement FK era spento (es. righe
+    # in sostituzioni che puntano a un turno cancellato): vanno rimosse prima che
+    # l'enforcement (ora attivo) le faccia emergere.
+    cursor.execute('''
+        DELETE FROM sostituzioni
+        WHERE turno_id IS NOT NULL AND turno_id NOT IN (SELECT id FROM turni)
+    ''')
+
+    # Versione schema: baseline per future migrazioni numerate (PRAGMA user_version).
+    cursor.execute('PRAGMA user_version = 1')
 
     conn.commit()
     conn.close()
@@ -3151,7 +3179,22 @@ def create_backup():
     backup_path = os.path.join(config.BACKUP_FOLDER, backup_name)
 
     try:
-        shutil.copy2(DATABASE_PATH, backup_path)
+        # API di backup online di SQLite: produce una copia consistente anche
+        # con DB in uso e journal WAL (a differenza di copiare solo il file .db,
+        # che potrebbe perdere le modifiche ancora nel -wal).
+        if not os.path.exists(DATABASE_PATH):
+            logger.warning("Backup saltato: database non ancora presente")
+            return None
+        src = sqlite3.connect(DATABASE_PATH)
+        try:
+            dst = sqlite3.connect(backup_path)
+            try:
+                with dst:
+                    src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
         logger.info(f"Backup creato: {backup_name}")
 
         # Pulizia backup vecchi
@@ -3222,7 +3265,18 @@ def restore_backup(backup_name):
     try:
         # Crea backup del db corrente prima di ripristinare
         create_backup()
-        shutil.copy2(backup_path, DATABASE_PATH)
+        # Ripristino via API di backup: copia il contenuto del backup nel DB
+        # attivo in modo consistente con WAL (evita di lasciare un -wal orfano).
+        src = sqlite3.connect(backup_path)
+        try:
+            dst = sqlite3.connect(DATABASE_PATH)
+            try:
+                with dst:
+                    src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
         logger.info(f"Backup ripristinato: {backup_name}")
         return True
     except Exception as e:

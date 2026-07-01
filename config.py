@@ -94,9 +94,13 @@ def setup_logging():
     if logger.handlers:
         return logger
 
-    # File handler
-    file_handler = logging.FileHandler(
+    # File handler con rotazione: evita che oepac.log cresca all'infinito
+    # (5 file da ~1MB = max ~5MB conservati).
+    from logging.handlers import RotatingFileHandler
+    file_handler = RotatingFileHandler(
         os.path.join(LOG_FOLDER, 'oepac.log'),
+        maxBytes=1_000_000,
+        backupCount=5,
         encoding='utf-8'
     )
     file_handler.setLevel(logging.INFO)

@@ -156,6 +156,30 @@ def require_authentication():
         return redirect(url_for('login_page', next=request.path))
 
 
+@app.errorhandler(404)
+def handle_404(e):
+    """Risposta coerente per risorsa non trovata (JSON per le API)."""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Risorsa non trovata', 'code': 'NOT_FOUND'}), 404
+    return "Pagina non trovata. <a href='/'>Torna alla home</a>", 404
+
+
+@app.errorhandler(Exception)
+def handle_unexpected(e):
+    """Handler centralizzato per eccezioni non gestite.
+
+    Logga i dettagli lato server e restituisce un messaggio generico al client,
+    senza esporre str(e) (che potrebbe rivelare schema DB o percorsi). Le eccezioni
+    HTTP esplicite (abort/404...) mantengono il loro codice."""
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    logger.error(f"Errore non gestito su {request.method} {request.path}: {e}", exc_info=True)
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Errore interno del server', 'code': 'INTERNAL_ERROR'}), 500
+    return "Errore interno del server", 500
+
+
 def login_required(f):
     """Decorator: richiede che l'utente sia autenticato.
     Se non configurato, reindirizza a /setup. Se non loggato, a /login."""
