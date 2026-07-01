@@ -64,6 +64,30 @@ def test_export_word(client, sample_data):
     assert len(r.data) > 10000
 
 
+def test_export_excel(client, sample_data):
+    """Report Excel completo (non era coperto da test)."""
+    r = client.get('/api/export/excel/2025/10')
+    assert r.status_code == 200
+    assert 'spreadsheetml' in r.mimetype
+    assert len(r.data) > 3000
+
+
+def test_export_annuale(client, sample_data):
+    """Report annuale (non era coperto da test)."""
+    r = client.get('/api/export/annuale/2025-2026')
+    assert r.status_code == 200
+    assert 'spreadsheetml' in r.mimetype
+
+
+def test_export_mese_vuoto_non_va_in_crash(client):
+    """I report non devono andare in errore per un mese/anno senza dati."""
+    assert client.get('/api/export/excel/2027/7').status_code == 200
+    assert client.get('/api/export/municipale/2027/7').status_code == 200
+    assert client.get('/api/export/dipartimentale/2027/7').status_code == 200
+    assert client.get('/api/export/word/2027/7').status_code == 200
+    assert client.get('/api/export/annuale/2030-2031').status_code == 200
+
+
 def test_rendicontazione_endpoint(client, sample_data):
     r = client.get('/api/rendicontazione/2025/10')
     assert r.status_code == 200
