@@ -1,0 +1,33 @@
+name: Release
+
+# Crea automaticamente una "Release" (con pulsante di download) quando viene
+# pubblicato un tag di versione tipo v1.1.0. Per pubblicare una nuova versione:
+#   git tag v1.2.0 && git push origin v1.2.0
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # necessario per creare la release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Crea la Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Assisto ${{ github.ref_name }}"
+          generate_release_notes: true
+          body: |
+            Gestionale OEPAC — versione ${{ github.ref_name }}.
+
+            ## Come scaricare e avviare
+            1. Scarica **Source code (zip)** qui sotto.
+            2. Estrai lo ZIP in una cartella.
+            3. Windows: doppio click su **avvia.bat**. macOS/Linux: **./run.sh**.
+
+            I tuoi dati (`gestionale.db`) restano nella tua cartella e non vengono toccati.
