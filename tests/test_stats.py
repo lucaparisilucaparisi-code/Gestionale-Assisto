@@ -35,3 +35,12 @@ def test_audit_endpoint_dopo_estrazione_blueprint(client):
     """L'endpoint audit (spostato nel blueprint migrazione) risponde ancora."""
     r = client.get('/api/audit')
     assert r.status_code == 200
+
+
+def test_endpoint_dettaglio_utente_dopo_estrazione(client, sample_data):
+    """Gli endpoint utente spostati nel blueprint utenti_dettaglio rispondono."""
+    uid = sample_data['utente_id']
+    for url in [f'/api/utente/{uid}/documenti',
+                f'/api/utente/{uid}/note',
+                f'/api/utente/{uid}/assenze']:
+        assert client.get(url).status_code == 200
