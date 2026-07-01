@@ -6,9 +6,13 @@ Nota tecnica per chi sviluppa. Per l'uso e l'installazione vedi il `README.md`.
 
 | File | Responsabilità |
 |------|----------------|
-| `app.py` | Applicazione Flask: route pagine e API, autenticazione (sessione + WebAuthn), import. |
+| `app.py` | Applicazione Flask: route pagine e molte API, autenticazione (sessione + WebAuthn), import. Registra i blueprint sotto. |
 | `database.py` | Tutto l'accesso ai dati SQLite: schema/migrazioni, CRUD, calcoli di dominio. |
-| `routes_export.py` | Blueprint export/reportistica (Excel, PDF, Word). Nessun SQL grezzo: delega a `database.py`. |
+| `routes_export.py` | Blueprint export (Excel, PDF, Word). |
+| `routes_backup.py` | Blueprint backup/ripristino (`/api/backup...`). |
+| `routes_migrazione.py` | Blueprint migrazione dati JSON e audit log (`/api/migrazione`, `/api/audit`). |
+| `routes_report_locale.py` | Blueprint reportistica DD, recuperi, override (`/reportistica-locale`, `/api/dd`, `/api/recuperi`, override). |
+| `validators.py` | Validazione input condivisa (`validate_string/number/integer`). |
 | `config.py` | Costanti economiche, parametri, logging e l'helper `calcola_fatturazione`. |
 | `import_*.py` | Parsing dei file Excel (anagrafica e rendicontazione). |
 | `templates/`, `static/` | UI (Jinja2, CSS, JS, PWA). |
@@ -67,9 +71,13 @@ La CI (`.github/workflows/ci.yml`) esegue ruff + pytest su Python 3.9 e 3.12 ad 
 Non vanno affrontati "di corsa" perché toccano molte route con copertura di test
 ancora parziale; ognuno merita una PR isolata con test aggiuntivi prima del merge:
 
-1. **Split di `app.py` in blueprint per dominio** (auth, utenti, dipendenti, turni,
-   rendicontazione, report). Attenzione: registrare route in un blueprint cambia i
-   nomi endpoint usati da `url_for`/template — vanno aggiornati tutti i riferimenti.
+1. **Split di `app.py` in blueprint per dominio** — *in corso*. Estratti finora:
+   backup, migrazione/audit, reportistica/override (+ `validators.py` condiviso).
+   Da estrarre: statistiche (route sparse), documenti/note/assenze, dipendenti/turni,
+   auth. Regola seguita: spostare solo gruppi le cui route NON sono referenziate da
+   `url_for` (endpoint API chiamati via fetch), così i nomi endpoint possono cambiare
+   senza rompere i template; verificare ogni estrazione con lo smoke test di tutte le
+   route GET + la suite.
 2. **Layer di servizio**: estrarre lo SQL grezzo ancora presente in alcune route
    "grasse" (es. `api_migrazione_importa`) in funzioni di dominio in `database.py`.
 3. **Type hints progressivi** sulle funzioni più riusate + `mypy` non bloccante in CI.
