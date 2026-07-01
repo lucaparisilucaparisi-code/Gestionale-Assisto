@@ -1,15 +1,19 @@
 name: Release
 
-# Crea automaticamente una "Release" (con pulsante di download) quando viene
-# pubblicato un tag di versione tipo v1.1.0. Per pubblicare una nuova versione:
-#   git tag v1.2.0 && git push origin v1.2.0
+# Crea automaticamente una "Release" (pagina con pulsante di download) SENZA
+# bisogno di pushare tag manualmente. Si attiva in due modi:
+#  1. quando il file VERSION cambia su main (ogni nuova versione = bump di VERSION);
+#  2. manualmente dal pulsante "Run workflow" (workflow_dispatch).
+# Il tag vX.Y.Z viene creato dalla release stessa, a partire dal contenuto di VERSION.
 on:
+  workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    paths:
+      - "VERSION"
 
 permissions:
-  contents: write   # necessario per creare la release
+  contents: write   # necessario per creare tag e release
 
 jobs:
   release:
@@ -17,13 +21,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Leggi versione da VERSION
+        id: v
+        run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+
       - name: Crea la Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Assisto ${{ github.ref_name }}"
+          tag_name: "v${{ steps.v.outputs.version }}"
+          name: "Assisto v${{ steps.v.outputs.version }}"
           generate_release_notes: true
           body: |
-            Gestionale OEPAC — versione ${{ github.ref_name }}.
+            Gestionale OEPAC — versione v${{ steps.v.outputs.version }}.
 
             ## Come scaricare e avviare
             1. Scarica **Source code (zip)** qui sotto.
