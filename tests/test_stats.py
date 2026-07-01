@@ -22,3 +22,16 @@ def test_heatmap_ore_corrette(client, db_mod, sample_data):
     assert per_mese[(5, 2026)] == 0  # maggio 2026: mese senza dati in questo test
     # Deve coprire i 10 mesi scolastici
     assert len(riga['mesi']) == 10
+
+
+def test_scuole_dettaglio_senza_parametri(client, sample_data):
+    """Senza anno/mese l'ordinamento non deve riferire una colonna assente (no 500)."""
+    r = client.get('/api/stats/scuole-dettaglio')
+    assert r.status_code == 200
+    assert 'scuole' in r.get_json()
+
+
+def test_audit_endpoint_dopo_estrazione_blueprint(client):
+    """L'endpoint audit (spostato nel blueprint migrazione) risponde ancora."""
+    r = client.get('/api/audit')
+    assert r.status_code == 200
