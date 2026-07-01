@@ -5,7 +5,6 @@ imponibile, IVA, totale, credito/debito, e la coerenza degli arrotondamenti tra
 vista mensile, aggregati e storico.
 """
 import config
-import database as db
 
 
 # ---------- helper unico di fatturazione ----------

@@ -3707,7 +3707,7 @@ def get_report_locale_commessa(commessa_id, anno_scolastico):
     # Ottieni dati base
     dd_list = get_dd_by_commessa(commessa_id, anno_scolastico)
     calendario = get_calendario_completo(anno_scolastico)
-    recuperi = get_recuperi_by_commessa(commessa_id, anno_scolastico)
+    get_recuperi_by_commessa(commessa_id, anno_scolastico)
 
     # Ottieni tutti gli override del progettato (tabella legacy)
     progettato_overrides = get_all_progettato_override(commessa_id, anno_scolastico)

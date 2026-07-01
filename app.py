@@ -9,7 +9,6 @@ import io
 import json
 import csv
 import hashlib
-import base64
 import secrets
 from functools import wraps
 from io import StringIO
@@ -17,12 +16,6 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, make_response, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import pandas as pd
-from docx import Document
-from docx.shared import Inches, Pt, Cm, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
 
 # WebAuthn (impronta digitale / Windows Hello)
 try:
@@ -38,8 +31,6 @@ try:
         AuthenticatorSelectionCriteria,
         UserVerificationRequirement,
         ResidentKeyRequirement,
-        RegistrationCredential,
-        AuthenticationCredential,
     )
     from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
     WEBAUTHN_AVAILABLE = True
@@ -750,7 +741,7 @@ def api_import_cronologia():
                 })
 
             return jsonify({'cronologia': cronologia})
-    except Exception as e:
+    except Exception:
         # Se la tabella non esiste, la creiamo
         try:
             with db.get_db_context() as conn:
@@ -1701,7 +1692,7 @@ def api_update_utente(utente_id):
             params.append(utente_id)
             cursor.execute(f"UPDATE utenti SET {', '.join(updates)} WHERE id = ?", params)
 
-        db.log_audit('modifica', 'utente', utente_id, dettagli=f'Aggiornamento utente', dati_precedenti=dati_precedenti, dati_nuovi=data)
+        db.log_audit('modifica', 'utente', utente_id, dettagli='Aggiornamento utente', dati_precedenti=dati_precedenti, dati_nuovi=data)
         logger.info(f"Utente aggiornato: ID {utente_id}")
 
         return jsonify({'success': True})
@@ -3611,7 +3602,7 @@ def api_undo():
                     params.append(uid)
                     cursor.execute(f"UPDATE utenti SET {', '.join(set_parts)} WHERE id = ?", params)
 
-                db.log_audit('undo', 'utente', uid, f'Ripristinati dati precedenti')
+                db.log_audit('undo', 'utente', uid, 'Ripristinati dati precedenti')
                 return jsonify({'success': True, 'message': 'Modifica annullata'})
 
             return jsonify({'error': 'Tipo azione non supportato per undo'}), 400
@@ -4477,7 +4468,7 @@ def api_update_budget_utente(utente_id):
             budget_mensile=data.get('budget_mensile'),
             budget_annuale=data.get('budget_annuale')
         )
-        db.log_audit('update', 'budget', utente_id, f'Budget aggiornato')
+        db.log_audit('update', 'budget', utente_id, 'Budget aggiornato')
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -4945,7 +4936,7 @@ def api_set_report_override():
 def api_delete_report_override(commessa_id, anno_scolastico, mese, anno, campo):
     """Rimuove l'override di un campo (torna al calcolo automatico)"""
     if campo not in CAMPI_OVERRIDE_VALIDI:
-        return jsonify({'error': f'Campo non valido'}), 400
+        return jsonify({'error': 'Campo non valido'}), 400
 
     try:
         db.delete_report_override(commessa_id, anno_scolastico, mese, anno, campo)
