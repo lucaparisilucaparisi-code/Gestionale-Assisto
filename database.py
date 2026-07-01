@@ -3712,12 +3712,12 @@ def get_report_locale_commessa(commessa_id, anno_scolastico):
     # Ottieni dati base
     dd_list = get_dd_by_commessa(commessa_id, anno_scolastico)
     calendario = get_calendario_completo(anno_scolastico)
-    get_recuperi_by_commessa(commessa_id, anno_scolastico)
 
-    # Ottieni tutti gli override del progettato (tabella legacy)
+    # Override del progettato. Esistono due meccanismi: la tabella storica
+    # progettato_override e la tabella report_override (chiave 'ore_progettate'),
+    # con quest'ultima che ha la precedenza (vedi sotto). Vanno mantenute entrambe
+    # finche' non si consolida la tabella storica (migrazione dati dedicata).
     progettato_overrides = get_all_progettato_override(commessa_id, anno_scolastico)
-
-    # Ottieni tutti gli override generici (nuova tabella)
     report_overrides = get_all_report_override(commessa_id, anno_scolastico)
 
     # Calcola ore annuali totali (somma di tutte le DD già decurtate dell'11%)
