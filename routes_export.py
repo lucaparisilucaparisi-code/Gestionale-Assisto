@@ -401,11 +401,12 @@ def api_export_excel(anno, mese):
 
         # ========== DEFINIZIONE FORMATI PREMIUM ==========
         # Colori brand
-        PRIMARY_COLOR = config.PRIMARY_COLOR
-        PRIMARY_DARK = config.PRIMARY_DARK
-        SUCCESS_COLOR = config.SUCCESS_COLOR
+        # Palette allineata a quella branded condivisa (coerenza tra i report)
+        PRIMARY_COLOR = REPORT_PRIMARY
+        PRIMARY_DARK = REPORT_PRIMARY_DARK
+        SUCCESS_COLOR = REPORT_SUCCESS
         DANGER_COLOR = config.DANGER_COLOR
-        DARK_COLOR = config.DARK_COLOR
+        DARK_COLOR = REPORT_DARK
 
         # Formato titolo principale
         title_fmt = workbook.add_format({
@@ -442,7 +443,7 @@ def api_export_excel(anno, mese):
             'align': 'left',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0'
+            'border_color': '#CBD5E1'
         })
 
         # Formato numeri
@@ -452,7 +453,7 @@ def api_export_excel(anno, mese):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0'
+            'border_color': '#CBD5E1'
         })
 
         # Formato valuta
@@ -462,7 +463,7 @@ def api_export_excel(anno, mese):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
+            'border_color': '#CBD5E1',
             'font_color': SUCCESS_COLOR
         })
 
@@ -473,7 +474,7 @@ def api_export_excel(anno, mese):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
+            'border_color': '#CBD5E1',
             'font_color': SUCCESS_COLOR,
             'bold': True
         })
@@ -485,7 +486,7 @@ def api_export_excel(anno, mese):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
+            'border_color': '#CBD5E1',
             'font_color': DANGER_COLOR,
             'bold': True
         })
@@ -754,7 +755,7 @@ def api_export_excel(anno, mese):
             'align': 'left',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
+            'border_color': '#CBD5E1',
             'indent': 1
         })
 
@@ -764,7 +765,7 @@ def api_export_excel(anno, mese):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0'
+            'border_color': '#CBD5E1'
         })
 
         utente_money_fmt = workbook.add_format({
@@ -773,7 +774,7 @@ def api_export_excel(anno, mese):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0'
+            'border_color': '#CBD5E1'
         })
 
         # Header del foglio
@@ -920,11 +921,12 @@ def api_export_annuale(anno_scolastico):
         workbook = writer.book
 
         # ========== DEFINIZIONE FORMATI PREMIUM ==========
-        PRIMARY_COLOR = config.PRIMARY_COLOR
-        PRIMARY_DARK = config.PRIMARY_DARK
-        SUCCESS_COLOR = config.SUCCESS_COLOR
+        # Palette allineata a quella branded condivisa (coerenza tra i report)
+        PRIMARY_COLOR = REPORT_PRIMARY
+        PRIMARY_DARK = REPORT_PRIMARY_DARK
+        SUCCESS_COLOR = REPORT_SUCCESS
         DANGER_COLOR = config.DANGER_COLOR
-        DARK_COLOR = config.DARK_COLOR
+        DARK_COLOR = REPORT_DARK
 
         # Formato titolo principale
         title_fmt = workbook.add_format({
@@ -982,7 +984,7 @@ def api_export_annuale(anno_scolastico):
             'align': 'left',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0'
+            'border_color': '#CBD5E1'
         })
 
         # Formato cella alternata (zebra)
@@ -991,8 +993,8 @@ def api_export_annuale(anno_scolastico):
             'align': 'left',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
-            'bg_color': '#F8FAFC'
+            'border_color': '#CBD5E1',
+            'bg_color': '#F1F5F9'
         })
 
         # Formato numeri
@@ -1002,7 +1004,7 @@ def api_export_annuale(anno_scolastico):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0'
+            'border_color': '#CBD5E1'
         })
 
         number_alt_fmt = workbook.add_format({
@@ -1011,8 +1013,8 @@ def api_export_annuale(anno_scolastico):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
-            'bg_color': '#F8FAFC'
+            'border_color': '#CBD5E1',
+            'bg_color': '#F1F5F9'
         })
 
         # Formato valuta
@@ -1022,7 +1024,7 @@ def api_export_annuale(anno_scolastico):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
+            'border_color': '#CBD5E1',
             'font_color': SUCCESS_COLOR
         })
 
@@ -1032,9 +1034,9 @@ def api_export_annuale(anno_scolastico):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
+            'border_color': '#CBD5E1',
             'font_color': SUCCESS_COLOR,
-            'bg_color': '#F8FAFC'
+            'bg_color': '#F1F5F9'
         })
 
         # Formato credito (positivo)
@@ -1044,7 +1046,7 @@ def api_export_annuale(anno_scolastico):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
+            'border_color': '#CBD5E1',
             'font_color': SUCCESS_COLOR,
             'bold': True
         })
@@ -1055,10 +1057,10 @@ def api_export_annuale(anno_scolastico):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
+            'border_color': '#CBD5E1',
             'font_color': SUCCESS_COLOR,
             'bold': True,
-            'bg_color': '#F8FAFC'
+            'bg_color': '#F1F5F9'
         })
 
         # Formato debito (negativo)
@@ -1068,7 +1070,7 @@ def api_export_annuale(anno_scolastico):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
+            'border_color': '#CBD5E1',
             'font_color': DANGER_COLOR,
             'bold': True
         })
@@ -1079,10 +1081,10 @@ def api_export_annuale(anno_scolastico):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
-            'border_color': '#E2E8F0',
+            'border_color': '#CBD5E1',
             'font_color': DANGER_COLOR,
             'bold': True,
-            'bg_color': '#F8FAFC'
+            'bg_color': '#F1F5F9'
         })
 
         # Formato totale riga
@@ -1147,7 +1149,7 @@ def api_export_annuale(anno_scolastico):
         workbook.add_format({
             'bg_color': '#F1F5F9',
             'border': 1,
-            'border_color': '#E2E8F0'
+            'border_color': '#CBD5E1'
         })
 
         # ========== FOGLIO 1: DASHBOARD ANNUALE ==========
