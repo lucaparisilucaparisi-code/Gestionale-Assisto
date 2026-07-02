@@ -20,6 +20,17 @@ IVA_PERCENTUALE = 0.05
 COEFFICIENTE_GIORNALIERO = 0.2
 
 
+def anno_scolastico_di(anno: int, mese: int, sep: str = '-') -> str:
+    """Anno scolastico (Set-Giu) a cui appartiene un (anno, mese).
+
+    Regola UNICA per tutta l'app: mese >= 9 -> 'anno{sep}anno+1', altrimenti
+    'anno-1{sep}anno'. sep='-' e' il formato chiave del DB, sep='/' quello
+    di visualizzazione nei report."""
+    if mese >= 9:
+        return f"{anno}{sep}{anno + 1}"
+    return f"{anno - 1}{sep}{anno}"
+
+
 def calcola_fatturazione(ore) -> tuple:
     """Calcolo di fatturazione unico (imponibile, IVA, totale) dalle ore in 100'.
 

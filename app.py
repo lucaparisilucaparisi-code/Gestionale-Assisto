@@ -2748,7 +2748,7 @@ def api_get_alerts():
         })
 
     # 4. Verifica calendario - giorni lavorativi non impostati
-    anno_scolastico = f"{anno}-{anno+1}" if mese >= 9 else f"{anno-1}-{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese)
     with db.get_db_context() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -3629,7 +3629,7 @@ def api_stats_validazione():
 
             # Giorni lavorativi con la stessa regola della vista mensile
             # (tipo scuola infanzia/altri + fallback al default)
-            anno_scolastico_validazione = f"{anno}-{anno+1}" if mese >= 9 else f"{anno-1}-{anno}"
+            anno_scolastico_validazione = config.anno_scolastico_di(anno, mese)
             giorni_def_cal, giorni_altri_cal = db.get_calendario_full(anno_scolastico_validazione, mese, anno)
             differenze_anomale = []
             variazioni_anomalie = db.get_monte_ore_effettivo_bulk(anno, mese)

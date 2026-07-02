@@ -390,10 +390,7 @@ def api_export_excel(anno, mese):
         perc_completamento = 0
 
     # Determina anno scolastico
-    if mese >= 9:
-        anno_scolastico = f"{anno}/{anno+1}"
-    else:
-        anno_scolastico = f"{anno-1}/{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese, sep='/')
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -1491,10 +1488,7 @@ def api_export_municipale(anno, mese):
     IVA_PERC = config.IVA_PERCENTUALE
 
     # Determina anno scolastico
-    if mese >= 9:
-        anno_scolastico = f"{anno}/{anno+1}"
-    else:
-        anno_scolastico = f"{anno-1}/{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese, sep='/')
 
     # Calcola totali generali
     totale_generale = {
@@ -1796,10 +1790,7 @@ def api_export_dipartimentale(anno, mese):
     IVA_PERC = config.IVA_PERCENTUALE
 
     # Determina anno scolastico
-    if mese >= 9:
-        anno_scolastico = f"{anno}/{anno+1}"
-    else:
-        anno_scolastico = f"{anno-1}/{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese, sep='/')
 
     # Raggruppa per livello scolastico
     livelli = {}
@@ -1977,10 +1968,7 @@ def api_export_word(anno, mese):
     utenti_lista_attesa = sum(1 for d in dati if d.get('lista_attesa'))
 
     # Determina anno scolastico
-    if mese >= 9:
-        anno_scolastico = f"{anno}/{anno+1}"
-    else:
-        anno_scolastico = f"{anno-1}/{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese, sep='/')
 
     # Crea documento Word
     doc = Document()

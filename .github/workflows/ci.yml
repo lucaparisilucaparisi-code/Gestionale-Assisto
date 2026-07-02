@@ -29,5 +29,5 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
-      - name: Test (pytest + coverage)
-        run: pytest --cov=. --cov-report=term-missing
+      - name: Test (pytest + coverage, soglia minima 55%)
+        run: pytest --cov=. --cov-report=term-missing --cov-fail-under=55

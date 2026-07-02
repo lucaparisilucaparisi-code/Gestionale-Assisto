@@ -56,9 +56,43 @@ def get_db_context():
     """Restituisce il context manager per connessioni sicure"""
     return DBConnection()
 
+# ==================== VERSIONING SCHEMA ====================
+# Versione corrente dello schema. Per una modifica futura: incrementare questo
+# numero e registrare in MIGRAZIONI una funzione(conn) con il DDL necessario.
+# Il runner legge PRAGMA user_version ed esegue solo le migrazioni mancanti
+# (a differenza dei vecchi ALTER TABLE try/except rieseguiti a ogni avvio).
+SCHEMA_VERSION = 1
+MIGRAZIONI = {
+    # esempio: 2: lambda conn: conn.execute("ALTER TABLE utenti ADD COLUMN ..."),
+}
+
+
+def _esegui_migrazioni(conn):
+    versione = conn.execute('PRAGMA user_version').fetchone()[0]
+    if versione >= SCHEMA_VERSION:
+        return
+    for v in range(versione + 1, SCHEMA_VERSION + 1):
+        fn = MIGRAZIONI.get(v)
+        if fn:
+            fn(conn)
+            logger.info(f"Migrazione schema applicata: versione {v}")
+        conn.execute(f'PRAGMA user_version = {v}')
+    conn.commit()
+
+
 def init_db():
     """Inizializza il database con le tabelle necessarie"""
     conn = get_db()
+    try:
+        _init_schema(conn)
+        conn.commit()
+        _esegui_migrazioni(conn)
+    finally:
+        conn.close()
+
+
+def _init_schema(conn):
+    """Crea/aggiorna lo schema (idempotente). Eseguita dentro init_db."""
     cursor = conn.cursor()
 
     # Tabella Commesse (ora dinamica)
@@ -614,11 +648,6 @@ def init_db():
         WHERE turno_id IS NOT NULL AND turno_id NOT IN (SELECT id FROM turni)
     ''')
 
-    # Versione schema: baseline per future migrazioni numerate (PRAGMA user_version).
-    cursor.execute('PRAGMA user_version = 1')
-
-    conn.commit()
-    conn.close()
 
 def punteggia_nome(nome: str, cognome: str) -> str:
     """Converte nome e cognome in formato puntato per privacy (es. Mario Rossi -> M. R.)"""
@@ -1039,10 +1068,7 @@ def set_calendario(anno_scolastico, mese, anno, giorni, giorni_altri=None):
 def get_or_create_rendicontazione(utente_id, anno, mese):
     """Ottiene o crea una rendicontazione mensile"""
     # Determina anno scolastico
-    if mese >= 9:
-        anno_scolastico = f"{anno}-{anno+1}"
-    else:
-        anno_scolastico = f"{anno-1}-{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese)
 
     with get_db_context() as conn:
         cursor = conn.cursor()
@@ -1112,10 +1138,7 @@ def update_rendicontazione_batch(anno, mese, updates):
     In caso di errore nessuna modifica viene applicata (rollback).
     Ritorna il numero di utenti aggiornati.
     """
-    if mese >= 9:
-        anno_scolastico = f"{anno}-{anno+1}"
-    else:
-        anno_scolastico = f"{anno-1}-{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese)
 
     aggiornati = 0
     conn = get_db()
@@ -1176,10 +1199,7 @@ def update_rendicontazione_batch(anno, mese, updates):
 def get_rendicontazione_completa(anno, mese, commessa=None):
     """Ottiene la rendicontazione completa per un mese con tutti i calcoli"""
     # Determina anno scolastico
-    if mese >= 9:
-        anno_scolastico = f"{anno}-{anno+1}"
-    else:
-        anno_scolastico = f"{anno-1}-{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese)
 
     # Calcola il periodo corrente per il filtro date
     periodo_corrente = f"{anno:04d}-{mese:02d}"
@@ -1672,6 +1692,10 @@ def get_confronto_annuale(anno_scolastico_1, anno_scolastico_2):
             anni = as_str.split('-')
             return int(anni[0]), int(anni[1])
 
+        # Invariante rispetto a mese/anno: una sola query invece di 20 nel loop
+        cursor.execute("SELECT COUNT(*) FROM utenti WHERE attivo = 1")
+        tot_utenti = cursor.fetchone()[0]
+
         def get_dati_anno(anno_scolastico):
             anno_inizio, anno_fine = parse_anno(anno_scolastico)
             mesi_scolastici = [
@@ -1691,9 +1715,6 @@ def get_confronto_annuale(anno_scolastico_1, anno_scolastico_2):
                     WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1
                 ''', (anno, mese))
                 row = cursor.fetchone()
-
-                cursor.execute("SELECT COUNT(*) FROM utenti WHERE attivo = 1")
-                tot_utenti = cursor.fetchone()[0]
 
                 risultati.append({
                     'mese': mese,
@@ -3364,6 +3385,8 @@ def restore_backup(backup_name):
                 dst.close()
         finally:
             src.close()
+        # Il DB e' stato sostituito: lo stato di configurazione auth va riletto
+        invalida_cache_auth()
         logger.info(f"Backup ripristinato: {backup_name}")
         return True
     except Exception as e:
@@ -3711,16 +3734,19 @@ def get_calendario_completo(anno_scolastico):
         return [dict(r) for r in cursor.fetchall()]
 
 
-def calcola_ore_progettate_mese(commessa_id, anno_scolastico, mese, anno):
+def calcola_ore_progettate_mese(commessa_id, anno_scolastico, mese, anno,
+                                dd_list=None, calendario=None):
     """
     Calcola le ore progettate per un mese specifico.
     Le ore delle DD vengono distribuite proporzionalmente ai giorni lavorativi.
-    """
-    # Ottieni le DD attive per questo mese
-    dd_list = get_dd_by_commessa(commessa_id, anno_scolastico)
 
-    # Ottieni calendario completo
-    calendario = get_calendario_completo(anno_scolastico)
+    dd_list/calendario possono essere passati dal chiamante (es. dal loop sui
+    mesi del report locale) per evitare di rifare le stesse query 10 volte.
+    """
+    if dd_list is None:
+        dd_list = get_dd_by_commessa(commessa_id, anno_scolastico)
+    if calendario is None:
+        calendario = get_calendario_completo(anno_scolastico)
     giorni_totali = sum(c['giorni_lavorativi'] for c in calendario)
 
     if giorni_totali == 0:
@@ -3852,8 +3878,10 @@ def get_report_locale_commessa(commessa_id, anno_scolastico):
         giorni_is_override = giorni_override_key in report_overrides
         giorni = report_overrides[giorni_override_key] if giorni_is_override else giorni_auto
 
-        # Calcola ore progettate (automatico)
-        ore_progettate_auto = calcola_ore_progettate_mese(commessa_id, anno_scolastico, mese, anno)
+        # Calcola ore progettate (automatico), riusando DD e calendario gia' caricati
+        ore_progettate_auto = calcola_ore_progettate_mese(
+            commessa_id, anno_scolastico, mese, anno,
+            dd_list=dd_list, calendario=calendario)
 
         # Usa override progettato se presente (prima dalla tabella legacy, poi dalla nuova)
         progettato_override_key = (mese, anno)
@@ -4028,12 +4056,30 @@ def get_monte_ore_effettivo_bulk(anno, mese):
 
 # ==================== AUTENTICAZIONE (single-user) ====================
 
+# Cache SOLO del valore True: viene interrogata ad ogni request (before_request)
+# e una volta configurato l'utente non torna mai indietro, tranne dopo un
+# restore di backup (che la invalida esplicitamente).
+_auth_configured_cache = False
+
+
 def auth_is_configured():
     """Ritorna True se esiste gia' una configurazione utente."""
+    global _auth_configured_cache
+    if _auth_configured_cache:
+        return True
     with get_db_context() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM auth_config WHERE id = 1")
-        return cursor.fetchone()[0] > 0
+        configured = cursor.fetchone()[0] > 0
+    if configured:
+        _auth_configured_cache = True
+    return configured
+
+
+def invalida_cache_auth():
+    """Da chiamare quando il DB viene sostituito (restore backup)."""
+    global _auth_configured_cache
+    _auth_configured_cache = False
 
 
 def auth_create_user(username, password_hash):
