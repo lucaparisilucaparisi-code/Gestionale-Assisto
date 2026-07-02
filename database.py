@@ -740,7 +740,7 @@ def get_or_create_utente(scuola_id, nome, cognome, monte_ore):
 
         # Cerca utente esistente
         cursor.execute(
-            "SELECT id FROM utenti WHERE scuola_id = ? AND nome = ? AND cognome = ?",
+            "SELECT id FROM utenti WHERE scuola_id = ? AND nome = ? COLLATE NOCASE AND cognome = ? COLLATE NOCASE",
             (scuola_id, nome, cognome)
         )
         utente = cursor.fetchone()
@@ -1542,93 +1542,44 @@ def get_utenti_meno_ore(anno, mese, limit=10):
 
 
 def get_ore_erogate_vs_previste(anno_scolastico, commessa=None):
-    """Ottiene il confronto ore erogate vs previste per ogni mese dell'anno scolastico"""
-    with get_db_context() as conn:
-        cursor = conn.cursor()
+    """Ottiene il confronto ore erogate vs previste per ogni mese dell'anno scolastico.
 
-        # Parse anno scolastico
-        anni = anno_scolastico.split('-')
-        anno_inizio = int(anni[0])
-        anno_fine = int(anni[1])
+    Deriva entrambi i valori dalle STESSE righe della vista mensile
+    (get_rendicontazione_completa): cosi' periodo di validita' degli utenti,
+    variazioni monte ore e fallback giorni lavorativi sono identici a quelli
+    del credito/debito per utente, e il grafico non mostra previste gonfiate
+    da utenti non in servizio nel mese."""
+    anni = anno_scolastico.split('-')
+    anno_inizio = int(anni[0])
+    anno_fine = int(anni[1])
 
-        mesi_scolastici = [
-            (9, anno_inizio), (10, anno_inizio), (11, anno_inizio), (12, anno_inizio),
-            (1, anno_fine), (2, anno_fine), (3, anno_fine), (4, anno_fine),
-            (5, anno_fine), (6, anno_fine)
-        ]
+    mesi_scolastici = [
+        (9, anno_inizio), (10, anno_inizio), (11, anno_inizio), (12, anno_inizio),
+        (1, anno_fine), (2, anno_fine), (3, anno_fine), (4, anno_fine),
+        (5, anno_fine), (6, anno_fine)
+    ]
 
-        MESI_NOME = {
-            1: 'Gen', 2: 'Feb', 3: 'Mar', 4: 'Apr',
-            5: 'Mag', 6: 'Giu', 7: 'Lug', 8: 'Ago',
-            9: 'Set', 10: 'Ott', 11: 'Nov', 12: 'Dic'
-        }
+    MESI_NOME = {
+        1: 'Gen', 2: 'Feb', 3: 'Mar', 4: 'Apr',
+        5: 'Mag', 6: 'Giu', 7: 'Lug', 8: 'Ago',
+        9: 'Set', 10: 'Ott', 11: 'Nov', 12: 'Dic'
+    }
 
-        risultati = []
-        for mese, anno in mesi_scolastici:
-            # Calcola ore erogate con filtro commessa opzionale
-            # NOTA: utenti.commessa non esiste, dobbiamo fare JOIN attraverso scuole -> commesse
-            if commessa:
-                cursor.execute('''
-                    SELECT SUM(r.ore_lavorate_60) as ore_erogate
-                    FROM rendicontazione r
-                    JOIN utenti u ON r.utente_id = u.id
-                    JOIN scuole s ON u.scuola_id = s.id
-                    JOIN commesse cm ON s.commessa_id = cm.id
-                    WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1 AND cm.nome = ?
-                ''', (anno, mese, commessa))
-            else:
-                cursor.execute('''
-                    SELECT SUM(r.ore_lavorate_60) as ore_erogate
-                    FROM rendicontazione r
-                    JOIN utenti u ON r.utente_id = u.id
-                    WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1
-                ''', (anno, mese))
-            row = cursor.fetchone()
-            ore_erogate = row['ore_erogate'] or 0
+    risultati = []
+    for mese, anno in mesi_scolastici:
+        dati = get_rendicontazione_completa(anno, mese, commessa)
+        ore_erogate = sum(d['ore_lavorate_60'] or 0 for d in dati)
+        ore_previste = sum(d['media_con_assenza_60'] or 0 for d in dati)
 
-            # Calcola ore previste (media -11%)
-            # Formula: monte_ore_settimanale * giorni_lavorativi * coeff giornaliero * (1 - tasso assenza)
-            # Per non-infanzia usa giorni_lavorativi_altri se presente (tipicamente solo giugno)
-            coeff_previste = config.COEFFICIENTE_GIORNALIERO * (1 - config.TASSO_ASSENZA)
-            if commessa:
-                cursor.execute('''
-                    SELECT
-                        SUM(u.monte_ore_settimanale * COALESCE(
-                            CASE
-                                WHEN UPPER(COALESCE(s.nome_completo, '')) LIKE '%INFANZIA%' THEN cal.giorni_lavorativi
-                                ELSE COALESCE(cal.giorni_lavorativi_altri, cal.giorni_lavorativi)
-                            END, 0) * ?) as ore_previste
-                    FROM utenti u
-                    JOIN scuole s ON u.scuola_id = s.id
-                    JOIN commesse cm ON s.commessa_id = cm.id
-                    LEFT JOIN calendario_scolastico cal ON cal.anno_scolastico = ? AND cal.mese = ? AND cal.anno = ?
-                    WHERE u.attivo = 1 AND cm.nome = ?
-                ''', (coeff_previste, anno_scolastico, mese, anno, commessa))
-            else:
-                cursor.execute('''
-                    SELECT
-                        SUM(u.monte_ore_settimanale * COALESCE(
-                            CASE
-                                WHEN UPPER(COALESCE(s.nome_completo, '')) LIKE '%INFANZIA%' THEN c.giorni_lavorativi
-                                ELSE COALESCE(c.giorni_lavorativi_altri, c.giorni_lavorativi)
-                            END, 0) * ?) as ore_previste
-                    FROM utenti u
-                    JOIN scuole s ON u.scuola_id = s.id
-                    LEFT JOIN calendario_scolastico c ON c.anno_scolastico = ? AND c.mese = ? AND c.anno = ?
-                    WHERE u.attivo = 1
-                ''', (coeff_previste, anno_scolastico, mese, anno))
-            ore_previste_row = cursor.fetchone()
-            ore_previste = ore_previste_row['ore_previste'] or 0
+        risultati.append({
+            'mese': mese,
+            'mese_nome': MESI_NOME.get(mese, ''),
+            'anno': anno,
+            'ore_erogate': round(ore_erogate, 2),
+            'ore_previste': round(ore_previste, 2)
+        })
 
-            risultati.append({
-                'mese': mese,
-                'mese_nome': MESI_NOME.get(mese, ''),
-                'anno': anno,
-                'ore_erogate': round(ore_erogate, 2),
-                'ore_previste': round(ore_previste, 2)
-            })
-
-        return risultati
+    return risultati
 
 
 def get_statistiche_mensili_anno(anno_scolastico):
@@ -2332,6 +2283,9 @@ def get_storico_ore_utente(utente_id, anno_scolastico=None):
             JOIN scuole s ON s.id = u.scuola_id
             LEFT JOIN calendario_scolastico c ON
                 c.anno = r.anno AND c.mese = r.mese
+                AND c.anno_scolastico = CASE WHEN r.mese >= 9
+                    THEN r.anno || '-' || (r.anno + 1)
+                    ELSE (r.anno - 1) || '-' || r.anno END
             WHERE r.utente_id = ?
         '''
         params = [utente_id]
@@ -3084,6 +3038,17 @@ def suggerisci_sostituti(scuola_id, giorno, ora_inizio, ora_fine, data, escludi_
         for r in cursor.fetchall():
             turni_per_dip.setdefault(r['dipendente_id'], []).append((r['ora_inizio'], r['ora_fine']))
 
+        # Sostituzioni gia' assegnate nella stessa data (1 query): un sostituto
+        # gia' impegnato a coprire un turno in quella fascia NON e' disponibile
+        # per un secondo turno sovrapposto (evita la doppia prenotazione).
+        cursor.execute('''SELECT so.sostituto_id, t.ora_inizio, t.ora_fine
+                          FROM sostituzioni so
+                          JOIN turni t ON so.turno_id = t.id
+                          WHERE so.data = ? AND so.stato = 'coperta'
+                            AND so.sostituto_id IS NOT NULL''', (data,))
+        for r in cursor.fetchall():
+            turni_per_dip.setdefault(r['sostituto_id'], []).append((r['ora_inizio'], r['ora_fine']))
+
         # Scuole di ogni operatore (turni + assegnazioni) in 1 query
         cursor.execute('''
             SELECT dipendente_id, scuola_id FROM turni WHERE scuola_id IS NOT NULL
@@ -3372,6 +3337,35 @@ def pop_undo_action():
                 'data': json.loads(row['data'])
             }
         return None
+
+
+def peek_undo_action():
+    """Restituisce l'ultima azione dello stack SENZA rimuoverla.
+
+    Usata dall'undo: l'azione (che per una cancellazione e' l'unica copia dei
+    dati) va eliminata solo DOPO che il ripristino e' andato a buon fine."""
+    import json
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, action_type, data FROM undo_actions
+            ORDER BY id DESC
+            LIMIT 1
+        ''')
+        row = cursor.fetchone()
+        if row:
+            return {
+                'id': row['id'],
+                'type': row['action_type'],
+                'data': json.loads(row['data'])
+            }
+        return None
+
+
+def delete_undo_action(action_id):
+    """Elimina una specifica azione undo (dopo un ripristino riuscito)."""
+    with get_db_context() as conn:
+        conn.execute('DELETE FROM undo_actions WHERE id = ?', (action_id,))
 
 
 def get_undo_stack():

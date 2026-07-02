@@ -419,11 +419,14 @@ async function copiaDaMesePrecedente() {
     const [mese, anno] = meseSelect.value.split('-').map(Number);
 
     // Calcola nome mese precedente per il messaggio di conferma
+    // (coerente col server: per settembre il precedente e' Giugno)
     let mesePrecNome;
-    if (mese === 1) {
+    if (mese === 9) {
+        mesePrecNome = `Giugno ${anno}`;
+    } else if (mese === 1) {
         mesePrecNome = `Dicembre ${anno - 1}`;
     } else {
-        mesePrecNome = `${MESI[mese - 1]} ${mese <= 8 ? anno : anno}`;
+        mesePrecNome = `${MESI[mese - 1]} ${anno}`;
     }
 
     showConfirmDialog(
