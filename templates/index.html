@@ -108,6 +108,28 @@
     </div>
 </div>
 
+<!-- Banner nuovo anno scolastico: visibile da giugno a ottobre se il prossimo
+     anno non ha ancora il calendario -->
+<div class="card mb-4" id="nuovo-anno-card" style="display:none;">
+    <div class="card-header">
+        <h2 class="card-title">🎒 Prepara il nuovo anno scolastico <span id="nuovo-anno-label"></span></h2>
+    </div>
+    <div class="card-body" id="nuovo-anno-body">
+        <p class="text-muted" style="margin-top:0;">
+            Il calendario del prossimo anno scolastico non è ancora configurato.
+            Posso prepararlo automaticamente con le regole della Regione Lazio
+            (giorni lavorativi lun–ven, festività e vacanze pasquali già escluse):
+            potrai poi <strong>rivederlo e correggerlo</strong> mese per mese.
+        </p>
+        <div class="flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-primary" id="btn-prepara-anno">
+                Prepara l'anno scolastico
+            </button>
+            <a href="/calendario" class="btn btn-secondary">Apri il calendario</a>
+        </div>
+    </div>
+</div>
+
 <!-- Stats Grid - KPI cliccabili -->
 <div class="stats-grid">
     <a href="/utenti" class="stat-card stat-card-clickable animate-delay-1">
