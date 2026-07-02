@@ -2921,118 +2921,121 @@ def api_copia_calendario_precedente(anno_scolastico):
         return jsonify({'error': 'Errore interno del server'}), 500
 
 
+def calcola_e_salva_calendario_auto(anno_scolastico):
+    """Calcola e salva i giorni lavorativi dell'anno scolastico (regole Lazio:
+    lun-ven, festivita' fisse, vacanze pasquali; giugno con variante non-infanzia
+    fino all'8). Ritorna la lista dei mesi salvati con i giorni calcolati.
+    Riusata dal pulsante 'calcola auto' del calendario e dal wizard nuovo anno."""
+    from datetime import date, timedelta
+    anno_inizio, anno_fine = map(int, anno_scolastico.split('-'))
+
+    # Festivita' fisse italiane (giorno, mese) escluse dai giorni lavorativi
+    FESTIVITA_FISSE = {
+        (1, 1),   # Capodanno
+        (6, 1),   # Epifania
+        (25, 4),  # Liberazione
+        (1, 5),   # Festa del Lavoro
+        (2, 6),   # Festa della Repubblica
+        (29, 6),  # SS. Pietro e Paolo (patrono di Roma)
+        (1, 11),  # Ognissanti
+        (8, 12),  # Immacolata
+        (25, 12), # Natale
+        (26, 12), # Santo Stefano
+    }
+
+    def calcola_pasqua(anno):
+        """Data della domenica di Pasqua (algoritmo di Gauss/Butcher)."""
+        a = anno % 19
+        b = anno // 100
+        c = anno % 100
+        d = b // 4
+        e = b % 4
+        f = (b + 8) // 25
+        g = (b - f + 1) // 3
+        h = (19 * a + b - d - g + 15) % 30
+        i = c // 4
+        k = c % 4
+        l = (32 + 2 * e + 2 * i - h - k) % 7
+        m = (a + 11 * h + 22 * l) // 451
+        mese = (h + l - 7 * m + 114) // 31
+        giorno = ((h + l - 7 * m + 114) % 31) + 1
+        return date(anno, mese, giorno)
+
+    # Vacanze pasquali (calendario Lazio): dal giovedi' santo
+    # al martedi' dopo Pasqua, inclusi
+    pasqua = calcola_pasqua(anno_fine)
+    vacanze_pasquali = set()
+    d = pasqua - timedelta(days=3)
+    while d <= pasqua + timedelta(days=2):
+        vacanze_pasquali.add(d)
+        d += timedelta(days=1)
+
+    # Finestre di calendario scolastico (inizio, fine) per ogni mese, inclusive.
+    # Valori tipici per regione Lazio; il numero risultante e' comunque editabile manualmente.
+    # Per giugno si usano DUE finestre: infanzia fino al 30, altri fino all'8.
+    FINESTRE = {
+        9:  (date(anno_inizio, 9, 15), date(anno_inizio, 9, 30)),   # inizio scuola ~15/9
+        10: (date(anno_inizio, 10, 1), date(anno_inizio, 10, 31)),
+        11: (date(anno_inizio, 11, 1), date(anno_inizio, 11, 30)),
+        12: (date(anno_inizio, 12, 1), date(anno_inizio, 12, 22)),  # vacanze di Natale
+        1:  (date(anno_fine, 1, 8), date(anno_fine, 1, 31)),        # rientro ~8/1
+        # Febbraio: ultimo giorno reale del mese (29 negli anni bisestili)
+        2:  (date(anno_fine, 2, 1), date(anno_fine, 3, 1) - timedelta(days=1)),
+        3:  (date(anno_fine, 3, 1), date(anno_fine, 3, 31)),
+        4:  (date(anno_fine, 4, 1), date(anno_fine, 4, 30)),
+        5:  (date(anno_fine, 5, 1), date(anno_fine, 5, 31)),
+        6:  (date(anno_fine, 6, 1), date(anno_fine, 6, 30)),        # infanzia fino al 30
+    }
+    # Giugno non-infanzia: finisce l'8
+    FINESTRA_GIUGNO_ALTRI = (date(anno_fine, 6, 1), date(anno_fine, 6, 8))
+
+    def conta_giorni(inizio, fine):
+        """Conta giorni feriali (lun-ven) tra inizio e fine inclusi,
+        escluse festivita' fisse e vacanze pasquali."""
+        count = 0
+        d = inizio
+        while d <= fine:
+            if (d.weekday() < 5
+                    and (d.day, d.month) not in FESTIVITA_FISSE
+                    and d not in vacanze_pasquali):
+                count += 1
+            d += timedelta(days=1)
+        return count
+
+    mesi_salvati = []
+    MESI_SCOLASTICI_LIST = [
+        (9, anno_inizio), (10, anno_inizio), (11, anno_inizio), (12, anno_inizio),
+        (1, anno_fine), (2, anno_fine), (3, anno_fine), (4, anno_fine), (5, anno_fine), (6, anno_fine)
+    ]
+
+    with db.get_db_context() as conn:
+        cursor = conn.cursor()
+        for mese, anno in MESI_SCOLASTICI_LIST:
+            inizio, fine = FINESTRE[mese]
+            giorni = conta_giorni(inizio, fine)
+
+            # Solo a giugno calcoliamo anche la variante non-infanzia
+            giorni_altri = None
+            if mese == 6:
+                g_inizio, g_fine = FINESTRA_GIUGNO_ALTRI
+                giorni_altri = conta_giorni(g_inizio, g_fine)
+
+            cursor.execute('''
+                INSERT OR REPLACE INTO calendario_scolastico
+                (anno_scolastico, mese, anno, giorni_lavorativi, giorni_lavorativi_altri)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (anno_scolastico, mese, anno, giorni, giorni_altri))
+            mesi_salvati.append({'mese': mese, 'anno': anno, 'giorni': giorni, 'giorni_altri': giorni_altri})
+
+    return mesi_salvati
+
+
 @app.route('/api/calendario/<anno_scolastico>/calcola-auto', methods=['POST'])
 def api_calcola_calendario_auto(anno_scolastico):
-    """Calcola automaticamente i giorni lavorativi (lun-ven, escluse festivita').
-    Per giugno calcola anche giorni_lavorativi_altri fino all'8 giugno (fine scuola
-    primaria/secondaria), mentre il campo principale copre fino al 30 giugno (infanzia).
-    Per gli altri mesi usa date tipiche italiane (scuole aperte)."""
+    """Calcola automaticamente i giorni lavorativi e li salva nel calendario."""
     try:
-        from datetime import date, timedelta
-        anno_inizio, anno_fine = map(int, anno_scolastico.split('-'))
-
-        # Festivita' fisse italiane (giorno, mese) escluse dai giorni lavorativi
-        FESTIVITA_FISSE = {
-            (1, 1),   # Capodanno
-            (6, 1),   # Epifania
-            (25, 4),  # Liberazione
-            (1, 5),   # Festa del Lavoro
-            (2, 6),   # Festa della Repubblica
-            (29, 6),  # SS. Pietro e Paolo (patrono di Roma)
-            (1, 11),  # Ognissanti
-            (8, 12),  # Immacolata
-            (25, 12), # Natale
-            (26, 12), # Santo Stefano
-        }
-
-        def calcola_pasqua(anno):
-            """Data della domenica di Pasqua (algoritmo di Gauss/Butcher)."""
-            a = anno % 19
-            b = anno // 100
-            c = anno % 100
-            d = b // 4
-            e = b % 4
-            f = (b + 8) // 25
-            g = (b - f + 1) // 3
-            h = (19 * a + b - d - g + 15) % 30
-            i = c // 4
-            k = c % 4
-            l = (32 + 2 * e + 2 * i - h - k) % 7
-            m = (a + 11 * h + 22 * l) // 451
-            mese = (h + l - 7 * m + 114) // 31
-            giorno = ((h + l - 7 * m + 114) % 31) + 1
-            return date(anno, mese, giorno)
-
-        # Vacanze pasquali (calendario Lazio): dal giovedi' santo
-        # al martedi' dopo Pasqua, inclusi
-        pasqua = calcola_pasqua(anno_fine)
-        vacanze_pasquali = set()
-        d = pasqua - timedelta(days=3)
-        while d <= pasqua + timedelta(days=2):
-            vacanze_pasquali.add(d)
-            d += timedelta(days=1)
-
-        # Finestre di calendario scolastico (inizio, fine) per ogni mese, inclusive.
-        # Valori tipici per regione Lazio; il numero risultante e' comunque editabile manualmente.
-        # Per giugno si usano DUE finestre: infanzia fino al 30, altri fino all'8.
-        FINESTRE = {
-            9:  (date(anno_inizio, 9, 15), date(anno_inizio, 9, 30)),   # inizio scuola ~15/9
-            10: (date(anno_inizio, 10, 1), date(anno_inizio, 10, 31)),
-            11: (date(anno_inizio, 11, 1), date(anno_inizio, 11, 30)),
-            12: (date(anno_inizio, 12, 1), date(anno_inizio, 12, 22)),  # vacanze di Natale
-            1:  (date(anno_fine, 1, 8), date(anno_fine, 1, 31)),        # rientro ~8/1
-            # Febbraio: ultimo giorno reale del mese (29 negli anni bisestili)
-            2:  (date(anno_fine, 2, 1), date(anno_fine, 3, 1) - timedelta(days=1)),
-            3:  (date(anno_fine, 3, 1), date(anno_fine, 3, 31)),
-            4:  (date(anno_fine, 4, 1), date(anno_fine, 4, 30)),
-            5:  (date(anno_fine, 5, 1), date(anno_fine, 5, 31)),
-            6:  (date(anno_fine, 6, 1), date(anno_fine, 6, 30)),        # infanzia fino al 30
-        }
-        # Giugno non-infanzia: finisce l'8
-        FINESTRA_GIUGNO_ALTRI = (date(anno_fine, 6, 1), date(anno_fine, 6, 8))
-
-        def conta_giorni(inizio, fine):
-            """Conta giorni feriali (lun-ven) tra inizio e fine inclusi,
-            escluse festivita' fisse e vacanze pasquali."""
-            count = 0
-            d = inizio
-            while d <= fine:
-                if (d.weekday() < 5
-                        and (d.day, d.month) not in FESTIVITA_FISSE
-                        and d not in vacanze_pasquali):
-                    count += 1
-                d += timedelta(days=1)
-            return count
-
-        mesi_calcolati = 0
-        MESI_SCOLASTICI_LIST = [
-            (9, anno_inizio), (10, anno_inizio), (11, anno_inizio), (12, anno_inizio),
-            (1, anno_fine), (2, anno_fine), (3, anno_fine), (4, anno_fine), (5, anno_fine), (6, anno_fine)
-        ]
-
-        with db.get_db_context() as conn:
-            cursor = conn.cursor()
-            for mese, anno in MESI_SCOLASTICI_LIST:
-                inizio, fine = FINESTRE[mese]
-                giorni = conta_giorni(inizio, fine)
-
-                # Solo a giugno calcoliamo anche la variante non-infanzia
-                giorni_altri = None
-                if mese == 6:
-                    g_inizio, g_fine = FINESTRA_GIUGNO_ALTRI
-                    giorni_altri = conta_giorni(g_inizio, g_fine)
-
-                cursor.execute('''
-                    INSERT OR REPLACE INTO calendario_scolastico
-                    (anno_scolastico, mese, anno, giorni_lavorativi, giorni_lavorativi_altri)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (anno_scolastico, mese, anno, giorni, giorni_altri))
-                mesi_calcolati += 1
-
-        return jsonify({
-            'success': True,
-            'mesi_calcolati': mesi_calcolati
-        })
+        mesi = calcola_e_salva_calendario_auto(anno_scolastico)
+        return jsonify({'success': True, 'mesi_calcolati': len(mesi)})
     except Exception as e:
         logger.error(f"Errore non gestito: {e}", exc_info=True)
         return jsonify({'error': 'Errore interno del server'}), 500
@@ -3055,6 +3058,63 @@ def api_create_anno_scolastico():
 
     anno_scolastico = db.create_anno_scolastico(anno_inizio)
     return jsonify({'anno_scolastico': anno_scolastico})
+
+
+# ==================== WIZARD NUOVO ANNO SCOLASTICO ====================
+
+def _prossimo_anno_da_preparare(oggi=None):
+    """Ritorna (anno_scolastico, gia_pronto) del prossimo anno da preparare,
+    o (None, None) fuori dalla finestra di preparazione (giugno-ottobre)."""
+    oggi = oggi or datetime.now()
+    if oggi.month not in (6, 7, 8, 9, 10):
+        return None, None
+    # L'anno che inizia (o e' appena iniziato) a settembre di quest'anno solare
+    anno_target = f"{oggi.year}-{oggi.year + 1}"
+    with db.get_db_context() as conn:
+        n = conn.execute(
+            'SELECT COUNT(*) FROM calendario_scolastico WHERE anno_scolastico = ?',
+            (anno_target,)).fetchone()[0]
+    return anno_target, n > 0
+
+
+@app.route('/api/anno-scolastico/prossimo', methods=['GET'])
+def api_anno_scolastico_prossimo():
+    """Stato del prossimo anno scolastico: serve per il banner in dashboard."""
+    oggi = datetime.now()
+    anno_target, pronto = _prossimo_anno_da_preparare(oggi)
+    return jsonify({
+        'corrente': config.anno_scolastico_di(oggi.year, oggi.month),
+        'prossimo': anno_target,
+        'pronto': bool(pronto),
+        'mostra_banner': anno_target is not None and not pronto,
+    })
+
+
+@app.route('/api/anno-scolastico/prepara', methods=['POST'])
+def api_anno_scolastico_prepara():
+    """Prepara il nuovo anno scolastico: calcola e salva il calendario con le
+    regole della Regione Lazio (rivedibile a mano) e ritorna il riepilogo.
+    Idempotente: rieseguirlo ricalcola il calendario dell'anno indicato."""
+    data = request.json or {}
+    anno_scolastico = (data.get('anno_scolastico') or '').strip()
+    if not re.match(r'^\d{4}-\d{4}$', anno_scolastico):
+        return jsonify({'error': 'Formato anno scolastico non valido (es. 2026-2027)'}), 400
+    a1, a2 = map(int, anno_scolastico.split('-'))
+    if a2 != a1 + 1:
+        return jsonify({'error': 'Anno scolastico non coerente (deve essere consecutivo)'}), 400
+
+    mesi = calcola_e_salva_calendario_auto(anno_scolastico)
+    utenti_attivi = db.count_utenti()
+    db.log_audit('preparazione_anno', 'sistema',
+                 dettagli=f'Preparato anno scolastico {anno_scolastico} ({len(mesi)} mesi)')
+    logger.info(f"Anno scolastico {anno_scolastico} preparato: {len(mesi)} mesi di calendario")
+
+    return jsonify({
+        'success': True,
+        'anno_scolastico': anno_scolastico,
+        'mesi': mesi,
+        'utenti_attivi': utenti_attivi,
+    })
 
 
 

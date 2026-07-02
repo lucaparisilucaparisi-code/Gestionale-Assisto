@@ -79,6 +79,9 @@ async function loadDashboardData() {
                 (!filters.commessa && (stats.num_utenti || 0) === 0) ? '' : 'none';
         }
 
+        // Banner nuovo anno scolastico (giugno-ottobre, se non ancora preparato)
+        loadBannerNuovoAnno();
+
         const commesse = await apiCall('/api/commesse');
         animateCounter(document.getElementById('stat-commesse'), commesse.filter(c => c.attiva).length, 800);
 
@@ -473,3 +476,75 @@ window.addEventListener('themechange', async () => {
         console.log('Chart refresh on theme change failed:', error);
     }
 });
+
+// ==================== BANNER NUOVO ANNO SCOLASTICO ====================
+
+let _bannerAnnoInit = false;
+
+async function loadBannerNuovoAnno() {
+    const card = document.getElementById('nuovo-anno-card');
+    if (!card) return;
+    try {
+        const stato = await apiCall('/api/anno-scolastico/prossimo');
+        if (!stato.mostra_banner) {
+            card.style.display = 'none';
+            return;
+        }
+        document.getElementById('nuovo-anno-label').textContent = stato.prossimo;
+        card.style.display = '';
+
+        if (!_bannerAnnoInit) {
+            _bannerAnnoInit = true;
+            document.getElementById('btn-prepara-anno').addEventListener('click',
+                () => preparaNuovoAnno(stato.prossimo));
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function preparaNuovoAnno(annoScolastico) {
+    if (!confirm(`Preparare l'anno scolastico ${annoScolastico}?\n\n` +
+                 'Verrà creato il calendario con i giorni lavorativi calcolati ' +
+                 'automaticamente (regole Regione Lazio). Potrai rivederlo e ' +
+                 'correggerlo dalla pagina Calendario.')) {
+        return;
+    }
+    const btn = document.getElementById('btn-prepara-anno');
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/anno-scolastico/prepara', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ anno_scolastico: annoScolastico })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Errore');
+
+        const MESI_BREVI = ['','Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+        const righe = data.mesi.map(m =>
+            `<tr><td>${MESI_BREVI[m.mese]} ${m.anno}</td>` +
+            `<td class="text-right">${m.giorni}${m.giorni_altri != null ? ` (non-infanzia: ${m.giorni_altri})` : ''}</td></tr>`
+        ).join('');
+        document.getElementById('nuovo-anno-body').innerHTML = `
+            <div class="alert alert-success">
+                <div><strong>Anno ${escapeHtml(data.anno_scolastico)} preparato!</strong>
+                Calendario creato per ${data.mesi.length} mesi.</div>
+            </div>
+            <div class="table-responsive mt-3" style="max-width:420px;">
+                <table class="table">
+                    <thead><tr><th>Mese</th><th class="text-right">Giorni lavorativi</th></tr></thead>
+                    <tbody>${righe}</tbody>
+                </table>
+            </div>
+            <p class="text-muted mt-2" style="font-size:0.9rem;">
+                Prossimi passi consigliati:
+                <a href="/calendario"><strong>rivedi il calendario</strong></a> (chiusure locali, scioperi…)
+                e <a href="/utenti"><strong>controlla i monte ore</strong></a> degli assistiti
+                (${data.utenti_attivi} attivi in anagrafica).
+            </p>
+        `;
+        showToast('Nuovo anno scolastico preparato', 'success');
+    } catch (e) {
+        showToast(e.message || 'Errore nella preparazione', 'error');
+        btn.disabled = false;
+    }
+}

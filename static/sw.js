@@ -5,7 +5,7 @@
 
 // Incrementare ad ogni modifica di CSS/JS/HTML: forza l'aggiornamento della
 // cache (l'handler activate elimina le versioni precedenti) evitando asset stale.
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `dynamic-${CACHE_VERSION}`;
 const API_CACHE = `api-${CACHE_VERSION}`;
