@@ -10,8 +10,8 @@
             <p class="page-subtitle">Procedura guidata: verifica, controlla, riepiloga ed esporta</p>
         </div>
         <div class="header-actions flex gap-3 items-center flex-wrap">
-            <select id="filter-anno" class="form-control" style="width: 150px;"></select>
-            <select id="filter-mese" class="form-control" style="width: 170px;"></select>
+            <select id="filter-anno" aria-label="Anno scolastico" class="form-control" style="width: 150px;"></select>
+            <select id="filter-mese" aria-label="Mese" class="form-control" style="width: 170px;"></select>
         </div>
     </div>
 </div>
@@ -121,6 +121,14 @@
             </svg>
             <div><strong>Chiusura completata.</strong> Tutti gli export del mese sono stati generati.</div>
         </div>
+        <div class="mt-4" style="display:flex; align-items:center; gap:12px;">
+            <button type="button" class="btn btn-primary" id="btn-segna-chiuso">Segna mese come chiuso</button>
+            <span class="badge badge-success" id="badge-mese-chiuso" style="display:none;"></span>
+        </div>
+        <p class="text-muted mt-2" style="font-size: 0.85rem;">
+            Lo stato "chiuso" è un promemoria persistente: resta salvato anche cambiando pagina
+            e non blocca eventuali correzioni successive.
+        </p>
     </div>
 </div>
 
@@ -202,8 +210,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-avanti').addEventListener('click', () => vaiAStep(stepCorrente + 1));
     document.getElementById('btn-indietro').addEventListener('click', () => vaiAStep(stepCorrente - 1));
     document.querySelectorAll('.chiusura-step').forEach(el => {
+        // Accessibilita': gli step sono attivabili anche da tastiera
         el.style.cursor = 'pointer';
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
         el.addEventListener('click', () => vaiAStep(parseInt(el.dataset.step)));
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                vaiAStep(parseInt(el.dataset.step));
+            }
+        });
     });
 
     document.getElementById('btn-compila-media').addEventListener('click', compilaConMedia);
@@ -234,6 +251,7 @@ function ricaricaTutto() {
     loadStep1();
     loadStep2();
     loadStep3();
+    caricaStatoChiusura();
 }
 
 function vaiAStep(n) {
@@ -245,6 +263,8 @@ function vaiAStep(n) {
         const s = parseInt(el.dataset.step);
         el.classList.toggle('active', s === n);
         el.classList.toggle('done', s < n);
+        if (s === n) el.setAttribute('aria-current', 'step');
+        else el.removeAttribute('aria-current');
     });
     document.getElementById('btn-indietro').disabled = (n === 1);
     document.getElementById('btn-avanti').disabled = (n === 4);
@@ -432,7 +452,7 @@ async function loadStep3() {
 }
 
 // ---------- STEP 4 ----------
-function avviaExport(tipo, card) {
+async function avviaExport(tipo, card) {
     const p = getPeriodo();
     if (!p) return;
 
@@ -444,8 +464,25 @@ function avviaExport(tipo, card) {
     };
     if (!urls[tipo]) return;
 
-    window.location.href = urls[tipo];
-    showToast('Download avviato', 'success');
+    // Download via fetch: la card viene spuntata SOLO se l'export riesce
+    // (prima veniva marcato "generato" anche in caso di errore del server)
+    try {
+        const response = await fetch(urls[tipo]);
+        if (!response.ok) throw new Error(`Errore export (${response.status})`);
+        const blob = await response.blob();
+        const cd = response.headers.get('Content-Disposition') || '';
+        const match = cd.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+        const nome = match ? decodeURIComponent(match[1]) : `${tipo}_${p.anno}_${p.mese}.xlsx`;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = nome;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    } catch (e) {
+        showToast(`Export ${tipo} non riuscito: riprova`, 'error');
+        return;
+    }
+    showToast('Download completato', 'success');
 
     exportFatti.add(tipo);
     card.classList.add('export-done');
@@ -455,5 +492,48 @@ function avviaExport(tipo, card) {
         document.getElementById('step4-badge').className = 'badge badge-success';
     }
 }
+
+// ---------- STATO MESE CHIUSO (persistente) ----------
+async function caricaStatoChiusura() {
+    const p = getPeriodo();
+    if (!p) return;
+    try {
+        const res = await fetch(`/api/mese-chiuso/${p.anno}/${p.mese}`);
+        const data = await res.json();
+        aggiornaBadgeChiusura(data);
+    } catch (e) { console.error(e); }
+}
+
+function aggiornaBadgeChiusura(data) {
+    const btn = document.getElementById('btn-segna-chiuso');
+    const badge = document.getElementById('badge-mese-chiuso');
+    if (!btn || !badge) return;
+    if (data.chiuso) {
+        const d = new Date(data.data_chiusura);
+        badge.textContent = `✓ Mese chiuso il ${d.toLocaleDateString('it-IT')}`;
+        badge.style.display = '';
+        btn.textContent = 'Riapri mese';
+    } else {
+        badge.style.display = 'none';
+        btn.textContent = 'Segna mese come chiuso';
+    }
+}
+
+async function toggleMeseChiuso() {
+    const p = getPeriodo();
+    if (!p) return;
+    try {
+        const cur = await (await fetch(`/api/mese-chiuso/${p.anno}/${p.mese}`)).json();
+        const method = cur.chiuso ? 'DELETE' : 'POST';
+        const res = await fetch(`/api/mese-chiuso/${p.anno}/${p.mese}`, { method });
+        if (!res.ok) throw new Error();
+        showToast(cur.chiuso ? 'Mese riaperto' : 'Mese segnato come chiuso', 'success');
+        caricaStatoChiusura();
+    } catch (e) {
+        showToast('Errore nel salvataggio dello stato', 'error');
+    }
+}
+
+document.getElementById('btn-segna-chiuso')?.addEventListener('click', toggleMeseChiuso);
 </script>
 {% endblock %}

@@ -72,6 +72,13 @@ async function loadDashboardData() {
         animateCounter(document.getElementById('stat-utenti'), stats.num_utenti || 0, 800);
         animateCounter(document.getElementById('stat-scuole'), stats.num_scuole || 0, 800);
 
+        // Checklist di primo avvio: mostrata solo con anagrafica vuota (senza filtri)
+        const onboarding = document.getElementById('onboarding-card');
+        if (onboarding) {
+            onboarding.style.display =
+                (!filters.commessa && (stats.num_utenti || 0) === 0) ? '' : 'none';
+        }
+
         const commesse = await apiCall('/api/commesse');
         animateCounter(document.getElementById('stat-commesse'), commesse.filter(c => c.attiva).length, 800);
 

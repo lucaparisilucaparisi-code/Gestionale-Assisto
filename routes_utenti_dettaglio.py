@@ -11,6 +11,8 @@ import config
 import database as db
 from validators import validate_string
 
+logger = config.setup_logging()
+
 utenti_dettaglio_bp = Blueprint('utenti_dettaglio', __name__)
 
 
@@ -21,7 +23,8 @@ def api_get_documenti_utente(utente_id):
         documenti = db.get_documenti_utente(utente_id)
         return jsonify({'documenti': documenti})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/utente/<int:utente_id>/documenti', methods=['POST'])
@@ -34,6 +37,13 @@ def api_upload_documento(utente_id):
     if file.filename == '':
         return jsonify({'error': 'Nessun file selezionato'}), 400
 
+    # Whitelist estensioni coerente con l'uso reale (documenti/certificati)
+    ESTENSIONI_AMMESSE = {'.pdf', '.doc', '.docx', '.odt', '.jpg', '.jpeg', '.png', '.xls', '.xlsx', '.txt'}
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ESTENSIONI_AMMESSE:
+        return jsonify({'error': f'Tipo di file non ammesso ({ext or "senza estensione"}). '
+                                 f'Formati accettati: PDF, Word, immagini, Excel, testo.'}), 400
+
     try:
         # Validazione input
         tipo_documento, err = validate_string(request.form.get('tipo'), 'Tipo documento', max_length=50)
@@ -43,9 +53,8 @@ def api_upload_documento(utente_id):
         descrizione = request.form.get('descrizione', '')
         data_scadenza = request.form.get('data_scadenza')
 
-        # Genera nome file univoco
+        # Genera nome file univoco (l'estensione e' gia' whitelistata sopra)
         import uuid
-        ext = os.path.splitext(file.filename)[1]
         nome_file = f"{utente_id}_{uuid.uuid4().hex}{ext}"
 
         # Cartella documenti
@@ -71,7 +80,8 @@ def api_upload_documento(utente_id):
 
         return jsonify({'success': True, 'id': doc_id})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/documento/<int:documento_id>')
@@ -94,7 +104,8 @@ def api_download_documento(documento_id):
 
         return send_file(filepath, as_attachment=True, download_name=doc['nome_originale'])
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/documento/<int:documento_id>', methods=['DELETE'])
@@ -112,7 +123,8 @@ def api_delete_documento(documento_id):
         db.log_audit('delete', 'documento', documento_id, 'Documento eliminato')
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/documenti/scadenza')
@@ -127,7 +139,8 @@ def api_documenti_scadenza():
             'scaduti': scaduti
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 # ==================== API NOTE UTENTE ====================
@@ -140,7 +153,8 @@ def api_get_note_utente(utente_id):
         note = db.get_note_utente(utente_id, tipo)
         return jsonify({'note': note})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/utente/<int:utente_id>/note', methods=['POST'])
@@ -162,7 +176,8 @@ def api_add_nota_utente(utente_id):
 
         return jsonify({'success': True, 'id': nota_id})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/nota/<int:nota_id>', methods=['PUT'])
@@ -181,7 +196,8 @@ def api_update_nota(nota_id):
         db.update_nota_utente(nota_id, contenuto, priorita)
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/nota/<int:nota_id>', methods=['DELETE'])
@@ -192,7 +208,8 @@ def api_delete_nota(nota_id):
         db.log_audit('delete', 'nota', nota_id, 'Nota eliminata')
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/utente/<int:utente_id>/note/mensili/<int:anno>/<int:mese>')
@@ -202,7 +219,8 @@ def api_get_note_mensili(utente_id, anno, mese):
         note = db.get_note_mensili(utente_id, anno, mese)
         return jsonify({'note': note})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 # ==================== API ASSENZE ====================
@@ -215,7 +233,8 @@ def api_get_assenze_utente(utente_id):
         assenze = db.get_assenze_utente(utente_id, anno)
         return jsonify({'assenze': assenze})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/utente/<int:utente_id>/assenze', methods=['POST'])
@@ -244,7 +263,8 @@ def api_add_assenza(utente_id):
         db.log_audit('create', 'assenza', assenza_id, f'Assenza registrata per utente {utente_id}')
         return jsonify({'success': True, 'id': assenza_id})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/assenza/<int:assenza_id>', methods=['PUT'])
@@ -262,7 +282,8 @@ def api_update_assenza(assenza_id):
         )
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/assenza/<int:assenza_id>', methods=['DELETE'])
@@ -273,7 +294,8 @@ def api_delete_assenza(assenza_id):
         db.log_audit('delete', 'assenza', assenza_id, 'Assenza eliminata')
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/assenze/periodo')
@@ -288,7 +310,8 @@ def api_assenze_periodo():
         assenze = db.get_assenze_periodo(data_inizio, data_fine)
         return jsonify({'assenze': assenze})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/assenze/report/<int:anno>')
@@ -300,7 +323,8 @@ def api_report_assenze(anno):
         report = db.get_report_assenze(anno, mese, commessa)
         return jsonify({'report': report})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 # ==================== API BUDGET ORE ====================
@@ -318,7 +342,8 @@ def api_update_budget_utente(utente_id):
         db.log_audit('update', 'budget', utente_id, 'Budget aggiornato')
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/utente/<int:utente_id>/budget/<anno_scolastico>')
@@ -330,7 +355,8 @@ def api_get_budget_status(utente_id, anno_scolastico):
             return jsonify({'error': 'Utente non trovato'}), 404
         return jsonify(status)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/budget/critici/<anno_scolastico>')
@@ -341,7 +367,8 @@ def api_get_budget_critici(anno_scolastico):
         utenti = db.get_utenti_budget_critico(anno_scolastico, soglia)
         return jsonify({'utenti': utenti})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 # ==================== API NOTIFICHE ====================
@@ -356,7 +383,8 @@ def api_get_notifiche():
         count = db.count_notifiche_non_lette()
         return jsonify({'notifiche': notifiche, 'non_lette': count})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/notifiche/<int:notifica_id>/letta', methods=['POST'])
@@ -366,7 +394,8 @@ def api_mark_notifica_letta(notifica_id):
         db.mark_notifica_letta(notifica_id)
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/notifiche/lette', methods=['POST'])
@@ -376,7 +405,8 @@ def api_mark_all_notifiche_lette():
         db.mark_all_notifiche_lette()
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/notifiche/<int:notifica_id>/archivia', methods=['POST'])
@@ -386,7 +416,8 @@ def api_archivia_notifica(notifica_id):
         db.archivia_notifica(notifica_id)
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/notifiche/genera', methods=['POST'])
@@ -396,7 +427,8 @@ def api_genera_notifiche():
         notifiche_ids = db.genera_notifiche_automatiche()
         return jsonify({'success': True, 'generate': len(notifiche_ids)})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 # ==================== API STORICO E REPORT UTENTI ====================
@@ -416,7 +448,8 @@ def api_get_storico_utente(utente_id):
         totali = db.get_totali_utente(utente_id, anno_scolastico)
         return jsonify({'storico': storico, 'totali': totali})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/utente/<int:utente_id>/andamento')
@@ -427,7 +460,8 @@ def api_get_andamento_utente(utente_id):
         andamento = db.get_andamento_utente(utente_id, mesi)
         return jsonify({'andamento': andamento})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/utenti/classifica/<int:anno>')
@@ -440,7 +474,8 @@ def api_classifica_utenti(anno):
         classifica = db.get_classifica_utenti_ore(anno, mese, limit, order)
         return jsonify({'classifica': classifica})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @utenti_dettaglio_bp.route('/api/utenti/confronto/<anno_scolastico>')
@@ -455,7 +490,8 @@ def api_confronto_utenti(anno_scolastico):
         confronto = db.get_confronto_utenti(ids, anno_scolastico)
         return jsonify({'confronto': confronto})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 # ==================== API DETTAGLIO UTENTE COMPLETO ====================
@@ -487,4 +523,5 @@ def api_get_utente_dettaglio(utente_id):
             'budget': budget_status
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500

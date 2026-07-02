@@ -56,9 +56,43 @@ def get_db_context():
     """Restituisce il context manager per connessioni sicure"""
     return DBConnection()
 
+# ==================== VERSIONING SCHEMA ====================
+# Versione corrente dello schema. Per una modifica futura: incrementare questo
+# numero e registrare in MIGRAZIONI una funzione(conn) con il DDL necessario.
+# Il runner legge PRAGMA user_version ed esegue solo le migrazioni mancanti
+# (a differenza dei vecchi ALTER TABLE try/except rieseguiti a ogni avvio).
+SCHEMA_VERSION = 1
+MIGRAZIONI = {
+    # esempio: 2: lambda conn: conn.execute("ALTER TABLE utenti ADD COLUMN ..."),
+}
+
+
+def _esegui_migrazioni(conn):
+    versione = conn.execute('PRAGMA user_version').fetchone()[0]
+    if versione >= SCHEMA_VERSION:
+        return
+    for v in range(versione + 1, SCHEMA_VERSION + 1):
+        fn = MIGRAZIONI.get(v)
+        if fn:
+            fn(conn)
+            logger.info(f"Migrazione schema applicata: versione {v}")
+        conn.execute(f'PRAGMA user_version = {v}')
+    conn.commit()
+
+
 def init_db():
     """Inizializza il database con le tabelle necessarie"""
     conn = get_db()
+    try:
+        _init_schema(conn)
+        conn.commit()
+        _esegui_migrazioni(conn)
+    finally:
+        conn.close()
+
+
+def _init_schema(conn):
+    """Crea/aggiorna lo schema (idempotente). Eseguita dentro init_db."""
     cursor = conn.cursor()
 
     # Tabella Commesse (ora dinamica)
@@ -587,6 +621,25 @@ def init_db():
             VALUES (?, ?, ?, ?)
         ''', cal)
 
+    # Tabella impostazioni applicative (chiave/valore)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS impostazioni (
+            chiave TEXT PRIMARY KEY,
+            valore TEXT
+        )
+    ''')
+
+    # Mesi marcati come "chiusi" dall'operatore (stato informativo della
+    # procedura di chiusura: nessun effetto sui dati o sui report)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS mesi_chiusi (
+            anno INTEGER NOT NULL,
+            mese INTEGER NOT NULL,
+            data_chiusura TEXT NOT NULL,
+            PRIMARY KEY (anno, mese)
+        )
+    ''')
+
     # Bonifica orfani storici creati quando l'enforcement FK era spento (es. righe
     # in sostituzioni che puntano a un turno cancellato): vanno rimosse prima che
     # l'enforcement (ora attivo) le faccia emergere.
@@ -595,11 +648,6 @@ def init_db():
         WHERE turno_id IS NOT NULL AND turno_id NOT IN (SELECT id FROM turni)
     ''')
 
-    # Versione schema: baseline per future migrazioni numerate (PRAGMA user_version).
-    cursor.execute('PRAGMA user_version = 1')
-
-    conn.commit()
-    conn.close()
 
 def punteggia_nome(nome: str, cognome: str) -> str:
     """Converte nome e cognome in formato puntato per privacy (es. Mario Rossi -> M. R.)"""
@@ -740,7 +788,7 @@ def get_or_create_utente(scuola_id, nome, cognome, monte_ore):
 
         # Cerca utente esistente
         cursor.execute(
-            "SELECT id FROM utenti WHERE scuola_id = ? AND nome = ? AND cognome = ?",
+            "SELECT id FROM utenti WHERE scuola_id = ? AND nome = ? COLLATE NOCASE AND cognome = ? COLLATE NOCASE",
             (scuola_id, nome, cognome)
         )
         utente = cursor.fetchone()
@@ -1020,10 +1068,7 @@ def set_calendario(anno_scolastico, mese, anno, giorni, giorni_altri=None):
 def get_or_create_rendicontazione(utente_id, anno, mese):
     """Ottiene o crea una rendicontazione mensile"""
     # Determina anno scolastico
-    if mese >= 9:
-        anno_scolastico = f"{anno}-{anno+1}"
-    else:
-        anno_scolastico = f"{anno-1}-{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese)
 
     with get_db_context() as conn:
         cursor = conn.cursor()
@@ -1093,10 +1138,7 @@ def update_rendicontazione_batch(anno, mese, updates):
     In caso di errore nessuna modifica viene applicata (rollback).
     Ritorna il numero di utenti aggiornati.
     """
-    if mese >= 9:
-        anno_scolastico = f"{anno}-{anno+1}"
-    else:
-        anno_scolastico = f"{anno-1}-{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese)
 
     aggiornati = 0
     conn = get_db()
@@ -1157,10 +1199,7 @@ def update_rendicontazione_batch(anno, mese, updates):
 def get_rendicontazione_completa(anno, mese, commessa=None):
     """Ottiene la rendicontazione completa per un mese con tutti i calcoli"""
     # Determina anno scolastico
-    if mese >= 9:
-        anno_scolastico = f"{anno}-{anno+1}"
-    else:
-        anno_scolastico = f"{anno-1}-{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese)
 
     # Calcola il periodo corrente per il filtro date
     periodo_corrente = f"{anno:04d}-{mese:02d}"
@@ -1542,93 +1581,44 @@ def get_utenti_meno_ore(anno, mese, limit=10):
 
 
 def get_ore_erogate_vs_previste(anno_scolastico, commessa=None):
-    """Ottiene il confronto ore erogate vs previste per ogni mese dell'anno scolastico"""
-    with get_db_context() as conn:
-        cursor = conn.cursor()
+    """Ottiene il confronto ore erogate vs previste per ogni mese dell'anno scolastico.
 
-        # Parse anno scolastico
-        anni = anno_scolastico.split('-')
-        anno_inizio = int(anni[0])
-        anno_fine = int(anni[1])
+    Deriva entrambi i valori dalle STESSE righe della vista mensile
+    (get_rendicontazione_completa): cosi' periodo di validita' degli utenti,
+    variazioni monte ore e fallback giorni lavorativi sono identici a quelli
+    del credito/debito per utente, e il grafico non mostra previste gonfiate
+    da utenti non in servizio nel mese."""
+    anni = anno_scolastico.split('-')
+    anno_inizio = int(anni[0])
+    anno_fine = int(anni[1])
 
-        mesi_scolastici = [
-            (9, anno_inizio), (10, anno_inizio), (11, anno_inizio), (12, anno_inizio),
-            (1, anno_fine), (2, anno_fine), (3, anno_fine), (4, anno_fine),
-            (5, anno_fine), (6, anno_fine)
-        ]
+    mesi_scolastici = [
+        (9, anno_inizio), (10, anno_inizio), (11, anno_inizio), (12, anno_inizio),
+        (1, anno_fine), (2, anno_fine), (3, anno_fine), (4, anno_fine),
+        (5, anno_fine), (6, anno_fine)
+    ]
 
-        MESI_NOME = {
-            1: 'Gen', 2: 'Feb', 3: 'Mar', 4: 'Apr',
-            5: 'Mag', 6: 'Giu', 7: 'Lug', 8: 'Ago',
-            9: 'Set', 10: 'Ott', 11: 'Nov', 12: 'Dic'
-        }
+    MESI_NOME = {
+        1: 'Gen', 2: 'Feb', 3: 'Mar', 4: 'Apr',
+        5: 'Mag', 6: 'Giu', 7: 'Lug', 8: 'Ago',
+        9: 'Set', 10: 'Ott', 11: 'Nov', 12: 'Dic'
+    }
 
-        risultati = []
-        for mese, anno in mesi_scolastici:
-            # Calcola ore erogate con filtro commessa opzionale
-            # NOTA: utenti.commessa non esiste, dobbiamo fare JOIN attraverso scuole -> commesse
-            if commessa:
-                cursor.execute('''
-                    SELECT SUM(r.ore_lavorate_60) as ore_erogate
-                    FROM rendicontazione r
-                    JOIN utenti u ON r.utente_id = u.id
-                    JOIN scuole s ON u.scuola_id = s.id
-                    JOIN commesse cm ON s.commessa_id = cm.id
-                    WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1 AND cm.nome = ?
-                ''', (anno, mese, commessa))
-            else:
-                cursor.execute('''
-                    SELECT SUM(r.ore_lavorate_60) as ore_erogate
-                    FROM rendicontazione r
-                    JOIN utenti u ON r.utente_id = u.id
-                    WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1
-                ''', (anno, mese))
-            row = cursor.fetchone()
-            ore_erogate = row['ore_erogate'] or 0
+    risultati = []
+    for mese, anno in mesi_scolastici:
+        dati = get_rendicontazione_completa(anno, mese, commessa)
+        ore_erogate = sum(d['ore_lavorate_60'] or 0 for d in dati)
+        ore_previste = sum(d['media_con_assenza_60'] or 0 for d in dati)
 
-            # Calcola ore previste (media -11%)
-            # Formula: monte_ore_settimanale * giorni_lavorativi * coeff giornaliero * (1 - tasso assenza)
-            # Per non-infanzia usa giorni_lavorativi_altri se presente (tipicamente solo giugno)
-            coeff_previste = config.COEFFICIENTE_GIORNALIERO * (1 - config.TASSO_ASSENZA)
-            if commessa:
-                cursor.execute('''
-                    SELECT
-                        SUM(u.monte_ore_settimanale * COALESCE(
-                            CASE
-                                WHEN UPPER(COALESCE(s.nome_completo, '')) LIKE '%INFANZIA%' THEN cal.giorni_lavorativi
-                                ELSE COALESCE(cal.giorni_lavorativi_altri, cal.giorni_lavorativi)
-                            END, 0) * ?) as ore_previste
-                    FROM utenti u
-                    JOIN scuole s ON u.scuola_id = s.id
-                    JOIN commesse cm ON s.commessa_id = cm.id
-                    LEFT JOIN calendario_scolastico cal ON cal.anno_scolastico = ? AND cal.mese = ? AND cal.anno = ?
-                    WHERE u.attivo = 1 AND cm.nome = ?
-                ''', (coeff_previste, anno_scolastico, mese, anno, commessa))
-            else:
-                cursor.execute('''
-                    SELECT
-                        SUM(u.monte_ore_settimanale * COALESCE(
-                            CASE
-                                WHEN UPPER(COALESCE(s.nome_completo, '')) LIKE '%INFANZIA%' THEN c.giorni_lavorativi
-                                ELSE COALESCE(c.giorni_lavorativi_altri, c.giorni_lavorativi)
-                            END, 0) * ?) as ore_previste
-                    FROM utenti u
-                    JOIN scuole s ON u.scuola_id = s.id
-                    LEFT JOIN calendario_scolastico c ON c.anno_scolastico = ? AND c.mese = ? AND c.anno = ?
-                    WHERE u.attivo = 1
-                ''', (coeff_previste, anno_scolastico, mese, anno))
-            ore_previste_row = cursor.fetchone()
-            ore_previste = ore_previste_row['ore_previste'] or 0
+        risultati.append({
+            'mese': mese,
+            'mese_nome': MESI_NOME.get(mese, ''),
+            'anno': anno,
+            'ore_erogate': round(ore_erogate, 2),
+            'ore_previste': round(ore_previste, 2)
+        })
 
-            risultati.append({
-                'mese': mese,
-                'mese_nome': MESI_NOME.get(mese, ''),
-                'anno': anno,
-                'ore_erogate': round(ore_erogate, 2),
-                'ore_previste': round(ore_previste, 2)
-            })
-
-        return risultati
+    return risultati
 
 
 def get_statistiche_mensili_anno(anno_scolastico):
@@ -1702,6 +1692,10 @@ def get_confronto_annuale(anno_scolastico_1, anno_scolastico_2):
             anni = as_str.split('-')
             return int(anni[0]), int(anni[1])
 
+        # Invariante rispetto a mese/anno: una sola query invece di 20 nel loop
+        cursor.execute("SELECT COUNT(*) FROM utenti WHERE attivo = 1")
+        tot_utenti = cursor.fetchone()[0]
+
         def get_dati_anno(anno_scolastico):
             anno_inizio, anno_fine = parse_anno(anno_scolastico)
             mesi_scolastici = [
@@ -1721,9 +1715,6 @@ def get_confronto_annuale(anno_scolastico_1, anno_scolastico_2):
                     WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1
                 ''', (anno, mese))
                 row = cursor.fetchone()
-
-                cursor.execute("SELECT COUNT(*) FROM utenti WHERE attivo = 1")
-                tot_utenti = cursor.fetchone()[0]
 
                 risultati.append({
                     'mese': mese,
@@ -2332,6 +2323,9 @@ def get_storico_ore_utente(utente_id, anno_scolastico=None):
             JOIN scuole s ON s.id = u.scuola_id
             LEFT JOIN calendario_scolastico c ON
                 c.anno = r.anno AND c.mese = r.mese
+                AND c.anno_scolastico = CASE WHEN r.mese >= 9
+                    THEN r.anno || '-' || (r.anno + 1)
+                    ELSE (r.anno - 1) || '-' || r.anno END
             WHERE r.utente_id = ?
         '''
         params = [utente_id]
@@ -3084,6 +3078,17 @@ def suggerisci_sostituti(scuola_id, giorno, ora_inizio, ora_fine, data, escludi_
         for r in cursor.fetchall():
             turni_per_dip.setdefault(r['dipendente_id'], []).append((r['ora_inizio'], r['ora_fine']))
 
+        # Sostituzioni gia' assegnate nella stessa data (1 query): un sostituto
+        # gia' impegnato a coprire un turno in quella fascia NON e' disponibile
+        # per un secondo turno sovrapposto (evita la doppia prenotazione).
+        cursor.execute('''SELECT so.sostituto_id, t.ora_inizio, t.ora_fine
+                          FROM sostituzioni so
+                          JOIN turni t ON so.turno_id = t.id
+                          WHERE so.data = ? AND so.stato = 'coperta'
+                            AND so.sostituto_id IS NOT NULL''', (data,))
+        for r in cursor.fetchall():
+            turni_per_dip.setdefault(r['sostituto_id'], []).append((r['ora_inizio'], r['ora_fine']))
+
         # Scuole di ogni operatore (turni + assegnazioni) in 1 query
         cursor.execute('''
             SELECT dipendente_id, scuola_id FROM turni WHERE scuola_id IS NOT NULL
@@ -3204,6 +3209,48 @@ def get_sostituzione(sostituzione_id):
         return dict(r) if r else None
 
 
+# ==================== IMPOSTAZIONI (chiave/valore) ====================
+
+def get_impostazione(chiave, default=None):
+    """Legge un'impostazione applicativa (o default se assente)."""
+    with get_db_context() as conn:
+        row = conn.execute(
+            'SELECT valore FROM impostazioni WHERE chiave = ?', (chiave,)).fetchone()
+        return row['valore'] if row else default
+
+
+def set_impostazione(chiave, valore):
+    """Scrive (o rimuove, se valore falsy) un'impostazione applicativa."""
+    with get_db_context() as conn:
+        if valore:
+            conn.execute('''INSERT INTO impostazioni (chiave, valore) VALUES (?, ?)
+                            ON CONFLICT(chiave) DO UPDATE SET valore = excluded.valore''',
+                         (chiave, valore))
+        else:
+            conn.execute('DELETE FROM impostazioni WHERE chiave = ?', (chiave,))
+
+
+# ==================== MESI CHIUSI ====================
+
+def get_mese_chiuso(anno, mese):
+    """Ritorna la data di chiusura del mese, o None se non e' marcato chiuso."""
+    with get_db_context() as conn:
+        row = conn.execute('SELECT data_chiusura FROM mesi_chiusi WHERE anno = ? AND mese = ?',
+                           (anno, mese)).fetchone()
+        return row['data_chiusura'] if row else None
+
+
+def set_mese_chiuso(anno, mese, chiuso=True):
+    """Marca (o smarca) un mese come chiuso. Stato informativo, non blocca nulla."""
+    with get_db_context() as conn:
+        if chiuso:
+            conn.execute('''INSERT INTO mesi_chiusi (anno, mese, data_chiusura) VALUES (?, ?, ?)
+                            ON CONFLICT(anno, mese) DO UPDATE SET data_chiusura = excluded.data_chiusura''',
+                         (anno, mese, datetime.now().isoformat()))
+        else:
+            conn.execute('DELETE FROM mesi_chiusi WHERE anno = ? AND mese = ?', (anno, mese))
+
+
 # ==================== BACKUP ====================
 
 def create_backup():
@@ -3233,6 +3280,10 @@ def create_backup():
             src.close()
         logger.info(f"Backup creato: {backup_name}")
 
+        # Copia opzionale su cartella esterna (chiavetta / cartella cloud):
+        # best effort, un errore qui non deve MAI bloccare il backup principale.
+        _copia_backup_esterno(backup_path, backup_name)
+
         # Pulizia backup vecchi
         cleanup_old_backups()
 
@@ -3240,6 +3291,22 @@ def create_backup():
     except Exception as e:
         logger.error(f"Errore creazione backup: {e}")
         return None
+
+
+def _copia_backup_esterno(backup_path, backup_name):
+    """Copia il backup appena creato nella cartella esterna configurata (se c'e')."""
+    cartella = get_impostazione('cartella_backup_esterna')
+    if not cartella:
+        return
+    try:
+        if not os.path.isdir(cartella):
+            logger.warning(f"Cartella backup esterna non disponibile: {cartella}")
+            return
+        import shutil
+        shutil.copy2(backup_path, os.path.join(cartella, backup_name))
+        logger.info(f"Backup copiato nella cartella esterna: {cartella}")
+    except Exception as e:
+        logger.warning(f"Copia backup esterno fallita ({cartella}): {e}")
 
 
 def cleanup_old_backups():
@@ -3318,6 +3385,8 @@ def restore_backup(backup_name):
                 dst.close()
         finally:
             src.close()
+        # Il DB e' stato sostituito: lo stato di configurazione auth va riletto
+        invalida_cache_auth()
         logger.info(f"Backup ripristinato: {backup_name}")
         return True
     except Exception as e:
@@ -3372,6 +3441,35 @@ def pop_undo_action():
                 'data': json.loads(row['data'])
             }
         return None
+
+
+def peek_undo_action():
+    """Restituisce l'ultima azione dello stack SENZA rimuoverla.
+
+    Usata dall'undo: l'azione (che per una cancellazione e' l'unica copia dei
+    dati) va eliminata solo DOPO che il ripristino e' andato a buon fine."""
+    import json
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, action_type, data FROM undo_actions
+            ORDER BY id DESC
+            LIMIT 1
+        ''')
+        row = cursor.fetchone()
+        if row:
+            return {
+                'id': row['id'],
+                'type': row['action_type'],
+                'data': json.loads(row['data'])
+            }
+        return None
+
+
+def delete_undo_action(action_id):
+    """Elimina una specifica azione undo (dopo un ripristino riuscito)."""
+    with get_db_context() as conn:
+        conn.execute('DELETE FROM undo_actions WHERE id = ?', (action_id,))
 
 
 def get_undo_stack():
@@ -3636,16 +3734,19 @@ def get_calendario_completo(anno_scolastico):
         return [dict(r) for r in cursor.fetchall()]
 
 
-def calcola_ore_progettate_mese(commessa_id, anno_scolastico, mese, anno):
+def calcola_ore_progettate_mese(commessa_id, anno_scolastico, mese, anno,
+                                dd_list=None, calendario=None):
     """
     Calcola le ore progettate per un mese specifico.
     Le ore delle DD vengono distribuite proporzionalmente ai giorni lavorativi.
-    """
-    # Ottieni le DD attive per questo mese
-    dd_list = get_dd_by_commessa(commessa_id, anno_scolastico)
 
-    # Ottieni calendario completo
-    calendario = get_calendario_completo(anno_scolastico)
+    dd_list/calendario possono essere passati dal chiamante (es. dal loop sui
+    mesi del report locale) per evitare di rifare le stesse query 10 volte.
+    """
+    if dd_list is None:
+        dd_list = get_dd_by_commessa(commessa_id, anno_scolastico)
+    if calendario is None:
+        calendario = get_calendario_completo(anno_scolastico)
     giorni_totali = sum(c['giorni_lavorativi'] for c in calendario)
 
     if giorni_totali == 0:
@@ -3777,8 +3878,10 @@ def get_report_locale_commessa(commessa_id, anno_scolastico):
         giorni_is_override = giorni_override_key in report_overrides
         giorni = report_overrides[giorni_override_key] if giorni_is_override else giorni_auto
 
-        # Calcola ore progettate (automatico)
-        ore_progettate_auto = calcola_ore_progettate_mese(commessa_id, anno_scolastico, mese, anno)
+        # Calcola ore progettate (automatico), riusando DD e calendario gia' caricati
+        ore_progettate_auto = calcola_ore_progettate_mese(
+            commessa_id, anno_scolastico, mese, anno,
+            dd_list=dd_list, calendario=calendario)
 
         # Usa override progettato se presente (prima dalla tabella legacy, poi dalla nuova)
         progettato_override_key = (mese, anno)
@@ -3953,12 +4056,30 @@ def get_monte_ore_effettivo_bulk(anno, mese):
 
 # ==================== AUTENTICAZIONE (single-user) ====================
 
+# Cache SOLO del valore True: viene interrogata ad ogni request (before_request)
+# e una volta configurato l'utente non torna mai indietro, tranne dopo un
+# restore di backup (che la invalida esplicitamente).
+_auth_configured_cache = False
+
+
 def auth_is_configured():
     """Ritorna True se esiste gia' una configurazione utente."""
+    global _auth_configured_cache
+    if _auth_configured_cache:
+        return True
     with get_db_context() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM auth_config WHERE id = 1")
-        return cursor.fetchone()[0] > 0
+        configured = cursor.fetchone()[0] > 0
+    if configured:
+        _auth_configured_cache = True
+    return configured
+
+
+def invalida_cache_auth():
+    """Da chiamare quando il DB viene sostituito (restore backup)."""
+    global _auth_configured_cache
+    _auth_configured_cache = False
 
 
 def auth_create_user(username, password_hash):

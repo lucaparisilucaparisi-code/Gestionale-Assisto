@@ -132,6 +132,34 @@ PUBLIC_ENDPOINTS = {
 }
 
 
+# Backup automatico periodico: se il processo resta attivo per giorni senza
+# import/riavvii, senza questo controllo non verrebbe mai creato un nuovo backup.
+# Il timestamp in memoria evita I/O su disco ad ogni request.
+BACKUP_AUTO_INTERVALLO_ORE = 24
+_ultimo_check_backup = {'t': 0.0}
+
+
+def _backup_automatico_se_scaduto():
+    import time
+    ora = time.time()
+    # throttle: controlla al massimo una volta ogni ora
+    if ora - _ultimo_check_backup['t'] < 3600:
+        return
+    _ultimo_check_backup['t'] = ora
+    try:
+        backups = db.get_backups_list()
+        if backups:
+            piu_recente = os.path.getmtime(
+                os.path.join(config.BACKUP_FOLDER, backups[0]['nome']))
+            if ora - piu_recente < BACKUP_AUTO_INTERVALLO_ORE * 3600:
+                return
+        nome = db.create_backup()
+        if nome:
+            logger.info(f"Backup automatico periodico creato: {nome}")
+    except Exception as e:
+        logger.error(f"Backup automatico fallito: {e}")
+
+
 @app.before_request
 def require_authentication():
     """Protegge globalmente tutte le route tranne quelle in PUBLIC_ENDPOINTS."""
@@ -141,6 +169,8 @@ def require_authentication():
 
     if endpoint in PUBLIC_ENDPOINTS:
         return
+
+    _backup_automatico_se_scaduto()
 
     # Se auth non configurata, vai a setup (tranne se gia' ci stai andando)
     if not db.auth_is_configured():
@@ -153,6 +183,22 @@ def require_authentication():
         if request.path.startswith('/api/'):
             return jsonify({'error': 'Non autenticato', 'code': 'AUTH_REQUIRED'}), 401
         return redirect(url_for('login_page', next=request.path))
+
+    # Scadenza ASSOLUTA della sessione (7 giorni dal login): il lifetime di 8h
+    # e' scorrevole (si rinnova a ogni richiesta), quindi da solo non garantisce
+    # mai una ri-autenticazione. auth_time e' impostato da _login_user.
+    auth_time = session.get('auth_time')
+    if auth_time:
+        try:
+            eta = datetime.now() - datetime.fromisoformat(auth_time)
+            if eta.days >= 7:
+                session.clear()
+                if request.path.startswith('/api/'):
+                    return jsonify({'error': 'Sessione scaduta, effettua di nuovo il login',
+                                    'code': 'AUTH_REQUIRED'}), 401
+                return redirect(url_for('login_page', next=request.path))
+        except (ValueError, TypeError):
+            pass
 
 
 @app.errorhandler(404)
@@ -366,7 +412,7 @@ def api_webauthn_register_complete():
         )
     except Exception as e:
         logger.warning(f"WebAuthn registration verification fallita: {e}")
-        return jsonify({'error': f'Verifica fallita: {str(e)}'}), 400
+        return jsonify({'error': 'Verifica non riuscita, riprova'}), 400
 
     # Protezione contro response=null: il secondo .get() fallirebbe su None
     response_obj = credential.get('response') or {}
@@ -548,6 +594,23 @@ def chiusura_mese_page():
     return render_template('chiusura_mese.html')
 
 
+@app.route('/api/mese-chiuso/<int:anno>/<int:mese>', methods=['GET'])
+def api_get_mese_chiuso(anno, mese):
+    """Stato di chiusura del mese (informativo: non blocca modifiche)."""
+    data_chiusura = db.get_mese_chiuso(anno, mese)
+    return jsonify({'chiuso': data_chiusura is not None, 'data_chiusura': data_chiusura})
+
+
+@app.route('/api/mese-chiuso/<int:anno>/<int:mese>', methods=['POST', 'DELETE'])
+def api_set_mese_chiuso(anno, mese):
+    """Marca (POST) o smarca (DELETE) il mese come chiuso."""
+    chiuso = request.method == 'POST'
+    db.set_mese_chiuso(anno, mese, chiuso)
+    db.log_audit('chiusura_mese' if chiuso else 'riapertura_mese', 'sistema',
+                 dettagli=f'{config.MESI_NOME.get(mese, mese)} {anno}')
+    return jsonify({'success': True, 'chiuso': chiuso})
+
+
 @app.route('/calendario')
 def calendario_page():
     """Pagina gestione calendario scolastico"""
@@ -662,7 +725,8 @@ def api_import_template():
             download_name='template_import_utenti.xlsx'
         )
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/import-excel/cronologia')
@@ -778,7 +842,9 @@ def api_preview_excel():
                 if not scuola or scuola == 'nan':
                     continue
 
-                # Verifica se l'utente esiste già
+                # Verifica se l'utente esiste già. Stesso criterio dell'import
+                # reale (nome+cognome sulla scuola, case-insensitive), cosi'
+                # l'anteprima predice davvero cosa fara' l'import.
                 stato = 'nuovo'
                 try:
                     with db.get_db_context() as conn:
@@ -786,7 +852,9 @@ def api_preview_excel():
                         cursor.execute('''
                             SELECT u.id FROM utenti u
                             JOIN scuole s ON u.scuola_id = s.id
-                            WHERE u.nome = ? AND u.cognome = ? AND s.nome LIKE ?
+                            WHERE u.nome = ? COLLATE NOCASE
+                              AND u.cognome = ? COLLATE NOCASE
+                              AND s.nome_completo LIKE ?
                         ''', (nome, cognome, f'%{scuola[:30]}%'))
                         if cursor.fetchone():
                             stato = 'esistente'
@@ -816,8 +884,8 @@ def api_preview_excel():
             'errors': errors[:10]
         })
 
-    except Exception as e:
-        return jsonify({'error': f'Errore lettura file: {str(e)}'}), 500
+    except Exception:
+        return jsonify({'error': 'Errore nella lettura del file Excel: controlla che sia un file valido'}), 500
 
 
 @app.route('/api/import-excel', methods=['POST'])
@@ -942,7 +1010,7 @@ def api_import_excel():
                     cursor = conn.cursor()
                     cursor.execute('''
                         SELECT id FROM utenti
-                        WHERE nome = ? AND cognome = ? AND scuola_id = ?
+                        WHERE nome = ? COLLATE NOCASE AND cognome = ? COLLATE NOCASE AND scuola_id = ?
                     ''', (nome, cognome, scuola_id))
                     existing = cursor.fetchone()
 
@@ -995,12 +1063,13 @@ def api_import_excel():
             'imported': imported,
             'updated': updated,
             'skipped': skipped,
-            'errors': errors
+            'errors': errors,
+            'backup_pre_import': backup_pre_import
         })
 
     except Exception as e:
         logger.error(f"Errore import: {str(e)}", exc_info=True)
-        return jsonify({'error': f'Errore durante l\'import: {str(e)}'}), 500
+        return jsonify({'error': 'Errore durante l\'import: controlla il file e riprova'}), 500
 
 
 # ==================== IMPORT RENDICONTAZIONE MENSILE ====================
@@ -1063,7 +1132,7 @@ def api_preview_rendicontazione():
         })
     except Exception as e:
         logger.error(f"Errore anteprima rendicontazione: {e}", exc_info=True)
-        return jsonify({'error': f'Errore lettura file: {str(e)}'}), 500
+        return jsonify({'error': 'Errore nella lettura del file Excel: controlla che sia un file valido'}), 500
 
 
 @app.route('/api/import-rendicontazione', methods=['POST'])
@@ -1166,6 +1235,7 @@ def api_import_rendicontazione():
         'totale_non_trovati': tot_non_trovati,
         'totale_ambigui': tot_ambigui,
         'dettaglio': dettaglio,
+        'backup_pre_import': backup_pre_import,
     })
 
 
@@ -1195,7 +1265,8 @@ def api_create_dipendente():
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/dipendenti/<int:dipendente_id>', methods=['GET'])
@@ -1217,7 +1288,8 @@ def api_update_dipendente(dipendente_id):
         db.log_audit('update', 'dipendente', dipendente_id)
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/dipendenti/<int:dipendente_id>', methods=['DELETE'])
@@ -1239,7 +1311,7 @@ def api_preview_dipendenti():
         records = import_dipendenti.parse_workbook(file.read())
     except Exception as e:
         logger.error(f"Errore anteprima dipendenti: {e}", exc_info=True)
-        return jsonify({'error': f'Errore lettura file: {str(e)}'}), 500
+        return jsonify({'error': 'Errore nella lettura del file Excel: controlla che sia un file valido'}), 500
 
     # Abbina agli esistenti (per CF o nome+cognome) per contare nuovi/da aggiornare
     esistenti = db.get_all_dipendenti(include_inactive=True)
@@ -1292,7 +1364,7 @@ def api_import_dipendenti():
         res = db.importa_dipendenti(records)
     except Exception as e:
         logger.error(f"Errore import dipendenti: {e}", exc_info=True)
-        return jsonify({'error': f'Errore: {str(e)}'}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
     db.log_audit('import_dipendenti', 'dipendente',
                  dettagli=f"{res['creati']} creati, {res['aggiornati']} aggiornati da {file.filename}")
@@ -1560,7 +1632,7 @@ def api_create_utente():
         return jsonify({'success': True, 'utente_id': utente_id})
     except Exception as e:
         logger.error(f"Errore creazione utente: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/utenti/<int:utente_id>', methods=['PUT'])
@@ -1578,12 +1650,6 @@ def api_update_utente(utente_id):
                 return jsonify({'error': 'Utente non trovato'}), 404
 
             dati_precedenti = dict(utente)
-
-            # Salva per undo
-            push_undo('update_utente', {
-                'id': utente_id,
-                'dati_precedenti': dati_precedenti
-            })
 
             updates = []
             params = []
@@ -1653,13 +1719,19 @@ def api_update_utente(utente_id):
             params.append(utente_id)
             cursor.execute(f"UPDATE utenti SET {', '.join(updates)} WHERE id = ?", params)
 
+        # Undo registrato SOLO dopo una modifica realmente applicata (niente
+        # azioni fantasma su validazioni fallite o richieste senza modifiche)
+        push_undo('update_utente', {
+            'id': utente_id,
+            'dati_precedenti': dati_precedenti
+        })
         db.log_audit('modifica', 'utente', utente_id, dettagli='Aggiornamento utente', dati_precedenti=dati_precedenti, dati_nuovi=data)
         logger.info(f"Utente aggiornato: ID {utente_id}")
 
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Errore aggiornamento utente {utente_id}: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/utenti/<int:utente_id>', methods=['DELETE'])
@@ -1868,7 +1940,7 @@ def api_import_utenti_csv():
                         scuola_id = scuola_row['id']
 
                     # Verifica se utente esiste
-                    cursor.execute("SELECT id FROM utenti WHERE nome = ? AND cognome = ? AND scuola_id = ?", (nome, cognome, scuola_id))
+                    cursor.execute("SELECT id FROM utenti WHERE nome = ? COLLATE NOCASE AND cognome = ? COLLATE NOCASE AND scuola_id = ?", (nome, cognome, scuola_id))
                     existing = cursor.fetchone()
 
                     if existing and mode == 'update':
@@ -1892,8 +1964,8 @@ def api_import_utenti_csv():
             'errori': errori[:10]  # Max 10 errori
         })
 
-    except Exception as e:
-        return jsonify({'error': f'Errore elaborazione CSV: {str(e)}'}), 400
+    except Exception:
+        return jsonify({'error': 'Errore nell\'elaborazione del CSV: controlla il formato del file'}), 400
 
 
 @app.route('/api/utenti/<int:utente_id>/duplica', methods=['POST'])
@@ -2019,8 +2091,10 @@ def api_add_variazione_monte_ore(utente_id):
     if err:
         return jsonify({'error': err}), 400
 
+    # Formato rigoroso: un valore malformato (es. '2026/03') verrebbe salvato ma
+    # poi ignorato dai confronti stringa 'YYYY-MM', corrompendo i calcoli in silenzio
     mese_inizio = (data.get('mese_inizio') or '').strip()
-    if not mese_inizio or len(mese_inizio) != 7:
+    if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', mese_inizio):
         return jsonify({'error': 'Mese inizio obbligatorio (formato YYYY-MM)'}), 400
 
     nota = (data.get('nota') or '').strip()[:500] or None
@@ -2046,8 +2120,8 @@ def api_update_variazione_monte_ore(variazione_id):
 
     if 'mese_inizio' in data:
         mese_inizio = (data['mese_inizio'] or '').strip()
-        if not mese_inizio or len(mese_inizio) != 7:
-            return jsonify({'error': 'Mese inizio non valido'}), 400
+        if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', mese_inizio):
+            return jsonify({'error': 'Mese inizio non valido (formato YYYY-MM)'}), 400
         kwargs['mese_inizio'] = mese_inizio
 
     if 'nota' in data:
@@ -2119,13 +2193,17 @@ def api_reset_data():
                 cursor.execute("DELETE FROM utenti")
                 message = "Utenti e rendicontazioni cancellati"
 
+        # Le azioni undo precedenti puntano a scuole/utenti appena cancellati:
+        # non sono piu' ripristinabili, meglio svuotarle che lasciarle fallire.
+        db.clear_undo_stack()
+
         db.log_audit('reset', 'sistema', dettagli=f'Reset {reset_type}: {message}. Backup: {backup_name}')
         logger.warning(f"Reset completato: {message}")
 
         return jsonify({'success': True, 'message': message, 'backup': backup_name})
     except Exception as e:
         logger.error(f"Errore reset: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/commesse', methods=['GET'])
@@ -2383,8 +2461,13 @@ def api_copia_mese_precedente(anno, mese):
     utente_ids = data.get('utente_ids', [])  # Se vuoto, copia per tutti
     solo_vuoti = data.get('solo_vuoti', True)  # Copia solo se utente non ha ore
 
-    # Calcola mese precedente
-    if mese == 1:
+    # Calcola mese precedente NELL'ANNO SCOLASTICO: per settembre il mese
+    # precedente e' giugno (agosto/luglio non sono mesi scolastici e sono
+    # sempre vuoti: il pulsante non copiava mai nulla).
+    if mese == 9:
+        mese_prec = 6
+        anno_prec = anno
+    elif mese == 1:
         mese_prec = 12
         anno_prec = anno - 1
     else:
@@ -2490,13 +2573,21 @@ def api_storico_utente(utente_id):
         # Storico rendicontazione: i giorni effettivi dipendono dal tipo di scuola
         scuola_utente = utente['scuola'] or ''
         is_infanzia = 'INFANZIA' in scuola_utente.upper()
+        # Alias distinto 'giorni_calendario': con 'giorni_lavorativi' collideva
+        # con l'omonima colonna di r.* (cache alla creazione) e sqlite3.Row
+        # restituiva quella, rendendo il join sul calendario codice morto.
+        # Il join vincola anche l'anno scolastico derivato dal mese, per non
+        # duplicare righe se lo stesso (mese, anno) esiste su piu' anni scolastici.
         cursor.execute('''
             SELECT r.*,
                 CASE WHEN ? = 1 THEN cal.giorni_lavorativi
                      ELSE COALESCE(cal.giorni_lavorativi_altri, cal.giorni_lavorativi)
-                END as giorni_lavorativi
+                END as giorni_calendario
             FROM rendicontazione r
             LEFT JOIN calendario_scolastico cal ON r.mese = cal.mese AND r.anno = cal.anno
+                AND cal.anno_scolastico = CASE WHEN r.mese >= 9
+                    THEN r.anno || '-' || (r.anno + 1)
+                    ELSE (r.anno - 1) || '-' || r.anno END
             WHERE r.utente_id = ?
             ORDER BY r.anno DESC, r.mese DESC
             LIMIT ?
@@ -2517,7 +2608,7 @@ def api_storico_utente(utente_id):
         for r in cursor.fetchall():
             monte_ore = _get_monte_ore_mese(r['anno'], r['mese'])
             # Regola unica condivisa con la vista mensile (calendario -> default)
-            giorni = db.risolvi_giorni_lavorativi(r['giorni_lavorativi'])
+            giorni = db.risolvi_giorni_lavorativi(r['giorni_calendario'])
             media_60, media_assenza = db.calcola_media_prevista(monte_ore, giorni)
             ore = r['ore_lavorate_60'] or 0
             credito_debito = media_assenza - ore
@@ -2657,7 +2748,7 @@ def api_get_alerts():
         })
 
     # 4. Verifica calendario - giorni lavorativi non impostati
-    anno_scolastico = f"{anno}-{anno+1}" if mese >= 9 else f"{anno-1}-{anno}"
+    anno_scolastico = config.anno_scolastico_di(anno, mese)
     with db.get_db_context() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -2826,7 +2917,8 @@ def api_copia_calendario_precedente(anno_scolastico):
             'da_anno': anno_precedente
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/calendario/<anno_scolastico>/calcola-auto', methods=['POST'])
@@ -2889,7 +2981,8 @@ def api_calcola_calendario_auto(anno_scolastico):
             11: (date(anno_inizio, 11, 1), date(anno_inizio, 11, 30)),
             12: (date(anno_inizio, 12, 1), date(anno_inizio, 12, 22)),  # vacanze di Natale
             1:  (date(anno_fine, 1, 8), date(anno_fine, 1, 31)),        # rientro ~8/1
-            2:  (date(anno_fine, 2, 1), date(anno_fine, 2, 28)),
+            # Febbraio: ultimo giorno reale del mese (29 negli anni bisestili)
+            2:  (date(anno_fine, 2, 1), date(anno_fine, 3, 1) - timedelta(days=1)),
             3:  (date(anno_fine, 3, 1), date(anno_fine, 3, 31)),
             4:  (date(anno_fine, 4, 1), date(anno_fine, 4, 30)),
             5:  (date(anno_fine, 5, 1), date(anno_fine, 5, 31)),
@@ -2941,7 +3034,8 @@ def api_calcola_calendario_auto(anno_scolastico):
             'mesi_calcolati': mesi_calcolati
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/anni-scolastici', methods=['GET'])
@@ -2972,7 +3066,10 @@ def api_utenti_da_completare(anno, mese):
     with db.get_db_context() as conn:
         cursor = conn.cursor()
 
-        # Ottieni utenti attivi senza ore per questo mese
+        # Ottieni utenti attivi senza ore per questo mese. Stesso filtro di
+        # periodo della vista mensile: chi non era in servizio nel mese non
+        # deve comparire come "da completare" (anomalia non risolvibile).
+        periodo = f"{anno:04d}-{mese:02d}"
         cursor.execute('''
             SELECT u.id, u.nome, u.cognome, u.monte_ore_settimanale,
                    s.nome_completo as scuola, c.nome as commessa
@@ -2982,9 +3079,11 @@ def api_utenti_da_completare(anno, mese):
             LEFT JOIN rendicontazione r ON u.id = r.utente_id
                 AND r.anno = ? AND r.mese = ?
             WHERE u.attivo = 1
+                AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
+                AND (u.data_fine IS NULL OR u.data_fine >= ?)
                 AND (r.ore_lavorate_60 IS NULL OR r.ore_lavorate_60 = 0)
             ORDER BY c.nome, s.nome_completo, u.cognome, u.nome
-        ''', (anno, mese))
+        ''', (anno, mese, periodo, periodo))
 
         utenti = []
         for row in cursor.fetchall():
@@ -3057,8 +3156,12 @@ def api_get_undo_stack():
 
 @app.route('/api/undo', methods=['POST'])
 def api_undo():
-    """Annulla l'ultima azione (persistente)"""
-    action = db.pop_undo_action()
+    """Annulla l'ultima azione (persistente).
+
+    L'azione viene rimossa dallo stack SOLO dopo il ripristino riuscito: per una
+    cancellazione il payload e' l'unica copia dei dati, e un restore fallito non
+    deve perderli definitivamente."""
+    action = db.peek_undo_action()
 
     if not action:
         return jsonify({'error': 'Nessuna azione da annullare'}), 400
@@ -3069,17 +3172,18 @@ def api_undo():
 
             if action['type'] == 'delete_utente':
                 u = action['data'].get('utente', {})
-                # Ripristina utente
+                # Ripristina utente (inclusi i budget ore, prima omessi)
                 cursor.execute('''
                     INSERT INTO utenti (id, scuola_id, nome, cognome, nome_puntato,
                         monte_ore_settimanale, attivo, lista_attesa, data_inserimento,
-                        data_inizio, data_fine)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        data_inizio, data_fine, budget_ore_mensile, budget_ore_annuale)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (u['id'], u['scuola_id'], u['nome'], u['cognome'],
                       u.get('nome_puntato', ''), u['monte_ore_settimanale'],
                       u.get('attivo', 1), u.get('lista_attesa'),
                       u.get('data_inserimento', datetime.now().isoformat()),
-                      u.get('data_inizio'), u.get('data_fine')))
+                      u.get('data_inizio'), u.get('data_fine'),
+                      u.get('budget_ore_mensile'), u.get('budget_ore_annuale')))
 
                 # Ripristina rendicontazioni
                 for r in action['data'].get('rendicontazioni', []):
@@ -3128,16 +3232,21 @@ def api_undo():
                           a.get('note'),
                           a.get('data_registrazione', datetime.now().isoformat())))
 
+                # Rimuovi l'azione NELLA STESSA transazione del ripristino.
+                # NB: niente chiamate db.* qui dentro (aprirebbero una seconda
+                # connessione in scrittura mentre questa transazione e' aperta).
+                cursor.execute('DELETE FROM undo_actions WHERE id = ?', (action['id'],))
                 nome = f"{u['nome']} {u.get('cognome', '')}"
-                db.log_audit('undo', 'utente', u['id'], f'Ripristinato utente {nome}')
-                return jsonify({'success': True, 'message': f'Utente {nome} ripristinato'})
+                esito = ('utente', u['id'], f'Ripristinato utente {nome}',
+                         {'success': True, 'message': f'Utente {nome} ripristinato'})
 
             elif action['type'] == 'update_utente':
                 old = action['data'].get('dati_precedenti', {})
                 uid = action['data'].get('id')
                 set_parts = []
                 params = []
-                for key in ['nome', 'cognome', 'monte_ore_settimanale', 'nome_puntato', 'lista_attesa']:
+                for key in ['nome', 'cognome', 'monte_ore_settimanale', 'nome_puntato',
+                            'lista_attesa', 'data_inizio', 'data_fine']:
                     if key in old:
                         set_parts.append(f"{key} = ?")
                         params.append(old[key])
@@ -3145,14 +3254,25 @@ def api_undo():
                     params.append(uid)
                     cursor.execute(f"UPDATE utenti SET {', '.join(set_parts)} WHERE id = ?", params)
 
-                db.log_audit('undo', 'utente', uid, 'Ripristinati dati precedenti')
-                return jsonify({'success': True, 'message': 'Modifica annullata'})
+                cursor.execute('DELETE FROM undo_actions WHERE id = ?', (action['id'],))
+                esito = ('utente', uid, 'Ripristinati dati precedenti',
+                         {'success': True, 'message': 'Modifica annullata'})
 
+            else:
+                # Tipo non supportato: scarta l'azione per non bloccare lo stack
+                cursor.execute('DELETE FROM undo_actions WHERE id = ?', (action['id'],))
+                esito = None
+
+        # Fuori dalla transazione: audit (apre una propria connessione) e risposta
+        if esito is None:
             return jsonify({'error': 'Tipo azione non supportato per undo'}), 400
+        entita, entita_id, dettagli, risposta = esito
+        db.log_audit('undo', entita, entita_id, dettagli)
+        return jsonify(risposta)
 
     except Exception as e:
-        logger.error(f"Errore undo: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore undo: {e}", exc_info=True)
+        return jsonify({'error': "Errore nel ripristino: l'azione resta annullabile"}), 500
 
 
 # ==================== CONFRONTO ANNUALE ====================
@@ -3415,6 +3535,9 @@ def api_stats_validazione():
             mese = mese or now.month
 
         anomalie = []
+        # Filtro periodo condiviso con la vista mensile: utenti fuori servizio
+        # nel mese non sono anomalie (non risolvibili dal wizard di chiusura)
+        periodo_val = f"{anno:04d}-{mese:02d}"
 
         with db.get_db_context() as conn:
             # 1. Utenti senza ore nel mese
@@ -3426,11 +3549,13 @@ def api_stats_validazione():
                 JOIN commesse cm ON s.commessa_id = cm.id
                 WHERE u.attivo = 1
                 AND u.monte_ore_settimanale > 0
+                AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
+                AND (u.data_fine IS NULL OR u.data_fine >= ?)
                 AND u.id NOT IN (
                     SELECT DISTINCT utente_id FROM rendicontazione
                     WHERE anno = ? AND mese = ? AND ore_lavorate_60 > 0
                 )
-            """, [anno, mese])
+            """, [periodo_val, periodo_val, anno, mese])
             utenti_senza_ore = [dict(row) for row in cursor.fetchall()]
 
             if utenti_senza_ore:
@@ -3491,21 +3616,31 @@ def api_stats_validazione():
             cursor = conn.execute("""
                 SELECT
                     u.id, u.nome, u.cognome, u.monte_ore_settimanale,
+                    s.nome_completo as scuola,
                     COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate
                 FROM utenti u
+                JOIN scuole s ON u.scuola_id = s.id
                 LEFT JOIN rendicontazione r ON u.id = r.utente_id AND r.anno = ? AND r.mese = ?
                 WHERE u.attivo = 1 AND u.monte_ore_settimanale > 0
+                AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
+                AND (u.data_fine IS NULL OR u.data_fine >= ?)
                 GROUP BY u.id
-            """, [anno, mese])
+            """, [anno, mese, periodo_val, periodo_val])
 
-            # Determina anno scolastico
-            anno_scolastico_validazione = f"{anno}-{anno+1}" if mese >= 9 else f"{anno-1}-{anno}"
-            giorni_lav = db.get_calendario(anno_scolastico_validazione, mese, anno)
+            # Giorni lavorativi con la stessa regola della vista mensile
+            # (tipo scuola infanzia/altri + fallback al default)
+            anno_scolastico_validazione = config.anno_scolastico_di(anno, mese)
+            giorni_def_cal, giorni_altri_cal = db.get_calendario_full(anno_scolastico_validazione, mese, anno)
             differenze_anomale = []
             variazioni_anomalie = db.get_monte_ore_effettivo_bulk(anno, mese)
 
             for row in cursor.fetchall():
                 monte_ore_eff = variazioni_anomalie.get(row['id'], row['monte_ore_settimanale'])
+                if db.is_scuola_infanzia(row['scuola']):
+                    giorni_cal = giorni_def_cal
+                else:
+                    giorni_cal = giorni_altri_cal if giorni_altri_cal is not None else giorni_def_cal
+                giorni_lav = db.risolvi_giorni_lavorativi(giorni_cal)
                 _, ore_previste_ridotte = db.calcola_media_prevista(monte_ore_eff, giorni_lav)
                 ore_erogate = row['ore_erogate']
 
@@ -3567,7 +3702,7 @@ def api_stats_validazione():
         })
     except Exception as e:
         logger.error(f"Errore validazione: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/stats/confronto-annuale-dettaglio')
@@ -3636,7 +3771,7 @@ def api_stats_confronto_annuale_dettaglio():
             return jsonify({'confronto': risultati})
     except Exception as e:
         logger.error(f"Errore confronto annuale: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/utenti/filtrati')
@@ -3681,7 +3816,7 @@ def api_utenti_filtrati():
             return jsonify(utenti)
     except Exception as e:
         logger.error(f"Errore utenti filtrati: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/scuole/lista')
@@ -3714,7 +3849,8 @@ def api_scuole_lista():
 
             return jsonify(scuole)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/config')

@@ -6,10 +6,10 @@
 {% include '_report_tabs.html' %}
 
 <div class="header-actions mb-4" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
-    <select id="filter-commessa" class="form-control" style="width: 160px;">
+    <select id="filter-commessa" aria-label="Commessa" class="form-control" style="width: 160px;">
         <option value="">Tutte le commesse</option>
     </select>
-    <select id="filter-anno" class="form-control" style="width: 150px;">
+    <select id="filter-anno" aria-label="Anno scolastico" class="form-control" style="width: 150px;">
     </select>
 </div>
 
@@ -132,7 +132,7 @@
                 10 Utenti con Meno Ore
             </h2>
             <div class="header-actions">
-                <select id="filter-mese-utenti" class="form-control" style="width: 140px; font-size: 0.8rem;">
+                <select id="filter-mese-utenti" aria-label="Mese" class="form-control" style="width: 140px; font-size: 0.8rem;">
                 </select>
             </div>
         </div>

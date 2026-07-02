@@ -111,8 +111,21 @@
         <p class="text-muted" style="margin-top: 0; margin-bottom: 16px; font-size: 0.875rem;">
             Salva una copia del database quando vuoi e <strong>scaricala dove preferisci</strong>
             (chiavetta, cartella cloud). Prima di ogni import viene creato un backup automatico,
-            così puoi sempre tornare indietro ripristinandolo.
+            così puoi sempre tornare indietro ripristinandolo. Un backup automatico viene inoltre
+            creato ogni 24 ore di utilizzo.
         </p>
+        <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" for="cartella-esterna">
+                Copia automatica su cartella esterna (opzionale)
+            </label>
+            <div style="display:flex; gap:8px;">
+                <input type="text" id="cartella-esterna" class="form-control" style="flex:1;"
+                       placeholder="Es. D:\Backup oppure C:\Users\...\OneDrive\BackupGestionale">
+                <button type="button" class="btn btn-secondary" id="btn-salva-cartella">Salva</button>
+            </div>
+            <small class="text-muted">Ogni nuovo backup verrà copiato anche lì (chiavetta o cartella
+            sincronizzata col cloud). Lascia vuoto per disattivare.</small>
+        </div>
         <div id="backup-list">
             <div class="loading"><div class="spinner"></div></div>
         </div>
@@ -357,6 +370,34 @@ async function loadBackups() {
     }
 }
 
+async function loadCartellaEsterna() {
+    try {
+        const data = await apiCall('/api/backup/cartella-esterna');
+        const input = document.getElementById('cartella-esterna');
+        input.value = data.cartella || '';
+        if (data.cartella && !data.disponibile) {
+            showToast('Attenzione: la cartella di backup esterna non è raggiungibile', 'warning');
+        }
+    } catch (e) { console.error(e); }
+}
+
+document.getElementById('btn-salva-cartella').addEventListener('click', async () => {
+    const cartella = document.getElementById('cartella-esterna').value.trim();
+    try {
+        const res = await fetch('/api/backup/cartella-esterna', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cartella })
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Errore');
+        showToast(cartella ? 'Cartella esterna salvata: i prossimi backup verranno copiati lì'
+                           : 'Copia esterna disattivata', 'success');
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+});
+
 document.getElementById('btn-create-backup').addEventListener('click', async () => {
     try {
         const res = await fetch('/api/backup', { method: 'POST' });
@@ -394,5 +435,6 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
 loadAccount();
 loadCredentials();
 loadBackups();
+loadCartellaEsterna();
 </script>
 {% endblock %}

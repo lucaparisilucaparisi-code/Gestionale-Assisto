@@ -31,7 +31,7 @@ def api_report_locale(commessa_id, anno_scolastico):
         return jsonify(report)
     except Exception as e:
         logger.error(f"Errore report locale: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @report_locale_bp.route('/api/dd/<int:commessa_id>/<anno_scolastico>', methods=['GET'])
@@ -87,7 +87,7 @@ def api_add_dd():
         return jsonify({'success': True, 'id': dd_id})
     except Exception as e:
         logger.error(f"Errore aggiunta DD: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @report_locale_bp.route('/api/dd/<int:dd_id>', methods=['PUT'])
@@ -108,7 +108,7 @@ def api_update_dd(dd_id):
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Errore aggiornamento DD: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @report_locale_bp.route('/api/dd/<int:dd_id>', methods=['DELETE'])
@@ -120,7 +120,7 @@ def api_delete_dd(dd_id):
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Errore eliminazione DD: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @report_locale_bp.route('/api/recuperi/<int:commessa_id>/<anno_scolastico>', methods=['GET'])
@@ -169,7 +169,7 @@ def api_add_recupero():
         return jsonify({'success': True, 'id': recupero_id})
     except Exception as e:
         logger.error(f"Errore aggiunta recupero: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @report_locale_bp.route('/api/recuperi/<int:recupero_id>', methods=['PUT'])
@@ -187,7 +187,7 @@ def api_update_recupero(recupero_id):
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Errore aggiornamento recupero: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @report_locale_bp.route('/api/recuperi/<int:recupero_id>', methods=['DELETE'])
@@ -199,7 +199,7 @@ def api_delete_recupero(recupero_id):
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Errore eliminazione recupero: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 # ==================== OVERRIDE PROGETTATO ====================
@@ -235,7 +235,7 @@ def api_set_progettato_override():
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Errore set progettato override: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @report_locale_bp.route('/api/progettato-override/<int:commessa_id>/<anno_scolastico>/<int:mese>/<int:anno>', methods=['DELETE'])
@@ -247,7 +247,7 @@ def api_delete_progettato_override(commessa_id, anno_scolastico, mese, anno):
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Errore delete progettato override: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 # ==================== OVERRIDE REPORT GENERICO ====================
@@ -289,7 +289,7 @@ def api_set_report_override():
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Errore set report override: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @report_locale_bp.route('/api/report-override/<int:commessa_id>/<anno_scolastico>/<int:mese>/<int:anno>/<campo>', methods=['DELETE'])
@@ -304,4 +304,4 @@ def api_delete_report_override(commessa_id, anno_scolastico, mese, anno, campo):
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Errore delete report override: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500

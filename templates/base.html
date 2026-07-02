@@ -26,7 +26,6 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/premium-effects.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/ux-enhancements.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/search-advanced.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/advanced-features.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-premium.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/refine.css') }}">
@@ -380,7 +379,6 @@
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script src="{{ url_for('static', filename='js/advanced-features.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/search-advanced.js') }}"></script>
 
     <!-- PWA Service Worker Registration -->
     <script>
@@ -454,116 +452,8 @@
             });
         })();
 
-        // Enhanced Command Palette Search
-        (function() {
-            const overlay = document.getElementById('command-palette-overlay');
-            const input = document.getElementById('command-input');
-            const results = document.getElementById('command-results');
-            const items = results?.querySelectorAll('.command-item') || [];
-            let selectedIndex = -1;
-
-            if (!input || !results) return;
-
-            // Live filtering
-            input.addEventListener('input', (e) => {
-                const query = e.target.value.toLowerCase().trim();
-                let visibleCount = 0;
-
-                items.forEach(item => {
-                    const title = item.querySelector('.command-item-title')?.textContent.toLowerCase() || '';
-                    const desc = item.querySelector('.command-item-desc')?.textContent.toLowerCase() || '';
-                    const matches = title.includes(query) || desc.includes(query);
-
-                    item.style.display = matches || !query ? '' : 'none';
-                    item.classList.remove('selected');
-
-                    if (matches || !query) {
-                        visibleCount++;
-                        // Highlight match
-                        if (query && title.includes(query)) {
-                            const titleEl = item.querySelector('.command-item-title');
-                            titleEl.innerHTML = titleEl.textContent.replace(
-                                new RegExp(`(${query})`, 'gi'),
-                                '<span class="search-highlight">$1</span>'
-                            );
-                        }
-                    }
-                });
-
-                // Select first visible item
-                selectedIndex = -1;
-                selectNextItem(1);
-            });
-
-            // Keyboard navigation
-            input.addEventListener('keydown', (e) => {
-                const visibleItems = Array.from(items).filter(i => i.style.display !== 'none');
-
-                switch(e.key) {
-                    case 'ArrowDown':
-                        e.preventDefault();
-                        selectNextItem(1);
-                        break;
-                    case 'ArrowUp':
-                        e.preventDefault();
-                        selectNextItem(-1);
-                        break;
-                    case 'Enter':
-                        e.preventDefault();
-                        const selected = results.querySelector('.command-item.selected');
-                        if (selected) {
-                            const url = selected.dataset.url;
-                            if (url) window.location.href = url;
-                        }
-                        break;
-                }
-            });
-
-            function selectNextItem(direction) {
-                const visibleItems = Array.from(items).filter(i => i.style.display !== 'none');
-                if (visibleItems.length === 0) return;
-
-                // Remove current selection
-                visibleItems.forEach(i => i.classList.remove('selected'));
-
-                // Calculate new index
-                selectedIndex += direction;
-                if (selectedIndex < 0) selectedIndex = visibleItems.length - 1;
-                if (selectedIndex >= visibleItems.length) selectedIndex = 0;
-
-                // Apply selection
-                visibleItems[selectedIndex].classList.add('selected');
-                visibleItems[selectedIndex].scrollIntoView({ block: 'nearest' });
-            }
-
-            // Click on items
-            items.forEach(item => {
-                item.addEventListener('click', () => {
-                    const url = item.dataset.url;
-                    if (url) window.location.href = url;
-                });
-
-                item.addEventListener('mouseenter', () => {
-                    items.forEach(i => i.classList.remove('selected'));
-                    item.classList.add('selected');
-                });
-            });
-
-            // Reset on close
-            overlay?.addEventListener('transitionend', () => {
-                if (!overlay.classList.contains('active')) {
-                    input.value = '';
-                    items.forEach(item => {
-                        item.style.display = '';
-                        item.classList.remove('selected');
-                        // Reset highlights
-                        const titleEl = item.querySelector('.command-item-title');
-                        if (titleEl) titleEl.innerHTML = titleEl.textContent;
-                    });
-                    selectedIndex = -1;
-                }
-            });
-        })();
+        // La gestione della command palette vive SOLO in app.js (CommandPalette):
+        // il doppio set di listener causava doppie navigazioni e selezioni in conflitto.
     </script>
 
     {% block scripts %}{% endblock %}

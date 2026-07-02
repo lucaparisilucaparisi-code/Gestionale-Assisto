@@ -102,19 +102,19 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Scuola/IC (Albero Attività) *</label>
-                <input type="text" id="new-scuola" class="form-control" placeholder="es. /IC ACHILLE TEDESCHI/Infanzia/...">
+                <input type="text" id="new-scuola" class="form-control" maxlength="200" placeholder="es. /IC ACHILLE TEDESCHI/Infanzia/...">
             </div>
             <div class="form-group">
                 <label class="form-label">Nome *</label>
-                <input type="text" id="new-nome" class="form-control" placeholder="Nome">
+                <input type="text" id="new-nome" class="form-control" maxlength="100" placeholder="Nome">
             </div>
             <div class="form-group">
                 <label class="form-label">Cognome</label>
-                <input type="text" id="new-cognome" class="form-control" placeholder="Cognome">
+                <input type="text" id="new-cognome" class="form-control" maxlength="100" placeholder="Cognome">
             </div>
             <div class="form-group">
                 <label class="form-label">Monte Ore Settimanale *</label>
-                <input type="number" id="new-monte-ore" class="form-control" placeholder="es. 15" step="0.5" min="0">
+                <input type="number" id="new-monte-ore" class="form-control" placeholder="es. 15" step="0.5" min="0" max="40">
             </div>
         </div>
         <div class="modal-footer">
@@ -160,16 +160,16 @@
             <input type="hidden" id="edit-utente-id">
             <div class="form-group">
                 <label class="form-label">Nome *</label>
-                <input type="text" id="edit-nome" class="form-control" placeholder="Nome">
+                <input type="text" id="edit-nome" class="form-control" maxlength="100" placeholder="Nome">
             </div>
             <div class="form-group">
                 <label class="form-label">Cognome</label>
-                <input type="text" id="edit-cognome" class="form-control" placeholder="Cognome">
+                <input type="text" id="edit-cognome" class="form-control" maxlength="100" placeholder="Cognome">
             </div>
             <div class="form-group">
                 <label class="form-label">Monte Ore Settimanale (base) *</label>
                 <div class="flex gap-2 items-center">
-                    <input type="number" id="edit-monte-ore" class="form-control" placeholder="es. 15" step="0.5" min="0" style="flex:1;">
+                    <input type="number" id="edit-monte-ore" class="form-control" placeholder="es. 15" step="0.5" min="0" max="40" style="flex:1;">
                     <button type="button" class="btn btn-sm btn-secondary" onclick="openVariazioniMonteOre()" title="Gestisci incrementi/decrementi programmati">Variazioni</button>
                 </div>
                 <p class="form-help" id="edit-monte-ore-help" style="display:none; color: var(--warning);"></p>

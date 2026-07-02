@@ -36,6 +36,32 @@ def api_download_backup(backup_name):
     return send_file(backup_path, as_attachment=True, download_name=backup_name)
 
 
+@backup_bp.route('/api/backup/cartella-esterna', methods=['GET'])
+def api_get_cartella_esterna():
+    """Cartella esterna su cui copiare automaticamente ogni backup (opzionale)."""
+    import os
+    cartella = db.get_impostazione('cartella_backup_esterna') or ''
+    return jsonify({
+        'cartella': cartella,
+        'disponibile': bool(cartella) and os.path.isdir(cartella),
+    })
+
+
+@backup_bp.route('/api/backup/cartella-esterna', methods=['POST'])
+def api_set_cartella_esterna():
+    """Imposta (o rimuove, con stringa vuota) la cartella esterna dei backup."""
+    import os
+    data = request.json or {}
+    cartella = (data.get('cartella') or '').strip()
+    if cartella and not os.path.isdir(cartella):
+        return jsonify({'error': 'La cartella indicata non esiste o non e\' accessibile. '
+                                 'Controlla il percorso (es. chiavetta collegata?).'}), 400
+    db.set_impostazione('cartella_backup_esterna', cartella)
+    db.log_audit('impostazione', 'sistema',
+                 dettagli=f'Cartella backup esterna: {cartella or "(rimossa)"}')
+    return jsonify({'success': True, 'cartella': cartella})
+
+
 @backup_bp.route('/api/backup/restore', methods=['POST'])
 def api_restore_backup():
     """Ripristina un backup"""

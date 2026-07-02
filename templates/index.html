@@ -10,10 +10,10 @@
             <p class="page-subtitle">Panoramica del servizio OEPAC</p>
         </div>
         <div class="header-actions flex gap-3 items-center flex-wrap">
-            <select id="filter-commessa" class="form-control" style="width: auto; min-width: 160px; padding: 8px 12px; font-size: 0.85rem;">
+            <select id="filter-commessa" aria-label="Commessa" class="form-control" style="width: auto; min-width: 160px; padding: 8px 12px; font-size: 0.85rem;">
                 <option value="">Tutte le commesse</option>
             </select>
-            <select id="filter-periodo" class="form-control" style="width: auto; min-width: 180px; padding: 8px 12px; font-size: 0.85rem;">
+            <select id="filter-periodo" aria-label="Periodo" class="form-control" style="width: auto; min-width: 180px; padding: 8px 12px; font-size: 0.85rem;">
             </select>
             <button id="btn-refresh-dashboard" class="btn btn-secondary" title="Aggiorna dati">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
@@ -79,6 +79,32 @@
     </div>
     <div class="card-body" style="padding: 12px; max-height: 300px; overflow-y: auto;">
         <div id="alerts-list"></div>
+    </div>
+</div>
+
+<!-- Checklist di primo avvio: visibile solo finche' non ci sono utenti -->
+<div class="card mb-4" id="onboarding-card" style="display:none;">
+    <div class="card-header">
+        <h2 class="card-title">👋 Benvenuto! Da dove iniziare</h2>
+    </div>
+    <div class="card-body">
+        <p class="text-muted" style="margin-top:0;">
+            Il gestionale è pronto: segui questi passi per caricare i tuoi dati.
+        </p>
+        <ol style="line-height:2.2; padding-left:20px; margin:0;">
+            <li><strong>Controlla le commesse e il calendario</strong> —
+                <a href="/commesse">Impostazioni → Commesse</a> ·
+                <a href="/calendario">Calendario scolastico</a></li>
+            <li><strong>Scarica il modello Excel</strong> per l'anagrafica —
+                <a href="/api/import-excel/template">Scarica template</a></li>
+            <li><strong>Importa l'anagrafica</strong> degli assistiti —
+                <a href="/import">Import Excel</a></li>
+            <li><strong>Compila o importa</strong> le ore del mese —
+                <a href="/rendicontazione">Rendicontazione</a></li>
+        </ol>
+        <p class="text-muted mt-3" style="font-size:0.85rem; margin-bottom:0;">
+            Questa guida scompare da sola appena l'anagrafica contiene almeno un utente.
+        </p>
     </div>
 </div>
 
