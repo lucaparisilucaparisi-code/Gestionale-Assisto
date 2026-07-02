@@ -1668,32 +1668,26 @@ def api_delete_utente(utente_id):
     try:
         with db.get_db_context() as conn:
             cursor = conn.cursor()
+            # Snapshot per undo (utente + rendicontazioni + note/documenti/assenze)
+            snapshot = db.raccogli_snapshot_utente(cursor, utente_id)
+            # Cancellazione completa (FK enforcement attivo: vanno rimossi
+            # anche i record correlati senza CASCADE, nella stessa transazione)
+            db.elimina_utente_completo(cursor, utente_id)
 
-            # Recupera info utente per undo e audit
-            cursor.execute("SELECT * FROM utenti WHERE id = ?", (utente_id,))
-            utente = cursor.fetchone()
+        # push_undo SOLO dopo il commit riuscito: una delete fallita non deve
+        # lasciare un'azione fantasma nello stack (il cui undo fallirebbe)
+        if snapshot:
+            push_undo('delete_utente', snapshot)
 
-            # Salva dati per undo
-            if utente:
-                utente_data = dict(utente)
-                cursor.execute("SELECT * FROM rendicontazione WHERE utente_id = ?", (utente_id,))
-                rend_data = [dict(r) for r in cursor.fetchall()]
-                push_undo('delete_utente', {
-                    'utente': utente_data,
-                    'rendicontazioni': rend_data
-                })
-
-            cursor.execute("DELETE FROM rendicontazione WHERE utente_id = ?", (utente_id,))
-            cursor.execute("DELETE FROM utenti WHERE id = ?", (utente_id,))
-
-        nome_utente = f"{utente['nome']} {utente['cognome']}" if utente else f"ID {utente_id}"
+        u = snapshot['utente'] if snapshot else None
+        nome_utente = f"{u['nome']} {u['cognome']}" if u else f"ID {utente_id}"
         db.log_audit('eliminazione', 'utente', utente_id, f'Eliminato utente {nome_utente}')
         logger.info(f"Utente eliminato: {nome_utente} (ID: {utente_id})")
 
         return jsonify({'success': True})
     except Exception as e:
-        logger.error(f"Errore eliminazione utente {utente_id}: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore eliminazione utente {utente_id}: {e}", exc_info=True)
+        return jsonify({'error': "Errore nell'eliminazione dell'utente"}), 500
 
 
 @app.route('/api/utenti/bulk', methods=['PUT'])
@@ -1764,21 +1758,11 @@ def api_bulk_delete_utenti():
         try:
             with db.get_db_context() as conn:
                 cursor = conn.cursor()
-
-                # Salva dati per undo
-                cursor.execute("SELECT * FROM utenti WHERE id = ?", (uid,))
-                utente = cursor.fetchone()
-                if utente:
-                    utente_data = dict(utente)
-                    cursor.execute("SELECT * FROM rendicontazione WHERE utente_id = ?", (uid,))
-                    rend_data = [dict(r) for r in cursor.fetchall()]
-                    push_undo('delete_utente', {
-                        'utente': utente_data,
-                        'rendicontazioni': rend_data
-                    })
-
-                cursor.execute("DELETE FROM rendicontazione WHERE utente_id = ?", (uid,))
-                cursor.execute("DELETE FROM utenti WHERE id = ?", (uid,))
+                snapshot = db.raccogli_snapshot_utente(cursor, uid)
+                db.elimina_utente_completo(cursor, uid)
+            # push_undo solo a transazione riuscita (niente azioni fantasma)
+            if snapshot:
+                push_undo('delete_utente', snapshot)
             eliminati += 1
         except Exception as e:
             logger.error(f"Errore bulk delete utente {uid}: {e}")
@@ -2111,8 +2095,15 @@ def api_reset_data():
         with db.get_db_context() as conn:
             cursor = conn.cursor()
 
+            # Ordine FK-safe: con foreign_keys=ON i figli senza CASCADE
+            # (documenti/note/assenze) vanno rimossi prima degli utenti, e i
+            # turni scollegati da utenti/scuole prima di cancellarli.
             if reset_type == 'all':
                 cursor.execute("DELETE FROM rendicontazione")
+                cursor.execute("DELETE FROM documenti_utente")
+                cursor.execute("DELETE FROM note_utente")
+                cursor.execute("DELETE FROM assenze")
+                cursor.execute("UPDATE turni SET utente_id = NULL, scuola_id = NULL")
                 cursor.execute("DELETE FROM utenti")
                 cursor.execute("DELETE FROM scuole")
                 message = "Tutti i dati sono stati cancellati"
@@ -2121,6 +2112,10 @@ def api_reset_data():
                 message = "Tutte le rendicontazioni sono state cancellate"
             elif reset_type == 'utenti':
                 cursor.execute("DELETE FROM rendicontazione")
+                cursor.execute("DELETE FROM documenti_utente")
+                cursor.execute("DELETE FROM note_utente")
+                cursor.execute("DELETE FROM assenze")
+                cursor.execute("UPDATE turni SET utente_id = NULL")
                 cursor.execute("DELETE FROM utenti")
                 message = "Utenti e rendicontazioni cancellati"
 
@@ -3097,6 +3092,41 @@ def api_undo():
                           r.get('ore_lavorate_60'), r.get('pasti'),
                           r.get('giorni_lavorativi', 0), r.get('note'),
                           r.get('data_inserimento', datetime.now().isoformat())))
+
+                # Ripristina note, documenti e assenze (presenti negli snapshot
+                # creati da raccogli_snapshot_utente; assenti negli undo storici)
+                for n in action['data'].get('note', []):
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO note_utente
+                        (id, utente_id, tipo, anno, mese, contenuto, priorita,
+                         data_creazione, data_modifica)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (n.get('id'), n['utente_id'], n.get('tipo', 'generale'),
+                          n.get('anno'), n.get('mese'), n.get('contenuto', ''),
+                          n.get('priorita', 'normale'),
+                          n.get('data_creazione', datetime.now().isoformat()),
+                          n.get('data_modifica')))
+                for doc in action['data'].get('documenti', []):
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO documenti_utente
+                        (id, utente_id, nome_file, nome_originale, tipo_documento,
+                         descrizione, data_scadenza, data_caricamento, dimensione)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (doc.get('id'), doc['utente_id'], doc.get('nome_file', ''),
+                          doc.get('nome_originale', ''), doc.get('tipo_documento', 'altro'),
+                          doc.get('descrizione'), doc.get('data_scadenza'),
+                          doc.get('data_caricamento', datetime.now().isoformat()),
+                          doc.get('dimensione')))
+                for a in action['data'].get('assenze', []):
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO assenze
+                        (id, utente_id, data_inizio, data_fine, tipo, motivazione,
+                         note, data_registrazione)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (a.get('id'), a['utente_id'], a.get('data_inizio', ''),
+                          a.get('data_fine'), a.get('tipo', 'altro'), a.get('motivazione'),
+                          a.get('note'),
+                          a.get('data_registrazione', datetime.now().isoformat())))
 
                 nome = f"{u['nome']} {u.get('cognome', '')}"
                 db.log_audit('undo', 'utente', u['id'], f'Ripristinato utente {nome}')

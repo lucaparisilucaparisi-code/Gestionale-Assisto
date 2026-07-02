@@ -843,6 +843,42 @@ def delete_utente(utente_id):
         cursor.execute("UPDATE utenti SET attivo = 0 WHERE id = ?", (utente_id,))
 
 
+def raccogli_snapshot_utente(cursor, utente_id):
+    """Snapshot completo di un utente e dei record correlati (per l'undo).
+
+    Da chiamare PRIMA di elimina_utente_completo, sullo stesso cursor."""
+    cursor.execute("SELECT * FROM utenti WHERE id = ?", (utente_id,))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    snap = {'utente': dict(row)}
+    for chiave, tabella in [('rendicontazioni', 'rendicontazione'),
+                            ('note', 'note_utente'),
+                            ('documenti', 'documenti_utente'),
+                            ('assenze', 'assenze')]:
+        cursor.execute(f"SELECT * FROM {tabella} WHERE utente_id = ?", (utente_id,))
+        snap[chiave] = [dict(r) for r in cursor.fetchall()]
+    return snap
+
+
+def elimina_utente_completo(cursor, utente_id):
+    """Cancella un utente e TUTTI i record correlati nella stessa transazione.
+
+    Con l'enforcement FK attivo (PRAGMA foreign_keys=ON), le tabelle figlie
+    senza ON DELETE CASCADE (documenti_utente, note_utente, assenze,
+    rendicontazione) vanno cancellate esplicitamente prima dell'utente, e i
+    turni scollegati (il turno appartiene al dipendente: si azzera solo il
+    riferimento all'utente). assegnazioni e variazioni_monte_ore hanno gia'
+    la CASCADE. I file fisici dei documenti restano su disco, cosi' l'undo
+    puo' ripristinare le righe documenti senza perdita."""
+    cursor.execute("DELETE FROM documenti_utente WHERE utente_id = ?", (utente_id,))
+    cursor.execute("DELETE FROM note_utente WHERE utente_id = ?", (utente_id,))
+    cursor.execute("DELETE FROM assenze WHERE utente_id = ?", (utente_id,))
+    cursor.execute("UPDATE turni SET utente_id = NULL WHERE utente_id = ?", (utente_id,))
+    cursor.execute("DELETE FROM rendicontazione WHERE utente_id = ?", (utente_id,))
+    cursor.execute("DELETE FROM utenti WHERE id = ?", (utente_id,))
+
+
 def update_utente_lista_attesa(utente_id, lista_attesa):
     """Aggiorna la lista attesa di un utente"""
     with get_db_context() as conn:
