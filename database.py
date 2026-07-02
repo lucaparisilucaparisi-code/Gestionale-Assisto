@@ -587,6 +587,25 @@ def init_db():
             VALUES (?, ?, ?, ?)
         ''', cal)
 
+    # Tabella impostazioni applicative (chiave/valore)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS impostazioni (
+            chiave TEXT PRIMARY KEY,
+            valore TEXT
+        )
+    ''')
+
+    # Mesi marcati come "chiusi" dall'operatore (stato informativo della
+    # procedura di chiusura: nessun effetto sui dati o sui report)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS mesi_chiusi (
+            anno INTEGER NOT NULL,
+            mese INTEGER NOT NULL,
+            data_chiusura TEXT NOT NULL,
+            PRIMARY KEY (anno, mese)
+        )
+    ''')
+
     # Bonifica orfani storici creati quando l'enforcement FK era spento (es. righe
     # in sostituzioni che puntano a un turno cancellato): vanno rimosse prima che
     # l'enforcement (ora attivo) le faccia emergere.
@@ -3169,6 +3188,48 @@ def get_sostituzione(sostituzione_id):
         return dict(r) if r else None
 
 
+# ==================== IMPOSTAZIONI (chiave/valore) ====================
+
+def get_impostazione(chiave, default=None):
+    """Legge un'impostazione applicativa (o default se assente)."""
+    with get_db_context() as conn:
+        row = conn.execute(
+            'SELECT valore FROM impostazioni WHERE chiave = ?', (chiave,)).fetchone()
+        return row['valore'] if row else default
+
+
+def set_impostazione(chiave, valore):
+    """Scrive (o rimuove, se valore falsy) un'impostazione applicativa."""
+    with get_db_context() as conn:
+        if valore:
+            conn.execute('''INSERT INTO impostazioni (chiave, valore) VALUES (?, ?)
+                            ON CONFLICT(chiave) DO UPDATE SET valore = excluded.valore''',
+                         (chiave, valore))
+        else:
+            conn.execute('DELETE FROM impostazioni WHERE chiave = ?', (chiave,))
+
+
+# ==================== MESI CHIUSI ====================
+
+def get_mese_chiuso(anno, mese):
+    """Ritorna la data di chiusura del mese, o None se non e' marcato chiuso."""
+    with get_db_context() as conn:
+        row = conn.execute('SELECT data_chiusura FROM mesi_chiusi WHERE anno = ? AND mese = ?',
+                           (anno, mese)).fetchone()
+        return row['data_chiusura'] if row else None
+
+
+def set_mese_chiuso(anno, mese, chiuso=True):
+    """Marca (o smarca) un mese come chiuso. Stato informativo, non blocca nulla."""
+    with get_db_context() as conn:
+        if chiuso:
+            conn.execute('''INSERT INTO mesi_chiusi (anno, mese, data_chiusura) VALUES (?, ?, ?)
+                            ON CONFLICT(anno, mese) DO UPDATE SET data_chiusura = excluded.data_chiusura''',
+                         (anno, mese, datetime.now().isoformat()))
+        else:
+            conn.execute('DELETE FROM mesi_chiusi WHERE anno = ? AND mese = ?', (anno, mese))
+
+
 # ==================== BACKUP ====================
 
 def create_backup():
@@ -3198,6 +3259,10 @@ def create_backup():
             src.close()
         logger.info(f"Backup creato: {backup_name}")
 
+        # Copia opzionale su cartella esterna (chiavetta / cartella cloud):
+        # best effort, un errore qui non deve MAI bloccare il backup principale.
+        _copia_backup_esterno(backup_path, backup_name)
+
         # Pulizia backup vecchi
         cleanup_old_backups()
 
@@ -3205,6 +3270,22 @@ def create_backup():
     except Exception as e:
         logger.error(f"Errore creazione backup: {e}")
         return None
+
+
+def _copia_backup_esterno(backup_path, backup_name):
+    """Copia il backup appena creato nella cartella esterna configurata (se c'e')."""
+    cartella = get_impostazione('cartella_backup_esterna')
+    if not cartella:
+        return
+    try:
+        if not os.path.isdir(cartella):
+            logger.warning(f"Cartella backup esterna non disponibile: {cartella}")
+            return
+        import shutil
+        shutil.copy2(backup_path, os.path.join(cartella, backup_name))
+        logger.info(f"Backup copiato nella cartella esterna: {cartella}")
+    except Exception as e:
+        logger.warning(f"Copia backup esterno fallita ({cartella}): {e}")
 
 
 def cleanup_old_backups():

@@ -821,6 +821,13 @@ async function uploadFile() {
                     ${saltati > 0 ? `<span class="badge badge-secondary">${saltati} saltati</span>` : ''}
                 </div>
             </div>
+            ${data.backup_pre_import ? `
+            <div class="mt-2" style="text-align:right;">
+                <button type="button" class="btn btn-sm btn-secondary"
+                        onclick="annullaImport('${escapeHtml(data.backup_pre_import)}')">
+                    ↩ Annulla questo import (ripristina lo stato precedente)
+                </button>
+            </div>` : ''}
         `;
 
         // Ricarica cronologia
@@ -835,7 +842,7 @@ async function uploadFile() {
                     <div>
                         <strong>Attenzione:</strong> Alcune righe non sono state importate<br>
                         <ul class="mt-2" style="list-style: disc; padding-left: 20px;">
-                            ${data.errors.slice(0, 5).map(e => `<li>${e}</li>`).join('')}
+                            ${data.errors.slice(0, 5).map(e => `<li>${escapeHtml(e)}</li>`).join('')}
                             ${data.errors.length > 5 ? `<li>... e altri ${data.errors.length - 5} errori</li>` : ''}
                         </ul>
                     </div>
@@ -865,7 +872,7 @@ async function uploadFile() {
                 </svg>
                 <div>
                     <strong>Errore durante l'importazione:</strong><br>
-                    ${errorMessage}
+                    ${escapeHtml(errorMessage)}
                 </div>
             </div>
         `;
@@ -1034,6 +1041,13 @@ async function importRendicontazione() {
                     </tbody>
                 </table>
             </div>
+            ${data.backup_pre_import ? `
+            <div class="mt-2" style="text-align:right;">
+                <button type="button" class="btn btn-sm btn-secondary"
+                        onclick="annullaImport('${escapeHtml(data.backup_pre_import)}')">
+                    ↩ Annulla questo import (ripristina lo stato precedente)
+                </button>
+            </div>` : ''}
         `;
         result.classList.remove('hidden');
         showToast(`${data.totale_scritti} rendicontazioni importate`, 'success');
@@ -1053,6 +1067,27 @@ async function importRendicontazione() {
     } finally {
         progress.classList.add('hidden');
         btn.disabled = false;
+    }
+}
+
+// ==================== ANNULLA IMPORT ====================
+
+async function annullaImport(backupName) {
+    if (!confirm('Annullare questo import?\n\nI dati torneranno esattamente allo stato precedente ' +
+                 'all\'import (viene ripristinato il backup creato automaticamente prima di importare).')) {
+        return;
+    }
+    try {
+        const res = await fetch('/api/backup/restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ backup: backupName, confirm: 'CONFERMA' })
+        });
+        if (!res.ok) throw new Error();
+        showToast('Import annullato: dati ripristinati. Ricarico la pagina…', 'success');
+        setTimeout(() => location.reload(), 1500);
+    } catch (e) {
+        showToast('Errore nell\'annullamento dell\'import', 'error');
     }
 }
 

@@ -132,6 +132,34 @@ PUBLIC_ENDPOINTS = {
 }
 
 
+# Backup automatico periodico: se il processo resta attivo per giorni senza
+# import/riavvii, senza questo controllo non verrebbe mai creato un nuovo backup.
+# Il timestamp in memoria evita I/O su disco ad ogni request.
+BACKUP_AUTO_INTERVALLO_ORE = 24
+_ultimo_check_backup = {'t': 0.0}
+
+
+def _backup_automatico_se_scaduto():
+    import time
+    ora = time.time()
+    # throttle: controlla al massimo una volta ogni ora
+    if ora - _ultimo_check_backup['t'] < 3600:
+        return
+    _ultimo_check_backup['t'] = ora
+    try:
+        backups = db.get_backups_list()
+        if backups:
+            piu_recente = os.path.getmtime(
+                os.path.join(config.BACKUP_FOLDER, backups[0]['nome']))
+            if ora - piu_recente < BACKUP_AUTO_INTERVALLO_ORE * 3600:
+                return
+        nome = db.create_backup()
+        if nome:
+            logger.info(f"Backup automatico periodico creato: {nome}")
+    except Exception as e:
+        logger.error(f"Backup automatico fallito: {e}")
+
+
 @app.before_request
 def require_authentication():
     """Protegge globalmente tutte le route tranne quelle in PUBLIC_ENDPOINTS."""
@@ -141,6 +169,8 @@ def require_authentication():
 
     if endpoint in PUBLIC_ENDPOINTS:
         return
+
+    _backup_automatico_se_scaduto()
 
     # Se auth non configurata, vai a setup (tranne se gia' ci stai andando)
     if not db.auth_is_configured():
@@ -546,6 +576,23 @@ def rendicontazione_page():
 def chiusura_mese_page():
     """Procedura guidata di chiusura del mese"""
     return render_template('chiusura_mese.html')
+
+
+@app.route('/api/mese-chiuso/<int:anno>/<int:mese>', methods=['GET'])
+def api_get_mese_chiuso(anno, mese):
+    """Stato di chiusura del mese (informativo: non blocca modifiche)."""
+    data_chiusura = db.get_mese_chiuso(anno, mese)
+    return jsonify({'chiuso': data_chiusura is not None, 'data_chiusura': data_chiusura})
+
+
+@app.route('/api/mese-chiuso/<int:anno>/<int:mese>', methods=['POST', 'DELETE'])
+def api_set_mese_chiuso(anno, mese):
+    """Marca (POST) o smarca (DELETE) il mese come chiuso."""
+    chiuso = request.method == 'POST'
+    db.set_mese_chiuso(anno, mese, chiuso)
+    db.log_audit('chiusura_mese' if chiuso else 'riapertura_mese', 'sistema',
+                 dettagli=f'{config.MESI_NOME.get(mese, mese)} {anno}')
+    return jsonify({'success': True, 'chiuso': chiuso})
 
 
 @app.route('/calendario')
@@ -999,12 +1046,13 @@ def api_import_excel():
             'imported': imported,
             'updated': updated,
             'skipped': skipped,
-            'errors': errors
+            'errors': errors,
+            'backup_pre_import': backup_pre_import
         })
 
     except Exception as e:
         logger.error(f"Errore import: {str(e)}", exc_info=True)
-        return jsonify({'error': f'Errore durante l\'import: {str(e)}'}), 500
+        return jsonify({'error': 'Errore durante l\'import: controlla il file e riprova'}), 500
 
 
 # ==================== IMPORT RENDICONTAZIONE MENSILE ====================
@@ -1170,6 +1218,7 @@ def api_import_rendicontazione():
         'totale_non_trovati': tot_non_trovati,
         'totale_ambigui': tot_ambigui,
         'dettaglio': dettaglio,
+        'backup_pre_import': backup_pre_import,
     })
 
 
