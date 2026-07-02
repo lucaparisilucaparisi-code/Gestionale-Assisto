@@ -184,6 +184,22 @@ def require_authentication():
             return jsonify({'error': 'Non autenticato', 'code': 'AUTH_REQUIRED'}), 401
         return redirect(url_for('login_page', next=request.path))
 
+    # Scadenza ASSOLUTA della sessione (7 giorni dal login): il lifetime di 8h
+    # e' scorrevole (si rinnova a ogni richiesta), quindi da solo non garantisce
+    # mai una ri-autenticazione. auth_time e' impostato da _login_user.
+    auth_time = session.get('auth_time')
+    if auth_time:
+        try:
+            eta = datetime.now() - datetime.fromisoformat(auth_time)
+            if eta.days >= 7:
+                session.clear()
+                if request.path.startswith('/api/'):
+                    return jsonify({'error': 'Sessione scaduta, effettua di nuovo il login',
+                                    'code': 'AUTH_REQUIRED'}), 401
+                return redirect(url_for('login_page', next=request.path))
+        except (ValueError, TypeError):
+            pass
+
 
 @app.errorhandler(404)
 def handle_404(e):
@@ -396,7 +412,7 @@ def api_webauthn_register_complete():
         )
     except Exception as e:
         logger.warning(f"WebAuthn registration verification fallita: {e}")
-        return jsonify({'error': f'Verifica fallita: {str(e)}'}), 400
+        return jsonify({'error': 'Verifica non riuscita, riprova'}), 400
 
     # Protezione contro response=null: il secondo .get() fallirebbe su None
     response_obj = credential.get('response') or {}
@@ -709,7 +725,8 @@ def api_import_template():
             download_name='template_import_utenti.xlsx'
         )
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/import-excel/cronologia')
@@ -867,8 +884,8 @@ def api_preview_excel():
             'errors': errors[:10]
         })
 
-    except Exception as e:
-        return jsonify({'error': f'Errore lettura file: {str(e)}'}), 500
+    except Exception:
+        return jsonify({'error': 'Errore nella lettura del file Excel: controlla che sia un file valido'}), 500
 
 
 @app.route('/api/import-excel', methods=['POST'])
@@ -1115,7 +1132,7 @@ def api_preview_rendicontazione():
         })
     except Exception as e:
         logger.error(f"Errore anteprima rendicontazione: {e}", exc_info=True)
-        return jsonify({'error': f'Errore lettura file: {str(e)}'}), 500
+        return jsonify({'error': 'Errore nella lettura del file Excel: controlla che sia un file valido'}), 500
 
 
 @app.route('/api/import-rendicontazione', methods=['POST'])
@@ -1248,7 +1265,8 @@ def api_create_dipendente():
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/dipendenti/<int:dipendente_id>', methods=['GET'])
@@ -1270,7 +1288,8 @@ def api_update_dipendente(dipendente_id):
         db.log_audit('update', 'dipendente', dipendente_id)
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/dipendenti/<int:dipendente_id>', methods=['DELETE'])
@@ -1292,7 +1311,7 @@ def api_preview_dipendenti():
         records = import_dipendenti.parse_workbook(file.read())
     except Exception as e:
         logger.error(f"Errore anteprima dipendenti: {e}", exc_info=True)
-        return jsonify({'error': f'Errore lettura file: {str(e)}'}), 500
+        return jsonify({'error': 'Errore nella lettura del file Excel: controlla che sia un file valido'}), 500
 
     # Abbina agli esistenti (per CF o nome+cognome) per contare nuovi/da aggiornare
     esistenti = db.get_all_dipendenti(include_inactive=True)
@@ -1345,7 +1364,7 @@ def api_import_dipendenti():
         res = db.importa_dipendenti(records)
     except Exception as e:
         logger.error(f"Errore import dipendenti: {e}", exc_info=True)
-        return jsonify({'error': f'Errore: {str(e)}'}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
     db.log_audit('import_dipendenti', 'dipendente',
                  dettagli=f"{res['creati']} creati, {res['aggiornati']} aggiornati da {file.filename}")
@@ -1613,7 +1632,7 @@ def api_create_utente():
         return jsonify({'success': True, 'utente_id': utente_id})
     except Exception as e:
         logger.error(f"Errore creazione utente: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/utenti/<int:utente_id>', methods=['PUT'])
@@ -1712,7 +1731,7 @@ def api_update_utente(utente_id):
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Errore aggiornamento utente {utente_id}: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/utenti/<int:utente_id>', methods=['DELETE'])
@@ -1945,8 +1964,8 @@ def api_import_utenti_csv():
             'errori': errori[:10]  # Max 10 errori
         })
 
-    except Exception as e:
-        return jsonify({'error': f'Errore elaborazione CSV: {str(e)}'}), 400
+    except Exception:
+        return jsonify({'error': 'Errore nell\'elaborazione del CSV: controlla il formato del file'}), 400
 
 
 @app.route('/api/utenti/<int:utente_id>/duplica', methods=['POST'])
@@ -2184,7 +2203,7 @@ def api_reset_data():
         return jsonify({'success': True, 'message': message, 'backup': backup_name})
     except Exception as e:
         logger.error(f"Errore reset: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/commesse', methods=['GET'])
@@ -2898,7 +2917,8 @@ def api_copia_calendario_precedente(anno_scolastico):
             'da_anno': anno_precedente
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/calendario/<anno_scolastico>/calcola-auto', methods=['POST'])
@@ -3014,7 +3034,8 @@ def api_calcola_calendario_auto(anno_scolastico):
             'mesi_calcolati': mesi_calcolati
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/anni-scolastici', methods=['GET'])
@@ -3681,7 +3702,7 @@ def api_stats_validazione():
         })
     except Exception as e:
         logger.error(f"Errore validazione: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/stats/confronto-annuale-dettaglio')
@@ -3750,7 +3771,7 @@ def api_stats_confronto_annuale_dettaglio():
             return jsonify({'confronto': risultati})
     except Exception as e:
         logger.error(f"Errore confronto annuale: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/utenti/filtrati')
@@ -3795,7 +3816,7 @@ def api_utenti_filtrati():
             return jsonify(utenti)
     except Exception as e:
         logger.error(f"Errore utenti filtrati: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/scuole/lista')
@@ -3828,7 +3849,8 @@ def api_scuole_lista():
 
             return jsonify(scuole)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @app.route('/api/config')

@@ -132,7 +132,7 @@ def api_migrazione_esporta():
 
     except Exception as e:
         logger.error(f"Errore esportazione: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @migrazione_bp.route('/api/migrazione/importa', methods=['POST'])
@@ -333,7 +333,7 @@ def api_migrazione_importa():
         return jsonify({'error': 'File JSON non valido'}), 400
     except Exception as e:
         logger.error(f"Errore importazione: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 @migrazione_bp.route('/api/migrazione/anteprima', methods=['POST'])
@@ -373,7 +373,8 @@ def api_migrazione_anteprima():
     except json.JSONDecodeError:
         return jsonify({'error': 'File JSON non valido'}), 400
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Errore non gestito: {e}", exc_info=True)
+        return jsonify({'error': 'Errore interno del server'}), 500
 
 
 # ==================== AUDIT TRAIL API ====================

@@ -21,7 +21,7 @@
         </div>
     </div>
     <div class="header-actions">
-        <select id="anno-scolastico" class="form-control" style="width: 150px;">
+        <select id="anno-scolastico" aria-label="Anno scolastico" class="form-control" style="width: 150px;">
             <option value="2025-2026">2025-2026</option>
             <option value="2024-2025">2024-2025</option>
         </select>
@@ -119,7 +119,7 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Ore settimanali *</label>
-                <input type="number" id="ass-ore" class="form-control" step="0.5" min="0">
+                <input type="number" id="ass-ore" class="form-control" step="0.5" min="0" max="40">
                 <small class="text-muted" id="ass-suggerimento"></small>
             </div>
             <div class="form-row">
@@ -647,19 +647,19 @@ function renderAnagrafica(data) {
         <div class="info-grid">
             <div class="info-item">
                 <div class="info-label">Nome Completo</div>
-                <div class="info-value">${u.nome} ${u.cognome}</div>
+                <div class="info-value">${escapeHtml(u.nome)} ${escapeHtml(u.cognome)}</div>
             </div>
             <div class="info-item">
                 <div class="info-label">Nome Puntato</div>
-                <div class="info-value">${u.nome_puntato}</div>
+                <div class="info-value">${escapeHtml(u.nome_puntato)}</div>
             </div>
             <div class="info-item">
                 <div class="info-label">Scuola</div>
-                <div class="info-value">${u.scuola}</div>
+                <div class="info-value">${escapeHtml(u.scuola)}</div>
             </div>
             <div class="info-item">
                 <div class="info-label">Commessa</div>
-                <div class="info-value">${u.commessa}</div>
+                <div class="info-value">${escapeHtml(u.commessa)}</div>
             </div>
             <div class="info-item">
                 <div class="info-label">Monte Ore Settimanale (base)</div>
@@ -668,7 +668,7 @@ function renderAnagrafica(data) {
             <div class="info-item">
                 <div class="info-label">Stato</div>
                 <div class="info-value">
-                    ${u.lista_attesa ? '<span class="badge badge-warning">Lista Attesa: ' + u.lista_attesa + '</span>' :
+                    ${u.lista_attesa ? '<span class="badge badge-warning">Lista Attesa: ' + escapeHtml(u.lista_attesa) + '</span>' :
                       u.attivo ? '<span class="badge badge-success">Attivo</span>' : '<span class="badge badge-secondary">Inattivo</span>'}
                 </div>
             </div>
@@ -760,9 +760,9 @@ function renderDocumenti(documenti) {
         const scadenzaClass = isScaduto ? 'text-danger' : '';
 
         html += `<tr>
-            <td><span class="badge">${d.tipo_documento}</span></td>
-            <td>${d.nome_originale}</td>
-            <td>${d.descrizione || '-'}</td>
+            <td><span class="badge">${escapeHtml(d.tipo_documento)}</span></td>
+            <td>${escapeHtml(d.nome_originale)}</td>
+            <td>${escapeHtml(d.descrizione || '-')}</td>
             <td class="${scadenzaClass}">${d.data_scadenza || '-'}</td>
             <td>${new Date(d.data_caricamento).toLocaleDateString('it')}</td>
             <td>
@@ -795,10 +795,10 @@ function renderNote(note) {
     note.forEach(n => {
         html += `<div class="note-card priorita-${n.priorita}">
             <div class="note-header">
-                <span class="note-tipo">${n.tipo}</span>
+                <span class="note-tipo">${escapeHtml(n.tipo)}</span>
                 <span class="note-data">${new Date(n.data_creazione).toLocaleString('it')}</span>
             </div>
-            <div class="note-contenuto">${n.contenuto}</div>
+            <div class="note-contenuto">${escapeHtml(n.contenuto)}</div>
             <div class="note-actions">
                 <button class="btn btn-ghost btn-sm text-danger" onclick="deleteNota(${n.id})">Elimina</button>
             </div>
@@ -820,11 +820,11 @@ function renderAssenze(assenze) {
 
     assenze.forEach(a => {
         html += `<tr>
-            <td><span class="badge">${a.tipo}</span></td>
-            <td>${a.data_inizio}</td>
-            <td>${a.data_fine || '-'}</td>
-            <td>${a.motivazione || '-'}</td>
-            <td>${a.note || '-'}</td>
+            <td><span class="badge">${escapeHtml(a.tipo)}</span></td>
+            <td>${escapeHtml(a.data_inizio)}</td>
+            <td>${escapeHtml(a.data_fine || '-')}</td>
+            <td>${escapeHtml(a.motivazione || '-')}</td>
+            <td>${escapeHtml(a.note || '-')}</td>
             <td>
                 <button class="btn btn-ghost btn-sm text-danger" onclick="deleteAssenza(${a.id})">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
@@ -857,7 +857,7 @@ function renderStorico(storico) {
             <td><strong>${s.ore_lavorate_60 || 0}h</strong></td>
             <td>${s.pasti || 0}</td>
             <td>${s.giorni_lavorativi || '-'}</td>
-            <td>${s.note || '-'}</td>
+            <td>${escapeHtml(s.note || '-')}</td>
         </tr>`;
     });
     html += '</tbody></table>';
@@ -1044,26 +1044,7 @@ async function salvaBudget() {
     }
 }
 
-function openModal(id) {
-    document.getElementById(id).classList.add('active');
-}
-
-function closeModal(id) {
-    document.getElementById(id).classList.remove('active');
-}
-
-function showToast(message, type = 'success') {
-    // Implementazione toast semplice
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-    toast.style.cssText = `
-        position: fixed; bottom: 20px; right: 20px; padding: 12px 24px;
-        background: ${type === 'error' ? '#ef4444' : '#10b981'}; color: white;
-        border-radius: 8px; z-index: 9999; animation: fadeIn 0.3s;
-    `;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-}
+// showToast/openModal/closeModal: si usano le versioni globali di app.js
+// (le ridefinizioni locali oscuravano quelle accessibili con aria-live/focus)
 </script>
 {% endblock %}

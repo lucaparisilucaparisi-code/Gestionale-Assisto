@@ -10,8 +10,8 @@
             <p class="page-subtitle">Procedura guidata: verifica, controlla, riepiloga ed esporta</p>
         </div>
         <div class="header-actions flex gap-3 items-center flex-wrap">
-            <select id="filter-anno" class="form-control" style="width: 150px;"></select>
-            <select id="filter-mese" class="form-control" style="width: 170px;"></select>
+            <select id="filter-anno" aria-label="Anno scolastico" class="form-control" style="width: 150px;"></select>
+            <select id="filter-mese" aria-label="Mese" class="form-control" style="width: 170px;"></select>
         </div>
     </div>
 </div>
@@ -210,8 +210,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-avanti').addEventListener('click', () => vaiAStep(stepCorrente + 1));
     document.getElementById('btn-indietro').addEventListener('click', () => vaiAStep(stepCorrente - 1));
     document.querySelectorAll('.chiusura-step').forEach(el => {
+        // Accessibilita': gli step sono attivabili anche da tastiera
         el.style.cursor = 'pointer';
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
         el.addEventListener('click', () => vaiAStep(parseInt(el.dataset.step)));
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                vaiAStep(parseInt(el.dataset.step));
+            }
+        });
     });
 
     document.getElementById('btn-compila-media').addEventListener('click', compilaConMedia);
@@ -254,6 +263,8 @@ function vaiAStep(n) {
         const s = parseInt(el.dataset.step);
         el.classList.toggle('active', s === n);
         el.classList.toggle('done', s < n);
+        if (s === n) el.setAttribute('aria-current', 'step');
+        else el.removeAttribute('aria-current');
     });
     document.getElementById('btn-indietro').disabled = (n === 1);
     document.getElementById('btn-avanti').disabled = (n === 4);

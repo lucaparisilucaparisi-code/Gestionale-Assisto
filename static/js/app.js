@@ -114,8 +114,11 @@ const SearchManager = {
     },
 
     open() {
-        this.modal?.classList.add('active');
-        this.input?.focus();
+        // Il markup #search-modal non esiste in nessun template: senza guardia
+        // Ctrl+K lanciava un TypeError su null
+        if (!this.modal || !this.input) return;
+        this.modal.classList.add('active');
+        this.input.focus();
         this.input.value = '';
         this.selectedIndex = -1;
         this.resetResults();
@@ -295,11 +298,8 @@ const KeyboardShortcuts = {
             // Skip se siamo in un input
             const isInput = e.target.matches('input, textarea, select');
 
-            // Cmd/Ctrl + K - Open search
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-                e.preventDefault();
-                SearchManager.open();
-            }
+            // Cmd/Ctrl + K: gestito dalla CommandPalette (listener dedicato);
+            // il vecchio SearchManager puntava a un modale inesistente.
 
             // Cmd/Ctrl + S - Save (if there's a save button)
             if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -909,11 +909,43 @@ function showEmptyState(containerId, title, message, actionText = null, actionCa
 
 // ==================== MODALS ====================
 
+// Elemento che aveva il focus prima dell'apertura, per ripristinarlo alla chiusura
+let _modalFocusPrecedente = null;
+
+const _FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), ' +
+                   'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 function openModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.classList.add('active');
         document.body.style.overflow = 'hidden';
+
+        // Semantica dialog + focus dentro la modale (screen reader e tastiera)
+        const dialog = modal.querySelector('.modal, .modal-content') || modal;
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        _modalFocusPrecedente = document.activeElement;
+        const primo = dialog.querySelector(_FOCUSABLE);
+        (primo || dialog).focus?.();
+
+        // Trap del Tab: il focus cicla dentro la modale
+        modal.addEventListener('keydown', _modalTrapTab);
+    }
+}
+
+function _modalTrapTab(e) {
+    if (e.key !== 'Tab') return;
+    const modal = e.currentTarget;
+    const focusabili = Array.from(modal.querySelectorAll(_FOCUSABLE))
+        .filter(el => el.offsetParent !== null);
+    if (!focusabili.length) return;
+    const primo = focusabili[0];
+    const ultimo = focusabili[focusabili.length - 1];
+    if (e.shiftKey && document.activeElement === primo) {
+        e.preventDefault(); ultimo.focus();
+    } else if (!e.shiftKey && document.activeElement === ultimo) {
+        e.preventDefault(); primo.focus();
     }
 }
 
@@ -921,7 +953,11 @@ function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.classList.remove('active');
+        modal.removeEventListener('keydown', _modalTrapTab);
         document.body.style.overflow = '';
+        // Ripristina il focus sull'elemento che ha aperto la modale
+        _modalFocusPrecedente?.focus?.();
+        _modalFocusPrecedente = null;
     }
 }
 
@@ -930,6 +966,8 @@ document.addEventListener('click', (e) => {
     if (e.target.classList.contains('modal-overlay') && e.target.id !== 'search-modal') {
         e.target.classList.remove('active');
         document.body.style.overflow = '';
+        _modalFocusPrecedente?.focus?.();
+        _modalFocusPrecedente = null;
     }
 });
 
