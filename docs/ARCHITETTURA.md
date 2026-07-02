@@ -30,6 +30,12 @@ reimplementarla inline (a schermo, in SQL o negli export).
 - **Giorni lavorativi effettivi** → `database.risolvi_giorni_lavorativi(giorni_calendario)`
   (regola unica: calendario → `GIORNI_LAVORATIVI_DEFAULT`). Deve valere identica in
   vista mensile, storico e aggregati.
+- **Anno scolastico** → `config.anno_scolastico_di(anno, mese, sep)` (mese ≥ 9 →
+  anno/anno+1). `sep='-'` è il formato chiave del DB, `sep='/'` quello dei report.
+- **Cancellazione utente** → `database.elimina_utente_completo(cursor, id)` +
+  `raccogli_snapshot_utente` per l'undo: mai DELETE diretti (le FK sono applicate).
+- **Match nominativi** → sempre `COLLATE NOCASE` su nome/cognome (evita duplicati
+  da differenze di maiuscole negli import).
 
 ## Convenzioni
 
