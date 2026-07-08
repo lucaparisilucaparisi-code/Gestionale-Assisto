@@ -854,8 +854,6 @@ def api_export_annuale(anno_scolastico):
     anno_fine = int(anni[1])
 
     # Costanti
-    TARIFFA = config.TARIFFA_ORARIA
-    IVA_PERC = config.IVA_PERCENTUALE
     TASSO_ASSENZA = config.TASSO_ASSENZA
 
     # Raccogli tutti i dati dell'anno per calcoli aggregati
@@ -887,20 +885,19 @@ def api_export_annuale(anno_scolastico):
             utenti_aggregati[utente_key]['ore_erogate_totali'] += d['ore_lavorate_60'] or 0
             utenti_aggregati[utente_key]['monte_ore_previsto_totale'] += d['media_con_assenza_60'] or 0
             utenti_aggregati[utente_key]['pasti_totali'] += d['pasti'] or 0
+            utenti_aggregati[utente_key]['imponibile_totale'] += d['imponibile_100'] or 0
             utenti_aggregati[utente_key]['mesi_attivi'] += 1
 
-    # Imponibile per-utente calcolato UNA volta sul totale ore (non somma di
-    # arrotondamenti mensili): cosi' la somma della colonna quadra col totale annuale.
+    # Imponibile per-utente = somma degli imponibili mensili gia' arrotondati per
+    # (utente, mese) in get_rendicontazione_completa. Sommando gli stessi importi
+    # atomici mostrati nei fogli mensili, la colonna quadra col suo totale e il
+    # totale annuo coincide ovunque (KPI, andamento mensile, riepilogo utenti).
     for u in utenti_aggregati.values():
-        u['imponibile_totale'] = config.calcola_fatturazione(u['ore_erogate_totali'])[0]
+        u['imponibile_totale'] = round(u['imponibile_totale'], 2)
 
     # Calcola totali annuali
     totale_ore_60 = sum(
         sum(d['ore_lavorate_60'] or 0 for d in m['dati'])
-        for m in tutti_dati_anno.values()
-    )
-    totale_ore_100 = sum(
-        sum(d['ore_lavorate_100'] or 0 for d in m['dati'])
         for m in tutti_dati_anno.values()
     )
     totale_ore_previste = sum(
@@ -911,7 +908,22 @@ def api_export_annuale(anno_scolastico):
         sum(d['pasti'] or 0 for d in m['dati'])
         for m in tutti_dati_anno.values()
     )
-    imponibile_annuale, iva_annuale, totale_lordo_annuale = config.calcola_fatturazione(totale_ore_100)
+    # Fatturazione annuale = somma degli imponibili/IVA/totali gia' calcolati per
+    # ogni riga (utente-mese): sono gli stessi importi atomici dei fogli mensili,
+    # quindi il totale annuo e' esattamente la somma dei mesi e coincide con ogni
+    # riga TOTALE del report (nessuna divergenza di centesimi tra i fogli).
+    imponibile_annuale = round(sum(
+        sum(d['imponibile_100'] or 0 for d in m['dati'])
+        for m in tutti_dati_anno.values()
+    ), 2)
+    iva_annuale = round(sum(
+        sum(d['iva_100'] or 0 for d in m['dati'])
+        for m in tutti_dati_anno.values()
+    ), 2)
+    totale_lordo_annuale = round(sum(
+        sum(d['totale_100'] or 0 for d in m['dati'])
+        for m in tutti_dati_anno.values()
+    ), 2)
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -1206,11 +1218,11 @@ def api_export_annuale(anno_scolastico):
             dati = tutti_dati_anno[mese]['dati']
 
             ore_mese = sum(d['ore_lavorate_60'] or 0 for d in dati)
-            ore_100_mese = sum(d['ore_lavorate_100'] or 0 for d in dati)
             ore_previste_mese = sum(d['media_con_assenza_60'] or 0 for d in dati)
-            imponibile_mese = round(ore_100_mese * TARIFFA, 2)
-            iva_mese = round(imponibile_mese * IVA_PERC, 2)
-            totale_mese = round(imponibile_mese + iva_mese, 2)
+            # Somma degli imponibili di riga (stessi importi del foglio del mese):
+            # cosi' l'andamento mensile quadra con i fogli di dettaglio e col totale.
+            imponibile_mese = round(sum(d['imponibile_100'] or 0 for d in dati), 2)
+            totale_mese = round(sum(d['totale_100'] or 0 for d in dati), 2)
             pasti_mese = sum(d['pasti'] or 0 for d in dati)
             perc_mese = (ore_mese / ore_previste_mese * 100) if ore_previste_mese > 0 else 0
 
@@ -1387,9 +1399,10 @@ def api_export_annuale(anno_scolastico):
                 total_row = 3 + len(dati)
                 ore_tot_60 = sum(d['ore_lavorate_60'] or 0 for d in dati)
                 ore_tot_100 = sum(d['ore_lavorate_100'] or 0 for d in dati)
-                imp_tot = round(ore_tot_100 * TARIFFA, 2)
-                iva_tot = round(imp_tot * IVA_PERC, 2)
-                tot_tot = round(imp_tot + iva_tot, 2)
+                # Totale = somma degli imponibili di riga: la colonna quadra col totale.
+                imp_tot = round(sum(d['imponibile_100'] or 0 for d in dati), 2)
+                iva_tot = round(sum(d['iva_100'] or 0 for d in dati), 2)
+                tot_tot = round(sum(d['totale_100'] or 0 for d in dati), 2)
                 cd_tot = sum(d['credito_debito'] or 0 for d in dati)
                 pasti_tot = sum(d['pasti'] or 0 for d in dati)
 
