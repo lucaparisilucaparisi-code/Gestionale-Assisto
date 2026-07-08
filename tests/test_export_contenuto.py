@@ -110,3 +110,45 @@ def test_annuale_totali_coerenti(client, db_mod):
         col = [row[8] for row in righe_m[3:]
                if row and row[0] and row[0] != 'TOTALE' and isinstance(row[8], (int, float))]
         assert round(sum(col), 2) == tot_cell, f'{nome}: colonna imponibile non quadra col TOTALE'
+
+
+def _hhmm_to_min(s):
+    """Converte 'H:MM' / '+H:MM' / '-H:MM' in minuti interi (con segno)."""
+    s = str(s).strip()
+    segno = -1 if s.startswith('-') else 1
+    ore, minuti = s.lstrip('+-').split(':')
+    return segno * (int(ore) * 60 + int(minuti))
+
+
+def test_annuale_credito_debito_ore_minuti(client, db_mod):
+    """Nel Riepilogo Utenti, Credito/Debito e' in ore:minuti come Monte Ore
+    Previsto e Ore Erogate, e i conti tornano a ogni riga E nel TOTALE:
+    previsto - erogate == credito/debito (fino all'arrotondamento al minuto)."""
+    db = db_mod
+    db.create_commessa('CRED OM')
+    sid = db.get_or_create_scuola('CRED OM', 'IC CredDeb - Primaria')
+    # ore intere -> erogate a :00: la relazione previsto-erogate==cred/deb e' esatta
+    profili = [('Uno', 'Aaa', 8, 25), ('Due', 'Bbb', 12, 10), ('Tre', 'Ccc', 6, 20)]
+    mesi = [(2025, 9), (2025, 10), (2025, 11), (2025, 12), (2026, 1), (2026, 2)]
+    for nome, cog, monte, ore in profili:
+        uid = db.get_or_create_utente(sid, nome, cog, monte)
+        for anno, mese in mesi:
+            _set_ore(db, uid, anno, mese, ore)
+
+    r = client.get('/api/export/annuale/2025-2026?commessa=CRED%20OM')
+    assert r.status_code == 200
+    wb = load_workbook(io.BytesIO(r.data), data_only=True)
+    righe = [row for row in wb['Riepilogo Utenti'].iter_rows(values_only=True)]
+    dati = [row for row in righe[6:] if row and row[0]]
+
+    somma_cd = 0
+    for row in dati:
+        prev, erog, cd = _hhmm_to_min(row[5]), _hhmm_to_min(row[6]), _hhmm_to_min(row[7])
+        assert ':' in str(row[7]), f'credito/debito non in ore:minuti: {row[7]!r}'
+        if row[0] == 'TOTALE':
+            # il TOTALE quadra: previsto - erogate == credito/debito
+            assert abs((prev - erog) - cd) <= 1, f'TOTALE non quadra: {prev}-{erog} != {cd}'
+            assert abs(somma_cd - cd) <= 1, f'somma righe cred/deb ({somma_cd}) != TOTALE ({cd})'
+        else:
+            assert abs((prev - erog) - cd) <= 1, f'{row[0]}: {prev}-{erog} != {cd}'
+            somma_cd += cd

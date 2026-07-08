@@ -46,6 +46,19 @@ def decimal_to_sessagesimal(decimal_hours):
     return f"{hours}:{minutes:02d}"
 
 
+def signed_sessagesimal(decimal_hours):
+    """Come decimal_to_sessagesimal ma con segno esplicito, per il credito/debito.
+
+    Cosi' il credito/debito e' nello stesso formato ore:minuti di 'Monte Ore
+    Previsto' e 'Ore Erogate' e la riga torna a colpo d'occhio (es. 253:28 -
+    278:00 = -24:32). Credito -> '+H:MM', debito -> '-H:MM', zero -> '0:00'.
+    """
+    if decimal_hours is None or round(decimal_hours, 2) == 0:
+        return "0:00"
+    segno = '-' if decimal_hours < 0 else '+'
+    return segno + decimal_to_sessagesimal(abs(decimal_hours))
+
+
 # Mappa per ordinamento cronologico dei mesi di lista attesa (anno scolastico)
 _LISTA_ATTESA_MESI_ORDER = {
     'Settembre': 9, 'Ottobre': 10, 'Novembre': 11, 'Dicembre': 12,
@@ -1309,7 +1322,7 @@ def api_export_annuale(anno_scolastico):
             ws_utenti.write(utente_row, 4, u['mesi_attivi'], nf)
             ws_utenti.write(utente_row, 5, decimal_to_sessagesimal(u['monte_ore_previsto_totale']), cf)
             ws_utenti.write(utente_row, 6, decimal_to_sessagesimal(u['ore_erogate_totali']), cf)
-            ws_utenti.write(utente_row, 7, round(credito_debito, 2), cd_fmt)
+            ws_utenti.write(utente_row, 7, signed_sessagesimal(credito_debito), cd_fmt)
             ws_utenti.write(utente_row, 8, u['pasti_totali'], nf)
             ws_utenti.write(utente_row, 9, u['imponibile_totale'], mf)
 
@@ -1329,7 +1342,7 @@ def api_export_annuale(anno_scolastico):
         ws_utenti.write(utente_row, 4, len(utenti_sorted), total_fmt)
         ws_utenti.write(utente_row, 5, decimal_to_sessagesimal(tot_monte_previsto), total_fmt)
         ws_utenti.write(utente_row, 6, decimal_to_sessagesimal(tot_ore_erogate), total_fmt)
-        ws_utenti.write(utente_row, 7, round(tot_credito_debito, 2), total_fmt)
+        ws_utenti.write(utente_row, 7, signed_sessagesimal(tot_credito_debito), total_fmt)
         ws_utenti.write(utente_row, 8, tot_pasti, total_fmt)
         ws_utenti.write(utente_row, 9, tot_imponibile, total_money_fmt)
 
