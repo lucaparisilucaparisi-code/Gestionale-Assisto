@@ -19,6 +19,11 @@ TASSO_ASSENZA = 0.11
 IVA_PERCENTUALE = 0.05
 COEFFICIENTE_GIORNALIERO = 0.2
 
+# Settimane di scuola in un anno scolastico. Base per il MONTE ORE PREVISTO del
+# solo report ANNUALE (ore settimanali x settimane, meno l'11% di assenze).
+# I report mensile e municipale restano basati sui giorni effettivi del calendario.
+SETTIMANE_ANNO_SCOLASTICO = 35
+
 
 def anno_scolastico_di(anno: int, mese: int, sep: str = '-') -> str:
     """Anno scolastico (Set-Giu) a cui appartiene un (anno, mese).

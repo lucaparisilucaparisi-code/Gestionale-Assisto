@@ -890,13 +890,12 @@ def api_export_annuale(anno_scolastico):
                     'commessa': d['commessa'],
                     'monte_ore_settimanale': d['monte_ore_settimanale'],
                     'ore_erogate_totali': 0,
-                    'monte_ore_previsto_totale': 0,  # Somma delle medie mensili -11%
+                    'monte_ore_previsto_totale': 0,  # Contrattuale: ore sett. x settimane -11% (post-loop)
                     'pasti_totali': 0,
                     'imponibile_totale': 0,
                     'mesi_attivi': 0
                 }
             utenti_aggregati[utente_key]['ore_erogate_totali'] += d['ore_lavorate_60'] or 0
-            utenti_aggregati[utente_key]['monte_ore_previsto_totale'] += d['media_con_assenza_60'] or 0
             utenti_aggregati[utente_key]['pasti_totali'] += d['pasti'] or 0
             utenti_aggregati[utente_key]['imponibile_totale'] += d['imponibile_100'] or 0
             utenti_aggregati[utente_key]['mesi_attivi'] += 1
@@ -905,8 +904,21 @@ def api_export_annuale(anno_scolastico):
     # (utente, mese) in get_rendicontazione_completa. Sommando gli stessi importi
     # atomici mostrati nei fogli mensili, la colonna quadra col suo totale e il
     # totale annuo coincide ovunque (KPI, andamento mensile, riepilogo utenti).
+    #
+    # Monte ore previsto per utente (SOLO report annuale): calcolo contrattuale a
+    # settimane = ore settimanali x settimane dell'anno scolastico, meno l'11% di
+    # assenze previste. Per chi e' attivo solo una parte dell'anno si proporziona
+    # ai mesi effettivi, cosi' il credito/debito resta confrontabile con le ore
+    # erogate nello stesso periodo. I report mensile e municipale, basati sui
+    # giorni del calendario, restano invariati.
+    settimane = config.SETTIMANE_ANNO_SCOLASTICO
+    n_mesi = len(MESI_SCOLASTICI)
     for u in utenti_aggregati.values():
         u['imponibile_totale'] = round(u['imponibile_totale'], 2)
+        quota_anno = (u['mesi_attivi'] / n_mesi) if n_mesi else 0
+        u['monte_ore_previsto_totale'] = (
+            (u['monte_ore_settimanale'] or 0) * settimane * quota_anno * (1 - TASSO_ASSENZA)
+        )
 
     # Calcola totali annuali
     totale_ore_60 = sum(
@@ -1282,7 +1294,7 @@ def api_export_annuale(anno_scolastico):
         ws_utenti.set_row(0, 40)
         ws_utenti.merge_range('A1:J1', f'RIEPILOGO PER UTENTE - A.S. {anno_scolastico}', title_fmt)
         ws_utenti.write('A2', 'Vista aggregata delle ore erogate per ogni utente', subtitle_fmt)
-        ws_utenti.write('A3', f'Monte ore con detrazione assenze previste: {int(TASSO_ASSENZA*100)}%', subtitle_fmt)
+        ws_utenti.write('A3', f'Monte ore previsto = ore settimanali x {config.SETTIMANE_ANNO_SCOLASTICO} settimane, meno {int(TASSO_ASSENZA*100)}% di assenze previste', subtitle_fmt)
 
         headers_utenti = [
             'Utente', 'Scuola', 'Commessa', 'Monte Ore Sett.',

@@ -120,6 +120,45 @@ def _hhmm_to_min(s):
     return segno * (int(ore) * 60 + int(minuti))
 
 
+def test_annuale_monte_ore_previsto_contrattuale(client, db_mod):
+    """Nel report annuale il 'Monte Ore Previsto' per utente e' contrattuale:
+    ore settimanali x SETTIMANE_ANNO_SCOLASTICO, meno l'11% (per un utente attivo
+    tutto l'anno). Es. 8 ore -> 8 x 35 x 0,89 = 249,20 -> 249:12."""
+    db = db_mod
+    db.create_commessa('PREV CONTR')
+    sid = db.get_or_create_scuola('PREV CONTR', 'IC Prev - Primaria')
+    u8 = db.get_or_create_utente(sid, 'Otto', 'Ore', 8)
+    u10 = db.get_or_create_utente(sid, 'Dieci', 'Ore', 10)
+    # attivi tutti i 10 mesi scolastici 2025-2026
+    mesi = [(2025, 9), (2025, 10), (2025, 11), (2025, 12), (2026, 1),
+            (2026, 2), (2026, 3), (2026, 4), (2026, 5), (2026, 6)]
+    for uid in (u8, u10):
+        for anno, mese in mesi:
+            _set_ore(db, uid, anno, mese, 20)
+
+    r = client.get('/api/export/annuale/2025-2026?commessa=PREV%20CONTR')
+    assert r.status_code == 200
+    wb = load_workbook(io.BytesIO(r.data), data_only=True)
+    righe = [row for row in wb['Riepilogo Utenti'].iter_rows(values_only=True)]
+
+    def previsto_min(monte):
+        atteso = monte * config.SETTIMANE_ANNO_SCOLASTICO * (1 - config.TASSO_ASSENZA)
+        return round(atteso * 60)  # in minuti
+
+    per_riga = {}
+    for row in righe[6:]:
+        if row and row[0] and row[0] != 'TOTALE':
+            per_riga[row[0]] = _hhmm_to_min(row[5])
+
+    # 8 ore -> 249:12 ; 10 ore -> 311:30 (tolleranza 1 minuto per arrotondamento)
+    assert abs(per_riga['Otto Ore'] - previsto_min(8)) <= 1
+    assert abs(per_riga['Dieci Ore'] - previsto_min(10)) <= 1
+
+    # il TOTALE previsto e' la somma delle righe
+    tot = next(row for row in righe[6:] if row and row[0] == 'TOTALE')
+    assert abs(_hhmm_to_min(tot[5]) - sum(per_riga.values())) <= 1
+
+
 def test_annuale_credito_debito_ore_minuti(client, db_mod):
     """Nel Riepilogo Utenti, Credito/Debito e' in ore:minuti come Monte Ore
     Previsto e Ore Erogate, e i conti tornano a ogni riga E nel TOTALE:
