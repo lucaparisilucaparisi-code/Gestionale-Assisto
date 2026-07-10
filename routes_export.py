@@ -925,10 +925,11 @@ def api_export_annuale(anno_scolastico):
         sum(d['ore_lavorate_60'] or 0 for d in m['dati'])
         for m in tutti_dati_anno.values()
     )
-    totale_ore_previste = sum(
-        sum(d['media_con_assenza_60'] or 0 for d in m['dati'])
-        for m in tutti_dati_anno.values()
-    )
+    # Ore previste annuali = totale CONTRATTUALE, coerente col Riepilogo Utenti:
+    # somma dei monte ore previsti per utente (ore sett. x settimane -11%). Non piu'
+    # la somma delle medie mensili sui giorni, cosi' il Dashboard e il Riepilogo
+    # Utenti mostrano lo stesso "previsto" in tutto il report annuale.
+    totale_ore_previste = sum(u['monte_ore_previsto_totale'] for u in utenti_aggregati.values())
     totale_pasti = sum(
         sum(d['pasti'] or 0 for d in m['dati'])
         for m in tutti_dati_anno.values()
@@ -1243,7 +1244,13 @@ def api_export_annuale(anno_scolastico):
             dati = tutti_dati_anno[mese]['dati']
 
             ore_mese = sum(d['ore_lavorate_60'] or 0 for d in dati)
-            ore_previste_mese = sum(d['media_con_assenza_60'] or 0 for d in dati)
+            # Previste CONTRATTUALI del mese: ogni utente attivo vale la quota
+            # mensile del suo monte ore annuale (settimane/n_mesi settimane), meno
+            # l'11%. La somma sui mesi coincide col totale previsto del Riepilogo
+            # Utenti, quindi tutto il report annuale usa lo stesso "previsto".
+            ore_previste_mese = sum(
+                (d['monte_ore_settimanale'] or 0) for d in dati
+            ) * (settimane / n_mesi) * (1 - TASSO_ASSENZA)
             # Somma degli imponibili di riga (stessi importi del foglio del mese):
             # cosi' l'andamento mensile quadra con i fogli di dettaglio e col totale.
             imponibile_mese = round(sum(d['imponibile_100'] or 0 for d in dati), 2)

@@ -156,7 +156,25 @@ def test_annuale_monte_ore_previsto_contrattuale(client, db_mod):
 
     # il TOTALE previsto e' la somma delle righe
     tot = next(row for row in righe[6:] if row and row[0] == 'TOTALE')
-    assert abs(_hhmm_to_min(tot[5]) - sum(per_riga.values())) <= 1
+    tot_previsto_min = _hhmm_to_min(tot[5])
+    assert abs(tot_previsto_min - sum(per_riga.values())) <= 1
+
+    # lo stesso 'previsto' deve comparire IDENTICO nel Dashboard: sia il KPI
+    # 'Ore Previste (-11%)' sia la riga TOTALE ANNUALE dell'andamento mensile.
+    celle = list(wb['Dashboard'].iter_rows(values_only=True))
+
+    def _valore_kpi(label):
+        for ri, row in enumerate(celle):
+            for ci, v in enumerate(row):
+                if v == label:
+                    return celle[ri + 1][ci]
+        return None
+
+    kpi_previste = _hhmm_to_min(_valore_kpi('Ore Previste (-11%)'))
+    riga_tot = next(row for row in celle if row and row[0] == 'TOTALE ANNUALE')
+    andamento_previste = _hhmm_to_min(riga_tot[3])
+    assert abs(kpi_previste - tot_previsto_min) <= 1, 'KPI Dashboard != totale Riepilogo Utenti'
+    assert abs(andamento_previste - tot_previsto_min) <= 1, 'Andamento Mensile != totale Riepilogo Utenti'
 
 
 def test_annuale_credito_debito_ore_minuti(client, db_mod):
