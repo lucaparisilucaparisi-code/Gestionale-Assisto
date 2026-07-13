@@ -209,3 +209,80 @@ def test_annuale_credito_debito_ore_minuti(client, db_mod):
         else:
             assert abs((prev - erog) - cd) <= 1, f'{row[0]}: {prev}-{erog} != {cd}'
             somma_cd += cd
+
+
+def _municipale_riepilogo_rows(client, db, anno, mese, commessa):
+    """Genera il municipale e ritorna (header, 4 righe) della sezione lista attesa."""
+    r = client.get(f'/api/export/municipale/{anno}/{mese}?commessa={commessa.replace(" ", "%20")}')
+    assert r.status_code == 200
+    wb = load_workbook(io.BytesIO(r.data), data_only=True)
+    ws = wb['Riepilogo Municipale']
+    righe = list(ws.iter_rows(values_only=True))
+    start = next(i for i, row in enumerate(righe)
+                 if row and row[0] and 'RIEPILOGATIVO PER LISTA' in str(row[0]))
+    return righe[start + 1], righe[start + 2:start + 6]
+
+
+def test_municipale_riepilogo_incremento_e_quadratura(client, db_mod):
+    """La sezione lista attesa del municipale: colonna 4 = 'Di cui hanno ricevuto
+    incremento ore', e in ogni riga Totale = Non in lista + somma delle liste
+    (anche con un utente dal valore lista_attesa 'sporco' di soli spazi)."""
+    db = db_mod
+    db.create_commessa('MUNI RIEP')
+    sid = db.get_or_create_scuola('MUNI RIEP', 'IC Riep - Primaria')
+
+    def mk(nome, ore, monte=10, lista=None):
+        uid = db.get_or_create_utente(sid, nome, 'R', monte)
+        if lista is not None:
+            db.update_utente_lista_attesa(uid, lista)
+        _set_ore(db, uid, 2025, 11, ore)
+        return uid
+
+    mk('NL1', 20); mk('NL2', 0)
+    mk('NovA', 15, lista='Novembre'); mk('NovB', 10, lista='Novembre')
+    mk('MarA', 12, lista='Marzo')
+    # utente con incremento monte ore (base 8 -> 12 da nov 2025)
+    inc = db.get_or_create_utente(sid, 'IncA', 'R', 8)
+    db.add_variazione_monte_ore(inc, 12, '2025-11', 'aumento')
+    _set_ore(db, inc, 2025, 11, 18)
+    # utente con lista_attesa di soli spazi (bypassa la normalizzazione via SQL)
+    ghost = db.get_or_create_utente(sid, 'Ghost', 'R', 10)
+    with db.get_db_context() as conn:
+        conn.execute("UPDATE utenti SET lista_attesa = '   ' WHERE id = ?", (ghost,))
+    _set_ore(db, ghost, 2025, 11, 5)
+
+    header, rows = _municipale_riepilogo_rows(client, db, 2025, 11, 'MUNI RIEP')
+    assert header[3] == 'Di cui hanno ricevuto incremento ore'
+    labels_lista = [h for h in header[4:] if h]
+    n_liste = len(labels_lista)
+
+    # quadratura: col1 (totale) == col2 (non in lista) + somma colonne-lista, ogni riga
+    for row in rows:
+        tot = row[1] or 0
+        non_lista = row[2] or 0
+        somma_liste = sum(row[4 + i] or 0 for i in range(n_liste))
+        assert abs(tot - (non_lista + somma_liste)) < 0.02, \
+            f"non quadra: {row[0]}: {tot} != {non_lista}+{somma_liste}"
+
+    # colonna incremento: solo IncA (1 utente, 18 ore) su tutte le righe
+    riga_alunni, riga_ore = rows[0], rows[2]
+    assert riga_alunni[3] == 1, f"incremento alunni atteso 1, trovato {riga_alunni[3]}"
+    assert abs((riga_ore[3] or 0) - 18) < 0.01, f"incremento ore atteso 18, trovato {riga_ore[3]}"
+    # il totale utenti include il ghost (7) e non lascia scarti
+    assert riga_alunni[1] == 7
+
+
+def test_lista_attesa_whitespace_normalizzata_in_scrittura(db_mod):
+    """update_utente_lista_attesa deve azzerare (NULL) i valori di soli spazi."""
+    db = db_mod
+    db.create_commessa('WS NORM')
+    sid = db.get_or_create_scuola('WS NORM', 'IC WS - Primaria')
+    uid = db.get_or_create_utente(sid, 'Tizio', 'W', 10)
+    db.update_utente_lista_attesa(uid, '   ')
+    with db.get_db_context() as conn:
+        val = conn.execute("SELECT lista_attesa FROM utenti WHERE id = ?", (uid,)).fetchone()[0]
+    assert val is None, f"whitespace non normalizzato: {val!r}"
+    db.update_utente_lista_attesa(uid, '  Novembre  ')
+    with db.get_db_context() as conn:
+        val = conn.execute("SELECT lista_attesa FROM utenti WHERE id = ?", (uid,)).fetchone()[0]
+    assert val == 'Novembre', f"strip non applicato: {val!r}"

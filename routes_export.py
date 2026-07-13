@@ -108,6 +108,38 @@ def get_liste_attesa_ordinate(dati, anno_report, mese_report):
     return risultato
 
 
+def _utenti_con_incremento(dati):
+    """Utenti che nel mese hanno ricevuto un AUMENTO del monte ore.
+
+    E' una variazione monte ore attiva nel mese con valore effettivo maggiore del
+    monte ore base (incremento). Serve alla colonna 'Di cui hanno ricevuto
+    incremento ore' del riepilogativo per lista di attesa (municipale/dipartimentale).
+    """
+    return [
+        d for d in dati
+        if d.get('monte_ore_variato')
+        and (d.get('monte_ore_effettivo') or 0) > (d.get('monte_ore_settimanale') or 0)
+    ]
+
+
+def _lista_attesa_norm(d):
+    """Valore lista_attesa normalizzato (strip). '' se assente o solo spazi.
+
+    Usato per classificare gli utenti in modo COERENTE con get_liste_attesa_ordinate
+    e con le colonne per-mese, evitando che un valore di soli spazi finisca contato
+    come 'in lista' ma senza colonna (scarti inspiegabili nei totali)."""
+    return (d.get('lista_attesa') or '').strip()
+
+
+def _fmt_euro_it(valore):
+    """Importo in euro con convenzione italiana: '€ 1.234,56' (punto migliaia,
+    virgola decimali). Serve al report Word, dove gli importi sono testo e la
+    formattazione di Python di default e' anglosassone (€ 1,234.56)."""
+    s = f'{valore:,.2f}'  # convenzione EN: '1,234.56'
+    s = s.replace(',', '\x00').replace('.', ',').replace('\x00', '.')
+    return f'€ {s}'
+
+
 # ==================== BRAND / STILI REPORT ====================
 
 # Palette report (coerente con il brand)
@@ -144,6 +176,11 @@ def get_excel_brand_styles(workbook):
         'info': workbook.add_format({
             'italic': True, 'font_size': 9, 'font_name': FONT,
             'font_color': REPORT_MUTED, 'align': 'left', 'valign': 'vcenter',
+        }),
+        'note': workbook.add_format({
+            'italic': True, 'font_size': 9, 'font_name': FONT,
+            'font_color': REPORT_MUTED, 'align': 'left', 'valign': 'vcenter',
+            'text_wrap': True,
         }),
         'header': workbook.add_format({
             'bold': True, 'font_size': 10, 'font_name': FONT,
@@ -1538,7 +1575,7 @@ def api_export_municipale(anno, mese):
     # Calcola totali generali
     totale_generale = {
         'num_utenti': len(dati),
-        'utenti_lista_attesa': sum(1 for d in dati if d.get('lista_attesa')),
+        'utenti_lista_attesa': sum(1 for d in dati if _lista_attesa_norm(d)),
         'ore_previste': sum(d['media_con_assenza_60'] or 0 for d in dati),
         'ore_erogate_60': sum(d['ore_lavorate_60'] or 0 for d in dati),
         'ore_erogate_100': sum(d['ore_lavorate_100'] or 0 for d in dati),
@@ -1660,11 +1697,16 @@ def api_export_municipale(anno, mese):
         # Liste di attesa distinte ordinate cronologicamente
         liste_attesa = get_liste_attesa_ordinate(dati, anno, mese)
 
-        # Suddividi utenti
-        utenti_non_lista = [d for d in dati if not d.get('lista_attesa')]
-        utenti_in_lista_totali = [d for d in dati if d.get('lista_attesa')]
-        utenti_per_lista = {l['valore']: [d for d in dati if (d.get('lista_attesa') or '').strip() == l['valore']]
+        # Suddividi utenti. La classificazione lista usa il valore NORMALIZZATO
+        # (strip) coerente con get_liste_attesa_ordinate e con le colonne per-mese:
+        # cosi' 'totale = non in lista + somma delle liste' torna sempre, anche con
+        # valori sporchi (soli spazi), che vengono trattati come 'non in lista'.
+        utenti_non_lista = [d for d in dati if not _lista_attesa_norm(d)]
+        utenti_per_lista = {l['valore']: [d for d in dati if _lista_attesa_norm(d) == l['valore']]
                             for l in liste_attesa}
+        # Colonna "Di cui hanno ricevuto incremento ore": utenti con AUMENTO del
+        # monte ore nel mese (sottoinsieme del totale, indipendente dalla lista).
+        utenti_incremento = _utenti_con_incremento(dati)
 
         def _conta_con_ore(lst):
             return sum(1 for d in lst if (d['ore_lavorate_60'] or 0) > 0)
@@ -1680,7 +1722,7 @@ def api_export_municipale(anno, mese):
         row += 1
 
         # Header
-        riepilogo_headers = ['Indicatore', 'Utenti serviti totali', 'Non in lista attesa', 'Di cui in lista di attesa']
+        riepilogo_headers = ['Indicatore', 'Utenti serviti totali', 'Non in lista attesa', 'Di cui hanno ricevuto incremento ore']
         for l in liste_attesa:
             riepilogo_headers.append(l['label'])
         ws.set_row(row, 32)
@@ -1692,7 +1734,7 @@ def api_export_municipale(anno, mese):
         ws.write(row, 0, 'Alunni assistiti (totale)', s['cell'])
         ws.write(row, 1, totale_generale['num_utenti'], s['integer'])
         ws.write(row, 2, len(utenti_non_lista), s['integer'])
-        ws.write(row, 3, len(utenti_in_lista_totali), s['integer'])
+        ws.write(row, 3, len(utenti_incremento), s['integer'])
         for i, l in enumerate(liste_attesa):
             ws.write(row, 4 + i, len(utenti_per_lista[l['valore']]), s['integer'])
 
@@ -1701,35 +1743,44 @@ def api_export_municipale(anno, mese):
         ws.write(row, 0, 'Alunni effettivamente assistiti nel mese', s['cell_alt'])
         ws.write(row, 1, _conta_con_ore(dati), s['integer_alt'])
         ws.write(row, 2, _conta_con_ore(utenti_non_lista), s['integer_alt'])
-        ws.write(row, 3, _conta_con_ore(utenti_in_lista_totali), s['integer_alt'])
+        ws.write(row, 3, _conta_con_ore(utenti_incremento), s['integer_alt'])
         for i, l in enumerate(liste_attesa):
             ws.write(row, 4 + i, _conta_con_ore(utenti_per_lista[l['valore']]), s['integer_alt'])
 
         # Riga 3: Ore erogate (100')
         row += 1
         ore_100_non_lista = _somma_ore_100(utenti_non_lista)
-        ore_100_in_lista = _somma_ore_100(utenti_in_lista_totali)
+        ore_100_incremento = _somma_ore_100(utenti_incremento)
         ws.write(row, 0, "Ore effettivamente erogate (al netto dell'11%)", s['cell'])
         ws.write(row, 1, tot_ore_100, s['number'])
         ws.write(row, 2, ore_100_non_lista, s['number'])
-        ws.write(row, 3, ore_100_in_lista, s['number'])
+        ws.write(row, 3, ore_100_incremento, s['number'])
         for i, l in enumerate(liste_attesa):
             ws.write(row, 4 + i, _somma_ore_100(utenti_per_lista[l['valore']]), s['number'])
 
-        # Riga 4: Importo (imponibile + IVA)
+        # Riga 4: Importo (imponibile + IVA). Formula invariata (nessun cambio
+        # sugli arrotondamenti): ore * tariffa * (1 + IVA).
         row += 1
-        importo_non_lista = ore_100_non_lista * TARIFFA
-        importo_in_lista = ore_100_in_lista * TARIFFA
-        totale_non_lista = importo_non_lista * (1 + IVA_PERC)
-        totale_in_lista = importo_in_lista * (1 + IVA_PERC)
+        totale_non_lista = ore_100_non_lista * TARIFFA * (1 + IVA_PERC)
+        totale_incremento = ore_100_incremento * TARIFFA * (1 + IVA_PERC)
         ws.write(row, 0, 'Importo effettivamente erogato (IVA inclusa)', s['cell_alt'])
         ws.write(row, 1, totale_fatturare, s['money_alt'])
         ws.write(row, 2, totale_non_lista, s['money_alt'])
-        ws.write(row, 3, totale_in_lista, s['money_alt'])
+        ws.write(row, 3, totale_incremento, s['money_alt'])
         for i, l in enumerate(liste_attesa):
             ore_lista = _somma_ore_100(utenti_per_lista[l['valore']])
             tot_lista = ore_lista * TARIFFA * (1 + IVA_PERC)
             ws.write(row, 4 + i, tot_lista, s['money_alt'])
+
+        # Nota esplicativa: chiarisce come leggere le colonne (evita somme errate)
+        row += 1
+        ws.set_row(row, 28)
+        ws.merge_range(
+            row, 0, row, section_end_col,
+            "Le colonne \"Lista ...\" dettagliano gli iscritti in lista d'attesa per mese di iscrizione: "
+            "Totale = \"Non in lista attesa\" + somma delle liste. "
+            "\"Di cui hanno ricevuto incremento ore\" e' un sottoinsieme del totale e non va sommato alle altre colonne.",
+            s['note'])
 
         # Footer informativo
         row += 2
@@ -2010,7 +2061,7 @@ def api_export_word(anno, mese):
 
     # Utenti con ore e in lista attesa
     utenti_con_ore = sum(1 for d in dati if (d['ore_lavorate_60'] or 0) > 0)
-    utenti_lista_attesa = sum(1 for d in dati if d.get('lista_attesa'))
+    utenti_lista_attesa = sum(1 for d in dati if _lista_attesa_norm(d))
 
     # Determina anno scolastico
     anno_scolastico = config.anno_scolastico_di(anno, mese, sep='/')
@@ -2147,9 +2198,9 @@ def api_export_word(anno, mese):
 
     econ_data = [
         ('Ore erogate (centesimali)', f'{ore_totali_100:.2f}'),
-        ('Imponibile', f'€ {imponibile_totale:,.2f}'),
-        (f'IVA {int(IVA_PERC * 100)}%', f'€ {iva_totale:,.2f}'),
-        ('TOTALE DA FATTURARE', f'€ {totale_lordo:,.2f}'),
+        ('Imponibile', _fmt_euro_it(imponibile_totale)),
+        (f'IVA {int(IVA_PERC * 100)}%', _fmt_euro_it(iva_totale)),
+        ('TOTALE DA FATTURARE', _fmt_euro_it(totale_lordo)),
     ]
 
     for label, value in econ_data:
@@ -2169,10 +2220,13 @@ def api_export_word(anno, mese):
         run.font.color.rgb = RGBColor.from_string('4F46E5')
 
     liste_attesa = get_liste_attesa_ordinate(dati, anno, mese)
-    utenti_non_lista_rel = [d for d in dati if not d.get('lista_attesa')]
-    utenti_in_lista_rel = [d for d in dati if d.get('lista_attesa')]
-    utenti_per_lista_rel = {l['valore']: [d for d in dati if (d.get('lista_attesa') or '').strip() == l['valore']]
+    # Classificazione coerente con le colonne per-mese (strip): i valori sporchi
+    # (soli spazi) contano come 'non in lista', cosi' totale = non in lista + liste.
+    utenti_non_lista_rel = [d for d in dati if not _lista_attesa_norm(d)]
+    utenti_per_lista_rel = {l['valore']: [d for d in dati if _lista_attesa_norm(d) == l['valore']]
                             for l in liste_attesa}
+    # "Di cui hanno ricevuto incremento ore": utenti con AUMENTO del monte ore nel mese.
+    utenti_incremento_rel = _utenti_con_incremento(dati)
 
     def _conta_con_ore_rel(lst):
         return sum(1 for d in lst if (d['ore_lavorate_60'] or 0) > 0)
@@ -2191,7 +2245,7 @@ def api_export_word(anno, mese):
     hdr[0].text = 'Indicatore'
     hdr[1].text = 'Utenti serviti totali'
     hdr[2].text = 'Non in lista attesa'
-    hdr[3].text = 'Di cui in lista di attesa'
+    hdr[3].text = 'Di cui hanno ricevuto incremento ore'
     for i, l in enumerate(liste_attesa):
         hdr[4 + i].text = l['label']
 
@@ -2200,7 +2254,7 @@ def api_export_word(anno, mese):
     r1[0].text = 'Alunni assistiti (totale)'
     r1[1].text = str(len(dati))
     r1[2].text = str(len(utenti_non_lista_rel))
-    r1[3].text = str(len(utenti_in_lista_rel))
+    r1[3].text = str(len(utenti_incremento_rel))
     for i, l in enumerate(liste_attesa):
         r1[4 + i].text = str(len(utenti_per_lista_rel[l['valore']]))
 
@@ -2209,36 +2263,43 @@ def api_export_word(anno, mese):
     r2[0].text = 'Alunni effettivamente assistiti nel mese'
     r2[1].text = str(_conta_con_ore_rel(dati))
     r2[2].text = str(_conta_con_ore_rel(utenti_non_lista_rel))
-    r2[3].text = str(_conta_con_ore_rel(utenti_in_lista_rel))
+    r2[3].text = str(_conta_con_ore_rel(utenti_incremento_rel))
     for i, l in enumerate(liste_attesa):
         r2[4 + i].text = str(_conta_con_ore_rel(utenti_per_lista_rel[l['valore']]))
 
     # Riga 3: Ore erogate (100')
     ore_100_non_lista_rel = _somma_ore_100_rel(utenti_non_lista_rel)
-    ore_100_in_lista_rel = _somma_ore_100_rel(utenti_in_lista_rel)
+    ore_100_incremento_rel = _somma_ore_100_rel(utenti_incremento_rel)
     r3 = table_riep.add_row().cells
     r3[0].text = "Ore effettivamente erogate (al netto dell'11%)"
     r3[1].text = f'{ore_totali_100:.2f}'
     r3[2].text = f'{ore_100_non_lista_rel:.2f}'
-    r3[3].text = f'{ore_100_in_lista_rel:.2f}'
+    r3[3].text = f'{ore_100_incremento_rel:.2f}'
     for i, l in enumerate(liste_attesa):
         r3[4 + i].text = f'{_somma_ore_100_rel(utenti_per_lista_rel[l["valore"]]):.2f}'
 
-    # Riga 4: Importo (imponibile + IVA)
+    # Riga 4: Importo (imponibile + IVA). Formula invariata (nessun cambio arrotondamenti).
     importo_non_lista_rel = ore_100_non_lista_rel * TARIFFA * (1 + IVA_PERC)
-    importo_in_lista_rel = ore_100_in_lista_rel * TARIFFA * (1 + IVA_PERC)
+    importo_incremento_rel = ore_100_incremento_rel * TARIFFA * (1 + IVA_PERC)
     r4 = table_riep.add_row().cells
-    r4[0].text = 'Importo erogato (IVA inclusa)'
-    r4[1].text = f'€ {totale_lordo:,.2f}'
-    r4[2].text = f'€ {importo_non_lista_rel:,.2f}'
-    r4[3].text = f'€ {importo_in_lista_rel:,.2f}'
+    r4[0].text = 'Importo effettivamente erogato (IVA inclusa)'
+    r4[1].text = _fmt_euro_it(totale_lordo)
+    r4[2].text = _fmt_euro_it(importo_non_lista_rel)
+    r4[3].text = _fmt_euro_it(importo_incremento_rel)
     for i, l in enumerate(liste_attesa):
         ore_l = _somma_ore_100_rel(utenti_per_lista_rel[l['valore']])
         imp_l = ore_l * TARIFFA * (1 + IVA_PERC)
-        r4[4 + i].text = f'€ {imp_l:,.2f}'
+        r4[4 + i].text = _fmt_euro_it(imp_l)
 
     style_word_table_header(table_riep)
     style_word_table_alternating_rows(table_riep)
+
+    nota_riep = doc.add_paragraph()
+    nota_riep.add_run(
+        "Le colonne \"Lista ...\" dettagliano gli iscritti in lista d'attesa per mese di iscrizione "
+        "(Totale = \"Non in lista attesa\" + somma delle liste). \"Di cui hanno ricevuto incremento ore\" "
+        "e' un sottoinsieme del totale e non va sommato alle altre colonne."
+    ).italic = True
 
     doc.add_paragraph()
 
@@ -2271,8 +2332,8 @@ def api_export_word(anno, mese):
             row_cells[0].text = nome_scuola
             row_cells[1].text = str(t['num_utenti'])
             row_cells[2].text = f"{t['ore_lavorate_60']:.2f}"
-            row_cells[3].text = f"€ {t['imponibile_100']:,.2f}"
-            row_cells[4].text = f"€ {t['totale_100']:,.2f}"
+            row_cells[3].text = _fmt_euro_it(t['imponibile_100'])
+            row_cells[4].text = _fmt_euro_it(t['totale_100'])
 
             tot_utenti_s += t['num_utenti'] or 0
             tot_ore_s += t['ore_lavorate_60'] or 0
@@ -2284,8 +2345,8 @@ def api_export_word(anno, mese):
         tot_cells[0].text = 'TOTALE'
         tot_cells[1].text = str(tot_utenti_s)
         tot_cells[2].text = f"{tot_ore_s:.2f}"
-        tot_cells[3].text = f"€ {tot_imp_s:,.2f}"
-        tot_cells[4].text = f"€ {tot_tot_s:,.2f}"
+        tot_cells[3].text = _fmt_euro_it(tot_imp_s)
+        tot_cells[4].text = _fmt_euro_it(tot_tot_s)
 
         style_word_table_header(table_scuole)
         style_word_table_alternating_rows(table_scuole)
@@ -2382,7 +2443,7 @@ def api_export_word(anno, mese):
     concl = doc.add_paragraph()
     concl.add_run(f"In sintesi, nel mese di {MESI_NOME[mese]} {anno} il servizio OEPAC ha erogato "
                   f"complessivamente {ore_totali_60:.2f} ore di assistenza a {utenti_con_ore} utenti, "
-                  f"per un importo totale da fatturare pari a € {totale_lordo:,.2f}.")
+                  f"per un importo totale da fatturare pari a {_fmt_euro_it(totale_lordo)}.")
 
     # Data e firma
     doc.add_paragraph()

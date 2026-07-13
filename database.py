@@ -928,11 +928,16 @@ def elimina_utente_completo(cursor, utente_id):
 
 
 def update_utente_lista_attesa(utente_id, lista_attesa):
-    """Aggiorna la lista attesa di un utente"""
+    """Aggiorna la lista attesa di un utente.
+
+    Normalizza il valore con strip: un valore vuoto o di soli spazi diventa NULL,
+    cosi' nei report 'non in lista' e le colonne per-mese restano coerenti (un
+    valore di soli spazi non deve contare come 'in lista' senza colonna)."""
+    lista_norm = (lista_attesa or '').strip() or None
     with get_db_context() as conn:
         cursor = conn.cursor()
         cursor.execute("UPDATE utenti SET lista_attesa = ? WHERE id = ?",
-                       (lista_attesa if lista_attesa else None, utente_id))
+                       (lista_norm, utente_id))
 
 
 def update_utente_periodo(utente_id, data_inizio=None, data_fine=None):
