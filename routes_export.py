@@ -108,17 +108,24 @@ def get_liste_attesa_ordinate(dati, anno_report, mese_report):
     return risultato
 
 
-def _utenti_con_incremento(dati):
-    """Utenti che nel mese hanno ricevuto un AUMENTO del monte ore.
+def _utenti_con_incremento(dati, monte_ore_settembre):
+    """Utenti che nell'anno scolastico corrente hanno ricevuto un AUMENTO del
+    monte ore: nel mese hanno piu' ore rispetto all'INIZIO dell'anno scolastico
+    (settembre).
 
-    E' una variazione monte ore attiva nel mese con valore effettivo maggiore del
-    monte ore base (incremento). Serve alla colonna 'Di cui hanno ricevuto
-    incremento ore' del riepilogativo per lista di attesa (municipale/dipartimentale).
+    Cosi' contano SOLO gli aumenti avvenuti nel periodo set-giu dell'anno in corso
+    e non quelli ereditati da un anno precedente: a settembre il monte ore e' gia'
+    riportato al valore corretto, che diventa il riferimento. Serve alla colonna
+    'Di cui hanno ricevuto incremento ore' del riepilogativo per lista di attesa.
+
+    monte_ore_settembre: dict {utente_id: monte ore effettivo a settembre}, da
+    get_monte_ore_effettivo_bulk(anno_inizio, 9); per gli utenti assenti (nessuna
+    variazione attiva a settembre) si usa il monte ore base.
     """
     return [
         d for d in dati
-        if d.get('monte_ore_variato')
-        and (d.get('monte_ore_effettivo') or 0) > (d.get('monte_ore_settimanale') or 0)
+        if (d.get('monte_ore_effettivo') or 0)
+        > (monte_ore_settembre.get(d['utente_id'], d.get('monte_ore_settimanale')) or 0)
     ]
 
 
@@ -1705,8 +1712,11 @@ def api_export_municipale(anno, mese):
         utenti_per_lista = {l['valore']: [d for d in dati if _lista_attesa_norm(d) == l['valore']]
                             for l in liste_attesa}
         # Colonna "Di cui hanno ricevuto incremento ore": utenti con AUMENTO del
-        # monte ore nel mese (sottoinsieme del totale, indipendente dalla lista).
-        utenti_incremento = _utenti_con_incremento(dati)
+        # monte ore nell'anno scolastico corrente (rispetto a settembre; il monte
+        # ore di settembre e' il riferimento riportato al valore corretto).
+        anno_inizio_as = anno if mese >= 9 else anno - 1
+        monte_ore_settembre = db.get_monte_ore_effettivo_bulk(anno_inizio_as, 9)
+        utenti_incremento = _utenti_con_incremento(dati, monte_ore_settembre)
 
         def _conta_con_ore(lst):
             return sum(1 for d in lst if (d['ore_lavorate_60'] or 0) > 0)
@@ -2225,8 +2235,11 @@ def api_export_word(anno, mese):
     utenti_non_lista_rel = [d for d in dati if not _lista_attesa_norm(d)]
     utenti_per_lista_rel = {l['valore']: [d for d in dati if _lista_attesa_norm(d) == l['valore']]
                             for l in liste_attesa}
-    # "Di cui hanno ricevuto incremento ore": utenti con AUMENTO del monte ore nel mese.
-    utenti_incremento_rel = _utenti_con_incremento(dati)
+    # "Di cui hanno ricevuto incremento ore": aumento del monte ore nell'anno
+    # scolastico corrente, rispetto al valore di settembre (inizio anno).
+    anno_inizio_as = anno if mese >= 9 else anno - 1
+    monte_ore_settembre = db.get_monte_ore_effettivo_bulk(anno_inizio_as, 9)
+    utenti_incremento_rel = _utenti_con_incremento(dati, monte_ore_settembre)
 
     def _conta_con_ore_rel(lst):
         return sum(1 for d in lst if (d['ore_lavorate_60'] or 0) > 0)

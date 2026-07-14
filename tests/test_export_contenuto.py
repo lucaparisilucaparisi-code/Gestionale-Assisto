@@ -250,6 +250,12 @@ def test_municipale_riepilogo_incremento_e_quadratura(client, db_mod):
     with db.get_db_context() as conn:
         conn.execute("UPDATE utenti SET lista_attesa = '   ' WHERE id = ?", (ghost,))
     _set_ore(db, ghost, 2025, 11, 5)
+    # utente con aumento ereditato da un ANNO SCOLASTICO PRECEDENTE (base 10 -> 14
+    # dal nov 2024): a settembre 2025 e' gia' a 14, quindi NON e' un incremento
+    # dell'anno corrente e non deve comparire nella colonna incremento.
+    old = db.get_or_create_utente(sid, 'OldInc', 'R', 10)
+    db.add_variazione_monte_ore(old, 14, '2024-11', 'vecchio aumento')
+    _set_ore(db, old, 2025, 11, 16)
 
     header, rows = _municipale_riepilogo_rows(client, db, 2025, 11, 'MUNI RIEP')
     assert header[3] == 'Di cui hanno ricevuto incremento ore'
@@ -264,12 +270,13 @@ def test_municipale_riepilogo_incremento_e_quadratura(client, db_mod):
         assert abs(tot - (non_lista + somma_liste)) < 0.02, \
             f"non quadra: {row[0]}: {tot} != {non_lista}+{somma_liste}"
 
-    # colonna incremento: solo IncA (1 utente, 18 ore) su tutte le righe
+    # colonna incremento: SOLO IncA (aumento nell'anno corrente, 18 ore).
+    # OldInc (aumento ereditato dall'anno precedente) NON e' contato.
     riga_alunni, riga_ore = rows[0], rows[2]
-    assert riga_alunni[3] == 1, f"incremento alunni atteso 1, trovato {riga_alunni[3]}"
+    assert riga_alunni[3] == 1, f"incremento alunni atteso 1 (solo IncA), trovato {riga_alunni[3]}"
     assert abs((riga_ore[3] or 0) - 18) < 0.01, f"incremento ore atteso 18, trovato {riga_ore[3]}"
-    # il totale utenti include il ghost (7) e non lascia scarti
-    assert riga_alunni[1] == 7
+    # totale utenti = 8 (inclusi ghost e OldInc) e i totali quadrano
+    assert riga_alunni[1] == 8
 
 
 def test_lista_attesa_whitespace_normalizzata_in_scrittura(db_mod):
