@@ -36,6 +36,14 @@ def anno_scolastico_di(anno: int, mese: int, sep: str = '-') -> str:
     return f"{anno - 1}{sep}{anno}"
 
 
+def anno_scolastico_corrente(sep: str = '-') -> str:
+    """Anno scolastico di oggi: default unico per filtri e API (niente anni
+    scritti a mano nel codice, che invecchiano ad ogni settembre)."""
+    from datetime import date
+    oggi = date.today()
+    return anno_scolastico_di(oggi.year, oggi.month, sep)
+
+
 def calcola_fatturazione(ore) -> tuple:
     """Calcolo di fatturazione unico (imponibile, IVA, totale) dalle ore in 100'.
 

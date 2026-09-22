@@ -1,5 +1,4 @@
 /* ==================== APPLE PREMIUM DESIGN SYSTEM ==================== */
-@import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700;800&family=SF+Pro+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
     /* Apple-inspired Color Palette - Dark Mode */
@@ -835,7 +834,7 @@ body {
     font-weight: 700;
     font-size: 1rem;
     letter-spacing: -0.02em;
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: var(--font-sans);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
@@ -863,7 +862,7 @@ body {
 }
 
 .brand-name {
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: var(--font-sans);
     font-size: 1.15rem;
     font-weight: 700;
     letter-spacing: -0.025em;
@@ -877,7 +876,7 @@ body {
 }
 
 .brand-tagline {
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: var(--font-sans);
     font-size: 0.6rem;
     font-weight: 600;
     letter-spacing: 0.14em;
@@ -4072,3 +4071,87 @@ tr.search-match {
 [data-theme="light"] #table-container .table tbody tr.utente-senza-ore:not(.scuola-header) td:first-child {
     background: linear-gradient(rgba(255, 159, 10, 0.10), rgba(255, 159, 10, 0.10)), #FFFFFF;
 }
+
+/* ==================== ALIAS VARIABILI ====================
+   Nomi usati da alcune pagine (reportistica DD, statistiche, profilo):
+   senza questi alias il browser ignorava la proprieta' e il colore
+   (es. verde/rosso del saldo) non veniva applicato. */
+:root {
+    --primary-color: var(--primary);
+    --success-color: var(--success);
+    --warning-color: var(--warning);
+    --danger-color: var(--danger);
+    --text-muted: var(--text-tertiary);
+}
+
+/* ==================== HEATMAP (Statistiche) ====================
+   Spostato qui da advanced-features.css (file rimosso: era per il 95% morto). */
+.heatmap-container {
+    overflow-x: auto;
+    padding-bottom: 8px;
+}
+
+.heatmap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+}
+
+.heatmap-table th,
+.heatmap-table td {
+    padding: 6px 8px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.heatmap-table th {
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.heatmap-table th:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+}
+
+.heatmap-table td:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background: var(--bg-secondary);
+    font-weight: 500;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.heatmap-cell {
+    width: 50px;
+    height: 32px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 500;
+    transition: transform var(--transition-fast);
+}
+
+.heatmap-cell:hover {
+    transform: scale(1.1);
+    z-index: 10;
+}
+
+/* Heatmap color scale */
+.heatmap-cell[data-level="0"] { background: rgba(107, 114, 128, 0.2); color: var(--text-tertiary); }
+.heatmap-cell[data-level="1"] { background: rgba(239, 68, 68, 0.3); color: #fff; }
+.heatmap-cell[data-level="2"] { background: rgba(245, 158, 11, 0.4); color: #fff; }
+.heatmap-cell[data-level="3"] { background: rgba(245, 158, 11, 0.6); color: #fff; }
+.heatmap-cell[data-level="4"] { background: rgba(16, 185, 129, 0.5); color: #fff; }
+.heatmap-cell[data-level="5"] { background: rgba(16, 185, 129, 0.8); color: #fff; }

@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% block head %}
+<script src="{{ url_for('static', filename='js/vendor/chart.umd.min.js') }}"></script>
+{% endblock %}
+
 {% block title %}Dashboard - Gestionale OEPAC{% endblock %}
 
 {% block content %}

@@ -86,199 +86,6 @@ const SidebarManager = {
     }
 };
 
-// ==================== SEARCH ====================
-
-const SearchManager = {
-    init() {
-        this.modal = document.getElementById('search-modal');
-        this.input = document.getElementById('global-search-input');
-        this.results = document.getElementById('search-results');
-        this.trigger = document.getElementById('search-trigger');
-        this.selectedIndex = -1;
-
-        if (!this.modal || !this.input) return;
-
-        // Open search
-        this.trigger?.addEventListener('click', () => this.open());
-
-        // Close on overlay click
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) this.close();
-        });
-
-        // Search input
-        this.input.addEventListener('input', () => this.search());
-
-        // Keyboard navigation in results
-        this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
-    },
-
-    open() {
-        // Il markup #search-modal non esiste in nessun template: senza guardia
-        // Ctrl+K lanciava un TypeError su null
-        if (!this.modal || !this.input) return;
-        this.modal.classList.add('active');
-        this.input.focus();
-        this.input.value = '';
-        this.selectedIndex = -1;
-        this.resetResults();
-    },
-
-    close() {
-        this.modal?.classList.remove('active');
-        this.selectedIndex = -1;
-    },
-
-    resetResults() {
-        this.results.innerHTML = `
-            <div class="search-empty">
-                <p>Inizia a digitare per cercare...</p>
-                <p class="text-xs mt-2">Premi ESC per chiudere</p>
-            </div>
-        `;
-    },
-
-    async search() {
-        const query = this.input.value.trim();
-        if (query.length < 2) {
-            this.resetResults();
-            return;
-        }
-
-        try {
-            const response = await apiCall(`/api/search?q=${encodeURIComponent(query)}`);
-            this.renderResults(response);
-        } catch (error) {
-            console.error('Search error:', error);
-        }
-    },
-
-    renderResults(data) {
-        const totalResults = (data.pages?.length || 0) + (data.utenti?.length || 0) +
-                           (data.scuole?.length || 0) + (data.commesse?.length || 0);
-
-        if (totalResults === 0) {
-            this.results.innerHTML = `
-                <div class="search-empty">
-                    <p>Nessun risultato trovato</p>
-                </div>
-            `;
-            return;
-        }
-
-        let html = '';
-        let globalIdx = 0;
-
-        // Pages
-        if (data.pages?.length) {
-            html += '<div class="search-section-label" style="padding: 8px 16px; font-size: 0.7rem; text-transform: uppercase; color: var(--text-quaternary); font-weight: 600;">Pagine</div>';
-            data.pages.forEach((page) => {
-                html += `
-                    <a href="${page.url}" class="search-result-item" data-index="${globalIdx++}">
-                        <div class="search-result-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                        </div>
-                        <div class="search-result-content">
-                            <div class="search-result-title">${page.title}</div>
-                            <div class="search-result-subtitle">Pagina</div>
-                        </div>
-                    </a>
-                `;
-            });
-        }
-
-        // Commesse
-        if (data.commesse?.length) {
-            html += '<div class="search-section-label" style="padding: 8px 16px; font-size: 0.7rem; text-transform: uppercase; color: var(--text-quaternary); font-weight: 600;">Commesse</div>';
-            data.commesse.forEach((c) => {
-                html += `
-                    <a href="/commesse" class="search-result-item" data-index="${globalIdx++}">
-                        <div class="search-result-icon" style="color: ${c.colore || 'var(--primary)'}">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                            </svg>
-                        </div>
-                        <div class="search-result-content">
-                            <div class="search-result-title">${c.nome}</div>
-                            <div class="search-result-subtitle">${c.num_scuole || 0} scuole${c.descrizione ? ' - ' + c.descrizione.substring(0, 30) : ''}</div>
-                        </div>
-                    </a>
-                `;
-            });
-        }
-
-        // Utenti
-        if (data.utenti?.length) {
-            html += '<div class="search-section-label" style="padding: 8px 16px; font-size: 0.7rem; text-transform: uppercase; color: var(--text-quaternary); font-weight: 600;">Utenti</div>';
-            data.utenti.forEach((u) => {
-                html += `
-                    <a href="/utenti?search=${encodeURIComponent(u.nome + ' ' + u.cognome)}" class="search-result-item" data-index="${globalIdx++}">
-                        <div class="search-result-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                        </div>
-                        <div class="search-result-content">
-                            <div class="search-result-title">${u.nome} ${u.cognome}</div>
-                            <div class="search-result-subtitle">${u.commessa} - ${(u.scuola || '').substring(0, 40)}...</div>
-                        </div>
-                    </a>
-                `;
-            });
-        }
-
-        // Scuole
-        if (data.scuole?.length) {
-            html += '<div class="search-section-label" style="padding: 8px 16px; font-size: 0.7rem; text-transform: uppercase; color: var(--text-quaternary); font-weight: 600;">Scuole</div>';
-            data.scuole.forEach((s) => {
-                html += `
-                    <a href="/utenti?scuola=${s.id}" class="search-result-item" data-index="${globalIdx++}">
-                        <div class="search-result-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                            </svg>
-                        </div>
-                        <div class="search-result-content">
-                            <div class="search-result-title">${(s.nome_completo || '').substring(0, 50)}...</div>
-                            <div class="search-result-subtitle">${s.commessa}</div>
-                        </div>
-                    </a>
-                `;
-            });
-        }
-
-        // Result count footer
-        html += `<div style="padding: 8px 16px; font-size: 0.75rem; color: var(--text-quaternary); text-align: center; border-top: 1px solid var(--border-color);">${totalResults} risultati trovati</div>`;
-
-        this.results.innerHTML = html;
-    },
-
-    handleKeydown(e) {
-        const items = this.results.querySelectorAll('.search-result-item');
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            this.selectedIndex = Math.min(this.selectedIndex + 1, items.length - 1);
-            this.updateSelection(items);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
-            this.updateSelection(items);
-        } else if (e.key === 'Enter' && this.selectedIndex >= 0) {
-            e.preventDefault();
-            items[this.selectedIndex]?.click();
-        }
-    },
-
-    updateSelection(items) {
-        items.forEach((item, index) => {
-            item.classList.toggle('active', index === this.selectedIndex);
-        });
-    }
-};
-
 // ==================== KEYBOARD SHORTCUTS ====================
 
 const KeyboardShortcuts = {
@@ -298,8 +105,7 @@ const KeyboardShortcuts = {
             // Skip se siamo in un input
             const isInput = e.target.matches('input, textarea, select');
 
-            // Cmd/Ctrl + K: gestito dalla CommandPalette (listener dedicato);
-            // il vecchio SearchManager puntava a un modale inesistente.
+            // Cmd/Ctrl + K: gestito dalla CommandPalette (listener dedicato)
 
             // Cmd/Ctrl + S - Save (if there's a save button)
             if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -335,9 +141,7 @@ const KeyboardShortcuts = {
             if (e.key === 'Escape') {
                 const activeModal = document.querySelector('.modal-overlay.active');
                 if (activeModal) {
-                    if (activeModal.id === 'search-modal') {
-                        SearchManager.close();
-                    } else if (activeModal.id === 'shortcuts-help-modal') {
+                    if (activeModal.id === 'shortcuts-help-modal') {
                         activeModal.remove();
                     } else {
                         activeModal.classList.remove('active');
@@ -963,7 +767,7 @@ function closeModal(modalId) {
 
 // Close modal clicking outside
 document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('modal-overlay') && e.target.id !== 'search-modal') {
+    if (e.target.classList.contains('modal-overlay')) {
         e.target.classList.remove('active');
         document.body.style.overflow = '';
         _modalFocusPrecedente?.focus?.();
@@ -1455,7 +1259,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize managers
     ThemeManager.init();
     SidebarManager.init();
-    SearchManager.init();
     KeyboardShortcuts.init();
     CommandPalette.init();
 

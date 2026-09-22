@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% block head %}
+<script src="{{ url_for('static', filename='js/vendor/chart.umd.min.js') }}"></script>
+{% endblock %}
+
 {% block title %}Dettaglio Utente - Gestionale OEPAC{% endblock %}
 
 {% block content %}
@@ -22,8 +26,7 @@
     </div>
     <div class="header-actions">
         <select id="anno-scolastico" aria-label="Anno scolastico" class="form-control" style="width: 150px;">
-            <option value="2025-2026">2025-2026</option>
-            <option value="2024-2025">2024-2025</option>
+            {# popolato da populateAnniScolastici(): niente anni scritti a mano #}
         </select>
     </div>
 </div>
@@ -470,7 +473,9 @@ const utenteId = {{ utente_id }};
 let utenteData = null;
 let chartAndamento = null;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    // Anni scolastici dall'API (prima erano fissi e l'anno corrente mancava)
+    await populateAnniScolastici('anno-scolastico');
     loadUtenteDettaglio();
     loadAssegnazioni();
 

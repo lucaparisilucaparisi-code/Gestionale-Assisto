@@ -351,6 +351,9 @@ async function loadData() {
         document.getElementById('search-container').style.display = 'flex';
         document.getElementById('info-periodo').textContent = `${data.mese_nome} ${data.anno}`;
 
+        // Mese chiuso: banner + input e azioni di scrittura disabilitati
+        applicaStatoMeseChiuso(data.mese_chiuso);
+
         // Reset filtro quando si caricano nuovi dati
         resetExcelFilter();
 
@@ -521,6 +524,9 @@ async function esportaFiltrati() {
     const params = [];
     if (commessaSelect.value) params.push(`commessa=${encodeURIComponent(commessaSelect.value)}`);
     if (scuolaSelect.value) params.push(`scuola=${encodeURIComponent(scuolaSelect.value)}`);
+    // Anche il testo cercato: il file contiene esattamente le righe a schermo
+    const search = (document.getElementById('search-input')?.value || '').trim();
+    if (search) params.push(`search=${encodeURIComponent(search)}`);
     if (params.length > 0) url += '?' + params.join('&');
 
     const link = document.createElement('a');
@@ -889,6 +895,40 @@ function renderTable(data) {
             scheduleAutoSave();
         });
     });
+}
+
+/**
+ * Mese chiuso (Chiusura Mese): mostra un avviso e blocca input e azioni di
+ * scrittura. Il server rifiuta comunque ogni salvataggio (409), qui si evita
+ * di far digitare valori che non verrebbero mai salvati.
+ */
+function applicaStatoMeseChiuso(dataChiusura) {
+    const chiuso = !!dataChiusura;
+    let banner = document.getElementById('mese-chiuso-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'mese-chiuso-banner';
+        banner.className = 'alert alert-warning';
+        banner.setAttribute('role', 'status');
+        const tc = document.getElementById('table-container');
+        tc.parentNode.insertBefore(banner, tc);
+    }
+    if (chiuso) {
+        const quando = new Date(dataChiusura);
+        const quandoTxt = isNaN(quando.getTime()) ? '' : ` il ${quando.toLocaleDateString('it-IT')}`;
+        banner.innerHTML = `<div><strong>Mese chiuso${quandoTxt}.</strong> Le ore non si possono modificare: `
+            + `per correggerle riapri il mese dalla <a href="/chiusura-mese">Chiusura Mese</a>.</div>`;
+        banner.style.display = 'flex';
+    } else {
+        banner.style.display = 'none';
+    }
+    document.querySelectorAll('.ore-input, .pasti-input').forEach(i => { i.disabled = chiuso; });
+    ['btn-save', 'btn-copia-precedente', 'btn-compila-media'].forEach(id => {
+        const b = document.getElementById(id);
+        if (b) b.disabled = chiuso;
+    });
+    const indicatore = document.getElementById('auto-save-indicator');
+    if (indicatore) indicatore.style.visibility = chiuso ? 'hidden' : '';
 }
 
 function scheduleAutoSave() {

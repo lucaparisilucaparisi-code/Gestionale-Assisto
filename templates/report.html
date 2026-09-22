@@ -455,13 +455,8 @@ function downloadMunicipale() {
     const p = getReportParams();
     if (!p) return;
 
-    const commessa = document.getElementById('report-commessa').value;
-    let params = '';
-    if (commessa) {
-        params = `?commessa=${encodeURIComponent(commessa)}`;
-    }
-
-    const url = `/api/export/municipale/${p.anno}/${p.mese}${params}`;
+    // p.params include commessa e la spunta "Nomi puntati (privacy)"
+    const url = `/api/export/municipale/${p.anno}/${p.mese}${p.params}`;
     window.location.href = url;
     showToast('Download Riepilogo Municipale in corso...', 'success');
 }
@@ -470,13 +465,7 @@ function downloadDipartimentale() {
     const p = getReportParams();
     if (!p) return;
 
-    const commessa = document.getElementById('report-commessa').value;
-    let params = '';
-    if (commessa) {
-        params = `?commessa=${encodeURIComponent(commessa)}`;
-    }
-
-    const url = `/api/export/dipartimentale/${p.anno}/${p.mese}${params}`;
+    const url = `/api/export/dipartimentale/${p.anno}/${p.mese}${p.params}`;
     window.location.href = url;
     showToast('Download Monitoraggio Dipartimentale in corso...', 'success');
 }
@@ -485,13 +474,8 @@ function downloadWord() {
     const p = getReportParams();
     if (!p) return;
 
-    const commessa = document.getElementById('report-commessa').value;
-    let params = '';
-    if (commessa) {
-        params = `?commessa=${encodeURIComponent(commessa)}`;
-    }
-
-    const url = `/api/export/word/${p.anno}/${p.mese}${params}`;
+    // p.params include commessa e la spunta "Nomi puntati (privacy)"
+    const url = `/api/export/word/${p.anno}/${p.mese}${p.params}`;
     window.location.href = url;
     showToast('Download Relazione Word in corso...', 'success');
 }

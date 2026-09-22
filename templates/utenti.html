@@ -504,9 +504,10 @@ function renderTable(utenti) {
             + '<td>' + periodo + '</td>'
             + '<td>' + lista + '</td>'
             + '<td style="white-space:nowrap;">'
-            +   '<a href="/utente/' + u.id + '" class="btn btn-sm btn-ghost" title="Dettaglio">👤</a> '
-            +   '<button class="btn btn-sm btn-secondary" onclick="apriModifica(' + u.id + ')">✏️</button> '
-            +   '<button class="btn btn-sm btn-danger" onclick="apriElimina(' + u.id + ')">🗑️</button>'
+            +   '<a href="/utente/' + u.id + '" class="btn btn-sm btn-ghost" title="Dettaglio" aria-label="Dettaglio utente">👤</a> '
+            +   '<button class="btn btn-sm btn-secondary" onclick="apriModifica(' + u.id + ')" title="Modifica" aria-label="Modifica utente">✏️</button> '
+            +   '<button class="btn btn-sm btn-ghost" onclick="showStoricoMonteOre(' + u.id + ')" title="Storico monte ore" aria-label="Storico monte ore">📈</button> '
+            +   '<button class="btn btn-sm btn-danger" onclick="apriElimina(' + u.id + ')" title="Elimina" aria-label="Elimina utente">🗑️</button>'
             + '</td>'
             + '</tr>';
     });
@@ -515,8 +516,8 @@ function renderTable(utenti) {
         + '<thead><tr>'
         + '<th>Commessa</th>'
         + '<th>Scuola</th>'
-        + '<th>Cognome</th>'
         + '<th>Nome</th>'
+        + '<th>Cognome</th>'
         + '<th>N. Puntati</th>'
         + '<th class="text-center">Monte Ore</th>'
         + '<th>Periodo</th>'

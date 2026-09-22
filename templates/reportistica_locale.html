@@ -309,6 +309,7 @@ const MESI_NOME = {
 };
 
 let reportCorrente = null;
+let recuperiCorrenti = [];   // singoli recuperi (id, note): per modifica/eliminazione
 
 // Inizializzazione
 document.addEventListener('DOMContentLoaded', async () => {
@@ -365,6 +366,12 @@ async function caricaReport() {
         if (!response.ok) throw new Error('Errore caricamento report');
 
         reportCorrente = await response.json();
+        try {
+            const r = await fetch(`/api/recuperi/${commessaId}/${annoScolastico}`);
+            recuperiCorrenti = r.ok ? await r.json() : [];
+        } catch (e) {
+            recuperiCorrenti = [];
+        }
         renderReport();
 
         // Mostra le sezioni
@@ -607,22 +614,26 @@ function renderRecuperi() {
     const tbody = document.getElementById('tbody-recuperi');
     tbody.innerHTML = '';
 
-    // Filtra i mesi con recuperi
-    const mesiConRecuperi = reportCorrente.mesi.filter(m => m.ore_recupero > 0);
-
-    if (mesiConRecuperi.length === 0) {
+    // Un rigo per ogni recupero registrato (con note, modifica ed eliminazione):
+    // prima la tabella mostrava solo i totali per mese e "Note" era sempre "-".
+    if (!recuperiCorrenti || recuperiCorrenti.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nessun recupero registrato</td></tr>';
         return;
     }
 
-    mesiConRecuperi.forEach(m => {
+    recuperiCorrenti.forEach(r => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${MESI_NOME[m.mese]} ${m.anno}</td>
-            <td>${m.ore_recupero.toFixed(2)}</td>
-            <td>-</td>
-            <td>
-                <button class="btn btn-danger btn-sm" onclick="eliminaRecuperoMese(${m.mese}, ${m.anno})">
+            <td>${MESI_NOME[r.mese]} ${r.anno}</td>
+            <td>${Number(r.ore_recupero || 0).toFixed(2)}</td>
+            <td>${r.note ? escapeHtml(r.note) : '-'}</td>
+            <td style="white-space: nowrap;">
+                <button class="btn btn-secondary btn-sm" onclick="modificaRecupero(${r.id})" title="Modifica" aria-label="Modifica recupero">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="eliminaRecupero(${r.id})" title="Elimina" aria-label="Elimina recupero">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
@@ -631,6 +642,18 @@ function renderRecuperi() {
         `;
         tbody.appendChild(tr);
     });
+}
+
+function modificaRecupero(id) {
+    const r = (recuperiCorrenti || []).find(x => x.id === id);
+    if (!r) return;
+    document.getElementById('modal-recupero-title').textContent = 'Modifica Recupero';
+    document.getElementById('recupero-id').value = r.id;
+    document.getElementById('recupero-mese').value = String(r.mese);
+    document.getElementById('recupero-anno').value = r.anno;
+    document.getElementById('recupero-ore').value = r.ore_recupero;
+    document.getElementById('recupero-note').value = r.note || '';
+    document.getElementById('modal-recupero').classList.add('active');
 }
 
 function formatCurrency(value) {
@@ -806,12 +829,16 @@ async function salvaRecupero() {
         mese: parseInt(document.getElementById('recupero-mese').value),
         anno: parseInt(document.getElementById('recupero-anno').value),
         ore_recupero: parseFloat(document.getElementById('recupero-ore').value) || 0,
-        note: document.getElementById('recupero-note').value || null
+        note: document.getElementById('recupero-note').value.trim()
     };
 
+    // Con un id valorizzato il modale sta modificando un recupero esistente
+    const recuperoId = document.getElementById('recupero-id').value;
+    const url = recuperoId ? `/api/recuperi/${recuperoId}` : '/api/recuperi';
+
     try {
-        const response = await fetch('/api/recuperi', {
-            method: 'POST',
+        const response = await fetch(url, {
+            method: recuperoId ? 'PUT' : 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
@@ -819,7 +846,7 @@ async function salvaRecupero() {
         const result = await response.json();
         if (result.error) throw new Error(result.error);
 
-        showToast('Recupero aggiunto', 'success');
+        showToast(recuperoId ? 'Recupero aggiornato' : 'Recupero aggiunto', 'success');
         chiudiModalRecupero();
         caricaReport();
 
@@ -829,11 +856,26 @@ async function salvaRecupero() {
     }
 }
 
-async function eliminaRecuperoMese(mese, anno) {
-    if (!confirm('Sei sicuro di voler eliminare questo recupero?')) return;
-
-    // TODO: Implementare eliminazione recupero specifico
-    showToast('Funzionalita in sviluppo', 'warning');
+function eliminaRecupero(id) {
+    const r = (recuperiCorrenti || []).find(x => x.id === id);
+    const cosa = r ? `${MESI_NOME[r.mese]} ${r.anno} (${Number(r.ore_recupero || 0).toFixed(2)} ore)` : 'questo recupero';
+    showConfirmDialog(
+        'Elimina recupero',
+        `Eliminare il recupero di ${cosa}? L'operazione non si puo' annullare.`,
+        async () => {
+            try {
+                const response = await fetch(`/api/recuperi/${id}`, { method: 'DELETE' });
+                const result = await response.json();
+                if (!response.ok || result.error) throw new Error(result.error || 'Errore');
+                showToast('Recupero eliminato', 'success');
+                caricaReport();
+            } catch (error) {
+                console.error(error);
+                showToast(error.message || 'Errore nell\'eliminazione', 'error');
+            }
+        },
+        { type: 'danger', confirmText: 'Elimina' }
+    );
 }
 
 // Toast notifications (usa quella esistente se disponibile)

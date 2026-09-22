@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% block head %}
+<script src="{{ url_for('static', filename='js/vendor/chart.umd.min.js') }}"></script>
+{% endblock %}
+
 {% block title %}Statistiche - Gestionale OEPAC{% endblock %}
 
 {% block content %}
@@ -641,9 +645,26 @@ function renderUtentiMenoOre(utenti) {
 
 // ==================== WIDGET MESE CORRENTE (ex dashboard) ====================
 
+/**
+ * Mese di riferimento dei widget: segue il filtro "Anno scolastico" della pagina
+ * (prima usavano sempre il mese di calendario reale, ignorando il filtro).
+ * Anno corrente -> mese di oggi (luglio/agosto -> giugno); anno passato -> giugno.
+ */
 function getMeseCorrente() {
     const now = new Date();
-    return { anno: now.getFullYear(), mese: now.getMonth() + 1 };
+    const meseOggi = now.getMonth() + 1;
+    const annoOggi = now.getFullYear();
+    const annoScolastico = getFilters().annoScolastico;
+    if (!annoScolastico) {
+        return { anno: annoOggi, mese: meseOggi };
+    }
+    const [annoInizio, annoFine] = annoScolastico.split('-').map(Number);
+    const eCorrente = (meseOggi >= 9 ? annoOggi : annoOggi - 1) === annoInizio;
+    if (eCorrente) {
+        if (meseOggi === 7 || meseOggi === 8) return { anno: annoInizio + 1, mese: 6 };
+        return { anno: annoOggi, mese: meseOggi };
+    }
+    return { anno: annoFine, mese: 6 };
 }
 
 async function loadConfrontoMese() {
@@ -671,12 +692,12 @@ async function loadConfrontoMese() {
             </div>
             <div class="flex justify-between gap-4">
                 <div style="text-align: center; flex: 1;">
-                    <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Corrente</div>
+                    <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">${MESI[mese] || 'Corrente'} ${anno}</div>
                     <div style="font-size: 1.1rem; font-weight: 600;">${data.mese_corrente.ore.toLocaleString('it-IT')}h</div>
                     <div style="font-size: 0.7rem; color: var(--text-secondary);">${data.mese_corrente.utenti_attivi} utenti</div>
                 </div>
                 <div style="text-align: center; flex: 1;">
-                    <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Precedente</div>
+                    <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">${data.mese_precedente.mese_nome || 'Precedente'}</div>
                     <div style="font-size: 1.1rem; font-weight: 600;">${data.mese_precedente.ore.toLocaleString('it-IT')}h</div>
                     <div style="font-size: 0.7rem; color: var(--text-secondary);">${data.mese_precedente.utenti_attivi} utenti</div>
                 </div>

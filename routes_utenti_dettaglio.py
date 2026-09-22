@@ -504,7 +504,7 @@ def api_get_utente_dettaglio(utente_id):
         if not utente:
             return jsonify({'error': 'Utente non trovato'}), 404
 
-        anno_scolastico = request.args.get('anno_scolastico', '2025-2026')
+        anno_scolastico = request.args.get('anno_scolastico') or config.anno_scolastico_corrente()
 
         documenti = db.get_documenti_utente(utente_id)
         note = db.get_note_utente(utente_id)

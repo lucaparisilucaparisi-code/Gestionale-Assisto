@@ -900,10 +900,15 @@ def raccogli_snapshot_utente(cursor, utente_id):
     if not row:
         return None
     snap = {'utente': dict(row)}
+    # Include anche variazioni monte ore e assegnazioni agli operatori: hanno
+    # ON DELETE CASCADE e senza snapshot l'undo ripristinava l'utente senza
+    # il suo storico ore e senza operatori assegnati.
     for chiave, tabella in [('rendicontazioni', 'rendicontazione'),
                             ('note', 'note_utente'),
                             ('documenti', 'documenti_utente'),
-                            ('assenze', 'assenze')]:
+                            ('assenze', 'assenze'),
+                            ('variazioni', 'variazioni_monte_ore'),
+                            ('assegnazioni', 'assegnazioni')]:
         cursor.execute(f"SELECT * FROM {tabella} WHERE utente_id = ?", (utente_id,))
         snap[chiave] = [dict(r) for r in cursor.fetchall()]
     return snap
@@ -1313,9 +1318,13 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
 
     return risultati
 
-def get_totali_per_scuola(anno, mese, commessa=None):
-    """Ottiene i totali aggregati per scuola con calcolo fatturazione corretto"""
-    dati = get_rendicontazione_completa(anno, mese, commessa)
+def get_totali_per_scuola(anno, mese, commessa=None, dati=None):
+    """Ottiene i totali aggregati per scuola con calcolo fatturazione corretto.
+
+    dati: righe gia' calcolate da get_rendicontazione_completa (evita di rifare
+    la stessa query quando il chiamante le ha gia', o le ha filtrate)."""
+    if dati is None:
+        dati = get_rendicontazione_completa(anno, mese, commessa)
 
     totali = {}
     for row in dati:
@@ -2513,8 +2522,9 @@ def log_audit(azione, entita, entita_id=None, dettagli=None, dati_precedenti=Non
                 entita,
                 entita_id,
                 dettagli,
-                str(dati_precedenti) if dati_precedenti else None,
-                str(dati_nuovi) if dati_nuovi else None
+                # JSON (non repr Python): lo storico monte ore li rilegge con json.loads
+                json.dumps(dati_precedenti, default=str, ensure_ascii=False) if dati_precedenti else None,
+                json.dumps(dati_nuovi, default=str, ensure_ascii=False) if dati_nuovi else None
             ))
     except Exception as e:
         logger.error(f"Errore audit log: {e}")

@@ -415,9 +415,18 @@ def api_export_excel(anno, mese):
     """Esporta rendicontazione in Excel - Versione Premium"""
     commessa = request.args.get('commessa')
     privacy = request.args.get('privacy', 'false').lower() == 'true'
+    # Filtri della pagina Rendicontazione ("Esporta filtrati"): scuola e testo
+    # cercato. Prima venivano ignorati e il file "filtrato" conteneva tutti.
+    scuola = (request.args.get('scuola') or '').strip()
+    search = (request.args.get('search') or '').strip().lower()
 
     dati = db.get_rendicontazione_completa(anno, mese, commessa)
-    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
+    if scuola:
+        dati = [d for d in dati if (d.get('scuola') or '') == scuola]
+    if search:
+        dati = [d for d in dati
+                if search in f"{d.get('nome') or ''} {d.get('cognome') or ''} {d.get('scuola') or ''}".lower()]
+    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa, dati=dati)
 
     # Calcola totali ore
     ore_totali_60 = sum(d['ore_lavorate_60'] or 0 for d in dati)
@@ -1568,6 +1577,8 @@ def classifica_livello_scolastico(scuola_nome):
 def api_export_municipale(anno, mese):
     """Esporta Riepilogo Municipale - Report per il Municipio"""
     commessa = request.args.get('commessa')
+    # Nomi puntati (privacy): stessa opzione del Report Completo
+    privacy = request.args.get('privacy', 'false').lower() == 'true'
 
     dati = db.get_rendicontazione_completa(anno, mese, commessa)
     totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
@@ -1844,7 +1855,7 @@ def api_export_municipale(anno, mese):
             money_f = s['money_alt'] if alt else s['money']
 
             ws_utenti.write(row_u, 0, d['scuola'], cell_f)
-            ws_utenti.write(row_u, 1, f"{d['nome']} {d['cognome']}", cell_f)
+            ws_utenti.write(row_u, 1, d['nome_puntato'] if privacy else f"{d['nome']} {d['cognome']}", cell_f)
             ws_utenti.write(row_u, 2, d['monte_ore_settimanale'], num_f)
             ws_utenti.write(row_u, 3, decimal_to_sessagesimal(d['ore_lavorate_60'] or 0), cell_c_f)
             ws_utenti.write(row_u, 4, d['ore_lavorate_100'] or 0, num_f)
@@ -1874,6 +1885,8 @@ def api_export_municipale(anno, mese):
     filename = f"Riepilogo_Municipale_{MESI_NOME[mese]}_{anno}"
     if commessa:
         filename += f"_{commessa.replace(' ', '_')}"
+    if privacy:
+        filename += "_privacy"
     filename += ".xlsx"
 
     return send_file(
@@ -2048,6 +2061,8 @@ def api_export_dipartimentale(anno, mese):
 def api_export_word(anno, mese):
     """Genera un documento Word con relazione sull'andamento del servizio mensile"""
     commessa = request.args.get('commessa')
+    # Nomi puntati (privacy): stessa opzione del Report Completo
+    privacy = request.args.get('privacy', 'false').lower() == 'true'
 
     dati = db.get_rendicontazione_completa(anno, mese, commessa)
     totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
@@ -2406,7 +2421,7 @@ def api_export_word(anno, mese):
             tasso = (ore_erogate / ore_previste) * 100
             if tasso < 50:
                 utenti_bassa_erogazione.append({
-                    'nome': f"{d['nome']} {d['cognome']}",
+                    'nome': d['nome_puntato'] if privacy else f"{d['nome']} {d['cognome']}",
                     'scuola': d['scuola'],
                     'ore_previste': ore_previste,
                     'ore_erogate': ore_erogate,
@@ -2486,6 +2501,8 @@ def api_export_word(anno, mese):
     filename = f"Relazione_OEPAC_{MESI_NOME[mese]}_{anno}"
     if commessa:
         filename += f"_{commessa.replace(' ', '_')}"
+    if privacy:
+        filename += "_privacy"
     filename += ".docx"
 
     return send_file(
