@@ -4,27 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Assisto - Gestionale OEPAC{% endblock %}</title>
+    {# Tema salvato applicato PRIMA del CSS: niente flash scuro per chi usa il tema chiaro #}
+    <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}}catch(e){}</script>
 
     <!-- PWA Meta Tags -->
     <meta name="description" content="Gestionale per il servizio OEPAC - Assistenza Educativa">
-    <meta name="theme-color" content="#0A84FF">
+    <meta name="theme-color" content="#3B82F6">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Assisto">
 
     <!-- PWA Manifest & Icons -->
-    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/icon.svg') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon.svg') }}">
+    <link rel="manifest" href="{{ static_url('manifest.json') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ static_url('icons/icon.svg') }}">
+    <link rel="apple-touch-icon" href="{{ static_url('icons/icon.svg') }}">
 
     <!-- Font di sistema: nessuna richiesta a server esterni (l'app gira anche offline) -->
 
     <!-- Styles & Scripts -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/premium-effects.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/ux-enhancements.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-premium.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/refine.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/premium-effects.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/ux-enhancements.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/theme-premium.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/refine.css') }}">
     {# Chart.js (200 KB) e' caricato solo dalle pagine che lo usano, nel block head #}
     {% block head %}{% endblock %}
 </head>
@@ -375,13 +377,14 @@
 
     {# Parametri di calcolo da config.py: unica fonte per tariffe e percentuali a schermo #}
     <script>window.APP_CONFIG = {{ app_config|tojson }};</script>
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ static_url('js/app.js') }}"></script>
 
     <!-- PWA Service Worker Registration -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/static/sw.js')
+                // La versione nell'URL fa ripartire la cache ad ogni release
+                navigator.serviceWorker.register('/static/sw.js?v={{ app_versione }}')
                     .then(reg => console.log('SW registered'))
                     .catch(err => console.log('SW registration failed:', err));
             });
@@ -405,21 +408,8 @@
             });
         })();
 
-        // Ripple effect for buttons
-        (function() {
-            document.querySelectorAll('.btn').forEach(btn => {
-                btn.classList.add('ripple');
-                btn.addEventListener('click', function(e) {
-                    const rect = this.getBoundingClientRect();
-                    const ripple = document.createElement('span');
-                    ripple.className = 'ripple-effect';
-                    ripple.style.left = (e.clientX - rect.left) + 'px';
-                    ripple.style.top = (e.clientY - rect.top) + 'px';
-                    this.appendChild(ripple);
-                    setTimeout(() => ripple.remove(), 600);
-                });
-            });
-        })();
+        // (L'effetto "ripple" e' stato rimosso: creava un elemento invisibile ad
+        // ogni clic e valeva solo per i pulsanti presenti al caricamento.)
 
         // Smooth theme transition
         (function() {
@@ -440,12 +430,19 @@
             indicator.className = 'scroll-indicator';
             document.body.appendChild(indicator);
 
+            // Listener passivo e aggiornamento al frame: niente scatti nello scroll
+            let scrollTick = false;
             window.addEventListener('scroll', () => {
-                const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
-                const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-                const scrolled = height > 0 ? (winScroll / height) : 0;
-                indicator.style.transform = `scaleX(${scrolled})`;
-            });
+                if (scrollTick) return;
+                scrollTick = true;
+                requestAnimationFrame(() => {
+                    const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+                    const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+                    const scrolled = height > 0 ? (winScroll / height) : 0;
+                    indicator.style.transform = `scaleX(${scrolled})`;
+                    scrollTick = false;
+                });
+            }, { passive: true });
         })();
 
         // La gestione della command palette vive SOLO in app.js (CommandPalette):

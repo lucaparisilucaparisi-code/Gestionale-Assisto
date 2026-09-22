@@ -82,9 +82,27 @@ def _parametri_calcolo():
     }
 
 
+def _leggi_versione():
+    try:
+        with open(os.path.join(config.BASE_DIR, 'VERSION'), encoding='utf-8') as f:
+            return f.read().strip()
+    except OSError:
+        return '0'
+
+
+VERSIONE_APP = _leggi_versione()
+
+
+def static_url(filename):
+    """URL di un asset statico con la versione dell'app in query string: ad ogni
+    release browser e service worker scaricano i file nuovi invece di riusare
+    quelli in cache (prima, dopo un aggiornamento, si vedeva la versione vecchia)."""
+    return url_for('static', filename=filename) + '?v=' + VERSIONE_APP
+
+
 @app.context_processor
 def inject_app_config():
-    return {'app_config': _parametri_calcolo()}
+    return {'app_config': _parametri_calcolo(), 'app_versione': VERSIONE_APP, 'static_url': static_url}
 def _load_or_generate_secret_key():
     """Carica il secret_key da file, oppure lo genera random e lo persiste.
     Priorita': variabile ambiente FLASK_SECRET_KEY > file .flask_secret_key."""

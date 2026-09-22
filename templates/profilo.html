@@ -453,7 +453,16 @@ function restoreBackup(nome) {
 
 // ==================== Logout ====================
 document.getElementById('btn-logout').addEventListener('click', async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* si esce comunque */ }
+    // Svuota le cache del browser: su un PC condiviso nulla di questa sessione
+    // resta disponibile al prossimo operatore
+    try {
+        if (window.caches) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_CACHES' });
+    } catch (e) { /* cache non disponibile */ }
     window.location.href = '/login';
 });
 

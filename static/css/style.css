@@ -2,13 +2,18 @@
 
 :root {
     /* Apple-inspired Color Palette - Dark Mode */
-    --primary: #0A84FF;
-    --primary-dark: #0071E3;
-    --primary-light: #409CFF;
-    --primary-glow: rgba(10, 132, 255, 0.35);
+    /* UN solo blu primario per tutta l'app, login compreso. Prima convivevano
+       #0A84FF (qui, manifest, meta theme-color) e #3B82F6 (refine.css):
+       --accent e' un alias del primario, non un secondo colore. */
+    --primary: #3B82F6;
+    --primary-dark: #2f6fe0;
+    --primary-light: #60A5FA;
+    --primary-glow: rgba(59, 130, 246, 0.35);
 
     --secondary: #BF5AF2;
-    --accent: #30D158;
+    --accent: var(--primary);
+    --accent-hover: var(--primary-dark);
+    --accent-soft: rgba(59, 130, 246, 0.12);
     --accent-light: #32D74B;
     --cyan: #64D2FF;
 
@@ -128,9 +133,9 @@
     --shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.15);
     --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.18);
-    --shadow-glow: 0 0 20px rgba(10, 132, 255, 0.25);
+    --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.25);
 
-    --primary-glow: rgba(10, 132, 255, 0.25);
+    --primary-glow: rgba(59, 130, 246, 0.25);
 }
 
 /* Light Theme - Componenti specifici */

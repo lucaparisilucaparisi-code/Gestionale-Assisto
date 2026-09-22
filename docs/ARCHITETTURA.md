@@ -68,6 +68,20 @@ reimplementarla inline (a schermo, in SQL o negli export).
 - Backup/restore usano l'API `sqlite3.backup()` (consistente con WAL). Il ripristino
   valida il nome del file (no path traversal).
 
+## Front-end
+
+- Gli asset statici si includono con `static_url('css/style.css')` (context processor
+  in `app.py`): aggiunge `?v=<VERSION>` così browser e service worker scaricano i file
+  nuovi ad ogni release. Il service worker (`static/sw.js`) è registrato con la stessa
+  versione, mette in cache **solo** `/static/*` e non intercetta mai pagine e API
+  (nessun dato dell'operatore in cache; svuotamento al logout).
+- I parametri di calcolo arrivano alle pagine da `app_config` (Jinja) e
+  `window.APP_CONFIG` (JS): mai tariffe o percentuali scritte a mano.
+- Le conferme usano `showConfirmDialog` (app.js), mai `confirm()`/`prompt()` nativi:
+  un test lo verifica. Le chiamate API passano da `apiCall` (errori con `code`/`status`).
+- I token di colore (un solo blu primario, `--primary`, con `--accent` come alias)
+  vivono in `static/css/style.css`; `refine.css` è il layer finale e non ridefinisce colori.
+
 ## Sviluppo
 
 ```bash
