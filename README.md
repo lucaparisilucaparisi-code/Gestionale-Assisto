@@ -61,7 +61,12 @@ ambiente isolato dentro la cartella (`.venv`) da `avvia.bat` / `run.sh` al primo
 - **Autenticazione**: username + password, con opzione impronta digitale (Windows Hello / WebAuthn)
 - **Import Excel anagrafica**: carica dati utenti da file Excel (Commessa, Scuola, Nome, Monte Ore)
 - **Import Excel rendicontazione**: carica ore e pasti mensili dalla prefattura (un foglio per mese), con abbinamento automatico agli utenti già in anagrafica e anteprima prima del salvataggio
-- **Rendicontazione mensile**: inserimento ore lavorate e pasti per ogni utente, con salvataggio automatico
+- **Rendicontazione mensile**: inserimento ore lavorate e pasti per ogni utente, con salvataggio automatico,
+  navigazione da tastiera come in un foglio di calcolo (Invio/frecce, incolla di una colonna da Excel) e
+  ogni modifica registrata nel registro attività
+- **Report con filtri avanzati** (scuola, ricerca, ore erogate) validi per tutti i download e l'anteprima
+- **Trasloco su un altro PC**: esporta/importa un file JSON con *tutti* i dati (anche variazioni, personale,
+  turni, note) in modalità Unisci, Solo nuovi o Sostituisci tutto (con backup automatico)
 - **Chiusura mese guidata**: procedura in 4 passi (completezza → anomalie → riepilogo → export);
   un mese chiuso **non accetta più modifiche alle ore** (né a mano, né da import) finché non viene riaperto
 - **Variazioni monte ore** con mese di inizio e, se serve, di fine: aumenti temporanei che non si trascinano

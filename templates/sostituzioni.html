@@ -130,7 +130,7 @@ async function caricaSostituzioni() {
                 <td>${coperta ? `<span class="badge badge-success">${escapeHtml(s.sost_cognome+' '+s.sost_nome)}</span>` : '<span class="badge badge-warning">da coprire</span>'}</td>
                 <td class="text-right">
                     ${coperta
-                        ? `<button class="btn btn-sm btn-secondary" onclick="annulla(${s.id})">Cambia</button>`
+                        ? `<button class="btn btn-sm btn-secondary" onclick="annulla(${s.id})" title="Toglie il sostituto: il turno torna da coprire">Rimuovi sostituto</button>`
                         : `<button class="btn btn-sm btn-primary" onclick="trovaSostituto(${s.id})">Trova sostituto</button>`}
                 </td></tr>`;
         }).join('')}
@@ -165,9 +165,17 @@ async function assegna(sostitutoId) {
     } catch (e) { showToast('Errore', 'error'); }
 }
 
-async function annulla(id) {
-    await apiCall(`/api/sostituzioni/${id}/annulla`, { method: 'POST', body: JSON.stringify({}) });
-    caricaSostituzioni();
+function annulla(id) {
+    // Prima il pulsante si chiamava "Cambia" e scopriva il turno senza conferma ne' messaggio
+    showConfirmDialog('Rimuovi sostituto', 'Togliere il sostituto da questo turno? Il turno tornera\' "da coprire" e potrai assegnarne un altro.', async () => {
+        try {
+            await apiCall(`/api/sostituzioni/${id}/annulla`, { method: 'POST', body: JSON.stringify({}) });
+            showToast('Sostituto rimosso: turno da coprire', 'success');
+            caricaSostituzioni();
+        } catch (e) {
+            showToast('Errore: ' + (e.message || 'operazione non riuscita'), 'error');
+        }
+    }, { type: 'warning', confirmText: 'Rimuovi' });
 }
 </script>
 {% endblock %}

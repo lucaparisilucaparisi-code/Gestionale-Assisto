@@ -122,7 +122,7 @@
                     </svg>
                 </div>
                 <h3 class="report-card-title">Riepilogo Municipale</h3>
-                <p class="report-card-desc">Report per il Municipio: ore erogate per scuola, tariffa 24,07€, IVA 5%, totali e riepilogo utenti.</p>
+                <p class="report-card-desc">Report per il Municipio: ore erogate per scuola, tariffa {{ ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') }}€, IVA {{ (app_config.iva_percentuale * 100)|round|int }}%, totali e riepilogo utenti.</p>
                 <div class="report-card-action">
                     <span>Scarica Excel</span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -283,11 +283,11 @@
                 </tr>
                 <tr>
                     <td><strong>Riepilogo Municipale</strong></td>
-                    <td>Report per il Municipio: ore erogate per scuola, tariffa 24,07€, IVA 5%, totali e riepilogo utenti</td>
+                    <td>Report per il Municipio: ore erogate per scuola, tariffa {{ ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') }}€, IVA {{ (app_config.iva_percentuale * 100)|round|int }}%, totali e riepilogo utenti</td>
                 </tr>
                 <tr>
                     <td><strong>Monitoraggio Dipartimentale</strong></td>
-                    <td>Report aggregato per livello scolastico (Infanzia Capitolina/Statale/Paritaria, Primaria/Secondaria Statale/Paritaria) con tariffa 25,27€ (IVA inclusa)</td>
+                    <td>Report aggregato per livello scolastico (Infanzia Capitolina/Statale/Paritaria, Primaria/Secondaria Statale/Paritaria) con tariffa {{ ('%.2f' % (app_config.tariffa_oraria * (1 + app_config.iva_percentuale)))|replace('.', ',') }}€ (IVA inclusa)</td>
                 </tr>
                 <tr>
                     <td><strong>Report Annuale</strong></td>
@@ -310,8 +310,12 @@
             </thead>
             <tbody>
                 <tr>
-                    <td><strong>Media -11%</strong></td>
-                    <td>Ore richieste = Media mensile ridotta dell'11% (tasso assenza)</td>
+                    {% set pct_assenza = (app_config.tasso_assenza * 100)|round|int %}
+                    {% set pct_iva = (app_config.iva_percentuale * 100)|round|int %}
+                    {% set tariffa = ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') %}
+                    {% set tariffa_iva = ('%.2f' % (app_config.tariffa_oraria * (1 + app_config.iva_percentuale)))|replace('.', ',') %}
+                    <td><strong>Media -{{ pct_assenza }}%</strong></td>
+                    <td>Ore richieste = Media mensile ridotta del {{ pct_assenza }}% (tasso assenza)</td>
                 </tr>
                 <tr>
                     <td><strong>Ore Lavorate (100')</strong></td>
@@ -319,15 +323,15 @@
                 </tr>
                 <tr>
                     <td><strong>Imponibile</strong></td>
-                    <td>Ore (100') × 24,07 EUR (tariffa senza IVA)</td>
+                    <td>Ore (100') × {{ tariffa }} EUR (tariffa senza IVA)</td>
                 </tr>
                 <tr>
                     <td><strong>Totale</strong></td>
-                    <td>Imponibile + IVA 5% = Ore × 25,27 EUR</td>
+                    <td>Imponibile + IVA {{ pct_iva }}% = Ore × {{ tariffa_iva }} EUR</td>
                 </tr>
                 <tr>
                     <td><strong>Credito/Debito</strong></td>
-                    <td>Media -11% - Ore lavorate (positivo = credito, negativo = debito)</td>
+                    <td>Media -{{ pct_assenza }}% - Ore lavorate (positivo = credito, negativo = debito)</td>
                 </tr>
             </tbody>
         </table>
@@ -439,7 +443,31 @@ function getReportParams() {
         params += `&commessa=${encodeURIComponent(commessa)}`;
     }
 
-    return { mese, anno, params };
+    // Filtri avanzati: valgono per tutti i download mensili e per l'anteprima
+    // (prima erano una UI collegata a niente)
+    const filtri = {
+        scuola: document.getElementById('report-scuola')?.value || '',
+        search: (document.getElementById('report-search-utente')?.value || '').trim(),
+        ore: document.getElementById('report-filtro-ore')?.value || ''
+    };
+    if (filtri.scuola) params += `&scuola=${encodeURIComponent(filtri.scuola)}`;
+    if (filtri.search) params += `&search=${encodeURIComponent(filtri.search)}`;
+    if (filtri.ore) params += `&ore=${encodeURIComponent(filtri.ore)}`;
+
+    return { mese, anno, params, filtri };
+}
+
+function applicaFiltriAnteprima(dati, f) {
+    let righe = dati || [];
+    if (f.scuola) righe = righe.filter(d => (d.scuola || '') === f.scuola);
+    if (f.search) {
+        const q = f.search.toLowerCase();
+        righe = righe.filter(d => `${d.nome || ''} ${d.cognome || ''} ${d.scuola || ''}`.toLowerCase().includes(q));
+    }
+    if (f.ore === 'zero') righe = righe.filter(d => !(d.ore_lavorate_60 || 0));
+    else if (f.ore === 'sotto') righe = righe.filter(d => (d.ore_lavorate_60 || 0) < (d.media_con_assenza_60 || 0));
+    else if (f.ore === 'sopra') righe = righe.filter(d => (d.ore_lavorate_60 || 0) > (d.media_con_assenza_60 || 0));
+    return righe;
 }
 
 function downloadExcel() {
@@ -516,12 +544,14 @@ async function mostraAnteprima() {
         if (commessa) url += `?commessa=${encodeURIComponent(commessa)}`;
 
         const data = await apiCall(url);
+        const righe = applicaFiltriAnteprima(data.dati, p.filtri);
+        const filtrata = righe.length !== data.dati.length;
 
         let html = '<table class="table" style="font-size: 0.8rem;"><thead><tr>';
         html += '<th>Utente</th><th>Scuola</th><th>Monte Ore</th><th>Ore (60\')</th><th>Imponibile</th><th>Totale</th>';
         html += '</tr></thead><tbody>';
 
-        data.dati.slice(0, 20).forEach(d => {
+        righe.slice(0, 20).forEach(d => {
             html += `<tr>
                 <td>${escapeHtml(d.nome)} ${escapeHtml(d.cognome || '')}</td>
                 <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml((d.scuola || '').substring(0, 30))}</td>
@@ -532,16 +562,22 @@ async function mostraAnteprima() {
             </tr>`;
         });
 
-        if (data.dati.length > 20) {
-            html += `<tr><td colspan="6" class="text-center text-muted">... e altri ${data.dati.length - 20} utenti</td></tr>`;
+        if (righe.length > 20) {
+            html += `<tr><td colspan="6" class="text-center text-muted">... e altri ${righe.length - 20} utenti</td></tr>`;
+        }
+        if (righe.length === 0) {
+            html += '<tr><td colspan="6" class="text-center text-muted">Nessun utente corrisponde ai filtri</td></tr>';
         }
 
         html += '</tbody></table>';
 
+        // Totali: quelli ufficiali del server se non ci sono filtri, altrimenti sulle righe filtrate
+        const totUtenti = filtrata ? righe.length : data.totale_generale.num_utenti;
+        const totOre = filtrata ? righe.reduce((s, d) => s + (d.ore_lavorate_60 || 0), 0) : (data.totale_generale.ore_lavorate_60 || 0);
+        const totEuro = filtrata ? righe.reduce((s, d) => s + (d.totale_100 || 0), 0) : (data.totale_generale.totale_100 || 0);
         html += `<div style="margin-top: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
-            <strong>Totali:</strong> ${data.totale_generale.num_utenti} utenti,
-            ${data.totale_generale.ore_lavorate_60?.toFixed(2) || 0} ore,
-            ${formatCurrency(data.totale_generale.totale_100 || 0)}
+            <strong>Totali:</strong> ${totUtenti} utenti, ${totOre.toFixed(2)} ore, ${formatCurrency(totEuro)}
+            ${filtrata ? `<span class="text-muted">(filtrati da ${data.dati.length} utenti)</span>` : ''}
         </div>`;
 
         previewContent.innerHTML = html;

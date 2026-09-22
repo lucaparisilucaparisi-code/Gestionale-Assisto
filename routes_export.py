@@ -108,6 +108,28 @@ def get_liste_attesa_ordinate(dati, anno_report, mese_report):
     return risultato
 
 
+def _filtra_dati_richiesta(dati):
+    """Applica ai dati mensili i filtri avanzati della pagina Report (e di
+    "Esporta filtrati" in Rendicontazione) passati in query string:
+    scuola (nome esatto), search (nome, cognome o scuola) e ore
+    ('zero' = senza ore, 'sotto' / 'sopra' rispetto alle previste)."""
+    scuola = (request.args.get('scuola') or '').strip()
+    search = (request.args.get('search') or '').strip().lower()
+    ore = (request.args.get('ore') or '').strip()
+    if scuola:
+        dati = [d for d in dati if (d.get('scuola') or '') == scuola]
+    if search:
+        dati = [d for d in dati
+                if search in f"{d.get('nome') or ''} {d.get('cognome') or ''} {d.get('scuola') or ''}".lower()]
+    if ore == 'zero':
+        dati = [d for d in dati if not (d.get('ore_lavorate_60') or 0)]
+    elif ore == 'sotto':
+        dati = [d for d in dati if (d.get('ore_lavorate_60') or 0) < (d.get('media_con_assenza_60') or 0)]
+    elif ore == 'sopra':
+        dati = [d for d in dati if (d.get('ore_lavorate_60') or 0) > (d.get('media_con_assenza_60') or 0)]
+    return dati
+
+
 def _utenti_con_incremento(dati, monte_ore_settembre):
     """Utenti che nell'anno scolastico corrente hanno ricevuto un AUMENTO del
     monte ore: nel mese hanno piu' ore rispetto all'INIZIO dell'anno scolastico
@@ -415,17 +437,8 @@ def api_export_excel(anno, mese):
     """Esporta rendicontazione in Excel - Versione Premium"""
     commessa = request.args.get('commessa')
     privacy = request.args.get('privacy', 'false').lower() == 'true'
-    # Filtri della pagina Rendicontazione ("Esporta filtrati"): scuola e testo
-    # cercato. Prima venivano ignorati e il file "filtrato" conteneva tutti.
-    scuola = (request.args.get('scuola') or '').strip()
-    search = (request.args.get('search') or '').strip().lower()
-
-    dati = db.get_rendicontazione_completa(anno, mese, commessa)
-    if scuola:
-        dati = [d for d in dati if (d.get('scuola') or '') == scuola]
-    if search:
-        dati = [d for d in dati
-                if search in f"{d.get('nome') or ''} {d.get('cognome') or ''} {d.get('scuola') or ''}".lower()]
+    # Filtri avanzati (Report / "Esporta filtrati"): prima venivano ignorati
+    dati = _filtra_dati_richiesta(db.get_rendicontazione_completa(anno, mese, commessa))
     totali_scuola = db.get_totali_per_scuola(anno, mese, commessa, dati=dati)
 
     # Calcola totali ore
@@ -1580,8 +1593,8 @@ def api_export_municipale(anno, mese):
     # Nomi puntati (privacy): stessa opzione del Report Completo
     privacy = request.args.get('privacy', 'false').lower() == 'true'
 
-    dati = db.get_rendicontazione_completa(anno, mese, commessa)
-    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
+    dati = _filtra_dati_richiesta(db.get_rendicontazione_completa(anno, mese, commessa))
+    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa, dati=dati)
 
     # Costanti
     TARIFFA = config.TARIFFA_ORARIA
@@ -1902,7 +1915,7 @@ def api_export_dipartimentale(anno, mese):
     """Esporta Monitoraggio Dipartimentale - Report per livello scolastico"""
     commessa = request.args.get('commessa')
 
-    dati = db.get_rendicontazione_completa(anno, mese, commessa)
+    dati = _filtra_dati_richiesta(db.get_rendicontazione_completa(anno, mese, commessa))
 
     # Costanti (stesse del riepilogo municipale per coerenza)
     TARIFFA = config.TARIFFA_ORARIA
@@ -2064,8 +2077,8 @@ def api_export_word(anno, mese):
     # Nomi puntati (privacy): stessa opzione del Report Completo
     privacy = request.args.get('privacy', 'false').lower() == 'true'
 
-    dati = db.get_rendicontazione_completa(anno, mese, commessa)
-    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
+    dati = _filtra_dati_richiesta(db.get_rendicontazione_completa(anno, mese, commessa))
+    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa, dati=dati)
 
     # Costanti
     TARIFFA = config.TARIFFA_ORARIA

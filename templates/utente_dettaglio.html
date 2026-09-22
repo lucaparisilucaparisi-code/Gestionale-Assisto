@@ -616,12 +616,14 @@ async function salvaAssegnazione() {
     }
 }
 
-async function rimuoviAssegnazione(id) {
-    if (!confirm('Rimuovere questa assegnazione?')) return;
-    try {
-        await apiCall(`/api/assegnazioni/${id}`, { method: 'DELETE' });
-        loadAssegnazioni();
-    } catch (e) { showToast('Errore nella rimozione', 'error'); }
+function rimuoviAssegnazione(id) {
+    showConfirmDialog('Rimuovi assegnazione', 'Rimuovere questa assegnazione dell\'operatore?', async () => {
+        try {
+            await apiCall(`/api/assegnazioni/${id}`, { method: 'DELETE' });
+            showToast('Assegnazione rimossa', 'success');
+            loadAssegnazioni();
+        } catch (e) { showToast('Errore nella rimozione', 'error'); }
+    }, { type: 'danger', confirmText: 'Rimuovi' });
 }
 
 async function loadVariazioniBadge() {
@@ -913,20 +915,14 @@ async function uploadDocumento() {
     formData.append('data_scadenza', document.getElementById('doc-scadenza').value);
 
     try {
-        const response = await fetch(`/api/utente/${utenteId}/documenti`, {
-            method: 'POST',
-            body: formData
-        });
-        const data = await response.json();
-        if (data.success) {
-            showToast('Documento caricato');
-            closeModal('modal-documento');
-            loadUtenteDettaglio();
-        } else {
-            showToast(data.error, 'error');
-        }
+        const response = await fetch(`/api/utente/${utenteId}/documenti`, { method: 'POST', body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) throw new Error(data.error || 'caricamento non riuscito');
+        showToast('Documento caricato', 'success');
+        closeModal('modal-documento');
+        loadUtenteDettaglio();
     } catch (error) {
-        showToast('Errore upload', 'error');
+        showToast('Errore: ' + error.message, 'error');
     }
 }
 
@@ -934,18 +930,17 @@ function downloadDocumento(id) {
     window.open(`/api/documento/${id}`, '_blank');
 }
 
-async function deleteDocumento(id) {
-    if (!confirm('Eliminare questo documento?')) return;
-    try {
-        const response = await fetch(`/api/documento/${id}`, { method: 'DELETE' });
-        const data = await response.json();
-        if (data.success) {
-            showToast('Documento eliminato');
+function deleteDocumento(id) {
+    showConfirmDialog('Elimina documento', 'Eliminare questo documento? Il file verra\' rimosso.', async () => {
+        try {
+            const data = await apiCall(`/api/documento/${id}`, { method: 'DELETE' });
+            if (data && data.success === false) throw new Error(data.error || 'eliminazione non riuscita');
+            showToast('Documento eliminato', 'success');
             loadUtenteDettaglio();
+        } catch (error) {
+            showToast('Errore: ' + error.message, 'error');
         }
-    } catch (error) {
-        showToast('Errore eliminazione', 'error');
-    }
+    }, { type: 'danger', confirmText: 'Elimina' });
 }
 
 async function aggiungiNota() {
@@ -956,36 +951,34 @@ async function aggiungiNota() {
     }
 
     try {
-        const response = await fetch(`/api/utente/${utenteId}/note`, {
+        const data = await apiCall(`/api/utente/${utenteId}/note`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 contenuto: contenuto,
                 tipo: document.getElementById('nota-tipo').value,
                 priorita: document.getElementById('nota-priorita').value
             })
         });
-        const data = await response.json();
-        if (data.success) {
-            showToast('Nota aggiunta');
-            closeModal('modal-nota');
-            document.getElementById('nota-contenuto').value = '';
-            loadUtenteDettaglio();
-        }
+        if (data && data.success === false) throw new Error(data.error || 'salvataggio non riuscito');
+        showToast('Nota aggiunta', 'success');
+        closeModal('modal-nota');
+        document.getElementById('nota-contenuto').value = '';
+        loadUtenteDettaglio();
     } catch (error) {
-        showToast('Errore', 'error');
+        showToast('Errore: ' + error.message, 'error');
     }
 }
 
-async function deleteNota(id) {
-    if (!confirm('Eliminare questa nota?')) return;
-    try {
-        await fetch(`/api/nota/${id}`, { method: 'DELETE' });
-        showToast('Nota eliminata');
-        loadUtenteDettaglio();
-    } catch (error) {
-        showToast('Errore', 'error');
-    }
+function deleteNota(id) {
+    showConfirmDialog('Elimina nota', 'Eliminare questa nota?', async () => {
+        try {
+            await apiCall(`/api/nota/${id}`, { method: 'DELETE' });
+            showToast('Nota eliminata', 'success');
+            loadUtenteDettaglio();
+        } catch (error) {
+            showToast('Errore: ' + error.message, 'error');
+        }
+    }, { type: 'danger', confirmText: 'Elimina' });
 }
 
 async function registraAssenza() {
@@ -996,9 +989,8 @@ async function registraAssenza() {
     }
 
     try {
-        const response = await fetch(`/api/utente/${utenteId}/assenze`, {
+        const data = await apiCall(`/api/utente/${utenteId}/assenze`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 data_inizio: dataInizio,
                 data_fine: document.getElementById('assenza-fine').value || null,
@@ -1007,45 +999,41 @@ async function registraAssenza() {
                 note: document.getElementById('assenza-note').value
             })
         });
-        const data = await response.json();
-        if (data.success) {
-            showToast('Assenza registrata');
-            closeModal('modal-assenza');
-            loadUtenteDettaglio();
-        }
+        if (data && data.success === false) throw new Error(data.error || 'salvataggio non riuscito');
+        showToast('Assenza registrata', 'success');
+        closeModal('modal-assenza');
+        loadUtenteDettaglio();
     } catch (error) {
-        showToast('Errore', 'error');
+        showToast('Errore: ' + error.message, 'error');
     }
 }
 
-async function deleteAssenza(id) {
-    if (!confirm('Eliminare questa assenza?')) return;
-    try {
-        await fetch(`/api/assenza/${id}`, { method: 'DELETE' });
-        showToast('Assenza eliminata');
-        loadUtenteDettaglio();
-    } catch (error) {
-        showToast('Errore', 'error');
-    }
+function deleteAssenza(id) {
+    showConfirmDialog('Elimina assenza', 'Eliminare questa assenza?', async () => {
+        try {
+            await apiCall(`/api/assenza/${id}`, { method: 'DELETE' });
+            showToast('Assenza eliminata', 'success');
+            loadUtenteDettaglio();
+        } catch (error) {
+            showToast('Errore: ' + error.message, 'error');
+        }
+    }, { type: 'danger', confirmText: 'Elimina' });
 }
 
 async function salvaBudget() {
     try {
-        const response = await fetch(`/api/utente/${utenteId}/budget`, {
+        const data = await apiCall(`/api/utente/${utenteId}/budget`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 budget_mensile: parseFloat(document.getElementById('budget-mensile').value) || null,
                 budget_annuale: parseFloat(document.getElementById('budget-annuale').value) || null
             })
         });
-        const data = await response.json();
-        if (data.success) {
-            showToast('Budget salvato');
-            loadUtenteDettaglio();
-        }
+        if (data && data.success === false) throw new Error(data.error || 'salvataggio non riuscito');
+        showToast('Budget salvato', 'success');
+        loadUtenteDettaglio();
     } catch (error) {
-        showToast('Errore', 'error');
+        showToast('Errore: ' + error.message, 'error');
     }
 }
 

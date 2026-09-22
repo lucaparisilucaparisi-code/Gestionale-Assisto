@@ -361,7 +361,7 @@
                     </svg>
                 </div>
                 <span class="report-quick-title">Municipale</span>
-                <span class="report-quick-desc">Tariffa 24,07</span>
+                <span class="report-quick-desc">Tariffa {{ ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') }}</span>
             </a>
             <a href="/report" class="report-quick-card dipartimentale" onclick="event.preventDefault(); quickExportDipartimentale();">
                 <div class="report-quick-icon">
@@ -398,21 +398,22 @@
 <details class="section">
     <summary>Parametri di calcolo <span class="text-xs text-muted" id="last-update" style="font-weight:400; margin-left:auto;">Ultimo aggiornamento: --</span></summary>
     <div class="kpi-grid" style="margin-top: var(--sp-3);">
+        {# Valori da config.py (unica fonte), non scritti a mano #}
         <div class="kpi-card">
             <div class="kpi-label">Costo Orario</div>
-            <div class="kpi-value">24,07 €</div>
+            <div class="kpi-value">{{ ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') }} €</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-label">IVA</div>
-            <div class="kpi-value">5%</div>
+            <div class="kpi-value">{{ (app_config.iva_percentuale * 100)|round|int }}%</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-label">Tasso Assenza</div>
-            <div class="kpi-value">11%</div>
+            <div class="kpi-value">{{ (app_config.tasso_assenza * 100)|round|int }}%</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-label">Coeff. Giornaliero</div>
-            <div class="kpi-value">0,2</div>
+            <div class="kpi-value">{{ ('%g' % app_config.coefficiente_giornaliero)|replace('.', ',') }}</div>
         </div>
     </div>
 </details>

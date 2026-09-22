@@ -10,7 +10,7 @@ Nota tecnica per chi sviluppa. Per l'uso e l'installazione vedi il `README.md`.
 | `database.py` | Tutto l'accesso ai dati SQLite: schema/migrazioni, CRUD, calcoli di dominio. |
 | `routes_export.py` | Blueprint export (Excel, PDF, Word). |
 | `routes_backup.py` | Blueprint backup/ripristino (`/api/backup...`). |
-| `routes_migrazione.py` | Blueprint migrazione dati JSON e audit log (`/api/migrazione`, `/api/audit`). |
+| `routes_migrazione.py` | Blueprint migrazione dati JSON e audit log (`/api/migrazione`, `/api/audit`). Formato v3.0: tutte le tabelle di dominio (`TABELLE_DOMINIO`), import merge/skip/replace con rimappatura delle FK (`TABELLE_MERGE`). |
 | `routes_report_locale.py` | Blueprint reportistica DD, recuperi, override (`/reportistica-locale`, `/api/dd`, `/api/recuperi`, override). |
 | `validators.py` | Validazione input condivisa (`validate_string/number/integer`). |
 | `config.py` | Costanti economiche, parametri, logging e l'helper `calcola_fatturazione`. |

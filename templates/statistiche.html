@@ -64,7 +64,7 @@
                 </svg>
                 Ore Erogate vs Previste
             </h2>
-            <p class="text-muted" style="font-size: 0.75rem; margin: 0;">Previste = Media -11%</p>
+            <p class="text-muted" style="font-size: 0.75rem; margin: 0;">Previste = Media -{{ (app_config.tasso_assenza * 100)|round|int }}%</p>
         </div>
         <div class="card-body">
             <div class="chart-container" style="height: 280px;">
@@ -461,7 +461,7 @@ async function loadConfrontoAnnualeChart(annoScolastico) {
 
             ChartManager.createBarChart('chart-confronto', labels, [
                 { label: 'Ore Erogate', data: oreErogate, backgroundColor: 'rgba(10, 132, 255, 0.8)' },
-                { label: 'Ore Previste (-11%)', data: orePreviste, backgroundColor: 'rgba(191, 90, 242, 0.5)' }
+                { label: `Ore Previste (-${Math.round(((window.APP_CONFIG || {}).tasso_assenza ?? 0.11) * 100)}%)`, data: orePreviste, backgroundColor: 'rgba(191, 90, 242, 0.5)' }
             ]);
         }
     } catch (error) {
@@ -469,7 +469,7 @@ async function loadConfrontoAnnualeChart(annoScolastico) {
         const mesi = ['Set', 'Ott', 'Nov', 'Dic', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu'];
         ChartManager.createBarChart('chart-confronto', mesi, [
             { label: 'Ore Erogate', data: Array(10).fill(0) },
-            { label: 'Ore Previste (-11%)', data: Array(10).fill(0) }
+            { label: `Ore Previste (-${Math.round(((window.APP_CONFIG || {}).tasso_assenza ?? 0.11) * 100)}%)`, data: Array(10).fill(0) }
         ]);
     }
 }

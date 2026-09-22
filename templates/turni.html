@@ -230,10 +230,16 @@ async function salvaTurno() {
     } catch (e) { showToast('Errore: ' + (e.message || ''), 'error'); }
 }
 
-async function eliminaTurno(id) {
-    if (!confirm('Eliminare questo turno?')) return;
-    await apiCall(`/api/turni/${id}`, { method: 'DELETE' });
-    caricaSettimana();
+function eliminaTurno(id) {
+    showConfirmDialog('Elimina turno', 'Eliminare questo turno ricorrente? Le sostituzioni collegate verranno rimosse.', async () => {
+        try {
+            await apiCall(`/api/turni/${id}`, { method: 'DELETE' });
+            showToast('Turno eliminato', 'success');
+            caricaSettimana();
+        } catch (e) {
+            showToast('Errore: ' + (e.message || 'eliminazione non riuscita'), 'error');
+        }
+    }, { type: 'danger', confirmText: 'Elimina' });
 }
 
 async function caricaGiorno() {

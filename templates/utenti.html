@@ -602,14 +602,20 @@ function apriElimina(id) {
     var u = utentiMap[id];
     if (!u) { showToast('Utente non trovato', 'error'); return; }
 
-    if (confirm('Eliminare utente ' + (u.nome || '') + ' ' + (u.cognome || '') + '?')) {
-        apiCall('/api/utenti/' + u.id, { method: 'DELETE' }).then(function() {
-            showToast('Utente eliminato', 'success');
-            loadUtenti();
-        }).catch(function(err) {
-            showToast('Errore: ' + err.message, 'error');
-        });
-    }
+    showConfirmDialog(
+        'Elimina utente',
+        'Eliminare ' + ((u.nome || '') + ' ' + (u.cognome || '')).trim() + ' con tutte le sue ore, note e documenti? '
+        + 'Se ha solo lasciato il servizio, preferisci "Archivia": lo storico resta. (Puoi comunque annullare con Ctrl+Z.)',
+        function() {
+            apiCall('/api/utenti/' + u.id, { method: 'DELETE' }).then(function() {
+                showToast('Utente eliminato (Ctrl+Z per annullare)', 'success');
+                loadUtenti();
+            }).catch(function(err) {
+                showToast('Errore: ' + err.message, 'error');
+            });
+        },
+        { type: 'danger', confirmText: 'Elimina' }
+    );
 }
 
 // === Nuovo Utente ===
@@ -625,15 +631,19 @@ function createUtente() {
         return;
     }
 
+    inviaNuovoUtente({
+        commessa: commessa,
+        scuola: scuola,
+        nome: nome,
+        cognome: cognome,
+        monte_ore: parseFloat(monteOre)
+    });
+}
+
+function inviaNuovoUtente(payload) {
     apiCall('/api/utenti', {
         method: 'POST',
-        body: JSON.stringify({
-            commessa: commessa,
-            scuola: scuola,
-            nome: nome,
-            cognome: cognome,
-            monte_ore: parseFloat(monteOre)
-        })
+        body: JSON.stringify(payload)
     }).then(function() {
         showToast('Utente aggiunto con successo', 'success');
         closeModal('modal-nuovo-utente');
@@ -645,6 +655,17 @@ function createUtente() {
         loadUtenti();
         loadScuole();
     }).catch(function(err) {
+        // Omonimo nella stessa scuola: prima veniva sovrascritto in silenzio.
+        // Ora si chiede se e' davvero una persona diversa.
+        if (err.code === 'UTENTE_DUPLICATO' && !payload.forza) {
+            showConfirmDialog(
+                'Utente gia\' presente',
+                err.message + ' Vuoi creare comunque un secondo utente con lo stesso nome (persona diversa)?',
+                function() { inviaNuovoUtente(Object.assign({}, payload, { forza: true })); },
+                { confirmText: 'Crea comunque', type: 'warning' }
+            );
+            return;
+        }
         showToast('Errore: ' + err.message, 'error');
     });
 }
@@ -982,16 +1003,16 @@ function addVariazioneMO() {
 }
 
 function deleteVariazioneMO(varId) {
-    if (!confirm('Eliminare questa variazione?')) return;
-
-    apiCall('/api/variazioni-monte-ore/' + varId, {
-        method: 'DELETE'
-    }).then(function() {
-        showToast('Variazione eliminata', 'success');
-        loadVariazioniMonteOre();
-    }).catch(function(err) {
-        showToast('Errore: ' + err.message, 'error');
-    });
+    showConfirmDialog('Elimina variazione', 'Eliminare questa variazione del monte ore? I mesi interessati torneranno al valore precedente.', function() {
+        apiCall('/api/variazioni-monte-ore/' + varId, {
+            method: 'DELETE'
+        }).then(function() {
+            showToast('Variazione eliminata', 'success');
+            loadVariazioniMonteOre();
+        }).catch(function(err) {
+            showToast('Errore: ' + err.message, 'error');
+        });
+    }, { type: 'danger', confirmText: 'Elimina' });
 }
 </script>
 {% endblock %}

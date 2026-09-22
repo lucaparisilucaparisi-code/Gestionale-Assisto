@@ -248,14 +248,30 @@ async function salva() {
     } catch (e) { showToast('Errore nel salvataggio', 'error'); }
 }
 
-async function toggleStato() {
+function toggleStato() {
+    const esegui = async (attiva) => {
+        try {
+            if (attiva) {
+                await apiCall(`/api/dipendenti/${DIP_ID}`, { method: 'PUT', body: JSON.stringify({ attivo: true }) });
+            } else {
+                await apiCall(`/api/dipendenti/${DIP_ID}`, { method: 'DELETE' });
+            }
+            showToast(attiva ? 'Dipendente riattivato' : 'Dipendente disattivato', 'success');
+            carica();
+        } catch (e) {
+            showToast('Errore: ' + (e.message || 'operazione non riuscita'), 'error');
+        }
+    };
     if (dip.attivo) {
-        if (!confirm('Disattivare questo dipendente?')) return;
-        await apiCall(`/api/dipendenti/${DIP_ID}`, { method: 'DELETE' });
+        showConfirmDialog(
+            'Disattiva dipendente',
+            'Disattivare questo dipendente? Non comparira\' piu\' tra gli operatori disponibili; i suoi dati restano e potrai riattivarlo da qui.',
+            () => esegui(false),
+            { confirmText: 'Disattiva', type: 'warning' }
+        );
     } else {
-        await apiCall(`/api/dipendenti/${DIP_ID}`, { method: 'PUT', body: JSON.stringify({ attivo: true }) });
+        esegui(true);
     }
-    carica();
 }
 </script>
 {% endblock %}

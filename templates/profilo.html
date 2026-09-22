@@ -239,16 +239,22 @@ async function loadCredentials() {
     }
 }
 
-async function deleteCredential(id, nome) {
-    if (!confirm(`Rimuovere l'impronta "${nome}"?`)) return;
-    try {
-        const res = await fetch(`/api/auth/webauthn/credentials/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error();
-        showToast('Impronta rimossa', 'success');
-        loadCredentials();
-    } catch (e) {
-        showToast('Errore nella rimozione', 'error');
-    }
+function deleteCredential(id, nome) {
+    showConfirmDialog(
+        'Rimuovi impronta',
+        `Rimuovere l'impronta "${nome}"? Potrai sempre accedere con username e password.`,
+        async () => {
+            try {
+                const res = await fetch(`/api/auth/webauthn/credentials/${id}`, { method: 'DELETE' });
+                if (!res.ok) throw new Error();
+                showToast('Impronta rimossa', 'success');
+                loadCredentials();
+            } catch (e) {
+                showToast('Errore nella rimozione', 'error');
+            }
+        },
+        { type: 'danger', confirmText: 'Rimuovi' }
+    );
 }
 
 // ==================== Registra nuova impronta ====================
@@ -257,9 +263,15 @@ document.getElementById('btn-register-webauthn').addEventListener('click', async
         showToast('Il tuo browser non supporta WebAuthn', 'error');
         return;
     }
-    const nome = prompt('Nome per questa impronta (es. "PC ufficio"):', 'PC principale');
-    if (!nome) return;
+    showConfirmDialog(
+        'Nuova impronta',
+        'Dai un nome a questa impronta (es. "PC ufficio") e conferma: si aprira\' Windows Hello.',
+        (testo) => registraImpronta((testo || '').trim() || 'PC principale'),
+        { confirmText: 'Continua', type: 'info', requireInput: true, inputPlaceholder: 'Nome impronta (es. PC ufficio)' }
+    );
+});
 
+async function registraImpronta(nome) {
     try {
         // Step 1: ottieni options dal server
         const optRes = await fetch('/api/auth/webauthn/register/begin', { method: 'POST' });
@@ -313,7 +325,7 @@ document.getElementById('btn-register-webauthn').addEventListener('click', async
         console.error(err);
         showToast(err.message || 'Registrazione fallita', 'error');
     }
-});
+}
 
 // ==================== Cambio password ====================
 document.getElementById('change-password-form').addEventListener('submit', async (e) => {
@@ -409,20 +421,34 @@ document.getElementById('btn-create-backup').addEventListener('click', async () 
     }
 });
 
-async function restoreBackup(nome) {
-    if (!confirm(`Ripristinare il backup "${nome}"?\n\nATTENZIONE: i dati attuali verranno sostituiti con quelli del backup. Prima del ripristino viene comunque creato un backup di sicurezza.`)) return;
-    try {
-        const res = await fetch('/api/backup/restore', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ backup: nome, confirm: 'CONFERMA' })
-        });
-        if (!res.ok) throw new Error();
-        showToast('Backup ripristinato. Ricarico la pagina…', 'success');
-        setTimeout(() => location.reload(), 1500);
-    } catch (e) {
-        showToast('Errore nel ripristino', 'error');
-    }
+function restoreBackup(nome) {
+    // L'azione piu' delicata dell'app: la parola di conferma la digita l'operatore
+    // (prima era scritta nel codice e il controllo del server era inutile)
+    showConfirmDialog(
+        `Ripristinare il backup "${nome}"?`,
+        'I dati attuali verranno sostituiti con quelli del backup. Prima del ripristino viene comunque ' +
+        'creato un backup di sicurezza dello stato attuale. Per procedere digita CONFERMA.',
+        async (testo) => {
+            const parola = (testo || '').trim().toUpperCase();
+            if (parola !== 'CONFERMA') {
+                showToast('Ripristino non eseguito: digita CONFERMA per procedere', 'warning');
+                return;
+            }
+            try {
+                const res = await fetch('/api/backup/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ backup: nome, confirm: parola })
+                });
+                if (!res.ok) throw new Error();
+                showToast('Backup ripristinato. Ricarico la pagina…', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } catch (e) {
+                showToast('Errore nel ripristino', 'error');
+            }
+        },
+        { type: 'danger', confirmText: 'Ripristina', requireInput: true, inputPlaceholder: 'Digita CONFERMA' }
+    );
 }
 
 // ==================== Logout ====================

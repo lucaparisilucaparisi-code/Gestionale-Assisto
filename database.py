@@ -810,13 +810,37 @@ def get_or_create_utente(scuola_id, nome, cognome, monte_ore):
             return utente['id']
 
         # Crea nuovo utente
-        nome_puntato = punteggia_nome(nome, cognome)
-        cursor.execute('''
-            INSERT INTO utenti (scuola_id, nome, cognome, nome_puntato, monte_ore_settimanale, data_inserimento)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (scuola_id, nome, cognome, nome_puntato, monte_ore, datetime.now().isoformat()))
+        return _inserisci_utente(cursor, scuola_id, nome, cognome, monte_ore)
 
-        return cursor.lastrowid
+
+def _inserisci_utente(cursor, scuola_id, nome, cognome, monte_ore):
+    nome_puntato = punteggia_nome(nome, cognome)
+    cursor.execute('''
+        INSERT INTO utenti (scuola_id, nome, cognome, nome_puntato, monte_ore_settimanale, data_inserimento)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (scuola_id, nome, cognome, nome_puntato, monte_ore, datetime.now().isoformat()))
+    return cursor.lastrowid
+
+
+def create_utente(scuola_id, nome, cognome, monte_ore):
+    """Crea SEMPRE un nuovo utente (anche omonimo): il controllo dei duplicati
+    e' a monte (trova_utente_omonimo), cosi' la scelta resta all'operatore."""
+    with get_db_context() as conn:
+        return _inserisci_utente(conn.cursor(), scuola_id, nome, cognome, monte_ore)
+
+
+def trova_utente_omonimo(scuola_id, nome, cognome):
+    """Utente (attivo o archiviato) con stesso nome e cognome nella stessa
+    scuola (senza distinguere le maiuscole), oppure None."""
+    with get_db_context() as conn:
+        row = conn.execute('''
+            SELECT id, nome, cognome, monte_ore_settimanale, attivo, lista_attesa
+            FROM utenti
+            WHERE scuola_id = ? AND nome = ? COLLATE NOCASE AND cognome = ? COLLATE NOCASE
+            ORDER BY attivo DESC, id
+        ''', (scuola_id, nome, cognome or '')).fetchone()
+        return dict(row) if row else None
+
 
 def get_all_utenti(commessa=None, scuola_id=None, include_inactive_period=True, page=None, limit=50,
                    attivo=True):

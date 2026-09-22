@@ -4171,3 +4171,12 @@ tr.search-match {
 .wizard-ok { color: var(--success); font-weight: 600; align-self: center; }
 .wizard-diff { color: var(--warning); font-weight: 600; }
 .wizard-riga-archivia td:not(:last-child) { opacity: 0.55; text-decoration: line-through; }
+
+/* ==================== MODIFICA IN CELLA (Reportistica DD) ==================== */
+.editable-cell:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.editable-cell.in-modifica { padding: 4px 6px; }
+.cella-input { width: 110px; padding: 4px 8px; font-size: inherit; text-align: right; }
+
+/* ==================== CALENDARIO: righe modificate non salvate ==================== */
+tr.riga-modificata td { background: rgba(255, 159, 10, 0.08); }
+tr.riga-modificata td:first-child { box-shadow: inset 3px 0 0 var(--warning); }

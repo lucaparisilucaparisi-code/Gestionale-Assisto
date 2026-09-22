@@ -66,7 +66,7 @@
         </div>
         <div class="info-item">
             <span class="info-label">Tasso Assenza</span>
-            <span class="info-value">11%</span>
+            <span class="info-value">{{ (app_config.tasso_assenza * 100) | round | int }}%</span>
         </div>
     </div>
     <div class="info-item" style="margin-left: auto;">
@@ -215,7 +215,7 @@
                 </div>
                 <div class="stat-content">
                     <div class="stat-value text-success" id="tot-totale">€ 0,00</div>
-                    <div class="stat-label">Totale con IVA 5%</div>
+                    <div class="stat-label">Totale con IVA {{ (app_config.iva_percentuale * 100) | round | int }}%</div>
                 </div>
             </div>
         </div>
@@ -298,6 +298,11 @@ async function loadCommesse() {
     }
 }
 
+// Parametri di calcolo da config.py (tariffa, IVA, tasso assenza, coefficiente):
+// niente numeri scritti a mano che restano vecchi al primo cambio di tariffa
+const CFG = window.APP_CONFIG || {};
+const PCT = v => Math.round((v || 0) * 100) + '%';
+
 async function loadData() {
     const annoSelect = document.getElementById('filter-anno');
     const meseSelect = document.getElementById('filter-mese');
@@ -372,11 +377,11 @@ async function loadData() {
             if (gInf !== undefined && gAltri !== undefined && gInf !== gAltri) {
                 // Mese con valori distinti (tipicamente giugno)
                 labelGiorni = `${gAltri} / ${gInf}`;
-                labelCoeff = `${(gAltri * 0.2).toFixed(1)} / ${(gInf * 0.2).toFixed(1)}`;
+                labelCoeff = `${(gAltri * CFG.coefficiente_giornaliero).toFixed(1)} / ${(gInf * CFG.coefficiente_giornaliero).toFixed(1)}`;
             } else {
                 const g = gInf !== undefined ? gInf : gAltri;
                 labelGiorni = g;
-                labelCoeff = (g * 0.2).toFixed(1);
+                labelCoeff = (g * CFG.coefficiente_giornaliero).toFixed(1);
             }
             document.getElementById('info-giorni').textContent = labelGiorni;
             document.getElementById('info-coefficiente').textContent = labelCoeff;
@@ -478,7 +483,7 @@ async function compilaConMedia() {
 
     showConfirmDialog(
         'Compila con Media',
-        `Vuoi compilare le ore di ${senzaOre} utenti senza ore con la loro media prevista (con assenza 11%)?`,
+        `Vuoi compilare le ore di ${senzaOre} utenti senza ore con la loro media prevista (con assenza ${PCT(CFG.tasso_assenza)})?`,
         async () => {
             const btn = document.getElementById('btn-compila-media');
             setButtonLoading(btn, true);
@@ -790,11 +795,11 @@ function renderTable(data) {
                     <th>A.C.</th>
                     <th>Monte Ore</th>
                     <th>Media Mens.</th>
-                    <th>Media -11%</th>
+                    <th>Media -${PCT(CFG.tasso_assenza)}</th>
                     <th style="width:100px">Ore (60')</th>
                     <th style="width:90px">Ore (100')</th>
                     <th>Imponibile</th>
-                    <th>IVA 5%</th>
+                    <th>IVA ${PCT(CFG.iva_percentuale)}</th>
                     <th>Totale</th>
                     <th style="width:70px">Pasti</th>
                     <th style="width:120px; min-width:120px">Cred/Deb</th>
@@ -895,6 +900,55 @@ function renderTable(data) {
             scheduleAutoSave();
         });
     });
+
+    // Navigazione da tastiera tipo foglio di calcolo (Invio / frecce = stessa
+    // colonna riga sotto/sopra, Tab passa da ore a pasti) e incolla di piu' righe
+    container.querySelectorAll('.table-input').forEach(input => {
+        input.addEventListener('keydown', gestisciTastiTabella);
+        input.addEventListener('paste', gestisciIncollaTabella);
+    });
+}
+
+function _inputAdiacente(input, delta) {
+    const selettore = input.classList.contains('ore-input') ? '.ore-input' : '.pasti-input';
+    const colonna = Array.from(document.querySelectorAll(`#table-container ${selettore}`))
+        .filter(i => !i.disabled && i.offsetParent !== null);   // solo righe visibili
+    const idx = colonna.indexOf(input);
+    return idx < 0 ? null : (colonna[idx + delta] || null);
+}
+
+function gestisciTastiTabella(e) {
+    let delta = 0;
+    if (e.key === 'Enter' || e.key === 'ArrowDown') delta = 1;
+    else if (e.key === 'ArrowUp') delta = -1;
+    else return;
+    e.preventDefault();
+    const prossimo = _inputAdiacente(e.target, delta);
+    if (prossimo) {
+        prossimo.focus();
+        prossimo.select();
+    } else if (e.key === 'Enter') {
+        e.target.blur();   // ultima riga: chiude la modifica (scatta il salvataggio)
+    }
+}
+
+function gestisciIncollaTabella(e) {
+    const testo = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+    const valori = testo.split(/\r?\n/).map(r => r.split('\t')[0].trim());
+    while (valori.length && valori[valori.length - 1] === '') valori.pop();
+    if (valori.length <= 1) return;   // un solo valore: incolla normale
+    e.preventDefault();
+    let input = e.target;
+    let n = 0;
+    for (const valore of valori) {
+        if (!input) break;
+        input.value = valore;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input = _inputAdiacente(input, 1);
+        n++;
+    }
+    showToast(`Incollati ${n} valori in colonna`, 'info');
 }
 
 /**
@@ -1106,8 +1160,8 @@ function handleOreChange(input) {
 
     // Ricalcola
     const ore100 = ore60;
-    const imponibile = ore100 * 24.07;
-    const iva = imponibile * 0.05;
+    const imponibile = ore100 * CFG.tariffa_oraria;
+    const iva = imponibile * CFG.iva_percentuale;
     const totale = imponibile + iva;
     const creditoDebito = utente.media_con_assenza_60 - ore60;
 
@@ -1204,7 +1258,7 @@ function recalculateTotals() {
         const ore100 = ore60;
         totOre60 += ore60;
         totOre100 += ore100;
-        totImponibile += ore100 * 24.07;
+        totImponibile += ore100 * CFG.tariffa_oraria;
     });
 
     document.querySelectorAll('.pasti-input').forEach(input => {
@@ -1214,8 +1268,8 @@ function recalculateTotals() {
     // Ore 60' in formato sessagesimale (HH:MM)
     document.getElementById('tot-ore-60').textContent = formatOreSessionali(totOre60);
     document.getElementById('tot-ore-100').textContent = formatNumber(totOre100);
-    // Totale con IVA 5%
-    const totaleConIva = totImponibile * 1.05;
+    // Totale con IVA (percentuale da config)
+    const totaleConIva = totImponibile * (1 + CFG.iva_percentuale);
     document.getElementById('tot-totale').textContent = formatCurrency(totaleConIva);
 }
 

@@ -394,6 +394,13 @@
                         <span><strong>Solo nuovi</strong> - Non modificare dati esistenti</span>
                     </label>
                 </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="flex items-center gap-2 pointer">
+                        <input type="radio" name="migrazione_mode" value="replace">
+                        <span><strong>Sostituisci tutto</strong> - Svuota questo gestionale e ricarica ogni dato dal file
+                            (per spostarsi su un altro PC; backup automatico prima)</span>
+                    </label>
+                </div>
             </div>
             <div class="mt-4">
                 <button id="btn-conferma-migrazione" class="btn btn-primary">
@@ -1072,23 +1079,34 @@ async function importRendicontazione() {
 
 // ==================== ANNULLA IMPORT ====================
 
-async function annullaImport(backupName) {
-    if (!confirm('Annullare questo import?\n\nI dati torneranno esattamente allo stato precedente ' +
-                 'all\'import (viene ripristinato il backup creato automaticamente prima di importare).')) {
-        return;
-    }
-    try {
-        const res = await fetch('/api/backup/restore', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ backup: backupName, confirm: 'CONFERMA' })
-        });
-        if (!res.ok) throw new Error();
-        showToast('Import annullato: dati ripristinati. Ricarico la pagina…', 'success');
-        setTimeout(() => location.reload(), 1500);
-    } catch (e) {
-        showToast('Errore nell\'annullamento dell\'import', 'error');
-    }
+function annullaImport(backupName) {
+    // La parola di conferma la digita l'operatore: prima era scritta nel codice
+    // e il controllo del server non serviva a nulla
+    showConfirmDialog(
+        'Annulla import',
+        'I dati torneranno esattamente allo stato precedente all\'import (viene ripristinato il backup ' +
+        'creato automaticamente prima di importare). Per procedere digita CONFERMA.',
+        async (testo) => {
+            const parola = (testo || '').trim().toUpperCase();
+            if (parola !== 'CONFERMA') {
+                showToast('Annullamento non eseguito: digita CONFERMA per procedere', 'warning');
+                return;
+            }
+            try {
+                const res = await fetch('/api/backup/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ backup: backupName, confirm: parola })
+                });
+                if (!res.ok) throw new Error();
+                showToast('Import annullato: dati ripristinati. Ricarico la pagina…', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } catch (e) {
+                showToast('Errore nell\'annullamento dell\'import', 'error');
+            }
+        },
+        { type: 'danger', confirmText: 'Ripristina', requireInput: true, inputPlaceholder: 'Digita CONFERMA' }
+    );
 }
 
 // ==================== MIGRAZIONE DATI ====================
@@ -1178,6 +1196,9 @@ async function handleMigrazioneFile(e) {
                 <strong>File:</strong> ${escapeHtml(file.name)}<br>
                 <strong>Versione:</strong> ${data.versione || 'N/D'}<br>
                 <strong>Data esportazione:</strong> ${data.data_esportazione ? new Date(data.data_esportazione).toLocaleString('it-IT') : 'N/D'}<br>
+                <strong>Contenuto:</strong> ${data.completo
+                    ? `completo (${Object.keys(data.tabelle || {}).length} tabelle: anche variazioni monte ore, personale, turni, note, DD…)`
+                    : 'formato precedente: solo anagrafica, ore e calendario (la modalità "Sostituisci tutto" non è disponibile)'}<br>
                 <div class="mt-3 flex gap-4 flex-wrap">
                     <span class="badge badge-primary">${data.riepilogo.commesse} Commesse</span>
                     <span class="badge badge-primary">${data.riepilogo.scuole} Scuole</span>
@@ -1202,14 +1223,45 @@ async function handleMigrazioneFile(e) {
     }
 }
 
-async function confermaMigrazione() {
+function confermaMigrazione() {
     if (!migrazioneFile) {
         showToast('Nessun file selezionato', 'error');
         return;
     }
-
     const mode = document.querySelector('input[name="migrazione_mode"]:checked')?.value || 'merge';
 
+    if (mode === 'replace') {
+        showConfirmDialog(
+            'Sostituire TUTTI i dati?',
+            'Tutti i dati di questo gestionale (utenti, ore, personale, calendario, impostazioni) verranno ' +
+            'cancellati e sostituiti con quelli del file. Prima viene creato un backup automatico. ' +
+            'Per procedere digita SOSTITUISCI.',
+            (testo) => {
+                const parola = (testo || '').trim().toUpperCase();
+                if (parola !== 'SOSTITUISCI') {
+                    showToast('Sostituzione non eseguita: digita SOSTITUISCI per procedere', 'warning');
+                    return;
+                }
+                eseguiMigrazione(mode, parola);
+            },
+            { type: 'danger', confirmText: 'Sostituisci', requireInput: true, inputPlaceholder: 'Digita SOSTITUISCI' }
+        );
+        return;
+    }
+    eseguiMigrazione(mode, '');
+}
+
+function _righeEsitoMigrazione(stats) {
+    return Object.entries(stats || {}).map(([tabella, s]) => {
+        if (typeof s === 'number') return `${tabella}: ${s}`;
+        const imp = s.importati ?? s.importate ?? 0;
+        const agg = s.aggiornati ?? s.aggiornate ?? 0;
+        const salt = s.saltati ?? 0;
+        return `${tabella}: ${imp} nuovi, ${agg} aggiornati${salt ? `, ${salt} saltati` : ''}`;
+    });
+}
+
+async function eseguiMigrazione(mode, conferma) {
     const btn = document.getElementById('btn-conferma-migrazione');
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner" style="width: 16px; height: 16px;"></div> Importazione...';
@@ -1217,6 +1269,7 @@ async function confermaMigrazione() {
     const formData = new FormData();
     formData.append('file', migrazioneFile);
     formData.append('mode', mode);
+    if (conferma) formData.append('confirm', conferma);
 
     try {
         const response = await fetch('/api/migrazione/importa', {
@@ -1225,39 +1278,32 @@ async function confermaMigrazione() {
         });
         const data = await response.json();
 
-        if (data.error) throw new Error(data.error);
+        if (!response.ok || data.error) throw new Error(data.error || 'Importazione non riuscita');
 
         const resultDiv = document.getElementById('migrazione-result');
+        const titolo = data.mode === 'replace' ? 'Dati sostituiti!' : 'Migrazione completata!';
         resultDiv.innerHTML = `
             <div class="alert alert-success">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                    <strong>Migrazione completata!</strong><br>
-                    <div class="mt-2">
-                        <strong>Importati:</strong>
-                        ${data.stats.commesse.importate} commesse,
-                        ${data.stats.scuole.importate} scuole,
-                        ${data.stats.utenti.importati} utenti,
-                        ${data.stats.rendicontazione.importate} rendicontazioni<br>
-                        <strong>Aggiornati:</strong>
-                        ${data.stats.commesse.aggiornate} commesse,
-                        ${data.stats.scuole.aggiornate} scuole,
-                        ${data.stats.utenti.aggiornati} utenti,
-                        ${data.stats.rendicontazione.aggiornate} rendicontazioni
-                    </div>
+                    <strong>${titolo}</strong> ${data.totale_importati} importati, ${data.totale_aggiornati} aggiornati.
+                    ${data.backup ? `<br>Backup dei dati precedenti: <code>${escapeHtml(data.backup)}</code>` : ''}
+                    <div class="mt-2" style="font-size: 0.85rem;">${_righeEsitoMigrazione(data.stats).map(escapeHtml).join('<br>')}</div>
+                    ${data.mode === 'replace' ? '<div class="mt-2">Ricarico la pagina…</div>' : ''}
                 </div>
             </div>
         `;
         resultDiv.classList.remove('hidden');
 
         document.getElementById('migrazione-preview').classList.add('hidden');
-        showToast(`Migrazione completata: ${data.totale_importati} importati, ${data.totale_aggiornati} aggiornati`, 'success');
+        showToast(`${titolo} ${data.totale_importati} importati, ${data.totale_aggiornati} aggiornati`, 'success');
 
         // Reset
         migrazioneFile = null;
         document.getElementById('migrazione-file-input').value = '';
+        if (data.mode === 'replace') setTimeout(() => location.reload(), 2500);
 
     } catch (error) {
         showToast('Errore: ' + error.message, 'error');

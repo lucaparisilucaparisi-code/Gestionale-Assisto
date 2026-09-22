@@ -65,6 +65,26 @@ app.register_blueprint(dashboard_bp)
 app.config['UPLOAD_FOLDER'] = config.UPLOAD_FOLDER
 app.config['EXPORT_FOLDER'] = config.EXPORT_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
+
+
+def _parametri_calcolo():
+    """Parametri di calcolo per le pagine (window.APP_CONFIG e /api/config):
+    un'unica fonte (config.py) al posto di tariffe e percentuali scritte a mano
+    nei template, che sarebbero rimaste vecchie al primo cambio di tariffa."""
+    return {
+        'tariffa_oraria': config.TARIFFA_ORARIA,
+        'iva_percentuale': config.IVA_PERCENTUALE,
+        'tasso_assenza': config.TASSO_ASSENZA,
+        'coefficiente_giornaliero': config.COEFFICIENTE_GIORNALIERO,
+        'max_ore_settimanali': config.MAX_ORE_SETTIMANALI,
+        'max_pasti_mensili': config.MAX_PASTI_MENSILI,
+        'max_ore_mensili': config.MAX_ORE_MENSILI,
+    }
+
+
+@app.context_processor
+def inject_app_config():
+    return {'app_config': _parametri_calcolo()}
 def _load_or_generate_secret_key():
     """Carica il secret_key da file, oppure lo genera random e lo persiste.
     Priorita': variabile ambiente FLASK_SECRET_KEY > file .flask_secret_key."""
@@ -1729,8 +1749,22 @@ def api_create_utente():
         if not scuola_id:
             return jsonify({'error': f'Commessa "{commessa}" non valida'}), 400
 
-        utente_id = db.get_or_create_utente(scuola_id, nome, cognome, monte_ore)
-        db.log_audit('creazione', 'utente', utente_id, f'{nome} {cognome}')
+        # Omonimo nella stessa scuola: prima veniva sovrascritto in silenzio
+        # (monte ore compreso) rispondendo "creato". Ora si segnala (409) e il
+        # secondo utente si crea solo con conferma esplicita (forza=true).
+        esistente = db.trova_utente_omonimo(scuola_id, nome, cognome)
+        if esistente and not data.get('forza'):
+            stato = '' if esistente['attivo'] else ' (archiviato: puoi ripristinarlo dal filtro "Archiviati")'
+            return jsonify({
+                'error': f"Esiste gia' {esistente['nome']} {esistente['cognome'] or ''} in questa scuola, "
+                         f"monte ore {esistente['monte_ore_settimanale']}h{stato}.",
+                'code': 'UTENTE_DUPLICATO',
+                'utente_esistente': esistente,
+            }), 409
+
+        utente_id = db.create_utente(scuola_id, nome, cognome, monte_ore)
+        db.log_audit('creazione', 'utente', utente_id, f'{nome} {cognome}',
+                     dati_nuovi={'monte_ore': monte_ore})
         logger.info(f"Utente creato: {nome} {cognome} (ID: {utente_id})")
 
         return jsonify({'success': True, 'utente_id': utente_id})
@@ -1887,73 +1921,90 @@ def api_bulk_update_utenti():
     if len(updates) > 200:
         return jsonify({'error': 'Massimo 200 aggiornamenti per richiesta'}), 400
 
-    successi = 0
+    # Valida TUTTE le righe prima di scrivere: o passa tutto o niente
+    righe = []
     errori = []
-
     for upd in updates:
         uid = upd.get('id')
         if not uid:
             continue
-        try:
-            set_parts = []
-            params = []
+        set_parts = []
+        params = []
+        if 'monte_ore' in upd and upd['monte_ore'] is not None:
+            ore, err = validate_number(upd['monte_ore'], 'Monte ore', 0, config.MAX_ORE_SETTIMANALI)
+            if err:
+                errori.append(f'ID {uid}: {err}')
+                continue
+            set_parts.append('monte_ore_settimanale = ?')
+            params.append(ore)
+        if 'lista_attesa' in upd:
+            set_parts.append('lista_attesa = ?')
+            params.append(upd['lista_attesa'] if upd['lista_attesa'] else None)
+        if set_parts:
+            righe.append((uid, set_parts, params))
+    if errori:
+        return jsonify({'error': 'Nessuna modifica applicata: ' + '; '.join(errori), 'errori': errori}), 400
 
-            if 'monte_ore' in upd and upd['monte_ore'] is not None:
-                ore, err = validate_number(upd['monte_ore'], 'Monte ore', 0, config.MAX_ORE_SETTIMANALI)
-                if err:
-                    errori.append(f'ID {uid}: {err}')
-                    continue
-                set_parts.append('monte_ore_settimanale = ?')
-                params.append(ore)
+    # Una sola transazione, con i valori precedenti salvati per l'undo
+    # (prima: una transazione per riga e nessuna possibilita' di annullare)
+    precedenti = []
+    with db.get_db_context() as conn:
+        cursor = conn.cursor()
+        for uid, set_parts, params in righe:
+            cursor.execute("SELECT id, monte_ore_settimanale, lista_attesa FROM utenti WHERE id = ?", (uid,))
+            row = cursor.fetchone()
+            if not row:
+                continue
+            precedenti.append({'id': uid, 'dati_precedenti': dict(row)})
+            cursor.execute(f"UPDATE utenti SET {', '.join(set_parts)} WHERE id = ?", params + [uid])
+    successi = len(precedenti)
 
-            if 'lista_attesa' in upd:
-                set_parts.append('lista_attesa = ?')
-                params.append(upd['lista_attesa'] if upd['lista_attesa'] else None)
-
-            if set_parts:
-                with db.get_db_context() as conn:
-                    cursor = conn.cursor()
-                    params.append(uid)
-                    cursor.execute(f"UPDATE utenti SET {', '.join(set_parts)} WHERE id = ?", params)
-                successi += 1
-        except Exception as e:
-            errori.append(f'ID {uid}: {str(e)}')
-
+    if precedenti:
+        push_undo('bulk_update_utenti', {'items': precedenti})
     db.log_audit('bulk_modifica', 'utenti', dettagli=f'{successi} utenti aggiornati in bulk')
-    logger.info(f"Bulk update: {successi} successi, {len(errori)} errori")
+    logger.info(f"Bulk update: {successi} utenti aggiornati")
 
     return jsonify({
         'success': True,
         'aggiornati': successi,
-        'errori': errori
+        'errori': []
     })
 
 
 @app.route('/api/utenti/bulk', methods=['DELETE'])
 def api_bulk_delete_utenti():
-    """Eliminazione bulk di utenti"""
-    data = request.json or {}
+    """Eliminazione bulk di utenti (ognuno annullabile con l'undo)"""
+    data = request.get_json(silent=True) or {}
     ids = data.get('ids', [])
 
-    if not ids:
+    if not ids or not isinstance(ids, list):
         return jsonify({'error': 'Nessun utente specificato'}), 400
+    if len(ids) > 200:
+        return jsonify({'error': 'Massimo 200 utenti per richiesta'}), 400
 
     eliminati = 0
+    errori = []
     for uid in ids:
         try:
             with db.get_db_context() as conn:
                 cursor = conn.cursor()
                 snapshot = db.raccogli_snapshot_utente(cursor, uid)
-                db.elimina_utente_completo(cursor, uid)
+                if snapshot:
+                    db.elimina_utente_completo(cursor, uid)
+            if not snapshot:
+                errori.append({'id': uid, 'errore': 'Utente non trovato'})
+                continue
             # push_undo solo a transazione riuscita (niente azioni fantasma)
-            if snapshot:
-                push_undo('delete_utente', snapshot)
+            push_undo('delete_utente', snapshot)
             eliminati += 1
         except Exception as e:
             logger.error(f"Errore bulk delete utente {uid}: {e}")
+            errori.append({'id': uid, 'errore': 'Eliminazione non riuscita'})
 
-    db.log_audit('bulk_eliminazione', 'utenti', dettagli=f'{eliminati} utenti eliminati in bulk')
-    return jsonify({'success': True, 'eliminati': eliminati})
+    db.log_audit('bulk_eliminazione', 'utenti',
+                 dettagli=f'{eliminati} utenti eliminati in bulk' + (f', {len(errori)} non riusciti' if errori else ''))
+    # Prima rispondeva sempre "success" anche con righe fallite: ora le elenca
+    return jsonify({'success': not errori, 'eliminati': eliminati, 'errori': errori})
 
 
 @app.route('/api/utenti/export-csv')
@@ -2564,6 +2615,10 @@ def api_update_rendicontazione(anno, mese):
 
     # Aggiorna (solo i campi presenti nella richiesta)
     db.update_rendicontazione(utente_id, anno, mese, **valori)
+    # Le ore sono il dato su cui si fattura: ogni modifica lascia traccia
+    db.log_audit('modifica_ore', 'rendicontazione', utente_id,
+                 dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: "
+                          + ', '.join(f'{k}={v}' for k, v in valori.items()))
 
     return jsonify({'success': True})
 
@@ -2598,6 +2653,11 @@ def api_batch_update_rendicontazione(anno, mese):
     except Exception as e:
         logger.error(f"Errore salvataggio batch {mese}/{anno}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Salvataggio annullato: nessuna modifica applicata'}), 500
+
+    if aggiornati:
+        db.log_audit('modifica_ore', 'rendicontazione', None,
+                     dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: {aggiornati} utenti aggiornati",
+                     dati_nuovi={'utenti': [r['utente_id'] for r in righe]})
 
     return jsonify({'success': True, 'aggiornati': aggiornati})
 
@@ -2659,6 +2719,12 @@ def api_copia_mese_precedente(anno, mese):
         logger.error(f"Errore copia mese precedente {mese}/{anno}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Copia annullata: nessuna modifica applicata'}), 500
 
+    if copiati:
+        db.log_audit('modifica_ore', 'rendicontazione', None,
+                     dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: ore di {copiati} utenti copiate "
+                              f"da {MESI_NOME.get(mese_prec, '')} {anno_prec}",
+                     dati_nuovi={'utenti': [u['utente_id'] for u in updates]})
+
     return jsonify({
         'success': True,
         'copiati': copiati,
@@ -2702,6 +2768,11 @@ def api_compila_con_media(anno, mese):
     except Exception as e:
         logger.error(f"Errore compilazione con media {mese}/{anno}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Compilazione annullata: nessuna modifica applicata'}), 500
+
+    if compilati:
+        db.log_audit('modifica_ore', 'rendicontazione', None,
+                     dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: {compilati} utenti compilati con la media prevista",
+                     dati_nuovi={'utenti': [u['utente_id'] for u in updates]})
 
     return jsonify({
         'success': True,
@@ -3462,6 +3533,8 @@ def api_get_undo_stack():
             desc = f'Eliminazione utente: {u.get("nome", "")} {u.get("cognome", "")}'
         elif action['type'] == 'update_utente':
             desc = f'Modifica utente ID {action["data"].get("id", "?")}'
+        elif action['type'] == 'bulk_update_utenti':
+            desc = f'Modifica massiva di {len(action["data"].get("items", []))} utenti'
         actions.append({
             'index': i,
             'tipo': action['type'],
@@ -3599,6 +3672,18 @@ def api_undo():
                 cursor.execute('DELETE FROM undo_actions WHERE id = ?', (action['id'],))
                 esito = ('utente', uid, 'Ripristinati dati precedenti',
                          {'success': True, 'message': 'Modifica annullata'})
+
+            elif action['type'] == 'bulk_update_utenti':
+                n = 0
+                for item in action['data'].get('items', []):
+                    old = item.get('dati_precedenti', {})
+                    cursor.execute(
+                        "UPDATE utenti SET monte_ore_settimanale = ?, lista_attesa = ? WHERE id = ?",
+                        (old.get('monte_ore_settimanale'), old.get('lista_attesa'), item.get('id')))
+                    n += cursor.rowcount
+                cursor.execute('DELETE FROM undo_actions WHERE id = ?', (action['id'],))
+                esito = ('utenti', None, f'Annullata modifica massiva ({n} utenti)',
+                         {'success': True, 'message': f'Modifica massiva annullata ({n} utenti)'})
 
             else:
                 # Tipo non supportato: scarta l'azione per non bloccare lo stack
@@ -4198,14 +4283,7 @@ def api_scuole_lista():
 @app.route('/api/config')
 def api_get_config():
     """Ritorna la configurazione corrente (parametri di calcolo)"""
-    return jsonify({
-        'tariffa_oraria': config.TARIFFA_ORARIA,
-        'iva_percentuale': config.IVA_PERCENTUALE,
-        'tasso_assenza': config.TASSO_ASSENZA,
-        'coefficiente_giornaliero': config.COEFFICIENTE_GIORNALIERO,
-        'max_ore_settimanali': config.MAX_ORE_SETTIMANALI,
-        'max_pasti_mensili': config.MAX_PASTI_MENSILI
-    })
+    return jsonify(_parametri_calcolo())
 
 
 def open_browser():

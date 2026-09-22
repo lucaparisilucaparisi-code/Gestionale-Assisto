@@ -480,20 +480,28 @@ function renderTabellaReport() {
     document.getElementById('tot-saldo').innerHTML = `<strong class="${saldoClass}">${t.saldo >= 0 ? '+' : ''}${t.saldo.toFixed(2)}</strong>`;
     document.getElementById('tot-max-imp').innerHTML = `<strong>${formatCurrency(t.max_imponibile)}</strong>`;
     document.getElementById('tot-effettivo').innerHTML = `<strong>${formatCurrency(t.effettivo)}</strong>`;
+
+    // Dopo un salvataggio la tabella viene ricostruita: torna sulla cella di partenza
+    rifocalizzaCella();
 }
 
-// Helper per costruire celle editabili
+// Celle modificabili: la modifica avviene DENTRO la cella (Invio salva, Esc annulla,
+// Tab passa alla cella successiva, vuoto = torna al calcolo automatico) ed e'
+// raggiungibile da tastiera (Tab tra le celle, Invio o F2 per modificare).
+// Prima ogni valore si cambiava con una finestra di sistema (prompt).
 function buildEditableCell(m, campo, valore, valoreAuto, isOverride, decimali) {
     const overrideClass = isOverride ? 'has-override' : '';
-    const displayValue = decimali ? valore.toFixed(2) : valore;
-    const displayAuto = decimali ? valoreAuto.toFixed(2) : valoreAuto;
+    const displayValue = decimali ? Number(valore).toFixed(2) : valore;
+    const displayAuto = decimali ? Number(valoreAuto).toFixed(2) : valoreAuto;
     const title = isOverride
-        ? `Valore modificato (auto: ${displayAuto}). Clicca per modificare.`
-        : 'Clicca per modificare';
+        ? `Valore modificato (automatico: ${displayAuto}). Invio o clic per modificare; vuoto = torna all'automatico`
+        : 'Invio o clic per modificare';
     const indicator = isOverride ? '<span class="override-indicator">*</span>' : '';
 
-    return `<td class="editable-cell ${overrideClass}" title="${title}"
-                onclick="modificaCampo(${m.mese}, ${m.anno}, '${campo}', ${valore}, ${valoreAuto}, ${isOverride}, ${decimali})">
+    return `<td class="editable-cell ${overrideClass}" tabindex="0" role="button" title="${title}"
+                data-mese="${m.mese}" data-anno="${m.anno}" data-campo="${campo}"
+                data-valore="${valore}" data-auto="${valoreAuto}" data-override="${isOverride ? 1 : 0}"
+                data-decimali="${decimali ? 1 : 0}" data-currency="0">
                 <span>${displayValue}</span>${indicator}
             </td>`;
 }
@@ -501,12 +509,14 @@ function buildEditableCell(m, campo, valore, valoreAuto, isOverride, decimali) {
 function buildEditableCurrencyCell(m, campo, valore, valoreAuto, isOverride) {
     const overrideClass = isOverride ? 'has-override' : '';
     const title = isOverride
-        ? `Valore modificato (auto: ${formatCurrency(valoreAuto)}). Clicca per modificare.`
-        : 'Clicca per modificare';
+        ? `Valore modificato (automatico: ${formatCurrency(valoreAuto)}). Invio o clic per modificare; vuoto = torna all'automatico`
+        : 'Invio o clic per modificare';
     const indicator = isOverride ? '<span class="override-indicator">*</span>' : '';
 
-    return `<td class="editable-cell ${overrideClass}" title="${title}"
-                onclick="modificaCampo(${m.mese}, ${m.anno}, '${campo}', ${valore}, ${valoreAuto}, ${isOverride}, true, true)">
+    return `<td class="editable-cell ${overrideClass}" tabindex="0" role="button" title="${title}"
+                data-mese="${m.mese}" data-anno="${m.anno}" data-campo="${campo}"
+                data-valore="${valore}" data-auto="${valoreAuto}" data-override="${isOverride ? 1 : 0}"
+                data-decimali="1" data-currency="1">
                 <span>${formatCurrency(valore)}</span>${indicator}
             </td>`;
 }
@@ -521,39 +531,112 @@ const CAMPO_NOMI = {
     'effettivo': 'Effettivo'
 };
 
-// Funzione generica per modificare qualsiasi campo
-function modificaCampo(mese, anno, campo, valoreAttuale, valoreAuto, isOverride, decimali = true, isCurrency = false) {
-    const meseNome = MESI_NOME[mese];
-    const campoNome = CAMPO_NOMI[campo] || campo;
+// Cella da rimettere a fuoco dopo il ricaricamento della tabella (salvataggio)
+let cellaDaRifocalizzare = null;
 
-    const formatVal = (v) => {
-        if (isCurrency) return formatCurrency(v);
-        return decimali ? v.toFixed(2) : v.toString();
+// Un solo set di listener (delegati) per tutte le celle modificabili
+document.addEventListener('DOMContentLoaded', () => {
+    const tbody = document.getElementById('tbody-report');
+    if (!tbody) return;
+    tbody.addEventListener('click', (e) => {
+        const td = e.target.closest('td.editable-cell');
+        if (td && !td.querySelector('input')) avviaModificaCella(td);
+    });
+    tbody.addEventListener('keydown', (e) => {
+        const td = e.target.closest('td.editable-cell');
+        if (!td || e.target.tagName === 'INPUT') return;
+        if (e.key === 'Enter' || e.key === 'F2') {
+            e.preventDefault();
+            avviaModificaCella(td);
+        }
+    });
+});
+
+function rifocalizzaCella() {
+    if (!cellaDaRifocalizzare) return;
+    const { mese, anno, campo, apri } = cellaDaRifocalizzare;
+    cellaDaRifocalizzare = null;
+    const td = document.querySelector(`#tbody-report td.editable-cell[data-mese="${mese}"][data-anno="${anno}"][data-campo="${campo}"]`);
+    if (!td) return;
+    td.focus();
+    if (apri) avviaModificaCella(td);
+}
+
+function avviaModificaCella(td) {
+    if (td.querySelector('input')) return;
+    const d = td.dataset;
+    const decimali = d.decimali === '1';
+    const isOverride = d.override === '1';
+    const valoreAttuale = Number(d.valore);
+    const span = td.querySelector('span');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.className = 'form-control cella-input';
+    input.value = decimali ? valoreAttuale.toFixed(2) : String(valoreAttuale);
+    input.setAttribute('aria-label', `${CAMPO_NOMI[d.campo] || d.campo} ${MESI_NOME[d.mese]} ${d.anno}`);
+    input.title = `Automatico: ${d.currency === '1' ? formatCurrency(Number(d.auto)) : d.auto}. Vuoto = torna all'automatico`;
+    td.classList.add('in-modifica');
+    if (span) span.style.display = 'none';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    let chiuso = false;
+    const chiudi = (rifocalizza) => {
+        if (chiuso) return;
+        chiuso = true;
+        input.remove();
+        td.classList.remove('in-modifica');
+        if (span) span.style.display = '';
+        if (rifocalizza) td.focus();
     };
-
-    let messaggio = `Modifica ${campoNome} per ${meseNome} ${anno}:\n`;
-    messaggio += `Valore calcolato automatico: ${formatVal(valoreAuto)}\n`;
-    if (isOverride) {
-        messaggio += `Valore attuale (modificato): ${formatVal(valoreAttuale)}\n`;
-    }
-    messaggio += `\nInserisci il nuovo valore (lascia vuoto per tornare al calcolo automatico):`;
-
-    const defaultVal = decimali ? valoreAttuale.toFixed(2) : valoreAttuale.toString();
-    const nuovoValore = prompt(messaggio, defaultVal);
-
-    if (nuovoValore === null) return; // Annullato
-
-    if (nuovoValore.trim() === '' && isOverride) {
-        // Rimuovi override
-        resetCampo(mese, anno, campo);
-    } else if (nuovoValore.trim() !== '') {
-        const val = parseFloat(nuovoValore.replace(',', '.'));
+    // Ritorna true se e' partito un salvataggio (la tabella verra' ricaricata)
+    const conferma = () => {
+        const testo = input.value.trim();
+        chiudi(false);
+        if (testo === '') {
+            if (isOverride) {
+                resetCampo(Number(d.mese), Number(d.anno), d.campo);
+                return true;
+            }
+            return false;
+        }
+        const val = parseFloat(testo.replace(',', '.'));
         if (isNaN(val) || val < 0) {
             showToast('Valore non valido', 'error');
-            return;
+            td.focus();
+            return false;
         }
-        salvaCampo(mese, anno, campo, val);
-    }
+        if (val === valoreAttuale) return false;
+        salvaCampo(Number(d.mese), Number(d.anno), d.campo, val);
+        return true;
+    };
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            cellaDaRifocalizzare = { mese: d.mese, anno: d.anno, campo: d.campo, apri: false };
+            if (!conferma()) { cellaDaRifocalizzare = null; td.focus(); }
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            chiudi(true);
+        } else if (e.key === 'Tab') {
+            e.preventDefault();
+            const celle = Array.from(document.querySelectorAll('#tbody-report td.editable-cell'));
+            const prossima = celle[celle.indexOf(td) + (e.shiftKey ? -1 : 1)];
+            if (prossima) {
+                cellaDaRifocalizzare = { mese: prossima.dataset.mese, anno: prossima.dataset.anno, campo: prossima.dataset.campo, apri: true };
+            }
+            const salvato = conferma();
+            if (!salvato) {
+                cellaDaRifocalizzare = null;
+                if (prossima) avviaModificaCella(prossima); else td.focus();
+            }
+        }
+    });
+    input.addEventListener('blur', () => { if (!chiuso) conferma(); });
 }
 
 async function salvaCampo(mese, anno, campo, valore) {
@@ -781,21 +864,24 @@ async function salvaDD() {
     }
 }
 
-async function eliminaDD(ddId) {
-    if (!confirm('Sei sicuro di voler eliminare questa DD?')) return;
-
-    try {
-        const response = await fetch(`/api/dd/${ddId}`, { method: 'DELETE' });
-        const result = await response.json();
-        if (result.error) throw new Error(result.error);
-
-        showToast('DD eliminata', 'success');
-        caricaReport();
-
-    } catch (error) {
-        console.error(error);
-        showToast('Errore nell\'eliminazione', 'error');
-    }
+function eliminaDD(ddId) {
+    showConfirmDialog(
+        'Elimina DD',
+        'Eliminare questa determina dirigenziale? L\'operazione non si puo\' annullare.',
+        async () => {
+            try {
+                const response = await fetch(`/api/dd/${ddId}`, { method: 'DELETE' });
+                const result = await response.json();
+                if (result.error) throw new Error(result.error);
+                showToast('DD eliminata', 'success');
+                caricaReport();
+            } catch (error) {
+                console.error(error);
+                showToast('Errore nell\'eliminazione', 'error');
+            }
+        },
+        { type: 'danger', confirmText: 'Elimina' }
+    );
 }
 
 // Gestione Recuperi
@@ -945,12 +1031,13 @@ function calcolaOreAnnuali() {
         return;
     }
 
-    // Formula: ore_settimanali * 0.89 (decurtazione 11%) * settimane
-    const oreDecurtate = oreSettimanali * 0.89;
+    // Formula: ore_settimanali * (1 - tasso assenza da config) * settimane
+    const fattore = 1 - ((window.APP_CONFIG || {}).tasso_assenza ?? 0.11);
+    const oreDecurtate = oreSettimanali * fattore;
     const oreAnnuali = oreDecurtate * settimane;
 
     document.getElementById('dd-ore-annuali').value = oreAnnuali.toFixed(2);
-    updateOreAnnualiPreview(`${oreSettimanali.toFixed(0)} h/sett x 0.89 x ${settimane} sett = ${oreAnnuali.toFixed(2)} h`);
+    updateOreAnnualiPreview(`${oreSettimanali.toFixed(0)} h/sett x ${fattore.toFixed(2)} x ${settimane} sett = ${oreAnnuali.toFixed(2)} h`);
 }
 
 function updateOreAnnualiPreview(text) {

@@ -373,6 +373,8 @@
         </div>
     </div>
 
+    {# Parametri di calcolo da config.py: unica fonte per tariffe e percentuali a schermo #}
+    <script>window.APP_CONFIG = {{ app_config|tojson }};</script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 
     <!-- PWA Service Worker Registration -->

@@ -526,18 +526,26 @@ const FormValidator = {
 
 async function apiCall(url, options = {}) {
     try {
+        // Le opzioni vanno prima degli header: cosi' un chiamante che passa
+        // options.headers li integra invece di perdere il Content-Type JSON
         const response = await fetch(url, {
+            ...options,
             headers: {
                 'Content-Type': 'application/json',
-                ...options.headers
-            },
-            ...options
+                ...(options.headers || {})
+            }
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            throw new Error(data.error || 'Errore sconosciuto');
+            // Errore "ricco": chi chiama puo' reagire al codice (es. UTENTE_DUPLICATO,
+            // MESE_CHIUSO) e non solo al testo del messaggio
+            const err = new Error(data.error || 'Errore sconosciuto');
+            err.status = response.status;
+            err.code = data.code || null;
+            err.data = data;
+            throw err;
         }
 
         return data;

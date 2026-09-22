@@ -313,36 +313,49 @@ async function loadStep1() {
     }
 }
 
-async function compilaConMedia() {
+function compilaConMedia() {
     const p = getPeriodo();
     if (!p) return;
-    if (!confirm('Compilare tutti gli utenti senza ore con la media prevista (-11%)?')) return;
-    try {
-        const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/compila-media`, {
-            method: 'POST',
-            body: JSON.stringify({})
-        });
-        showToast(`${res.compilati} utenti compilati con la media`, 'success');
-        loadStep1(); loadStep2(); loadStep3();
-    } catch (e) {
-        showToast('Errore nella compilazione', 'error');
-    }
+    const pct = Math.round(((window.APP_CONFIG || {}).tasso_assenza ?? 0.11) * 100);
+    showConfirmDialog(
+        'Compila con la media',
+        `Compilare tutti gli utenti senza ore con la media prevista (-${pct}%)? Chi ha gia' delle ore non viene toccato.`,
+        async () => {
+            try {
+                const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/compila-media`, {
+                    method: 'POST',
+                    body: JSON.stringify({})
+                });
+                showToast(`${res.compilati} utenti compilati con la media`, 'success');
+                loadStep1(); loadStep2(); loadStep3();
+            } catch (e) {
+                showToast('Errore: ' + (e.message || 'compilazione non riuscita'), 'error');
+            }
+        },
+        { confirmText: 'Compila' }
+    );
 }
 
-async function copiaMesePrecedente() {
+function copiaMesePrecedente() {
     const p = getPeriodo();
     if (!p) return;
-    if (!confirm('Copiare le ore dal mese precedente per gli utenti senza ore?')) return;
-    try {
-        const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/copia-precedente`, {
-            method: 'POST',
-            body: JSON.stringify({ solo_vuoti: true })
-        });
-        showToast(`${res.copiati} utenti copiati da ${res.mese_origine}`, 'success');
-        loadStep1(); loadStep2(); loadStep3();
-    } catch (e) {
-        showToast('Errore nella copia', 'error');
-    }
+    showConfirmDialog(
+        'Copia dal mese precedente',
+        'Copiare le ore del mese precedente per gli utenti che non hanno ancora ore? Chi ha gia\' delle ore non viene toccato.',
+        async () => {
+            try {
+                const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/copia-precedente`, {
+                    method: 'POST',
+                    body: JSON.stringify({ solo_vuoti: true })
+                });
+                showToast(`${res.copiati} utenti copiati da ${res.mese_origine}`, 'success');
+                loadStep1(); loadStep2(); loadStep3();
+            } catch (e) {
+                showToast('Errore: ' + (e.message || 'copia non riuscita'), 'error');
+            }
+        },
+        { confirmText: 'Copia' }
+    );
 }
 
 // ---------- STEP 2 ----------
@@ -415,7 +428,7 @@ async function loadStep3() {
             <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtH(tot.ore100)}</div><div class="stat-label">Ore (100')</div></div></div>
             <div class="stat-card"><div class="stat-content"><div class="stat-value">${tot.pasti}</div><div class="stat-label">Pasti</div></div></div>
             <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtEur(tot.imponibile)}</div><div class="stat-label">Imponibile</div></div></div>
-            <div class="stat-card"><div class="stat-content"><div class="stat-value text-success">${fmtEur(tot.totale)}</div><div class="stat-label">Totale con IVA 5%</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value text-success">${fmtEur(tot.totale)}</div><div class="stat-label">Totale con IVA ${Math.round(((window.APP_CONFIG || {}).iva_percentuale ?? 0.05) * 100)}%</div></div></div>
         `;
 
         // Riepilogo per commessa
