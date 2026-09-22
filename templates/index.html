@@ -120,16 +120,81 @@
     </div>
     <div class="card-body" id="nuovo-anno-body">
         <p class="text-muted" style="margin-top:0;">
-            Il calendario del prossimo anno scolastico non è ancora configurato.
-            Posso prepararlo automaticamente con le regole della Regione Lazio
-            (giorni lavorativi lun–ven, festività e vacanze pasquali già escluse):
-            potrai poi <strong>rivederlo e correggerlo</strong> mese per mese.
+            Due passi, entrambi rivedibili in seguito: il <strong>calendario</strong> dei giorni lavorativi
+            (regole Regione Lazio, correggibile mese per mese) e gli <strong>utenti</strong>: chiusura delle
+            variazioni monte ore dell'anno scorso, monte ore di partenza, archiviazione di chi è uscito.
         </p>
-        <div class="flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-primary" id="btn-prepara-anno">
-                Prepara l'anno scolastico
-            </button>
-            <a href="/calendario" class="btn btn-secondary">Apri il calendario</a>
+        <div class="wizard-passi">
+            <div class="wizard-passo" id="passo-calendario">
+                <div class="wizard-passo-num">1</div>
+                <div class="wizard-passo-body">
+                    <strong>Calendario scolastico</strong>
+                    <div class="text-muted" style="font-size:0.9rem;">Giorni lavorativi di ogni mese, da settembre a giugno.</div>
+                    <div class="mt-2 flex gap-2 flex-wrap">
+                        <button type="button" class="btn btn-primary btn-sm" id="btn-prepara-anno">Prepara il calendario</button>
+                        <span id="passo-calendario-ok" class="wizard-ok" style="display:none;">✔ Fatto</span>
+                        <a href="/calendario" class="btn btn-secondary btn-sm">Apri il calendario</a>
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-passo" id="passo-utenti">
+                <div class="wizard-passo-num">2</div>
+                <div class="wizard-passo-body">
+                    <strong>Utenti e monte ore</strong>
+                    <div class="text-muted" style="font-size:0.9rem;">Un'unica tabella per rivedere il monte ore di partenza di ogni assistito,
+                        chiudere al 31 agosto le variazioni dell'anno scorso e archiviare chi ha lasciato il servizio.</div>
+                    <div class="mt-2 flex gap-2 flex-wrap">
+                        <button type="button" class="btn btn-primary btn-sm" id="btn-wizard-utenti">Rivedi utenti e monte ore</button>
+                        <span id="passo-utenti-ok" class="wizard-ok" style="display:none;">✔ Fatto</span>
+                        <a href="/utenti" class="btn btn-secondary btn-sm">Apri gli utenti</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="nuovo-anno-esito" class="mt-3"></div>
+    </div>
+</div>
+
+<!-- Passo 2 del nuovo anno: utenti e monte ore (anteprima + conferma unica) -->
+<div class="modal-overlay" id="modal-nuovo-anno-utenti">
+    <div class="modal" style="max-width: 980px;">
+        <div class="modal-header">
+            <h3 class="modal-title">Utenti e monte ore per il <span id="wizard-utenti-anno"></span></h3>
+            <button class="modal-close" onclick="closeModal('modal-nuovo-anno-utenti')" aria-label="Chiudi">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-info" style="font-size:0.9rem;">
+                <div>
+                    <strong>Nuovo monte ore</strong> è il valore di partenza da settembre (proposto: il monte ore base).
+                    <strong>A giugno</strong> sono le ore effettive di fine anno: se diverse dalla base (⚠) c'era una variazione in corso.
+                    Nulla viene salvato finché non confermi.
+                </div>
+            </div>
+            <label class="flex items-center gap-2 mb-3" style="cursor:pointer;">
+                <input type="checkbox" id="wizard-chiudi-variazioni" checked>
+                <span>Chiudi al 31 agosto le <strong id="wizard-variazioni-n">0</strong> variazioni monte ore ancora aperte
+                    (da settembre vale il monte ore indicato qui sotto)</span>
+            </label>
+            <input type="search" id="wizard-utenti-cerca" class="form-control mb-2" placeholder="Filtra per nome o scuola…" aria-label="Filtra utenti">
+            <div class="table-container" style="max-height: 50vh; overflow: auto;">
+                <table class="table" style="font-size:0.9rem;">
+                    <thead>
+                        <tr>
+                            <th>Utente</th>
+                            <th class="text-center">Base</th>
+                            <th class="text-center">A giugno</th>
+                            <th>Nuovo monte ore</th>
+                            <th class="text-center">Archivia</th>
+                        </tr>
+                    </thead>
+                    <tbody id="wizard-utenti-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <span id="wizard-utenti-riepilogo" class="text-muted" style="margin-right:auto; font-size:0.9rem;"></span>
+            <button class="btn btn-secondary" onclick="closeModal('modal-nuovo-anno-utenti')">Annulla</button>
+            <button class="btn btn-primary" id="btn-wizard-utenti-applica">Applica…</button>
         </div>
     </div>
 </div>

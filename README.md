@@ -62,7 +62,14 @@ ambiente isolato dentro la cartella (`.venv`) da `avvia.bat` / `run.sh` al primo
 - **Import Excel anagrafica**: carica dati utenti da file Excel (Commessa, Scuola, Nome, Monte Ore)
 - **Import Excel rendicontazione**: carica ore e pasti mensili dalla prefattura (un foglio per mese), con abbinamento automatico agli utenti già in anagrafica e anteprima prima del salvataggio
 - **Rendicontazione mensile**: inserimento ore lavorate e pasti per ogni utente, con salvataggio automatico
-- **Chiusura mese guidata**: procedura in 4 passi (completezza → anomalie → riepilogo → export)
+- **Chiusura mese guidata**: procedura in 4 passi (completezza → anomalie → riepilogo → export);
+  un mese chiuso **non accetta più modifiche alle ore** (né a mano, né da import) finché non viene riaperto
+- **Variazioni monte ore** con mese di inizio e, se serve, di fine: aumenti temporanei che non si trascinano
+- **Nuovo anno scolastico** (wizard in Dashboard, da giugno a ottobre): calendario automatico + revisione
+  degli utenti in un'unica tabella (chiusura al 31/8 delle variazioni dell'anno prima, monte ore di partenza,
+  archiviazione di chi ha lasciato il servizio)
+- **Archiviazione utenti**: chi esce dal servizio sparisce da elenchi e rendicontazione ma conserva tutto lo
+  storico (filtro "Archiviati" e ripristino con un click)
 - **Dashboard "Stato del mese"**: avanzamento rendicontazione, avvisi e validazione dati in evidenza
 - **Calcoli automatici**:
   - Conversione ore 60' ↔ 100'

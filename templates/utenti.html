@@ -56,7 +56,7 @@
             <option value="attivo">Attivi</option>
             <option value="lista_attesa">In Lista Attesa</option>
             <option value="scaduto">Scaduti</option>
-            <option value="inattivo">Inattivi</option>
+            <option value="archiviato">Archiviati</option>
         </select>
     </div>
 
@@ -333,6 +333,11 @@
                     <label class="form-label">A partire da *</label>
                     <input type="month" id="var-mese-inizio" class="form-control">
                 </div>
+                <div class="form-group mb-2">
+                    <label class="form-label">Fino a (opzionale)</label>
+                    <input type="month" id="var-mese-fine" class="form-control"
+                           title="Ultimo mese in cui vale. Vuoto = resta valida finche' non la chiudi (il wizard di settembre chiude quelle aperte al 31/8)">
+                </div>
             </div>
             <div class="form-group mb-3">
                 <label class="form-label">Nota (opzionale)</label>
@@ -434,6 +439,7 @@ function loadUtenti() {
     var params = [];
     if (commessa) params.push('commessa=' + encodeURIComponent(commessa));
     if (scuolaId) params.push('scuola_id=' + scuolaId);
+    if (stato === 'archiviato') params.push('attivi=0');   // archiviati: li sceglie il server
     if (params.length > 0) url += '?' + params.join('&');
 
     apiCall(url).then(function(utenti) {
@@ -449,10 +455,8 @@ function loadUtenti() {
                     return u.lista_attesa;
                 } else if (stato === 'scaduto') {
                     return u.data_fine && u.data_fine < oggiStr;
-                } else if (stato === 'inattivo') {
-                    return !u.attivo;
                 }
-                return true;
+                return true;   // 'archiviato': gia' filtrato dal server (attivi=0)
             });
         }
         allUtenti = utenti;
@@ -507,6 +511,9 @@ function renderTable(utenti) {
             +   '<a href="/utente/' + u.id + '" class="btn btn-sm btn-ghost" title="Dettaglio" aria-label="Dettaglio utente">👤</a> '
             +   '<button class="btn btn-sm btn-secondary" onclick="apriModifica(' + u.id + ')" title="Modifica" aria-label="Modifica utente">✏️</button> '
             +   '<button class="btn btn-sm btn-ghost" onclick="showStoricoMonteOre(' + u.id + ')" title="Storico monte ore" aria-label="Storico monte ore">📈</button> '
+            +   (u.attivo
+                    ? '<button class="btn btn-sm btn-ghost" onclick="archiviaUtente(' + u.id + ')" title="Archivia (esce dal servizio, lo storico resta)" aria-label="Archivia utente">📦</button> '
+                    : '<button class="btn btn-sm btn-success" onclick="ripristinaUtente(' + u.id + ')" title="Ripristina tra gli attivi" aria-label="Ripristina utente">♻️</button> ')
             +   '<button class="btn btn-sm btn-danger" onclick="apriElimina(' + u.id + ')" title="Elimina" aria-label="Elimina utente">🗑️</button>'
             + '</td>'
             + '</tr>';
@@ -816,6 +823,28 @@ function confermaCambioScuola() {
     });
 }
 
+// === Archiviazione (soft delete: lo storico resta) ===
+function archiviaUtente(id) {
+    var u = utentiMap[id];
+    var nome = u ? (u.nome + ' ' + (u.cognome || '')).trim() : 'questo utente';
+    showConfirmDialog('Archivia utente',
+        'Archiviare ' + nome + '? Non comparira\' piu\' in rendicontazione e negli elenchi, ma tutto lo storico resta: potrai ripristinarlo dal filtro "Archiviati".',
+        function() {
+            apiCall('/api/utenti/' + id, { method: 'PUT', body: JSON.stringify({ attivo: false }) }).then(function() {
+                showToast('Utente archiviato', 'success');
+                loadUtenti();
+            }).catch(function(err) { showToast('Errore: ' + err.message, 'error'); });
+        },
+        { confirmText: 'Archivia', type: 'warning' });
+}
+
+function ripristinaUtente(id) {
+    apiCall('/api/utenti/' + id, { method: 'PUT', body: JSON.stringify({ attivo: true }) }).then(function() {
+        showToast('Utente ripristinato tra gli attivi', 'success');
+        loadUtenti();
+    }).catch(function(err) { showToast('Errore: ' + err.message, 'error'); });
+}
+
 // === Storico Monte Ore ===
 function showStoricoMonteOre(utenteId) {
     openModal('modal-storico-monte-ore');
@@ -884,10 +913,11 @@ function loadVariazioniMonteOre() {
         if (variazioni.length === 0) {
             html += '<div class="text-center text-muted py-3" style="font-size:0.85rem;">Nessuna variazione programmata. Il valore base viene usato per tutti i mesi.</div>';
         } else {
-            html += '<table class="table" style="font-size: 0.85rem;"><thead><tr><th>Da</th><th>Monte Ore</th><th>Nota</th><th></th></tr></thead><tbody>';
+            html += '<table class="table" style="font-size: 0.85rem;"><thead><tr><th>Da</th><th>Fino a</th><th>Monte Ore</th><th>Nota</th><th></th></tr></thead><tbody>';
             variazioni.forEach(function(v) {
                 html += '<tr>';
                 html += '<td>' + fmtMeseAnno(v.mese_inizio) + '</td>';
+                html += '<td>' + (v.mese_fine ? fmtMeseAnno(v.mese_fine) : '<span class="text-muted">aperta</span>') + '</td>';
                 html += '<td><strong>' + v.monte_ore + 'h</strong></td>';
                 html += '<td style="color:var(--text-secondary);">' + esc(v.nota || '-') + '</td>';
                 html += '<td class="text-right"><button class="btn btn-sm btn-danger" onclick="deleteVariazioneMO(' + v.id + ')">Elimina</button></td>';
@@ -914,7 +944,13 @@ function loadVariazioniMonteOre() {
 function addVariazioneMO() {
     var monteOre = document.getElementById('var-monte-ore').value;
     var meseInizio = document.getElementById('var-mese-inizio').value;
+    var meseFine = document.getElementById('var-mese-fine').value;
     var nota = document.getElementById('var-nota').value.trim();
+
+    if (meseFine && meseInizio && meseFine < meseInizio) {
+        showToast('Il mese di fine precede quello di inizio', 'error');
+        return;
+    }
 
     if (!monteOre || isNaN(parseFloat(monteOre)) || parseFloat(monteOre) < 0) {
         showToast('Monte ore non valido', 'error');
@@ -930,12 +966,14 @@ function addVariazioneMO() {
         body: JSON.stringify({
             monte_ore: parseFloat(monteOre),
             mese_inizio: meseInizio,
+            mese_fine: meseFine || null,
             nota: nota || null
         })
     }).then(function() {
         showToast('Variazione aggiunta', 'success');
         document.getElementById('var-monte-ore').value = '';
         document.getElementById('var-mese-inizio').value = '';
+        document.getElementById('var-mese-fine').value = '';
         document.getElementById('var-nota').value = '';
         loadVariazioniMonteOre();
     }).catch(function(err) {

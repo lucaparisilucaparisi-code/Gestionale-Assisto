@@ -639,6 +639,29 @@ def _valida_valori_rendicontazione(riga):
     return valori, None
 
 
+def _valida_mese_fine(valore, mese_inizio=None):
+    """Mese di fine di una variazione monte ore: vuoto -> None (aperta), altrimenti
+    'YYYY-MM' non precedente al mese di inizio (se noto). Ritorna (valore, errore)."""
+    mese_fine = (valore or '').strip() if isinstance(valore, str) else valore
+    if not mese_fine:
+        return None, None
+    if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', mese_fine):
+        return None, 'Mese fine non valido (formato YYYY-MM)'
+    if mese_inizio and mese_fine < mese_inizio:
+        return None, 'Il mese di fine non puo\' precedere il mese di inizio'
+    return mese_fine, None
+
+
+def _valida_anno_scolastico(anno_scolastico):
+    """'AAAA-AAAA' con anni consecutivi; ritorna il messaggio d'errore o None."""
+    if not re.match(r'^\d{4}-\d{4}$', anno_scolastico or ''):
+        return 'Formato anno scolastico non valido (es. 2026-2027)'
+    a1, a2 = map(int, anno_scolastico.split('-'))
+    if a2 != a1 + 1:
+        return 'Anno scolastico non coerente (deve essere consecutivo)'
+    return None
+
+
 # ==================== ROUTES PAGINE ====================
 
 @app.route('/')
@@ -1637,20 +1660,23 @@ def api_annulla_sostituto(sostituzione_id):
 
 @app.route('/api/utenti', methods=['GET'])
 def api_get_utenti():
-    """Ottiene lista utenti con paginazione opzionale"""
+    """Ottiene lista utenti con paginazione opzionale.
+
+    attivi: '1' (default) solo attivi, '0' solo archiviati, 'tutti' entrambi."""
     commessa = request.args.get('commessa')
     scuola_id = request.args.get('scuola_id')
     page = request.args.get('page', type=int)
     limit = request.args.get('limit', default=50, type=int)
+    attivo = {'1': True, '0': False}.get(request.args.get('attivi', '1'), None)
 
     # Limita il numero massimo di elementi per pagina
     limit = min(limit, 200)
 
-    utenti = db.get_all_utenti(commessa, scuola_id, page=page, limit=limit)
+    utenti = db.get_all_utenti(commessa, scuola_id, page=page, limit=limit, attivo=attivo)
 
     # Se paginato, restituisci anche i metadati
     if page is not None:
-        total = db.count_utenti(commessa, scuola_id)
+        total = db.count_utenti(commessa, scuola_id, attivo=attivo)
         return jsonify({
             'data': [dict(u) for u in utenti],
             'pagination': {
@@ -1780,6 +1806,11 @@ def api_update_utente(utente_id):
                     updates.append("data_fine = ?")
                     params.append(data_fine)
 
+            # Archiviazione / ripristino (soft delete: lo storico resta intatto)
+            if 'attivo' in data:
+                updates.append("attivo = ?")
+                params.append(1 if data['attivo'] else 0)
+
             if errors:
                 return jsonify({'error': '; '.join(errors)}), 400
 
@@ -1803,7 +1834,10 @@ def api_update_utente(utente_id):
             'id': utente_id,
             'dati_precedenti': dati_precedenti
         })
-        db.log_audit('modifica', 'utente', utente_id, dettagli='Aggiornamento utente', dati_precedenti=dati_precedenti, dati_nuovi=data)
+        dettagli = 'Aggiornamento utente'
+        if 'attivo' in data:
+            dettagli = 'Ripristino utente' if data['attivo'] else 'Archiviazione utente'
+        db.log_audit('modifica', 'utente', utente_id, dettagli=dettagli, dati_precedenti=dati_precedenti, dati_nuovi=data)
         logger.info(f"Utente aggiornato: ID {utente_id}")
 
         return jsonify({'success': True})
@@ -2181,10 +2215,14 @@ def api_add_variazione_monte_ore(utente_id):
         return jsonify({'error': 'Mese inizio obbligatorio (formato YYYY-MM)'}), 400
 
     nota = (data.get('nota') or '').strip()[:500] or None
+    mese_fine, err = _valida_mese_fine(data.get('mese_fine'), mese_inizio)
+    if err:
+        return jsonify({'error': err}), 400
 
-    var_id = db.add_variazione_monte_ore(utente_id, monte_ore, mese_inizio, nota)
+    var_id = db.add_variazione_monte_ore(utente_id, monte_ore, mese_inizio, nota, mese_fine=mese_fine)
     db.log_audit('variazione_monte_ore', 'utente', utente_id,
-                 dettagli=f'Aggiunta variazione: {monte_ore}h da {mese_inizio}')
+                 dettagli=f'Aggiunta variazione: {monte_ore}h da {mese_inizio}'
+                          + (f' a {mese_fine}' if mese_fine else ''))
     return jsonify({'success': True, 'id': var_id})
 
 
@@ -2209,6 +2247,12 @@ def api_update_variazione_monte_ore(variazione_id):
 
     if 'nota' in data:
         kwargs['nota'] = (data['nota'] or '').strip()[:500] or None
+
+    if 'mese_fine' in data:
+        mese_fine, err = _valida_mese_fine(data['mese_fine'], kwargs.get('mese_inizio'))
+        if err:
+            return jsonify({'error': err}), 400
+        kwargs['mese_fine'] = mese_fine  # None = riapre la variazione
 
     if not kwargs:
         return jsonify({'error': 'Nessun campo da aggiornare'}), 400
@@ -2716,12 +2760,8 @@ def api_storico_utente(utente_id):
         variazioni_utente = db.get_variazioni_monte_ore(utente_id)
 
         def _get_monte_ore_mese(anno_r, mese_r):
-            periodo = f"{anno_r:04d}-{mese_r:02d}"
-            mo = monte_ore_base
-            for v in variazioni_utente:
-                if v['mese_inizio'] <= periodo:
-                    mo = v['monte_ore']
-            return mo
+            # Regola unica (inizio/fine variazione), la stessa della vista mensile
+            return db.risolvi_monte_ore(monte_ore_base, variazioni_utente, f"{anno_r:04d}-{mese_r:02d}")
 
         for r in cursor.fetchall():
             monte_ore = _get_monte_ore_mese(r['anno'], r['mese'])
@@ -3222,11 +3262,15 @@ def api_anno_scolastico_prossimo():
     """Stato del prossimo anno scolastico: serve per il banner in dashboard."""
     oggi = datetime.now()
     anno_target, pronto = _prossimo_anno_da_preparare(oggi)
+    # Passo 2 (utenti: variazioni chiuse, monte ore, archiviazioni) gia' fatto?
+    utenti_pronti = anno_target is not None and \
+        db.get_impostazione('anno_utenti_preparato') == anno_target
     return jsonify({
         'corrente': config.anno_scolastico_di(oggi.year, oggi.month),
         'prossimo': anno_target,
         'pronto': bool(pronto),
-        'mostra_banner': anno_target is not None and not pronto,
+        'utenti_pronti': bool(utenti_pronti),
+        'mostra_banner': anno_target is not None and not (pronto and utenti_pronti),
     })
 
 
@@ -3235,13 +3279,11 @@ def api_anno_scolastico_prepara():
     """Prepara il nuovo anno scolastico: calcola e salva il calendario con le
     regole della Regione Lazio (rivedibile a mano) e ritorna il riepilogo.
     Idempotente: rieseguirlo ricalcola il calendario dell'anno indicato."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     anno_scolastico = (data.get('anno_scolastico') or '').strip()
-    if not re.match(r'^\d{4}-\d{4}$', anno_scolastico):
-        return jsonify({'error': 'Formato anno scolastico non valido (es. 2026-2027)'}), 400
-    a1, a2 = map(int, anno_scolastico.split('-'))
-    if a2 != a1 + 1:
-        return jsonify({'error': 'Anno scolastico non coerente (deve essere consecutivo)'}), 400
+    err = _valida_anno_scolastico(anno_scolastico)
+    if err:
+        return jsonify({'error': err}), 400
 
     mesi = calcola_e_salva_calendario_auto(anno_scolastico)
     utenti_attivi = db.count_utenti()
@@ -3254,6 +3296,81 @@ def api_anno_scolastico_prepara():
         'anno_scolastico': anno_scolastico,
         'mesi': mesi,
         'utenti_attivi': utenti_attivi,
+    })
+
+
+@app.route('/api/anno-scolastico/utenti-anteprima', methods=['GET'])
+def api_anno_scolastico_utenti_anteprima():
+    """Passo 'Utenti' del wizard: anteprima di cosa cambierebbe (monte ore base,
+    effettivo a giugno, variazioni aperte da chiudere, utenti usciti da archiviare).
+    Non modifica nulla."""
+    anno_scolastico = (request.args.get('anno_scolastico') or '').strip()
+    err = _valida_anno_scolastico(anno_scolastico)
+    if err:
+        return jsonify({'error': err}), 400
+    utenti = db.anteprima_utenti_nuovo_anno(anno_scolastico)
+    return jsonify({
+        'anno_scolastico': anno_scolastico,
+        'utenti': utenti,
+        'variazioni_da_chiudere': sum(u['variazioni_aperte'] for u in utenti),
+        'da_archiviare': sum(1 for u in utenti if u['proposta_archivio']),
+        'gia_preparato': db.get_impostazione('anno_utenti_preparato') == anno_scolastico,
+    })
+
+
+@app.route('/api/anno-scolastico/prepara-utenti', methods=['POST'])
+def api_anno_scolastico_prepara_utenti():
+    """Passo 'Utenti' del wizard (una transazione): chiude al 31/8 le variazioni
+    monte ore aperte, aggiorna i monte ore base indicati, archivia gli utenti
+    indicati. Ogni monte ore cambiato finisce nello storico dell'utente (audit)."""
+    data = request.get_json(silent=True) or {}
+    anno_scolastico = (data.get('anno_scolastico') or '').strip()
+    err = _valida_anno_scolastico(anno_scolastico)
+    if err:
+        return jsonify({'error': err}), 400
+
+    chiudi = bool(data.get('chiudi_variazioni', True))
+
+    monte_ore = {}
+    for chiave, valore in (data.get('monte_ore') or {}).items():
+        try:
+            uid = int(chiave)
+        except (TypeError, ValueError):
+            return jsonify({'error': f'Id utente non valido: {chiave}'}), 400
+        val, err = validate_number(valore, f'Monte ore (utente {uid})', 0, config.MAX_ORE_SETTIMANALI)
+        if err:
+            return jsonify({'error': err}), 400
+        monte_ore[uid] = val
+
+    archivia = data.get('archivia') or []
+    if not isinstance(archivia, list) or not all(isinstance(x, int) for x in archivia):
+        return jsonify({'error': 'archivia deve essere una lista di id utente'}), 400
+
+    esito = db.prepara_utenti_nuovo_anno(anno_scolastico, chiudi, monte_ore, archivia)
+
+    # Audit DOPO il commit: una riga per utente, cosi' lo storico monte ore le vede
+    for m in esito['monte_ore_modificati']:
+        db.log_audit('modifica', 'utente', m['id'],
+                     dettagli=f'Nuovo anno {anno_scolastico}: monte ore {m["prima"]} -> {m["dopo"]}',
+                     dati_precedenti={'monte_ore_settimanale': m['prima']},
+                     dati_nuovi={'monte_ore': m['dopo']})
+    for a in esito['archiviati']:
+        db.log_audit('archiviazione', 'utente', a['id'],
+                     dettagli=f'Archiviato con il nuovo anno {anno_scolastico}')
+    db.log_audit('preparazione_anno_utenti', 'sistema',
+                 dettagli=f'Utenti preparati per {anno_scolastico}: '
+                          f"{esito['variazioni_chiuse']} variazioni chiuse, "
+                          f"{len(esito['monte_ore_modificati'])} monte ore aggiornati, "
+                          f"{len(esito['archiviati'])} archiviati")
+    logger.info(f"Passo utenti nuovo anno {anno_scolastico}: {esito}")
+
+    return jsonify({
+        'success': True,
+        'anno_scolastico': anno_scolastico,
+        'variazioni_chiuse': esito['variazioni_chiuse'],
+        'monte_ore_modificati': len(esito['monte_ore_modificati']),
+        'archiviati': len(esito['archiviati']),
+        'dettaglio': esito,
     })
 
 
@@ -3437,10 +3554,11 @@ def api_undo():
                 for v in action['data'].get('variazioni', []):
                     cursor.execute('''
                         INSERT OR IGNORE INTO variazioni_monte_ore
-                        (id, utente_id, monte_ore, mese_inizio, nota, data_inserimento)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        (id, utente_id, monte_ore, mese_inizio, mese_fine, nota, data_inserimento)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                     ''', (v.get('id'), v['utente_id'], v['monte_ore'], v['mese_inizio'],
-                          v.get('nota'), v.get('data_inserimento', datetime.now().isoformat())))
+                          v.get('mese_fine'), v.get('nota'),
+                          v.get('data_inserimento', datetime.now().isoformat())))
                 for asg in action['data'].get('assegnazioni', []):
                     # L'operatore potrebbe essere stato eliminato nel frattempo:
                     # si salta la singola riga (FK), non l'intero ripristino.
@@ -3470,7 +3588,7 @@ def api_undo():
                 set_parts = []
                 params = []
                 for key in ['nome', 'cognome', 'monte_ore_settimanale', 'nome_puntato',
-                            'lista_attesa', 'data_inizio', 'data_fine']:
+                            'lista_attesa', 'data_inizio', 'data_fine', 'attivo']:
                     if key in old:
                         set_parts.append(f"{key} = ?")
                         params.append(old[key])

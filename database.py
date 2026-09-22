@@ -215,6 +215,14 @@ def _init_schema(conn):
         )
     ''')
 
+    # Migrazione: fine validita' della variazione ('YYYY-MM' incluso, NULL = aperta).
+    # Senza una fine, un aumento si trascinava per sempre anche nell'anno scolastico
+    # successivo: la chiusura al 31/8 e' il "riporto al valore corretto" di settembre.
+    try:
+        cursor.execute("ALTER TABLE variazioni_monte_ore ADD COLUMN mese_fine TEXT")
+    except sqlite3.OperationalError:
+        pass  # Colonna già esistente
+
     # Tabella Rendicontazione Mensile
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS rendicontazione (
@@ -810,12 +818,14 @@ def get_or_create_utente(scuola_id, nome, cognome, monte_ore):
 
         return cursor.lastrowid
 
-def get_all_utenti(commessa=None, scuola_id=None, include_inactive_period=True, page=None, limit=50):
+def get_all_utenti(commessa=None, scuola_id=None, include_inactive_period=True, page=None, limit=50,
+                   attivo=True):
     """
     Ottiene tutti gli utenti, con filtri opzionali e paginazione.
     include_inactive_period: se True, include anche utenti fuori dal periodo di validità
     page: numero pagina (1-based), se None restituisce tutti
     limit: numero elementi per pagina (default 50)
+    attivo: True solo attivi (default), False solo archiviati, None entrambi
     """
     with get_db_context() as conn:
         cursor = conn.cursor()
@@ -825,9 +835,13 @@ def get_all_utenti(commessa=None, scuola_id=None, include_inactive_period=True, 
             FROM utenti u
             JOIN scuole s ON u.scuola_id = s.id
             JOIN commesse c ON s.commessa_id = c.id
-            WHERE u.attivo = 1
+            WHERE 1 = 1
         '''
         params = []
+
+        if attivo is not None:
+            query += " AND u.attivo = ?"
+            params.append(1 if attivo else 0)
 
         if commessa:
             query += " AND c.nome = ?"
@@ -3993,7 +4007,7 @@ def get_variazioni_monte_ore(utente_id):
     with get_db_context() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, utente_id, monte_ore, mese_inizio, nota, data_inserimento
+            SELECT id, utente_id, monte_ore, mese_inizio, mese_fine, nota, data_inserimento
             FROM variazioni_monte_ore
             WHERE utente_id = ?
             ORDER BY mese_inizio ASC
@@ -4001,22 +4015,31 @@ def get_variazioni_monte_ore(utente_id):
         return [dict(r) for r in cursor.fetchall()]
 
 
-def add_variazione_monte_ore(utente_id, monte_ore, mese_inizio, nota=None):
+def add_variazione_monte_ore(utente_id, monte_ore, mese_inizio, nota=None, mese_fine=None):
     """Aggiunge una variazione monte ore per un utente.
-    mese_inizio in formato 'YYYY-MM'.
+    mese_inizio / mese_fine in formato 'YYYY-MM' (mese_fine incluso, None = aperta).
     """
     with get_db_context() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO variazioni_monte_ore (utente_id, monte_ore, mese_inizio, nota, data_inserimento)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (utente_id, monte_ore, mese_inizio, nota, datetime.now().isoformat()))
+            INSERT INTO variazioni_monte_ore (utente_id, monte_ore, mese_inizio, mese_fine, nota, data_inserimento)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (utente_id, monte_ore, mese_inizio, mese_fine, nota, datetime.now().isoformat()))
         conn.commit()
         return cursor.lastrowid
 
 
-def update_variazione_monte_ore(variazione_id, monte_ore=None, mese_inizio=None, nota=None):
-    """Aggiorna una variazione monte ore esistente."""
+# Sentinella per "campo non passato" nelle update (None e' un valore legittimo:
+# azzera la nota o riapre la variazione)
+_NON_PASSATO = object()
+
+
+def update_variazione_monte_ore(variazione_id, monte_ore=None, mese_inizio=None,
+                                nota=_NON_PASSATO, mese_fine=_NON_PASSATO):
+    """Aggiorna una variazione monte ore esistente.
+
+    nota / mese_fine: None azzera il campo (prima non era possibile svuotare la
+    nota: la richiesta veniva ignorata e rispondeva 'Variazione non trovata')."""
     with get_db_context() as conn:
         cursor = conn.cursor()
         parts = []
@@ -4027,9 +4050,12 @@ def update_variazione_monte_ore(variazione_id, monte_ore=None, mese_inizio=None,
         if mese_inizio is not None:
             parts.append('mese_inizio = ?')
             params.append(mese_inizio)
-        if nota is not None:
+        if nota is not _NON_PASSATO:
             parts.append('nota = ?')
             params.append(nota)
+        if mese_fine is not _NON_PASSATO:
+            parts.append('mese_fine = ?')
+            params.append(mese_fine)
         if not parts:
             return False
         params.append(variazione_id)
@@ -4050,8 +4076,9 @@ def delete_variazione_monte_ore(variazione_id):
 def get_monte_ore_effettivo_bulk(anno, mese):
     """Ritorna un dict {utente_id: monte_ore_effettivo} per tutti gli utenti
     che hanno una variazione attiva nel mese specificato.
-    La variazione attiva e' quella con mese_inizio <= 'YYYY-MM' piu' recente.
-    Utenti non presenti nel dict usano il valore base da utenti.monte_ore_settimanale.
+    La variazione attiva e' quella con mese_inizio <= 'YYYY-MM' piu' recente
+    e non ancora terminata (mese_fine NULL o >= 'YYYY-MM'). Stessa regola di
+    risolvi_monte_ore(). Utenti non presenti nel dict usano il valore base.
     """
     periodo = f"{anno:04d}-{mese:02d}"
     with get_db_context() as conn:
@@ -4062,11 +4089,116 @@ def get_monte_ore_effettivo_bulk(anno, mese):
             INNER JOIN (
                 SELECT utente_id, MAX(mese_inizio) as max_mese
                 FROM variazioni_monte_ore
-                WHERE mese_inizio <= ?
+                WHERE mese_inizio <= ? AND (mese_fine IS NULL OR mese_fine >= ?)
                 GROUP BY utente_id
             ) latest ON v.utente_id = latest.utente_id AND v.mese_inizio = latest.max_mese
-        ''', (periodo,))
+            WHERE v.mese_fine IS NULL OR v.mese_fine >= ?
+        ''', (periodo, periodo, periodo))
         return {r['utente_id']: r['monte_ore'] for r in cursor.fetchall()}
+
+
+def risolvi_monte_ore(monte_ore_base, variazioni, periodo):
+    """Monte ore effettivo di un utente in un periodo 'YYYY-MM', date le sue
+    variazioni: vale l'ultima (per mese_inizio) iniziata entro il periodo e non
+    terminata (mese_fine NULL o >= periodo); senza variazioni attive, la base.
+    Regola UNICA: identica a get_monte_ore_effettivo_bulk (vista mensile)."""
+    attiva = None
+    for v in variazioni:
+        fine = v.get('mese_fine') if isinstance(v, dict) else v['mese_fine']
+        if v['mese_inizio'] <= periodo and (not fine or fine >= periodo):
+            if attiva is None or v['mese_inizio'] >= attiva['mese_inizio']:
+                attiva = v
+    return attiva['monte_ore'] if attiva else (monte_ore_base or 0)
+
+
+# ==================== NUOVO ANNO SCOLASTICO: PASSO UTENTI ====================
+
+def _variazioni_per_utente():
+    """Tutte le variazioni monte ore raggruppate per utente (una sola query)."""
+    with get_db_context() as conn:
+        rows = conn.execute(
+            'SELECT * FROM variazioni_monte_ore ORDER BY utente_id, mese_inizio').fetchall()
+    per_utente = {}
+    for r in rows:
+        per_utente.setdefault(r['utente_id'], []).append(dict(r))
+    return per_utente
+
+
+def anteprima_utenti_nuovo_anno(anno_scolastico):
+    """Per ogni utente attivo: monte ore base, effettivo a giugno (fine anno
+    precedente), variazioni ancora aperte da chiudere al 31/8, e proposta di
+    archiviazione se il periodo di validita' e' terminato prima di settembre."""
+    anno_inizio = int(anno_scolastico.split('-')[0])
+    giugno = f"{anno_inizio}-06"
+    agosto = f"{anno_inizio}-08"
+    settembre = f"{anno_inizio}-09"
+    per_utente = _variazioni_per_utente()
+
+    risultato = []
+    for u in get_all_utenti(attivo=True):
+        vs = per_utente.get(u['id'], [])
+        base = u['monte_ore_settimanale'] or 0
+        aperte = [v for v in vs if not v.get('mese_fine') and v['mese_inizio'] <= agosto]
+        data_fine = u.get('data_fine')
+        risultato.append({
+            'id': u['id'],
+            'nome': u['nome'],
+            'cognome': u['cognome'],
+            'scuola': u.get('scuola'),
+            'commessa': u.get('commessa'),
+            'monte_ore_base': base,
+            'effettivo_giugno': risolvi_monte_ore(base, vs, giugno),
+            'effettivo_settembre_senza_chiusura': risolvi_monte_ore(base, vs, settembre),
+            'variazioni_aperte': len(aperte),
+            'data_fine': data_fine,
+            'proposta_archivio': bool(data_fine) and data_fine < settembre,
+        })
+    return risultato
+
+
+def prepara_utenti_nuovo_anno(anno_scolastico, chiudi_variazioni=True, monte_ore=None, archivia=None):
+    """Passo "Utenti" del nuovo anno scolastico, in UNA sola transazione:
+    - chiude al 31 agosto le variazioni monte ore ancora aperte (da settembre
+      vale il monte ore base di ogni utente: e' il "riporto al valore corretto");
+    - aggiorna il monte ore base degli utenti indicati ({id: nuovo_valore});
+    - archivia (attivo = 0) gli utenti indicati, che restano nello storico;
+    - ricorda che il passo e' stato fatto per questo anno (impostazioni).
+    Ritorna il riepilogo delle modifiche REALMENTE applicate (per audit e messaggio).
+    Idempotente: rieseguirlo non chiude/archivia/modifica nulla di gia' fatto."""
+    anno_inizio = int(anno_scolastico.split('-')[0])
+    agosto = f"{anno_inizio}-08"
+    monte_ore = monte_ore or {}
+    archivia = archivia or []
+    esito = {'variazioni_chiuse': 0, 'monte_ore_modificati': [], 'archiviati': []}
+
+    with get_db_context() as conn:
+        cursor = conn.cursor()
+        if chiudi_variazioni:
+            cursor.execute('''UPDATE variazioni_monte_ore SET mese_fine = ?
+                              WHERE mese_fine IS NULL AND mese_inizio <= ?''', (agosto, agosto))
+            esito['variazioni_chiuse'] = cursor.rowcount
+
+        for uid, nuovo in monte_ore.items():
+            cursor.execute("SELECT id, nome, cognome, monte_ore_settimanale FROM utenti WHERE id = ?", (uid,))
+            row = cursor.fetchone()
+            if not row or float(row['monte_ore_settimanale'] or 0) == float(nuovo):
+                continue
+            cursor.execute("UPDATE utenti SET monte_ore_settimanale = ? WHERE id = ?", (nuovo, uid))
+            esito['monte_ore_modificati'].append({
+                'id': uid, 'nome': f"{row['nome']} {row['cognome'] or ''}".strip(),
+                'prima': row['monte_ore_settimanale'], 'dopo': nuovo})
+
+        for uid in archivia:
+            cursor.execute("SELECT id, nome, cognome FROM utenti WHERE id = ? AND attivo = 1", (uid,))
+            row = cursor.fetchone()
+            if not row:
+                continue
+            cursor.execute("UPDATE utenti SET attivo = 0 WHERE id = ?", (uid,))
+            esito['archiviati'].append({'id': uid, 'nome': f"{row['nome']} {row['cognome'] or ''}".strip()})
+
+        cursor.execute('''INSERT INTO impostazioni (chiave, valore) VALUES ('anno_utenti_preparato', ?)
+                          ON CONFLICT(chiave) DO UPDATE SET valore = excluded.valore''', (anno_scolastico,))
+    return esito
 
 
 # ==================== AUTENTICAZIONE (single-user) ====================

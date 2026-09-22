@@ -480,6 +480,9 @@ window.addEventListener('themechange', async () => {
 // ==================== BANNER NUOVO ANNO SCOLASTICO ====================
 
 let _bannerAnnoInit = false;
+let _annoWizard = null;
+let _wizardUtenti = [];
+let _wizardStato = {};   // id utente -> { nuovo, archivia }: modifiche fatte nella tabella
 
 async function loadBannerNuovoAnno() {
     const card = document.getElementById('nuovo-anno-card');
@@ -490,61 +493,199 @@ async function loadBannerNuovoAnno() {
             card.style.display = 'none';
             return;
         }
+        _annoWizard = stato.prossimo;
         document.getElementById('nuovo-anno-label').textContent = stato.prossimo;
         card.style.display = '';
+        renderPassiNuovoAnno(stato);
 
         if (!_bannerAnnoInit) {
             _bannerAnnoInit = true;
-            document.getElementById('btn-prepara-anno').addEventListener('click',
-                () => preparaNuovoAnno(stato.prossimo));
+            document.getElementById('btn-prepara-anno').addEventListener('click', () => preparaNuovoAnno(_annoWizard));
+            document.getElementById('btn-wizard-utenti').addEventListener('click', () => apriWizardUtenti(_annoWizard));
+            document.getElementById('btn-wizard-utenti-applica').addEventListener('click', applicaWizardUtenti);
+            document.getElementById('wizard-utenti-cerca').addEventListener('input', renderWizardUtenti);
+            document.getElementById('wizard-chiudi-variazioni').addEventListener('change', aggiornaRiepilogoWizard);
+            // Le modifiche nella tabella restano anche se si filtra/rirenderizza
+            const tbody = document.getElementById('wizard-utenti-tbody');
+            tbody.addEventListener('input', (e) => {
+                if (e.target.classList.contains('wizard-nuovo-mo')) {
+                    _statoWizard(e.target.dataset.id).nuovo = e.target.value;
+                    aggiornaRiepilogoWizard();
+                }
+            });
+            tbody.addEventListener('change', (e) => {
+                if (e.target.classList.contains('wizard-archivia')) {
+                    _statoWizard(e.target.dataset.id).archivia = e.target.checked;
+                    e.target.closest('tr')?.classList.toggle('wizard-riga-archivia', e.target.checked);
+                    aggiornaRiepilogoWizard();
+                }
+            });
         }
     } catch (e) { console.error(e); }
 }
 
-async function preparaNuovoAnno(annoScolastico) {
-    if (!confirm(`Preparare l'anno scolastico ${annoScolastico}?\n\n` +
-                 'Verrà creato il calendario con i giorni lavorativi calcolati ' +
-                 'automaticamente (regole Regione Lazio). Potrai rivederlo e ' +
-                 'correggerlo dalla pagina Calendario.')) {
+function _statoWizard(id) {
+    if (!_wizardStato[id]) _wizardStato[id] = {};
+    return _wizardStato[id];
+}
+
+function renderPassiNuovoAnno(stato) {
+    const mostra = (id, visibile) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = visibile ? '' : 'none';
+    };
+    document.getElementById('passo-calendario')?.classList.toggle('fatto', !!stato.pronto);
+    document.getElementById('passo-utenti')?.classList.toggle('fatto', !!stato.utenti_pronti);
+    mostra('btn-prepara-anno', !stato.pronto);
+    mostra('passo-calendario-ok', stato.pronto);
+    mostra('btn-wizard-utenti', !stato.utenti_pronti);
+    mostra('passo-utenti-ok', stato.utenti_pronti);
+}
+
+function preparaNuovoAnno(annoScolastico) {
+    showConfirmDialog(
+        `Preparare il calendario ${annoScolastico}?`,
+        'Verranno creati i giorni lavorativi di ogni mese, calcolati automaticamente ' +
+        '(regole Regione Lazio). Potrai rivederli e correggerli dalla pagina Calendario.',
+        async () => {
+            const btn = document.getElementById('btn-prepara-anno');
+            btn.disabled = true;
+            try {
+                const data = await apiCall('/api/anno-scolastico/prepara', {
+                    method: 'POST',
+                    body: JSON.stringify({ anno_scolastico: annoScolastico })
+                });
+                const MESI_BREVI = ['','Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+                const righe = data.mesi.map(m =>
+                    `<tr><td>${MESI_BREVI[m.mese]} ${m.anno}</td>` +
+                    `<td class="text-right">${m.giorni}${m.giorni_altri != null ? ` (non-infanzia: ${m.giorni_altri})` : ''}</td></tr>`
+                ).join('');
+                document.getElementById('nuovo-anno-esito').innerHTML = `
+                    <div class="alert alert-success">
+                        <div><strong>Calendario ${escapeHtml(data.anno_scolastico)} creato</strong> per ${data.mesi.length} mesi.
+                        Ora puoi passare al punto 2 (utenti e monte ore).</div>
+                    </div>
+                    <div class="table-responsive mt-2" style="max-width:420px;">
+                        <table class="table">
+                            <thead><tr><th>Mese</th><th class="text-right">Giorni lavorativi</th></tr></thead>
+                            <tbody>${righe}</tbody>
+                        </table>
+                    </div>`;
+                showToast('Calendario del nuovo anno preparato', 'success');
+                loadBannerNuovoAnno();
+            } catch (e) {
+                showToast(e.message || 'Errore nella preparazione', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        },
+        { confirmText: 'Prepara', type: 'info' }
+    );
+}
+
+async function apriWizardUtenti(annoScolastico) {
+    _wizardStato = {};
+    document.getElementById('wizard-utenti-anno').textContent = annoScolastico;
+    document.getElementById('wizard-utenti-cerca').value = '';
+    const tbody = document.getElementById('wizard-utenti-tbody');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner"></div></td></tr>';
+    openModal('modal-nuovo-anno-utenti');
+    try {
+        const data = await apiCall(`/api/anno-scolastico/utenti-anteprima?anno_scolastico=${encodeURIComponent(annoScolastico)}`);
+        _wizardUtenti = data.utenti || [];
+        document.getElementById('wizard-variazioni-n').textContent = data.variazioni_da_chiudere;
+        document.getElementById('wizard-chiudi-variazioni').checked = data.variazioni_da_chiudere > 0;
+        renderWizardUtenti();
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">${escapeHtml(e.message || 'Errore nel caricamento')}</td></tr>`;
+    }
+}
+
+function renderWizardUtenti() {
+    const tbody = document.getElementById('wizard-utenti-tbody');
+    const q = (document.getElementById('wizard-utenti-cerca').value || '').toLowerCase().trim();
+    const righe = _wizardUtenti.filter(u => !q || `${u.nome} ${u.cognome || ''} ${u.scuola || ''}`.toLowerCase().includes(q));
+    if (!righe.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Nessun utente</td></tr>';
+        aggiornaRiepilogoWizard();
         return;
     }
-    const btn = document.getElementById('btn-prepara-anno');
-    btn.disabled = true;
-    try {
-        const res = await fetch('/api/anno-scolastico/prepara', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ anno_scolastico: annoScolastico })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Errore');
+    tbody.innerHTML = righe.map(u => {
+        const st = _wizardStato[u.id] || {};
+        const nuovo = st.nuovo !== undefined ? st.nuovo : u.monte_ore_base;
+        const archivia = st.archivia !== undefined ? st.archivia : u.proposta_archivio;
+        const diverso = Number(u.effettivo_giugno) !== Number(u.monte_ore_base);
+        return `<tr class="${archivia ? 'wizard-riga-archivia' : ''}">
+            <td><strong>${escapeHtml(u.nome)} ${escapeHtml(u.cognome || '')}</strong>
+                <div class="text-muted" style="font-size:0.8rem;">${escapeHtml(u.scuola || '')}</div></td>
+            <td class="text-center">${u.monte_ore_base}</td>
+            <td class="text-center ${diverso ? 'wizard-diff' : ''}" title="${u.variazioni_aperte} variazione/i ancora aperta/e">${u.effettivo_giugno}${diverso ? ' ⚠' : ''}</td>
+            <td><input type="number" class="form-control wizard-nuovo-mo" data-id="${u.id}" value="${nuovo}" step="0.5" min="0" max="40" style="width:100px;" aria-label="Nuovo monte ore"></td>
+            <td class="text-center"><input type="checkbox" class="wizard-archivia" data-id="${u.id}" ${archivia ? 'checked' : ''} aria-label="Archivia">
+                ${u.data_fine ? `<div class="text-muted" style="font-size:0.75rem;">fine ${escapeHtml(u.data_fine)}</div>` : ''}</td>
+        </tr>`;
+    }).join('');
+    aggiornaRiepilogoWizard();
+}
 
-        const MESI_BREVI = ['','Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
-        const righe = data.mesi.map(m =>
-            `<tr><td>${MESI_BREVI[m.mese]} ${m.anno}</td>` +
-            `<td class="text-right">${m.giorni}${m.giorni_altri != null ? ` (non-infanzia: ${m.giorni_altri})` : ''}</td></tr>`
-        ).join('');
-        document.getElementById('nuovo-anno-body').innerHTML = `
-            <div class="alert alert-success">
-                <div><strong>Anno ${escapeHtml(data.anno_scolastico)} preparato!</strong>
-                Calendario creato per ${data.mesi.length} mesi.</div>
-            </div>
-            <div class="table-responsive mt-3" style="max-width:420px;">
-                <table class="table">
-                    <thead><tr><th>Mese</th><th class="text-right">Giorni lavorativi</th></tr></thead>
-                    <tbody>${righe}</tbody>
-                </table>
-            </div>
-            <p class="text-muted mt-2" style="font-size:0.9rem;">
-                Prossimi passi consigliati:
-                <a href="/calendario"><strong>rivedi il calendario</strong></a> (chiusure locali, scioperi…)
-                e <a href="/utenti"><strong>controlla i monte ore</strong></a> degli assistiti
-                (${data.utenti_attivi} attivi in anagrafica).
-            </p>
-        `;
-        showToast('Nuovo anno scolastico preparato', 'success');
-    } catch (e) {
-        showToast(e.message || 'Errore nella preparazione', 'error');
-        btn.disabled = false;
-    }
+function _modificheWizard() {
+    const monte_ore = {};
+    const archivia = [];
+    _wizardUtenti.forEach(u => {
+        const st = _wizardStato[u.id] || {};
+        const nuovo = (st.nuovo !== undefined && st.nuovo !== '') ? Number(st.nuovo) : Number(u.monte_ore_base);
+        if (nuovo !== Number(u.monte_ore_base)) monte_ore[u.id] = nuovo;
+        const arch = st.archivia !== undefined ? st.archivia : u.proposta_archivio;
+        if (arch) archivia.push(u.id);
+    });
+    return { monte_ore, archivia };
+}
+
+function aggiornaRiepilogoWizard() {
+    const el = document.getElementById('wizard-utenti-riepilogo');
+    if (!el) return;
+    const { monte_ore, archivia } = _modificheWizard();
+    const chiudi = document.getElementById('wizard-chiudi-variazioni').checked;
+    const nVar = chiudi ? Number(document.getElementById('wizard-variazioni-n').textContent || 0) : 0;
+    el.textContent = `${nVar} variazioni da chiudere · ${Object.keys(monte_ore).length} monte ore da aggiornare · ${archivia.length} da archiviare`;
+}
+
+function applicaWizardUtenti() {
+    const { monte_ore, archivia } = _modificheWizard();
+    const chiudi = document.getElementById('wizard-chiudi-variazioni').checked;
+    const nVar = chiudi ? Number(document.getElementById('wizard-variazioni-n').textContent || 0) : 0;
+    const righe = [];
+    if (chiudi) righe.push(`${nVar} variazioni monte ore chiuse al 31 agosto`);
+    righe.push(`${Object.keys(monte_ore).length} monte ore di partenza aggiornati`);
+    righe.push(`${archivia.length} utenti archiviati`);
+    showConfirmDialog(
+        `Applicare le modifiche per il ${_annoWizard}?`,
+        righe.join(' · ') + '. Ogni monte ore cambiato resta nello storico dell\'utente; ' +
+        'gli archiviati si ritrovano nel filtro "Archiviati" della pagina Utenti.',
+        async () => {
+            const btn = document.getElementById('btn-wizard-utenti-applica');
+            btn.disabled = true;
+            try {
+                const res = await apiCall('/api/anno-scolastico/prepara-utenti', {
+                    method: 'POST',
+                    body: JSON.stringify({ anno_scolastico: _annoWizard, chiudi_variazioni: chiudi, monte_ore, archivia })
+                });
+                closeModal('modal-nuovo-anno-utenti');
+                document.getElementById('nuovo-anno-esito').innerHTML = `
+                    <div class="alert alert-success">
+                        <div><strong>Utenti pronti per il ${escapeHtml(_annoWizard)}.</strong>
+                        ${res.variazioni_chiuse} variazioni chiuse, ${res.monte_ore_modificati} monte ore aggiornati,
+                        ${res.archiviati} utenti archiviati.</div>
+                    </div>`;
+                showToast('Utenti preparati per il nuovo anno', 'success');
+                loadBannerNuovoAnno();
+                if (typeof loadDashboardData === 'function') loadDashboardData();
+            } catch (e) {
+                showToast(e.message || 'Errore nell\'applicazione delle modifiche', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        },
+        { confirmText: 'Applica', type: 'info' }
+    );
 }

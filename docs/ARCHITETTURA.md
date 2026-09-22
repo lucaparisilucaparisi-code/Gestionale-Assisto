@@ -32,6 +32,13 @@ reimplementarla inline (a schermo, in SQL o negli export).
   vista mensile, storico e aggregati.
 - **Anno scolastico** → `config.anno_scolastico_di(anno, mese, sep)` (mese ≥ 9 →
   anno/anno+1). `sep='-'` è il formato chiave del DB, `sep='/'` quello dei report.
+  L'anno di oggi è `config.anno_scolastico_corrente()`: mai anni scritti a mano.
+- **Monte ore effettivo** → `database.risolvi_monte_ore(base, variazioni, 'YYYY-MM')`
+  (singolo utente) e `get_monte_ore_effettivo_bulk(anno, mese)` (vista mensile): vale
+  l'ultima variazione iniziata entro il mese e non terminata (`mese_fine` NULL o ≥ mese).
+  Il wizard di nuovo anno chiude al 31/8 quelle aperte (`prepara_utenti_nuovo_anno`).
+- **Mese chiuso** → `_risposta_mese_chiuso(anno, mese)` in `app.py`: ogni route che
+  scrive ore (singola, batch, copia, compila, import) deve passarci e rispondere 409.
 - **Cancellazione utente** → `database.elimina_utente_completo(cursor, id)` +
   `raccogli_snapshot_utente` per l'undo: mai DELETE diretti (le FK sono applicate).
 - **Match nominativi** → sempre `COLLATE NOCASE` su nome/cognome (evita duplicati
