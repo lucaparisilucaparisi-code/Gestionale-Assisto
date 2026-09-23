@@ -17,10 +17,10 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Classi usate SOLO come aggancio per JavaScript (selettori, toggle di stato):
 # non hanno bisogno di una regola CSS.
 AGGANCI_JS = {
-    'btn-save-giorni', 'chiusura-panel', 'coefficiente', 'coefficiente-altri', 'diff-indicator',
+    'chiusura-panel', 'coefficiente', 'coefficiente-altri',
     'edit-colors', 'giorni-altri-input', 'giorni-input', 'imponibile', 'iva', 'ore-100', 'totale',
     'wizard-archivia', 'wizard-nuovo-mo', 'alert-item', 'utente-link', 'wizard-passo-body',
-    'page-header-content', 'top-scuole-list', 'import-tab-panel', 'has-results', 'no-results',
+    'top-scuole-list', 'import-tab-panel', 'has-results',
 }
 
 # Parole che il semplice parser raccoglie da espressioni Jinja/JS dentro
@@ -29,11 +29,9 @@ RUMORE = {'if', 'in', 'path', 'request', 'type', 'data', 'stato', 'totale_match'
           'diverso', 'creditoDebito'}
 
 # Eccezioni note da sistemare (elenco da SVUOTARE, non da allungare):
-# - excel-filter-*: barra "Filtra" della Rendicontazione, il suo CSS non e' mai stato caricato
 # - utility di spaziatura mai definite
 DA_SISTEMARE = {
-    'excel-filter-bar', 'excel-filter-clear', 'excel-filter-input', 'excel-filter-input-group',
-    'excel-filter-results', 'py-3', 'py-4', 'mb-0', 'ml-2',
+    'py-3', 'py-4', 'mb-0', 'ml-2',
 }
 
 

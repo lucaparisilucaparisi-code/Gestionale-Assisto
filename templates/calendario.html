@@ -59,8 +59,10 @@
         <h2 class="card-title">Giorni Lavorativi per Mese</h2>
         <div class="flex gap-2 items-center">
             <span id="modifiche-pendenti" class="text-muted" style="font-size:0.85rem; display:none;"></span>
-            <button id="btn-salva-tutto" class="btn btn-success btn-sm" disabled title="Salva in un colpo solo tutti i mesi modificati (Ctrl+S)">
-                Salva tutte le modifiche
+            {# Un solo pulsante di salvataggio (prima c'era anche un "Salva" blu su ogni riga):
+               attivo solo quando c'e' qualcosa da salvare, dice quanti mesi salva #}
+            <button id="btn-salva-tutto" class="btn btn-primary btn-sm" disabled title="Salva in un colpo solo tutti i mesi modificati (Ctrl+S)">
+                Salva modifiche
             </button>
         </div>
     </div>
@@ -153,6 +155,7 @@ function aggiornaStatoModifiche() {
     const btn = document.getElementById('btn-salva-tutto');
     const info = document.getElementById('modifiche-pendenti');
     btn.disabled = n === 0;
+    btn.textContent = n > 0 ? `Salva ${n} ${n === 1 ? 'mese' : 'mesi'}` : 'Salva modifiche';
     info.style.display = n > 0 ? '' : 'none';
     info.textContent = n > 0 ? `${n} ${n === 1 ? 'mese modificato' : 'mesi modificati'} non ancora salvat${n === 1 ? 'o' : 'i'}` : '';
 }
@@ -297,10 +300,8 @@ function renderCalendario(data) {
                 <tr>
                     <th style="width: 180px;">Mese</th>
                     <th style="width: 100px;">Anno</th>
-                    <th style="width: 180px;">Giorni Lavorativi <small>(Infanzia)</small></th>
-                    <th style="width: 180px;">Giorni "Altri" <small>(solo giugno)</small></th>
-                    <th style="width: 120px;">Coefficiente</th>
-                    <th>Azioni</th>
+                    <th style="width: 300px;">Giorni lavorativi</th>
+                    <th>Coefficiente</th>
                 </tr>
             </thead>
             <tbody>
@@ -314,13 +315,22 @@ function renderCalendario(data) {
         const coefficiente = formatNumber(giorni * COEFF, 1);
         const isGiugno = m.mese === 6;
 
-        // Campo "altri": editabile solo a giugno
-        const altriInput = isGiugno
-            ? `<input type="number" class="form-control giorni-altri-input"
-                      data-mese="${m.mese}" data-anno="${anno}" aria-label="Giorni altri ordini ${m.nome} ${anno}"
-                      value="${giorniAltri !== null && giorniAltri !== undefined ? giorniAltri : ''}"
-                      placeholder="es. 5" min="0" max="31" style="width: 110px;">`
-            : `<span class="text-muted">—</span>`;
+        // Giorni lavorativi: un campo; a giugno due (Infanzia e Altri ordini) nella
+        // stessa cella, invece di una colonna "Altri" con nove trattini
+        const giorniInput = `<input type="number" class="form-control giorni-input"
+                   data-mese="${m.mese}" data-anno="${anno}" aria-label="Giorni lavorativi ${isGiugno ? 'infanzia ' : ''}${m.nome} ${anno}"
+                   value="${giorni}" min="0" max="31" style="width: 110px;">`;
+        const giorniCell = isGiugno
+            ? `<div class="cal-giugno">
+                   <label class="cal-campo">Infanzia ${giorniInput}</label>
+                   <label class="cal-campo">Altri ordini
+                       <input type="number" class="form-control giorni-altri-input"
+                              data-mese="${m.mese}" data-anno="${anno}" aria-label="Giorni lavorativi altri ordini ${m.nome} ${anno}"
+                              value="${giorniAltri !== null && giorniAltri !== undefined ? giorniAltri : ''}"
+                              placeholder="es. 5" min="0" max="31" style="width: 110px;">
+                   </label>
+               </div>`
+            : giorniInput;
 
         // Coefficiente: a giugno mostriamo entrambi
         let coeffCell = `<span class="coefficiente">${coefficiente}</span>`;
@@ -337,21 +347,10 @@ function renderCalendario(data) {
 
         html += `
             <tr data-mese="${m.mese}" data-anno="${anno}">
-                <td><strong>${m.nome}</strong>${isGiugno ? ' <span style="font-size:0.7rem; padding:2px 6px; background: rgba(10,132,255,.12); border-radius:6px; margin-left:4px;">2 valori</span>' : ''}</td>
+                <td><strong>${m.nome}</strong></td>
                 <td>${anno}</td>
-                <td>
-                    <input type="number" class="form-control giorni-input"
-                           data-mese="${m.mese}" data-anno="${anno}" aria-label="Giorni lavorativi ${m.nome} ${anno}"
-                           value="${giorni}" min="0" max="31" style="width: 110px;">
-                </td>
-                <td>${altriInput}</td>
+                <td>${giorniCell}</td>
                 <td>${coeffCell}</td>
-                <td>
-                    <button class="btn btn-sm btn-primary btn-save-giorni"
-                            data-mese="${m.mese}" data-anno="${anno}">
-                        Salva
-                    </button>
-                </td>
             </tr>
         `;
     });
@@ -391,10 +390,6 @@ function renderCalendario(data) {
             segnaModificata(e.target);
         });
     });
-
-    container.querySelectorAll('.btn-save-giorni').forEach(btn => {
-        btn.addEventListener('click', (e) => saveGiorni(e.target));
-    });
 }
 
 // ==================== SALVATAGGIO ====================
@@ -418,28 +413,6 @@ function leggiRiga(mese, anno) {
 async function salvaRiga(mese, anno) {
     await apiCall('/api/calendario', { method: 'POST', body: JSON.stringify(leggiRiga(mese, anno)) });
     document.querySelector(`tr[data-mese="${mese}"][data-anno="${anno}"]`)?.classList.remove('riga-modificata');
-}
-
-async function saveGiorni(btn) {
-    const mese = parseInt(btn.dataset.mese);
-    const anno = parseInt(btn.dataset.anno);
-
-    btn.disabled = true;
-    btn.textContent = '...';
-    try {
-        await salvaRiga(mese, anno);
-        showToast('Giorni lavorativi salvati', 'success');
-        btn.textContent = 'Salvato!';
-        setTimeout(() => {
-            btn.textContent = 'Salva';
-            btn.disabled = false;
-        }, 1500);
-    } catch (error) {
-        showToast('Errore nel salvataggio: ' + (error.message || ''), 'error');
-        btn.textContent = 'Salva';
-        btn.disabled = false;
-    }
-    aggiornaStatoModifiche();
 }
 
 async function salvaTutto() {

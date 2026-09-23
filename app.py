@@ -2680,6 +2680,17 @@ def api_batch_update_rendicontazione(anno, mese):
     return jsonify({'success': True, 'aggiornati': aggiornati})
 
 
+def _mese_scolastico_precedente(anno, mese):
+    """Mese precedente NELL'ANNO SCOLASTICO: per settembre e' giugno (luglio e
+    agosto non sono mesi scolastici e sono sempre vuoti), per gennaio e' dicembre
+    dell'anno prima. Ritorna (anno, mese)."""
+    if mese == 9:
+        return anno, 6
+    if mese == 1:
+        return anno - 1, 12
+    return anno, mese - 1
+
+
 @app.route('/api/rendicontazione/<int:anno>/<int:mese>/copia-precedente', methods=['POST'])
 def api_copia_mese_precedente(anno, mese):
     """Copia ore dal mese precedente per utenti selezionati o tutti"""
@@ -2693,18 +2704,7 @@ def api_copia_mese_precedente(anno, mese):
     utente_ids = data.get('utente_ids', [])  # Se vuoto, copia per tutti
     solo_vuoti = data.get('solo_vuoti', True)  # Copia solo se utente non ha ore
 
-    # Calcola mese precedente NELL'ANNO SCOLASTICO: per settembre il mese
-    # precedente e' giugno (agosto/luglio non sono mesi scolastici e sono
-    # sempre vuoti: il pulsante non copiava mai nulla).
-    if mese == 9:
-        mese_prec = 6
-        anno_prec = anno
-    elif mese == 1:
-        mese_prec = 12
-        anno_prec = anno - 1
-    else:
-        mese_prec = mese - 1
-        anno_prec = anno
+    anno_prec, mese_prec = _mese_scolastico_precedente(anno, mese)
 
     # Ottieni dati mese precedente
     dati_prec = db.get_rendicontazione_completa(anno_prec, mese_prec)
@@ -2889,26 +2889,32 @@ def api_storico_utente(utente_id):
 
 @app.route('/api/rendicontazione/<int:anno>/<int:mese>/confronto-precedente')
 def api_confronto_mese_precedente(anno, mese):
-    """Ottiene le differenze di ore rispetto al mese precedente"""
+    """Differenze di ore rispetto al mese precedente dell'anno scolastico.
+
+    Oltre alla differenza sulle ore grezze, `scostamento_giornaliero_perc` confronta
+    le ore PER GIORNO LAVORATIVO (giorni di ciascun utente, infanzia/altri a giugno):
+    giugno ha ~8 giorni contro i ~20 di maggio e con le ore grezze tutte le righe
+    risultavano in calo del 60%. E' None se uno dei due mesi non ha ore o giorni.
+    """
     commessa = request.args.get('commessa')
 
-    # Calcola mese precedente
-    if mese == 1:
-        mese_prec, anno_prec = 12, anno - 1
-    else:
-        mese_prec, anno_prec = mese - 1, anno
+    # Stesso mese precedente di "Copia Mese Prec." (per settembre: giugno)
+    anno_prec, mese_prec = _mese_scolastico_precedente(anno, mese)
 
     dati_corrente = db.get_rendicontazione_completa(anno, mese, commessa)
     dati_prec = db.get_rendicontazione_completa(anno_prec, mese_prec, commessa)
 
-    # Crea mappa ore mese precedente
+    # Crea mappa ore (e giorni lavorativi) del mese precedente
     ore_prec_map = {d['utente_id']: d.get('ore_lavorate_60', 0) for d in dati_prec}
+    giorni_prec_map = {d['utente_id']: d.get('giorni_lavorativi') or 0 for d in dati_prec}
 
     differenze = {}
     for d in dati_corrente:
         uid = d['utente_id']
         ore_corr = d.get('ore_lavorate_60', 0) or 0
         ore_prec = ore_prec_map.get(uid, 0) or 0
+        giorni_corr = d.get('giorni_lavorativi') or 0
+        giorni_prec = giorni_prec_map.get(uid, 0)
 
         if ore_prec > 0:
             diff = ore_corr - ore_prec
@@ -2917,11 +2923,23 @@ def api_confronto_mese_precedente(anno, mese):
             diff = ore_corr
             diff_perc = 100 if ore_corr > 0 else 0
 
+        ore_giorno_corr = ore_corr / giorni_corr if giorni_corr > 0 else None
+        ore_giorno_prec = ore_prec / giorni_prec if giorni_prec > 0 else None
+        if ore_corr > 0 and ore_prec > 0 and ore_giorno_corr is not None and ore_giorno_prec:
+            scostamento = round((ore_giorno_corr - ore_giorno_prec) / ore_giorno_prec * 100, 1)
+        else:
+            scostamento = None
+
         differenze[uid] = {
             'ore_precedente': round(ore_prec, 2),
             'ore_corrente': round(ore_corr, 2),
             'differenza': round(diff, 2),
-            'differenza_perc': diff_perc
+            'differenza_perc': diff_perc,
+            'giorni_precedente': giorni_prec,
+            'giorni_corrente': giorni_corr,
+            'ore_giorno_precedente': round(ore_giorno_prec, 2) if ore_giorno_prec is not None else None,
+            'ore_giorno_corrente': round(ore_giorno_corr, 2) if ore_giorno_corr is not None else None,
+            'scostamento_giornaliero_perc': scostamento,
         }
 
     return jsonify({

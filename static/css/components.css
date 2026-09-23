@@ -467,6 +467,234 @@
     border-top: 1px solid var(--border-color);
 }
 
+/* ==================== RENDICONTAZIONE ==================== */
+
+/* Intestazione della pagina: il mese mostrato nel titolo ("Rendicontazione Mensile
+   · <mese> <anno>"), giorni lavorativi e coefficiente al posto del sottotitolo, le azioni
+   sul mese a destra. Prima c'erano un pannello "Periodo" (220px, poi 52px + margine)
+   e una fila di pulsanti sopra la tabella: a 1366x768 si vedevano 3 utenti. */
+/* Spazi un po' piu' stretti che nelle altre pagine (16px tra i blocchi, filtri da
+   92px invece di 104): qui conta vedere piu' righe della tabella possibile */
+.page-header.rend-header { margin-bottom: var(--sp-4); }
+.filters.rend-filtri { padding-top: var(--sp-3); padding-bottom: var(--sp-3); margin-bottom: var(--sp-4); }
+.rend-header-testo { min-width: 0; }
+.rend-titolo-periodo {
+    color: var(--text-secondary);
+    -webkit-text-fill-color: var(--text-secondary);   /* .page-title la forza sul testo */
+    font-weight: 500;
+}
+.rend-titolo-periodo:not(:empty)::before {
+    content: "\00B7";
+    margin: 0 0.3em;
+    color: var(--text-tertiary);
+    -webkit-text-fill-color: var(--text-tertiary);
+}
+.rend-periodo { display: flex; flex-wrap: wrap; gap: 2px 20px; }
+.rend-periodo[hidden] { display: none; }
+.rend-periodo strong { color: var(--text-primary); font-weight: 600; }
+.rend-azioni { gap: 8px; }
+@media (min-width: 1025px) {
+    /* se lo spazio non basta va a capo la riga dei giorni, non i pulsanti (+52px) */
+    .rend-header .page-header-row { flex-wrap: nowrap; }
+    .rend-azioni { flex-shrink: 0; }
+}
+
+/* Stato del salvataggio automatico accanto al titolo "Dettaglio Utenti": una
+   scritta, senza riquadro verde e senza l'icona che pulsava di continuo */
+.card-header .auto-save-indicator {
+    padding: 0;
+    background: none;
+    border: none;
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+}
+.card-header .auto-save-indicator svg { animation: none; }
+.card-header .auto-save-indicator.saved { color: var(--success); }
+.card-header .auto-save-indicator.pending,
+.card-header .auto-save-indicator.saving { color: var(--text-secondary); }
+.card-header .auto-save-indicator.pending svg { display: none; }
+.card-header .auto-save-indicator.errore { color: var(--danger); font-weight: 600; }
+
+/* Intestazione "Dettaglio Utenti" su una riga: titolo e stato del salvataggio a
+   sinistra, poi filtro per nome, "N senza ore" e aiuto sul formato ore (erano una
+   barra a parte sotto l'intestazione: 73 + 57px, ora 53px) */
+.rend-card-header { flex-wrap: wrap; gap: 8px 16px; padding: 8px 24px; min-height: 0; }
+.rend-card-titolo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.rend-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    flex: 1 1 420px;
+    min-width: 0;
+    gap: 8px 12px;
+}
+/* casella da 180 a 300px: con "N utenti su 35" o "Nessun utente trovato" accanto
+   resta tutto su una riga anche a 1366 */
+.excel-filter-bar { flex: 1 1 180px; max-width: 300px; min-width: 180px; }
+.excel-filter-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 4px 0 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+/* lo stesso contorno blu degli altri campi, sul riquadro e non sulla sola scritta */
+.excel-filter-input-group:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.excel-filter-input-group svg { color: var(--text-tertiary); flex-shrink: 0; }
+.excel-filter-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.875rem;
+}
+.excel-filter-input:focus-visible { outline: none !important; }
+.excel-filter-input::placeholder { color: var(--text-tertiary); }
+.excel-filter-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+}
+.excel-filter-clear:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.excel-filter-results {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.excel-filter-results:empty { display: none; }
+.excel-filter-results.no-results { color: var(--warning); }
+
+/* "12 senza ore": un'etichetta che si puo' premere (mostra solo quelle righe) */
+.badge-toggle { font-family: inherit; cursor: pointer; }
+.badge-toggle:hover { filter: brightness(1.12); }
+.badge-toggle[aria-pressed="true"] { box-shadow: inset 0 0 0 2px currentColor !important; }
+.badge-toggle[aria-pressed="true"]::after { content: "\2715"; margin-left: 2px; }
+
+.btn-aiuto {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px 5px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+.btn-aiuto-icona {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    font-weight: 700;
+    font-size: 0.75rem;
+}
+.btn-aiuto:hover, .btn-aiuto[aria-expanded="true"] { color: var(--text-primary); background: var(--bg-tertiary); }
+.rend-aiuto { margin: 12px 24px; }
+.rend-aiuto[hidden] { display: none; }   /* .alert e' display:flex e annullava [hidden] */
+
+/* Tabella compatta: righe da ~45px invece di 88 (nome, iniziali e ore su una
+   riga; casella ore da 72px), cosi' all'apertura si vedono gli utenti */
+/* 8px ai lati: con casella ore e scostamento sulla stessa riga le 12 colonne
+   entrano ancora in 1040px (1366x768, menu laterale aperto) */
+.tabella-rend th, .tabella-rend td { padding: 8px; }
+.tabella-rend th:first-child, .tabella-rend td:first-child { padding-left: 12px; }
+.tabella-rend thead th, .tabella-rend tr.scuola-header td { padding-top: 6px; padding-bottom: 6px; }
+.tabella-rend tr[data-utente-id] > td:first-child,
+.tabella-rend .cella-ac { white-space: nowrap; }
+/* Intestazioni su due righe solo se serve ("Media / Mens."): con le 12 colonne su
+   una riga la tabella non entrava a 1366-1440px e Cred/Deb restava fuori */
+.tabella-rend th { white-space: normal; vertical-align: bottom; }
+.tabella-rend input.table-input.ore-input { width: 72px; padding: 5px 6px; }
+/* casella e scostamento sulla stessa riga (andava a capo: righe da 66px) */
+.tabella-rend .cella-ore { white-space: nowrap; }
+.tabella-rend input.table-input.pasti-input { width: 56px; padding: 5px 6px; }
+.tabella-rend .totale-ore-60 { display: inline-block; min-width: 72px; text-align: center; font-family: var(--font-mono); }
+/* Riquadro della tabella quasi alto quanto la finestra (era il 70%) */
+.rend-scroll { max-height: calc(100vh - 180px); }
+
+/* Scostamento dal mese precedente (ore per giorno lavorativo): leggibile,
+   neutro, rosso solo quando e' forte; la freccia dice la direzione */
+.diff-indicator {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    vertical-align: middle;
+    cursor: help;
+}
+.diff-indicator.forte { color: var(--danger); }
+
+/* Monte ore con una variazione attiva: etichetta "var." (prima solo il colore arancio,
+   lo stesso di "senza ore", e la spiegazione solo passando col mouse). Sta PRIMA del
+   numero, cosi' le cifre restano allineate a destra con quelle delle altre righe. */
+.badge-var {
+    display: inline-block;
+    margin-right: 2px;
+    padding: 1px 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+    font-weight: 600;
+    vertical-align: 1px;
+    cursor: help;
+}
+
+.totali-nota { font-size: 0.85rem; font-weight: 400; color: var(--text-tertiary); }
+
+@media (max-width: 1024px) {
+    /* intestazione in colonna (ux-enhancements): la barra dei filtri a tutta larghezza */
+    .rend-card-header .rend-toolbar { align-self: stretch; flex-basis: auto; flex-wrap: wrap; }
+}
+@media (max-width: 768px) {
+    /* telefono: due pulsanti per riga, non tre tagliati ("Compila con Med") */
+    .rend-azioni .btn { flex: 1 1 140px; }
+    .rend-azioni .btn + .btn { margin-top: 0; }   /* lo spazio lo da' gap (sfalsati di 8px) */
+    .rend-card-header { padding: 12px 16px; }
+    .excel-filter-bar { flex: 1 1 100%; max-width: none; }
+    .rend-aiuto { margin: 12px 16px; }
+}
+
+/* ==================== CALENDARIO ==================== */
+/* Giugno: i due valori (Infanzia / Altri ordini) nella stessa cella, con l'etichetta */
+.cal-giugno { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.cal-campo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
 @media (max-width: 768px) {
     .report-quick-grid {
         grid-template-columns: repeat(2, 1fr);

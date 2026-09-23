@@ -419,3 +419,73 @@ details.section[open] > summary::before { transform: rotate(90deg); }
    grassetto andava a capo da sola e le virgole restavano isolate. Dove il grassetto
    fa da titolo c'e' gia' un <br> subito dopo. */
 .alert strong { display: inline; margin: 0; }
+
+/* ---------- 17. Rendicontazione ---------- */
+/* Fasce delle scuole: grigio neutro con barretta blu. Erano una sfumatura blu-viola
+   accesa con testo bianco (3,5:1), la cosa piu' vistosa della pagina; nel tema
+   chiaro, al passaggio del mouse, il nome diventava bianco su azzurro chiarissimo. */
+.table tbody tr.scuola-header,
+.table tbody tr.scuola-header:hover { background: var(--bg-tertiary) !important; box-shadow: none !important; }
+.table tbody tr.scuola-header td { color: var(--text-primary) !important; text-shadow: none; font-weight: 600; }
+.table tbody tr.scuola-header td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.scuola-header td::before { content: none !important; }
+/* Riga "Totale" della scuola: lo pseudo-elemento sul <tr> diventava una cella in
+   piu' a inizio riga e spostava gli importi di una colonna (ore sotto Imponibile,
+   ultima cella fuori dalla tabella). La barretta ora sta sulla prima cella. */
+.scuola-totale::before { content: none !important; display: none !important; }
+.table tbody tr.scuola-totale td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+/* Utenti senza ore: barra arancione a sinistra e velatura visibile. Prima la tinta
+   era all'8% e le celle in piu' trasparenti (0,85): erano le righe MENO leggibili. */
+.table tbody tr.utente-senza-ore { background: rgba(255, 159, 10, 0.13) !important; }
+.table tbody tr.utente-senza-ore:hover { background: rgba(255, 159, 10, 0.2) !important; }
+.utente-senza-ore td { opacity: 1; }
+#table-container .table tbody tr.utente-senza-ore:not(.scuola-header) td:first-child,
+[data-theme="light"] #table-container .table tbody tr.utente-senza-ore:not(.scuola-header) td:first-child {
+    background: linear-gradient(rgba(255, 159, 10, 0.13), rgba(255, 159, 10, 0.13)), var(--bg-card-solid);
+    box-shadow: inset 4px 0 0 var(--warning);
+}
+/* Colonna Utente fissa: al passaggio del mouse prende la stessa tinta della riga
+   (aveva un fondo pieno suo e restava un riquadro scuro, o bianco, a inizio riga) */
+:root #table-container .table tbody tr[data-utente-id]:hover td:first-child {
+    background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-card-solid);
+}
+:root #table-container .table tbody tr.utente-senza-ore[data-utente-id]:hover td:first-child {
+    background: linear-gradient(rgba(255, 159, 10, 0.2), rgba(255, 159, 10, 0.2)), var(--bg-card-solid);
+}
+/* Mese chiuso: le caselle bloccate si leggono come testo, non come campi da compilare */
+.table input.table-input:disabled {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: var(--text-secondary) !important;
+    box-shadow: none !important;
+    cursor: not-allowed;
+    opacity: 1;
+}
+/* Avviso "Mese chiuso" su una riga sola (era alto 80px con i margini, sopra la tabella) */
+#mese-chiuso-banner { margin: 8px 24px; padding: 8px 14px; align-items: center; }
+@media (max-width: 768px) {
+    #mese-chiuso-banner { margin: 8px 16px; align-items: flex-start; }
+}
+
+/* ---------- 18. Pulsanti disattivati ---------- */
+/* Grigi in tutta l'app. Con la sola trasparenza al 50% un pulsante verde o blu
+   disattivato sembrava rotto ('Salva tutte le modifiche' verde scuro, testo a 1,8:1).
+   Grigio senza bordo e un po' attenuato: un pulsante grigio pieno (opacita' 1) si
+   confondeva con i pulsanti secondari attivi ('Avanti' spento accanto a 'Indietro').
+   Esclusi i pulsanti "in caricamento" (setButtonLoading), che restano colorati. */
+.btn:disabled:not(.loading),
+.btn:disabled:not(.loading):hover {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-tertiary) !important;
+    border-color: transparent !important;
+    opacity: 0.6;
+}
+
+/* ---------- 19. Stampa ---------- */
+@media print {
+    /* Tutta la tabella sul foglio: prima restava chiusa nel riquadro alto il 70%
+       dello schermo e uscivano solo 7-9 righe, senza le ultime colonne. */
+    .table-container { max-height: none !important; overflow: visible !important; }
+    /* Titolo nero: .page-title (sopra) lo forzava al colore del tema, bianco nel tema scuro */
+    .page-title { color: #000 !important; -webkit-text-fill-color: #000 !important; }
+}
