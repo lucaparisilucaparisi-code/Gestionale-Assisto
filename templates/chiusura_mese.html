@@ -375,7 +375,7 @@ async function loadStep1() {
                 <div class="da-completare-item">
                     <div class="da-completare-info">
                         <span class="da-completare-nome">${escapeHtml(u.nome)} ${escapeHtml(u.cognome)}</span>
-                        <span class="da-completare-scuola">${escapeHtml(u.commessa)} - ${escapeHtml(u.scuola || '')}</span>
+                        <span class="da-completare-scuola" title="${escapeHtml(u.scuola || '')}">${escapeHtml(u.commessa)} - ${escapeHtml(u.scuola || '')}</span>
                     </div>
                     <span class="badge badge-secondary" title="Monte ore settimanale">${formatNumero(u.monte_ore_settimanale)} h/sett.</span>
                 </div>

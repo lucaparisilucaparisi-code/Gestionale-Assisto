@@ -12,22 +12,25 @@
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
     <span id="breadcrumb-nome">Dettaglio</span>
 </nav>
+{# Come la scheda dipendente: freccia e nome a sinistra, anno a destra #}
 <div class="page-header">
-    <div class="flex items-center gap-3">
-        <a href="/utenti" class="btn btn-ghost btn-sm" title="Torna alla lista">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-        </a>
-        <div>
-            <h1 class="page-title" id="page-title">Dettaglio Utente</h1>
-            <p class="page-subtitle" id="page-subtitle">Caricamento...</p>
+    <div class="page-header-row">
+        <div class="scheda-titolo">
+            <a href="/utenti" class="btn btn-ghost btn-sm btn-solo-icona" title="Torna all'elenco" aria-label="Torna all'elenco utenti">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+            </a>
+            <div class="scheda-titolo-testo">
+                <h1 class="page-title" id="page-title">Dettaglio Utente</h1>
+                <p class="page-subtitle" id="page-subtitle">Caricamento...</p>
+            </div>
         </div>
-    </div>
-    <div class="header-actions">
-        <select id="anno-scolastico" aria-label="Anno scolastico" class="form-control" style="width: 150px;">
-            {# popolato da populateAnniScolastici(): niente anni scritti a mano #}
-        </select>
+        <div class="header-actions">
+            <select id="anno-scolastico" aria-label="Anno scolastico" class="form-control" style="width: 150px;">
+                {# popolato da populateAnniScolastici(): niente anni scritti a mano #}
+            </select>
+        </div>
     </div>
 </div>
 
@@ -35,9 +38,10 @@
 <div class="tabs-container">
     <div class="tabs">
         <button class="tab active" data-tab="anagrafica">Anagrafica</button>
-        <button class="tab" data-tab="assegnazioni">Assegnazioni OEPAC <span class="badge badge-sm" id="badge-assegnazioni">0</span></button>
-        <button class="tab" data-tab="documenti">Documenti <span class="badge badge-sm" id="badge-documenti">0</span></button>
-        <button class="tab" data-tab="note">Note <span class="badge badge-sm" id="badge-note">0</span></button>
+        {# contatori con il fondino grigio anche nel tema scuro, nascosti quando valgono 0 #}
+        <button class="tab" data-tab="assegnazioni">Assegnazioni OEPAC <span class="badge badge-secondary badge-sm" id="badge-assegnazioni" style="display:none">0</span></button>
+        <button class="tab" data-tab="documenti">Documenti <span class="badge badge-secondary badge-sm" id="badge-documenti" style="display:none">0</span></button>
+        <button class="tab" data-tab="note">Note <span class="badge badge-secondary badge-sm" id="badge-note" style="display:none">0</span></button>
         <button class="tab" data-tab="assenze">Assenze</button>
         <button class="tab" data-tab="storico">Storico Ore</button>
         <button class="tab" data-tab="budget">Budget</button>
@@ -370,26 +374,7 @@
 </div>
 
 <style>
-.info-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
-}
-.info-item {
-    padding: 12px;
-    background: var(--bg-tertiary);
-    border-radius: 8px;
-}
-.info-label {
-    font-size: 12px;
-    color: var(--text-tertiary);
-    margin-bottom: 4px;
-}
-.info-value {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
+/* riquadro dello Stato budget (i dati dell'anagrafica usano .dati-riga, refine.css) */
 .stat-card {
     text-align: center;
     padding: 20px;
@@ -472,6 +457,13 @@
 
 <script>
 const utenteId = {{ utente_id }};
+
+// Contatore di una scheda: il numero, oppure niente quando vale 0
+function contatoreScheda(id, n) {
+    const el = document.getElementById(id);
+    el.textContent = n;
+    el.style.display = n ? '' : 'none';
+}
 let utenteData = null;
 let chartAndamento = null;
 
@@ -533,7 +525,7 @@ async function loadAssegnazioni() {
 
 function renderAssegnazioni() {
     const b = assegnazioniData.bilancio || { monte_ore: 0, assegnate: 0, differenza: 0, stato: 'ok' };
-    document.getElementById('badge-assegnazioni').textContent = assegnazioniData.assegnazioni.length;
+    contatoreScheda('badge-assegnazioni', assegnazioniData.assegnazioni.length);
     document.getElementById('bil-monte').textContent = formatNumero(b.monte_ore) + 'h';
     document.getElementById('bil-assegnate').textContent = formatNumero(b.assegnate) + 'h';
     const stato = document.getElementById('bil-stato');
@@ -551,18 +543,18 @@ function renderAssegnazioni() {
         return;
     }
     c.innerHTML = `<div class="table-responsive"><table class="table"><thead><tr>
-        <th>Operatore</th><th class="text-right">Ore/sett.</th><th>Validità</th><th></th></tr></thead><tbody>
+        <th>Operatore</th><th class="text-right">Ore/sett.</th><th>Validità</th><th class="text-right">Azioni</th></tr></thead><tbody>
         ${assegnazioniData.assegnazioni.map(a => {
             const periodo = !(a.valido_da || a.valido_a) ? 'Sempre'
                 : (a.valido_da ? formatPeriodoIT(a.valido_da, a.valido_a) : `… → ${formatDataIT(a.valido_a)}`);
             return `<tr ${a.dip_attivo ? '' : 'style="opacity:.55"'}>
                 <td><a href="/dipendente/${a.dipendente_id}">${escapeHtml(a.dip_cognome)} ${escapeHtml(a.dip_nome)}</a></td>
-                <td class="text-right font-mono">${formatNumero(a.ore_settimanali)}</td>
+                <td class="text-right">${formatNumero(a.ore_settimanali)}</td>
                 <td class="text-muted text-sm">${escapeHtml(periodo)}${a.note ? ' · ' + escapeHtml(a.note) : ''}</td>
-                <td class="text-right">
-                    <button class="btn btn-sm btn-secondary" onclick='apriAssegnazione(${a.id})'>Modifica</button>
-                    <button class="btn btn-sm btn-danger" onclick='rimuoviAssegnazione(${a.id})'>×</button>
-                </td></tr>`;
+                <td class="text-right"><span class="azioni-riga">
+                    <button type="button" class="btn btn-sm btn-secondary" onclick='apriAssegnazione(${a.id})' aria-label="Modifica l'assegnazione di ${escapeHtml(a.dip_cognome)} ${escapeHtml(a.dip_nome)}" title="Modifica">${icona('matita')}<span class="azione-testo">Modifica</span></button>
+                    <button type="button" class="btn btn-sm btn-icon-danger btn-solo-icona" onclick='rimuoviAssegnazione(${a.id})' title="Rimuovi assegnazione" aria-label="Rimuovi l'assegnazione di ${escapeHtml(a.dip_cognome)} ${escapeHtml(a.dip_nome)}">${icona('cestino')}</button>
+                </span></td></tr>`;
         }).join('')}
         </tbody></table></div>`;
 }
@@ -648,71 +640,36 @@ async function loadVariazioniBadge() {
 
 function renderAnagrafica(data) {
     const u = data.utente;
-    document.getElementById('page-title').textContent = `${u.nome} ${u.cognome}`;
+    // Sempre 'Cognome Nome', come in Utenti, Dipendenti e Turni
+    const nome = `${u.cognome || ''} ${u.nome || ''}`.trim();
+    document.getElementById('page-title').textContent = nome;
     document.getElementById('page-subtitle').textContent = `${u.commessa} - ${u.scuola}`;
-    document.getElementById('breadcrumb-nome').textContent = `${u.nome} ${u.cognome}`;
+    document.getElementById('breadcrumb-nome').textContent = nome;
 
-    document.getElementById('info-personali').innerHTML = `
-        <div class="info-grid">
-            <div class="info-item">
-                <div class="info-label">Nome Completo</div>
-                <div class="info-value">${escapeHtml(u.nome)} ${escapeHtml(u.cognome)}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Nome Puntato</div>
-                <div class="info-value">${escapeHtml(u.nome_puntato)}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Scuola</div>
-                <div class="info-value">${escapeHtml(u.scuola)}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Commessa</div>
-                <div class="info-value">${escapeHtml(u.commessa)}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Monte Ore Settimanale (base)</div>
-                <div class="info-value">${formatNumero(u.monte_ore_settimanale)}h <span id="variazioni-badge"></span></div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Stato</div>
-                <div class="info-value">
-                    ${u.lista_attesa ? '<span class="badge badge-warning">Lista Attesa: ' + escapeHtml(u.lista_attesa) + '</span>' :
-                      u.attivo ? '<span class="badge badge-success">Attivo</span>' : '<span class="badge badge-secondary">Inattivo</span>'}
-                </div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Attivo Da</div>
-                <div class="info-value">${u.data_inizio ? escapeHtml(formatDataIT(u.data_inizio)) : 'Non specificato'}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Attivo Fino A</div>
-                <div class="info-value">${u.data_fine ? escapeHtml(formatDataIT(u.data_fine)) : 'Non specificato'}</div>
-            </div>
-        </div>
-    `;
+    const stato = u.lista_attesa ? '<span class="badge badge-warning">Lista attesa: ' + escapeHtml(u.lista_attesa) + '</span>'
+        : u.attivo ? '<span class="badge badge-success">Attivo</span>' : '<span class="badge badge-secondary">Inattivo</span>';
+    // Stesso componente della scheda dipendente: righe etichetta/valore
+    document.getElementById('info-personali').innerHTML =
+        rigaDati('Cognome e nome', escapeHtml(nome)) +
+        rigaDati('Nome puntato', escapeHtml(u.nome_puntato)) +
+        rigaDati('Scuola', escapeHtml(u.scuola)) +
+        rigaDati('Commessa', escapeHtml(u.commessa)) +
+        rigaDati('Monte ore settimanale (base)', `${formatNumero(u.monte_ore_settimanale)}h <span id="variazioni-badge"></span>`) +
+        rigaDati('Stato', stato) +
+        rigaDati('Attivo da', u.data_inizio ? escapeHtml(formatDataIT(u.data_inizio)) : '') +
+        rigaDati('Attivo fino a', u.data_fine ? escapeHtml(formatDataIT(u.data_fine)) : '');
 
+    // Riquadri del riepilogo: numero grande sopra, etichetta sotto, due per riga
+    // (prima numero ed etichetta affiancati, etichette spezzate su due righe e, sul
+    // telefono, riquadri tagliati: '63 PAST')
     const t = data.totali;
-    document.getElementById('riepilogo-ore').innerHTML = `
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
-            <div class="stat-card">
-                <div class="stat-value">${formatNumber(t.totale_ore)}</div>
-                <div class="stat-label">Ore Totali</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">${t.totale_pasti}</div>
-                <div class="stat-label">Pasti Totali</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">${t.mesi_attivi}</div>
-                <div class="stat-label">Mesi Attivi</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">${formatNumber(t.media_ore_mese)}</div>
-                <div class="stat-label">Media Ore/Mese</div>
-            </div>
-        </div>
-    `;
+    const kpi = (valore, etichetta) => `<div class="ud-kpi"><div class="ud-kpi-valore">${valore}</div><div class="ud-kpi-etichetta">${etichetta}</div></div>`;
+    document.getElementById('riepilogo-ore').innerHTML = '<div class="ud-kpi-griglia">' +
+        kpi(formatNumber(t.totale_ore), 'Ore totali') +
+        kpi(formatNumero(t.totale_pasti), 'Pasti totali') +
+        kpi(formatNumero(t.mesi_attivi), 'Mesi attivi') +
+        kpi(formatNumber(t.media_ore_mese), 'Media ore al mese') +
+        '</div>';
 
     renderChartAndamento(data.storico);
 }
@@ -738,10 +695,10 @@ function renderChartAndamento(storico) {
 }
 
 function renderDocumenti(documenti) {
-    document.getElementById('badge-documenti').textContent = documenti.length;
+    contatoreScheda('badge-documenti', documenti.length);
 
     if (documenti.length === 0) {
-        document.getElementById('table-documenti').innerHTML = '<div class="empty-state">Nessun documento caricato</div>';
+        showEmptyState('table-documenti', 'Nessun documento', 'Carica PEI, relazioni e verbali con «Carica Documento».', null, null, 'document');
         return;
     }
 
@@ -767,7 +724,7 @@ function renderDocumenti(documenti) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
                 </button>
-                <button class="btn btn-ghost btn-sm text-danger" onclick="deleteDocumento(${d.id})" title="Elimina">
+                <button class="btn btn-sm btn-icon-danger btn-solo-icona" onclick="deleteDocumento(${d.id})" title="Elimina" aria-label="Elimina il documento ${escapeHtml(d.nome_originale)}">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
@@ -780,10 +737,10 @@ function renderDocumenti(documenti) {
 }
 
 function renderNote(note) {
-    document.getElementById('badge-note').textContent = note.length;
+    contatoreScheda('badge-note', note.length);
 
     if (note.length === 0) {
-        document.getElementById('lista-note').innerHTML = '<div class="empty-state">Nessuna nota presente</div>';
+        showEmptyState('lista-note', 'Nessuna nota', 'Annota osservazioni, progressi e criticità con «Aggiungi Nota».', null, null, 'inbox');
         return;
     }
 
@@ -796,7 +753,7 @@ function renderNote(note) {
             </div>
             <div class="note-contenuto">${escapeHtml(n.contenuto)}</div>
             <div class="note-actions">
-                <button class="btn btn-ghost btn-sm text-danger" onclick="deleteNota(${n.id})">Elimina</button>
+                <button class="btn btn-sm btn-icon-danger" onclick="deleteNota(${n.id})" aria-label="Elimina questa nota">${icona('cestino')}Elimina</button>
             </div>
         </div>`;
     });
@@ -805,7 +762,7 @@ function renderNote(note) {
 
 function renderAssenze(assenze) {
     if (assenze.length === 0) {
-        document.getElementById('table-assenze').innerHTML = '<div class="empty-state">Nessuna assenza registrata</div>';
+        showEmptyState('table-assenze', 'Nessuna assenza registrata', 'Registra malattie, permessi e ferie con «Registra Assenza».', null, null, 'calendar');
         return;
     }
 
@@ -822,7 +779,7 @@ function renderAssenze(assenze) {
             <td>${escapeHtml(a.motivazione || '-')}</td>
             <td>${escapeHtml(a.note || '-')}</td>
             <td>
-                <button class="btn btn-ghost btn-sm text-danger" onclick="deleteAssenza(${a.id})">
+                <button class="btn btn-sm btn-icon-danger btn-solo-icona" onclick="deleteAssenza(${a.id})" title="Elimina" aria-label="Elimina l'assenza del ${escapeHtml(formatDataIT(a.data_inizio))}">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
@@ -836,7 +793,7 @@ function renderAssenze(assenze) {
 
 function renderStorico(storico) {
     if (storico.length === 0) {
-        document.getElementById('table-storico').innerHTML = '<div class="empty-state">Nessun dato storico</div>';
+        showEmptyState('table-storico', 'Nessun dato storico', 'Qui compaiono le ore dei mesi rendicontati nell\'anno scelto.', null, null, 'chart');
         return;
     }
 

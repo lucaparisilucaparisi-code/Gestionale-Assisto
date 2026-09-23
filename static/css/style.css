@@ -48,7 +48,8 @@
     --bg-card: rgba(28, 28, 30, 0.8);
     --bg-card-solid: #1C1C1E;
     --bg-input: #1C1C1E;
-    --bg-sidebar: rgba(0, 0, 0, 0.95);
+    /* pieno: con 0,95 sul telefono la pagina si leggeva attraverso il menu aperto */
+    --bg-sidebar: #000000;
 
     /* Text Colors - opacità minime per leggibilità WCAG AA su sfondi scuri */
     --text-primary: #FFFFFF;

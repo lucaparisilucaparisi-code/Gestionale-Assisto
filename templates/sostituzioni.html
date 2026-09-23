@@ -125,8 +125,8 @@ async function caricaSostituzioni() {
             return `<tr>
                 <td>${escapeHtml(formatDataIT(s.data))}<div class="text-xs text-muted">${giorno}</div></td>
                 <td class="font-mono">${orario}</td>
-                <td class="text-sm text-muted">${escapeHtml((s.scuola||'—').substring(0,32))}</td>
-                <td>${escapeHtml((s.assente_cognome||'')+' '+(s.assente_nome||''))}</td>
+                <td class="text-sm text-muted cella-scuola" title="${escapeHtml(s.scuola || '')}">${escapeHtml(s.scuola || '—')}</td>
+                <td class="cella-nome">${escapeHtml((s.assente_cognome||'')+' '+(s.assente_nome||''))}</td>
                 <td>${coperta ? `<span class="badge badge-success">${escapeHtml(s.sost_cognome+' '+s.sost_nome)}</span>` : '<span class="badge badge-warning">da coprire</span>'}</td>
                 <td class="text-right">
                     ${coperta

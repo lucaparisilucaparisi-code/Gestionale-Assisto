@@ -46,6 +46,12 @@ body::before { background: none !important; }
     margin-top: 2px;
 }
 .page-header { margin-bottom: var(--sp-5); }
+@media (max-width: 480px) {
+    /* Pulsanti dell'intestazione sul telefono: riempiono la riga ma, se non ci stanno
+       interi, vanno a capo (con flex:1 erano tre colonne uguali e 'Nuovo Utente'
+       usciva dal pulsante). */
+    .header-actions .btn { flex: 1 1 auto; }
+}
 
 /* ---------- 3. Pulsanti: tinta unita, niente gradienti/glow/shimmer ---------- */
 .btn {
@@ -247,6 +253,19 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
 .nav-link { padding: 8px 14px; margin: 1px 8px; }
 /* Sul telefono il menu e' alto quanto lo spazio davvero visibile (senza le barre del browser) */
 .sidebar { height: 100dvh; }
+/* Menu a pannello (telefono, tablet, finestra a meta' schermo): velo scuro sulla
+   pagina, sotto il menu (z 100) e sopra la barra in alto (z 90). Toccandolo il
+   menu si chiude (app.js); prima la pagina accanto restava illuminata e non
+   c'era niente che facesse capire di poter toccare fuori. */
+@media (max-width: 1024px) {
+    body.sidebar-open::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 99;
+    }
+}
 
 /* Logo nella barra in alto solo quando il menu laterale e' nascosto (<=1024px):
    su PC compariva due volte (theme-premium.css annullava la regola di style.css). */
@@ -268,6 +287,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
    link (#0055D4) e sembravano piu' "selezionate" di quella attiva. */
 [data-theme="light"] a.tab:not(.active) { color: var(--text-secondary) !important; }
 [data-theme="light"] a.tab:not(.active):hover { color: var(--text-primary) !important; }
+/* Telefono e tablet: le schede vanno a capo invece di scorrere di lato. Prima, nella
+   scheda utente, se ne vedevano 2 su 7 senza nessun segno che ce ne fossero altre,
+   e la scheda attiva poteva restare tagliata ('Profil', la sola icona). */
+@media (max-width: 768px) {
+    .tabs { flex-wrap: wrap; overflow: visible; row-gap: 2px; }
+    .tab { padding: 10px 12px; }
+}
 
 /* ---------- 10b. Breadcrumb ---------- */
 .breadcrumb {
@@ -414,8 +440,11 @@ details.section[open] > summary::before { transform: rotate(90deg); }
     .modal-body-elenco > .table-container { max-height: none; }
 }
 @media (max-width: 480px) {
-    /* pulsanti affiancati nel piede: niente scalino tra il primo e il secondo */
-    .modal-footer .btn + .btn { margin-top: 0; }
+    /* Sul telefono i pulsanti del piede riempiono la riga e, se non ci stanno
+       (Modifica utente ne ha quattro), vanno a capo interi invece di tagliare
+       la scritta ('mbia Scu', 'va Modific'). */
+    .modal-footer { flex-wrap: wrap; }
+    .modal-footer .btn { flex: 1 1 auto; justify-content: center; }
 }
 
 /* ---------- 16. Riquadri informativi ---------- */
@@ -492,6 +521,27 @@ details.section[open] > summary::before { transform: rotate(90deg); }
     .table-container { max-height: none !important; overflow: visible !important; }
     /* Titolo nero: .page-title (sopra) lo forzava al colore del tema, bianco nel tema scuro */
     .page-title { color: #000 !important; -webkit-text-fill-color: #000 !important; }
+
+    /* Foglio chiaro anche dal tema scuro, su tutte le pagine (la Rendicontazione lo
+       faceva gia' da sola). Le card restavano #1C1C1E (§4 annullava il bianco di
+       components.css) con il testo reso nero: nella scheda utente i dati erano nero
+       su quasi nero (1,2:1) e i titoli delle card bianchi sul grigio chiaro. */
+    :root, :root[data-theme] {
+        --bg-primary: #fff; --bg-secondary: #fff; --bg-tertiary: #f2f2f2; --bg-elevated: #fff;
+        --bg-card: #fff; --bg-card-solid: #fff; --bg-input: #fff;
+        --glass-bg: #fff; --glass-border: #ccc;
+        --text-primary: #000; --text-secondary: #222; --text-tertiary: #444; --text-quaternary: #555;
+        --border-color: #bbb; --border-light: #ccc; --accent-text: #000;
+        --success: #15803D; --warning: #B45309; --danger: #B91C1C;
+    }
+    /* badge con le tinte del tema chiaro: quelle scure su bianco erano 1,7:1 */
+    .badge-success { background: #DCFCE7 !important; color: #166534 !important; border-color: #BBF7D0; }
+    .badge-warning { background: #FEF3C7 !important; color: #92400E !important; border-color: #FDE68A; }
+    .badge-danger  { background: #FEE2E2 !important; color: #991B1B !important; border-color: #FECACA; }
+    /* Grafici: nel tema scuro sono disegnati con scritte e griglia chiare, che sul
+       foglio bianco sparivano. Inverte la luminosita' e rigira la tinta: scritte
+       nere, il blu resta blu. */
+    :root:not([data-theme="light"]) canvas { filter: invert(1) hue-rotate(180deg); }
 }
 
 /* ---------- 20. Dashboard ---------- */
@@ -600,6 +650,8 @@ a.da-completare-item:focus-visible { outline: 2px solid var(--accent); outline-o
 }
 .nuovo-anno-titolo { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px var(--sp-3); }
 .nuovo-anno-titolo .text-muted { font-size: 0.85rem; }
+/* icona a linea al posto dell'emoji 🎒 (a colori su Windows, diversa da PC a PC) */
+.nuovo-anno-icona { width: 18px; height: 18px; margin-right: 8px; vertical-align: -3px; color: var(--text-tertiary); }
 .nuovo-anno-azioni { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
 .nuovo-anno-dettagli {
     background: none;
@@ -819,6 +871,41 @@ button.report-card {
     color: var(--danger) !important;
 }
 
+/* Azioni sulle righe degli elenchi (Utenti, Dipendenti, Commesse, Turni...): stesso
+   schema ovunque, 'Modifica' con la matita e le azioni rare nel menu '⋯' (app.js,
+   MenuAzioni). Erano 5 emoji a colori per riga con un cestino rosso pieno. */
+.azioni-riga { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn.btn-sm.btn-solo-icona { padding-left: 9px; padding-right: 9px; }
+.menu-azioni {
+    position: fixed;
+    z-index: 950;   /* sopra barra in alto e menu laterale, sotto le finestre */
+    min-width: 210px;
+    padding: 4px;
+    background: var(--bg-card-solid);
+    border: 1px solid var(--border-color);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-2);
+}
+.menu-azioni-voce {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: left;
+    cursor: pointer;
+}
+.menu-azioni-voce svg { color: var(--text-tertiary); flex-shrink: 0; }
+.menu-azioni-voce:hover, .menu-azioni-voce:focus-visible { background: var(--bg-tertiary); outline: none; }
+.menu-azioni-voce.pericolo, .menu-azioni-voce.pericolo svg { color: var(--danger); }
+.menu-azioni-sep { height: 1px; margin: 4px 0; background: var(--border-color); }
+
 /* ---------- 24. Riquadri numerici (stat-card) ---------- */
 /* Il valore resta intero e dentro la scheda (a 1366px '32.471,40 €' usciva e
    perdeva il '€'): nelle schede strette (meno di 280px, tutte quelle di una
@@ -833,3 +920,149 @@ button.report-card {
 @container (max-width: 280px) {
     .stat-card .stat-content { flex-basis: 100%; }
 }
+
+/* ---------- 25. Anagrafiche: Utenti, Dipendenti, Turni, schede ---------- */
+/* Elenco Utenti: resta ferma a sinistra la colonna 'Cognome e nome' quando la
+   tabella scorre di lato (prima restava ferma 'Commessa', presa in prestito dalle
+   regole della Rendicontazione, e al passaggio del mouse restava bianca). */
+.table.prima-colonna-fissa th:first-child,
+.table.prima-colonna-fissa td:first-child { position: sticky; left: 0; white-space: nowrap; }
+.table.prima-colonna-fissa thead th:first-child { z-index: 11; }
+.table.prima-colonna-fissa tbody td:first-child { z-index: 2; background: var(--bg-card-solid); }
+.table.prima-colonna-fissa tbody tr:hover td:first-child {
+    background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-card-solid);
+}
+/* Elenco compatto: a 1366px entra tutto, azioni comprese, senza scorrere di lato
+   (con i margini normali la tabella era larga 1214px in un riquadro di 1040) */
+.table.prima-colonna-fissa th, .table.prima-colonna-fissa td { padding-left: 12px; padding-right: 12px; }
+.table.prima-colonna-fissa td.cella-scuola { max-width: 260px; }
+@media (max-width: 1400px) {
+    /* 'Modifica' resta la matita, col nome nel suggerimento e per i lettori di schermo */
+    .table.prima-colonna-fissa .azione-testo { display: none; }
+}
+/* colonne che sul telefono si possono tralasciare (restano nella scheda) */
+@media (max-width: 768px) {
+    .table .col-secondaria { display: none; }
+}
+
+/* Nomi delle scuole nelle tabelle: interi finche' ci stanno, poi i puntini, e il
+   nome completo passando il mouse (title). Prima erano tagliati nel codice a
+   30-40 lettere senza puntini, proprio dove si distingue il plesso. */
+.table td.cella-scuola {
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Nomi di persone (assistito, operatore) su una riga: accanto alla colonna Scuola,
+   che si prende fino a 320px, nella scheda dipendente a 1366 'Barbieri / Alice'
+   andava a capo in una colonna da 100px mentre 'Ore/sett.' ne aveva 99 per un '6' */
+.table td.cella-nome { white-space: nowrap; }
+/* Tabelle nelle card a meta' pagina della scheda dipendente (Assistiti seguiti,
+   Turni): la Scuola prende solo lo spazio che avanza e finisce coi puntini. Col
+   tetto fisso di 320px, a 1280-1366 la tabella usciva dalla card e scorreva di lato. */
+.table.tabella-scheda td.cella-scuola { width: 100%; max-width: 0; }
+/* sul telefono le tabelle piccole (scheda dipendente, turni) restano nello schermo */
+@media (max-width: 768px) {
+    .table td.cella-scuola, .table.prima-colonna-fissa td.cella-scuola { max-width: 170px; }
+}
+@media (max-width: 480px) {
+    /* nelle righe resta la matita, con il nome del comando nel suggerimento */
+    .azioni-riga .azione-testo { display: none; }
+}
+
+/* ---------- 26. Barre dei filtri su tablet e telefono ---------- */
+/* In griglia: a 768px i 4 filtri della Rendicontazione stanno su una riga (il
+   pannello scende da 402 a circa 170px), sul telefono uno per riga, tutti larghi
+   uguali. Prima erano uno sotto l'altro a tutta larghezza anche sul tablet,
+   'Scuola' si fermava a 250px (anche a 390px, lasciando un vuoto a destra) e la
+   casella 'Mostra disattivati' di Dipendenti si allargava a tutta la riga, con la
+   scritta lontana, sul bordo destro. */
+@media (max-width: 768px) {
+    .filters {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        align-items: end;
+    }
+    .filter-group-scuola select.form-control { max-width: none; }
+    .filters input[type="checkbox"], .filters input[type="radio"] { width: 18px !important; flex-shrink: 0; }
+    /* Dashboard sul tablet: le due tendine dell'intestazione affiancate, non una per
+       riga (sul telefono, dove non ci stanno intere, tornano una per riga) */
+    .page-header-row > .header-actions > select.form-control { flex: 1 1 200px; width: auto !important; }
+    /* ...e i pulsanti tengono la loro larghezza: se non c'e' posto vanno a capo.
+       Con 'flex: 1' (style.css, ux-enhancements.css) partivano da zero e le
+       tendine li schiacciavano: tra 481 e 768px 'Import Dati' era tagliato. */
+    .page-header-row > .header-actions > .btn { flex: 1 1 auto; }
+}
+@media (max-width: 480px) {
+    /* telefono: un filtro per riga, tutti larghi uguali. In due colonne da 160px si
+       tagliavano 'Tutte le scuole', '— scegli un operatore —' e i pulsanti del
+       Calendario finivano uno sotto l'altro in mezza riga. */
+    .filters { grid-template-columns: minmax(0, 1fr); }
+}
+@media (min-width: 481px) and (max-width: 768px) {
+    /* tablet: la ricerca per nome e la scelta dell'operatore prendono due colonne,
+       in una sola da 160-200px si tagliavano ('— scegli un operator',
+       'Nome, cognome o C.') */
+    .filters .filter-group:has(input[type="text"], input[type="search"], #sel-operatore) { grid-column: span 2; }
+}
+
+/* ---------- 27. Schede Utente e Dipendente (stesso componente) ---------- */
+/* Intestazione: freccia 'indietro' e nome a sinistra, azioni a destra */
+.scheda-titolo { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.scheda-titolo-testo { min-width: 0; }
+.scheda-titolo .btn { flex-shrink: 0; }
+/* 'Disattiva' e' un pulsante grigio con la scritta rossa (tinte leggibili sul grigio) */
+.btn.btn-secondary.text-danger { color: var(--danger-light) !important; }
+[data-theme="light"] .btn.btn-secondary.text-danger { color: var(--danger) !important; }
+
+/* Dati della scheda: righe etichetta/valore, etichetta piccola e grigia, valore
+   normale; i valori mancanti sono un trattino grigio, non 'Non specificato' in
+   grassetto come un dato vero (app.js, rigaDati) */
+.dati-riga {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--sp-4);
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.dati-riga:last-child { border-bottom: 0; }
+.dati-etichetta { flex-shrink: 0; font-size: 0.8125rem; color: var(--text-tertiary); }
+.dati-valore { min-width: 0; font-size: 0.9375rem; font-weight: 500; color: var(--text-primary); text-align: right; overflow-wrap: anywhere; }
+.dati-valore.vuoto { font-weight: 400; color: var(--text-quaternary); }
+
+/* Riepilogo ore della scheda utente: numero grande sopra, etichetta sotto */
+/* sempre due per riga (2x2): con 'auto-fit' a 1440 la card larga circa 510px ne
+   prendeva 3 e 'Media ore al mese' restava da solo sulla seconda riga; a 390 i
+   riquadri sono larghi circa 160px e i numeri ci stanno interi */
+.ud-kpi-griglia { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.ud-kpi {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+    padding: 14px 16px;
+    background: var(--bg-tertiary);
+    border-radius: var(--r-md);
+}
+.ud-kpi-valore { font-size: 1.75rem; font-weight: 700; line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.ud-kpi-etichetta { font-size: 0.8125rem; color: var(--text-secondary); }
+
+/* Orari nelle tabelle delle schede: su una riga, carattere normale */
+.cella-orario { white-space: nowrap; font-weight: 600; }
+
+/* ---------- 28. Telefono: campi e pulsanti comodi da toccare ---------- */
+/* Testo dei campi da 16px: sotto questa misura l'iPhone ingrandisce la pagina a
+   ogni tocco su un campo (filtri 14,4px, ore 13,3-14,4px, accesso 15,2px) e poi
+   va rimpicciolita a mano. Pulsanti alti almeno 40px (alcuni erano 26-31px). */
+@media (max-width: 768px) {
+    /* !important: vale anche sui campi con la misura scritta nella pagina (Dashboard) */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+    select, textarea, .form-control, .table input.table-input { font-size: 16px !important; }
+    .btn { min-height: 40px; }
+}
+/* Due campi affiancati (Attivo da / fino a, Data inizio / fine): ciascuno sta nella
+   sua meta' anche sul telefono (il campo mese usciva a destra dalla finestra) */
+.form-row > .form-group { min-width: 0; }

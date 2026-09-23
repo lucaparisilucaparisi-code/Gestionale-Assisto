@@ -3,28 +3,33 @@
 {% block title %}Gestione Utenti - Gestionale OEPAC{% endblock %}
 
 {% block content %}
+{# Stessa intestazione di Dipendenti: titolo a sinistra, azioni a destra, tutte alte uguali #}
 <div class="page-header">
-    <h1 class="page-title">Gestione Utenti</h1>
-    <p class="page-subtitle">Visualizza e gestisci gli utenti del servizio</p>
-    <div class="header-actions flex gap-2 flex-wrap">
-        <button class="btn btn-secondary btn-sm" onclick="exportUtentiCSV()" title="Esporta lista utenti in CSV">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Export CSV
-        </button>
-        <button class="btn btn-secondary btn-sm" onclick="openModal('modal-import-csv')" title="Importa utenti da CSV">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            Import CSV
-        </button>
-        <button class="btn btn-primary" onclick="openModal('modal-nuovo-utente')">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-            Nuovo Utente
-        </button>
+    <div class="page-header-row">
+        <div>
+            <h1 class="page-title">Gestione Utenti</h1>
+            <p class="page-subtitle">Visualizza e gestisci gli utenti del servizio</p>
+        </div>
+        <div class="header-actions flex gap-2 items-center flex-wrap">
+            <button class="btn btn-secondary" onclick="exportUtentiCSV()" title="Esporta l'elenco utenti in un file CSV">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Esporta CSV
+            </button>
+            <button class="btn btn-secondary" onclick="openModal('modal-import-csv')" title="Importa utenti da un file CSV">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                Importa CSV
+            </button>
+            <button class="btn btn-primary" onclick="openModal('modal-nuovo-utente')">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Nuovo Utente
+            </button>
+        </div>
     </div>
 </div>
 
@@ -59,26 +64,19 @@
             <option value="archiviato">Archiviati</option>
         </select>
     </div>
-
-    <div class="filter-group" style="margin-left: auto;">
-        <label class="filter-label">&nbsp;</label>
-        <button id="btn-load" class="btn btn-primary">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Carica
-        </button>
-    </div>
+    {# niente pulsante 'Carica': i filtri ricaricano l'elenco da soli e la ricerca e' immediata #}
 </div>
 
 <!-- Tabella Utenti -->
 <div class="card">
     <div class="card-header">
         <h2 class="card-title">Elenco Utenti</h2>
-        <span class="badge badge-primary" id="count-badge">0 utenti</span>
+        <span class="badge badge-secondary" id="count-badge">0 utenti</span>
     </div>
     <div class="card-body p-0">
-        <div class="table-container" id="table-container">
+        {# id proprio: con 'table-container' prendeva le regole della Rendicontazione
+           (colonna fissa 'Commessa' che restava bianca al passaggio del mouse) #}
+        <div class="table-container" id="tabella-utenti">
             <div class="loading">
                 <div class="spinner"></div>
             </div>
@@ -102,7 +100,7 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Scuola/IC (Albero Attività) *</label>
-                <input type="text" id="new-scuola" class="form-control" maxlength="200" placeholder="es. /IC ACHILLE TEDESCHI/Infanzia/...">
+                <input type="text" id="new-scuola" class="form-control" maxlength="200" placeholder="es. /IC TEDESCHI/Infanzia/...">
             </div>
             <div class="form-group">
                 <label class="form-label">Nome *</label>
@@ -151,7 +149,8 @@
 
 <!-- Modal Modifica Utente -->
 <div class="modal-overlay" id="modal-edit">
-    <div class="modal">
+    {# 600px: i quattro pulsanti del piede stanno interi, in due gruppi #}
+    <div class="modal" style="max-width: 600px;">
         <div class="modal-header">
             <h3 class="modal-title">Modifica Utente</h3>
             <button class="modal-close" onclick="closeModal('modal-edit')">✕</button>
@@ -203,14 +202,16 @@
             <div class="form-group">
                 <label class="form-label">Scuola</label>
                 <input type="text" id="edit-scuola" class="form-control" disabled>
-                <p class="form-help">La scuola non può essere modificata.</p>
+                <p class="form-help">Per spostare l'utente in un'altra scuola usa «Cambia scuola…».</p>
             </div>
         </div>
+        {# Azioni secondarie a sinistra (grigie: duplicare non cancella niente),
+           Annulla e Salva a destra #}
         <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="duplicaUtente()" title="Crea una copia di questo utente">Duplica</button>
+            <button class="btn btn-secondary mr-auto" onclick="openCambioScuola()" title="Sposta l'utente in un'altra scuola (lo storico resta)">Cambia scuola…</button>
             <button class="btn btn-secondary" onclick="closeModal('modal-edit')">Annulla</button>
-            <button class="btn btn-danger btn-sm mr-auto" onclick="duplicaUtente()" title="Crea una copia di questo utente">Duplica</button>
-            <button class="btn btn-warning btn-sm" onclick="openCambioScuola()" title="Cambia la scuola dell'utente">Cambia Scuola</button>
-            <button class="btn btn-primary" onclick="saveEditUtente()">Salva Modifiche</button>
+            <button class="btn btn-primary" onclick="saveEditUtente()">Salva modifiche</button>
         </div>
     </div>
 </div>
@@ -362,7 +363,15 @@ function esc(str) {
     if (!str) return '';
     var d = document.createElement('div');
     d.textContent = str;
-    return d.innerHTML;
+    return d.innerHTML.replace(/"/g, '&quot;');
+}
+
+// Nomi delle scuole nelle tendine: i puntini solo se il nome e' davvero tagliato
+// (prima finivano tutti con '...', anche quelli corti)
+function nomeBreve(nome, max) {
+    max = max || 60;
+    nome = nome || '';
+    return nome.length > max ? nome.substring(0, max - 1).trimEnd() + '…' : nome;
 }
 
 // === Init ===
@@ -377,7 +386,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     document.getElementById('filter-scuola').addEventListener('change', loadUtenti);
     document.getElementById('filter-stato').addEventListener('change', loadUtenti);
-    document.getElementById('btn-load').addEventListener('click', loadUtenti);
 
     var searchTimeout;
     document.getElementById('filter-search').addEventListener('input', function(e) {
@@ -392,16 +400,37 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // === Ricerca locale ===
 function filterTable(query) {
-    var rows = document.querySelectorAll('#table-container tbody tr');
+    var rows = document.querySelectorAll('#tabella-utenti tbody tr');
     var matchCount = 0;
     rows.forEach(function(row) {
         if (!query) { row.style.display = ''; return; }
-        var match = row.textContent.toLowerCase().indexOf(query) >= 0;
+        // si cerca nei dati, non nei pulsanti ('mod' non deve trovare 'Modifica')
+        var testo = Array.prototype.slice.call(row.cells, 0, -1).map(function(c) { return c.textContent; }).join(' ');
+        var match = testo.toLowerCase().indexOf(query) >= 0;
         row.style.display = match ? '' : 'none';
         if (match) matchCount++;
     });
     document.getElementById('count-badge').textContent = query
-        ? matchCount + ' trovati' : allUtenti.length + ' utenti';
+        ? matchCount + (matchCount === 1 ? ' trovato' : ' trovati') : contaUtenti(allUtenti.length);
+
+    // Nessuna riga: una frase e il modo di tornare all'elenco, non la sola riga dei titoli
+    var tabella = document.querySelector('#tabella-utenti table');
+    var vuoto = document.getElementById('ricerca-vuota');
+    if (!tabella || !vuoto) return;
+    var nessuno = !!query && matchCount === 0;
+    tabella.style.display = nessuno ? 'none' : '';
+    vuoto.style.display = nessuno ? '' : 'none';
+    if (nessuno) {
+        document.getElementById('ricerca-vuota-testo').textContent =
+            'Nessun utente corrisponde a «' + document.getElementById('filter-search').value.trim() + '».';
+    }
+}
+
+function azzeraRicerca() {
+    var campo = document.getElementById('filter-search');
+    campo.value = '';
+    filterTable('');
+    campo.focus();
 }
 
 // === Caricamento dati ===
@@ -424,8 +453,7 @@ function loadScuole(commessa) {
     apiCall(url).then(function(scuole) {
         var html = '<option value="">Tutte le scuole</option>';
         scuole.forEach(function(s) {
-            var nome = s.nome_completo ? s.nome_completo.substring(0, 60) : '';
-            html += '<option value="' + s.id + '">' + esc(nome) + '...</option>';
+            html += '<option value="' + s.id + '" title="' + esc(s.nome_completo) + '">' + esc(nomeBreve(s.nome_completo)) + '</option>';
         });
         document.getElementById('filter-scuola').innerHTML = html;
     }).catch(function(err) { console.error('Errore scuole:', err); });
@@ -435,7 +463,7 @@ function loadUtenti() {
     var commessa = document.getElementById('filter-commessa').value;
     var scuolaId = document.getElementById('filter-scuola').value;
     var stato = document.getElementById('filter-stato').value;
-    showLoading('table-container');
+    showLoading('tabella-utenti');
 
     var url = '/api/utenti';
     var params = [];
@@ -469,12 +497,16 @@ function loadUtenti() {
 }
 
 // === Render tabella ===
+function contaUtenti(n) {
+    return n + (n === 1 ? ' utente' : ' utenti');
+}
+
 function renderTable(utenti) {
-    var container = document.getElementById('table-container');
-    document.getElementById('count-badge').textContent = utenti.length + ' utenti';
+    var container = document.getElementById('tabella-utenti');
+    document.getElementById('count-badge').textContent = contaUtenti(utenti.length);
 
     if (utenti.length === 0) {
-        showEmptyState('table-container', 'Nessun utente trovato', 'Importa i dati dalla sezione Import Excel oppure aggiungili manualmente');
+        showEmptyState('tabella-utenti', 'Nessun utente trovato', 'Importa i dati dalla sezione Import Excel oppure aggiungili manualmente');
         return;
     }
 
@@ -492,6 +524,9 @@ function renderTable(utenti) {
         return mesi[parseInt(parts[1]) - 1] + ' ' + parts[0].slice(2);
     }
 
+    // Una sola colonna 'Cognome e nome' (come Dipendenti e Turni), la prima: resta
+    // ferma quando la tabella scorre di lato. Commessa, N. puntati e Periodo sul
+    // telefono si nascondono (col-secondaria).
     var rows = '';
     utenti.forEach(function(u) {
         var periodo = '-';
@@ -499,42 +534,65 @@ function renderTable(utenti) {
             periodo = '<span class="badge badge-info">' + fmtPeriodo(u.data_inizio) + ' &rarr; ' + fmtPeriodo(u.data_fine) + '</span>';
         }
         var lista = u.lista_attesa ? '<span class="badge badge-warning">' + esc(u.lista_attesa) + '</span>' : '-';
+        var nome = ((u.cognome || '') + ' ' + (u.nome || '')).trim();
 
         rows += '<tr>'
-            + '<td><span class="badge badge-primary">' + esc(u.commessa) + '</span></td>'
-            + '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(u.scuola) + '">' + esc(u.scuola) + '</td>'
-            + '<td><a href="/utente/' + u.id + '" style="color:var(--accent-text);text-decoration:none;"><strong>' + esc(u.nome) + '</strong></a></td>'
-            + '<td><a href="/utente/' + u.id + '" style="color:var(--accent-text);text-decoration:none;"><strong>' + esc(u.cognome) + '</strong></a></td>'
-            + '<td>' + esc(u.nome_puntato) + '</td>'
+            + '<td><a href="/utente/' + u.id + '" class="font-semibold" title="Apri la scheda di ' + esc(nome) + '">' + esc(nome) + '</a></td>'
+            + '<td class="col-secondaria"><span class="badge badge-secondary">' + esc(u.commessa) + '</span></td>'
+            + '<td class="cella-scuola" title="' + esc(u.scuola) + '">' + esc(u.scuola) + '</td>'
+            + '<td class="col-secondaria">' + esc(u.nome_puntato) + '</td>'
             + '<td class="text-center">' + formatNumero(u.monte_ore_settimanale) + '</td>'
-            + '<td>' + periodo + '</td>'
+            + '<td class="col-secondaria">' + periodo + '</td>'
             + '<td>' + lista + '</td>'
-            + '<td style="white-space:nowrap;">'
-            +   '<a href="/utente/' + u.id + '" class="btn btn-sm btn-ghost" title="Dettaglio" aria-label="Dettaglio utente">👤</a> '
-            +   '<button class="btn btn-sm btn-secondary" onclick="apriModifica(' + u.id + ')" title="Modifica" aria-label="Modifica utente">✏️</button> '
-            +   '<button class="btn btn-sm btn-ghost" onclick="showStoricoMonteOre(' + u.id + ')" title="Storico monte ore" aria-label="Storico monte ore">📈</button> '
-            +   (u.attivo
-                    ? '<button class="btn btn-sm btn-ghost" onclick="archiviaUtente(' + u.id + ')" title="Archivia (esce dal servizio, lo storico resta)" aria-label="Archivia utente">📦</button> '
-                    : '<button class="btn btn-sm btn-success" onclick="ripristinaUtente(' + u.id + ')" title="Ripristina tra gli attivi" aria-label="Ripristina utente">♻️</button> ')
-            +   '<button class="btn btn-sm btn-danger" onclick="apriElimina(' + u.id + ')" title="Elimina" aria-label="Elimina utente">🗑️</button>'
-            + '</td>'
+            + '<td class="text-right"><span class="azioni-riga">'
+            +   '<button type="button" class="btn btn-sm btn-secondary" onclick="apriModifica(' + u.id + ')" title="Modifica" aria-label="Modifica ' + esc(nome) + '">'
+            +     icona('matita') + '<span class="azione-testo">Modifica</span></button>'
+            +   '<button type="button" class="btn btn-sm btn-secondary btn-solo-icona" onclick="menuUtente(this, ' + u.id + ')"'
+            +     ' title="Altre azioni" aria-label="Altre azioni per ' + esc(nome) + '" aria-haspopup="menu" aria-expanded="false">'
+            +     icona('altro') + '</button>'
+            + '</span></td>'
             + '</tr>';
     });
 
-    container.innerHTML = '<table class="table">'
+    container.innerHTML = '<table class="table prima-colonna-fissa">'
         + '<thead><tr>'
-        + '<th>Commessa</th>'
+        + '<th>Cognome e nome</th>'
+        + '<th class="col-secondaria">Commessa</th>'
         + '<th>Scuola</th>'
-        + '<th>Nome</th>'
-        + '<th>Cognome</th>'
-        + '<th>N. Puntati</th>'
+        + '<th class="col-secondaria">N. Puntati</th>'
         + '<th class="text-center">Monte Ore</th>'
-        + '<th>Periodo</th>'
+        + '<th class="col-secondaria">Periodo</th>'
         + '<th>Lista Attesa</th>'
-        + '<th>Azioni</th>'
+        + '<th class="text-right">Azioni</th>'
         + '</tr></thead>'
         + '<tbody>' + rows + '</tbody>'
-        + '</table>';
+        + '</table>'
+        + '<div class="empty-state" id="ricerca-vuota" style="display:none">'
+        +   '<div class="empty-state-icon-wrapper">'
+        +     '<svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">'
+        +       '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>'
+        +   '</div>'
+        +   '<h3 class="empty-state-title">Nessun risultato</h3>'
+        +   '<p class="empty-state-text" id="ricerca-vuota-testo"></p>'
+        +   '<button type="button" class="btn btn-secondary" onclick="azzeraRicerca()">Azzera ricerca</button>'
+        + '</div>';
+
+    // una ricerca gia' scritta resta valida anche quando l'elenco si ricarica (filtri)
+    filterTable(document.getElementById('filter-search').value.toLowerCase().trim());
+}
+
+// Azioni meno frequenti di una riga, nel menu '⋯'
+function menuUtente(pulsante, id) {
+    var u = utentiMap[id];
+    if (!u) return;
+    MenuAzioni.apri(pulsante, [
+        { testo: 'Storico monte ore', icona: 'storico', azione: function() { showStoricoMonteOre(id); } },
+        u.attivo
+            ? { testo: 'Archivia', icona: 'archivia', azione: function() { archiviaUtente(id); } }
+            : { testo: 'Ripristina tra gli attivi', icona: 'ripristina', azione: function() { ripristinaUtente(id); } },
+        'separatore',
+        { testo: 'Elimina…', icona: 'cestino', pericolo: true, azione: function() { apriElimina(id); } }
+    ]);
 }
 
 // === Modifica utente ===
@@ -821,7 +879,7 @@ function loadScuolePerCambio() {
 
     apiCall('/api/scuole?commessa_id=' + commessaId).then(function(scuole) {
         select.innerHTML = '<option value="">Seleziona scuola...</option>' +
-            scuole.map(s => '<option value="' + s.id + '">' + esc(s.nome_completo.substring(0, 60)) + '</option>').join('');
+            scuole.map(s => '<option value="' + s.id + '" title="' + esc(s.nome_completo) + '">' + esc(nomeBreve(s.nome_completo)) + '</option>').join('');
     });
 }
 
@@ -943,7 +1001,7 @@ function loadVariazioniMonteOre() {
                 html += '<td>' + (v.mese_fine ? fmtMeseAnno(v.mese_fine) : '<span class="text-muted">aperta</span>') + '</td>';
                 html += '<td><strong>' + formatNumero(v.monte_ore) + 'h</strong></td>';
                 html += '<td style="color:var(--text-secondary);">' + esc(v.nota || '-') + '</td>';
-                html += '<td class="text-right"><button class="btn btn-sm btn-danger" onclick="deleteVariazioneMO(' + v.id + ')">Elimina</button></td>';
+                html += '<td class="text-right"><button type="button" class="btn btn-sm btn-icon-danger btn-solo-icona" onclick="deleteVariazioneMO(' + v.id + ')" title="Elimina" aria-label="Elimina la variazione da ' + fmtMeseAnno(v.mese_inizio) + '">' + icona('cestino') + '</button></td>';
                 html += '</tr>';
             });
             html += '</tbody></table>';

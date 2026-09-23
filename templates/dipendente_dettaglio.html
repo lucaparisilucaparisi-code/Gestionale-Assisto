@@ -8,19 +8,26 @@
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
     <span id="bc-nome">Scheda</span>
 </nav>
+{# Come la scheda utente: freccia e nome a sinistra, Modifica e Disattiva a destra #}
 <div class="page-header">
-    <div class="flex items-center gap-3">
-        <a href="/dipendenti" class="btn btn-ghost btn-sm" title="Torna all'elenco">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-        </a>
-        <div>
-            <h1 class="page-title" id="page-titolo">Caricamento…</h1>
-            <p class="page-subtitle" id="page-sub"></p>
+    <div class="page-header-row">
+        <div class="scheda-titolo">
+            <a href="/dipendenti" class="btn btn-ghost btn-sm btn-solo-icona" title="Torna all'elenco" aria-label="Torna all'elenco dipendenti">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+            </a>
+            <div class="scheda-titolo-testo">
+                <h1 class="page-title" id="page-titolo">Caricamento…</h1>
+                <p class="page-subtitle" id="page-sub"></p>
+            </div>
         </div>
-    </div>
-    <div class="header-actions flex gap-2">
-        <button class="btn btn-secondary" id="btn-modifica">Modifica</button>
-        <button class="btn btn-secondary" id="btn-stato"></button>
+        <div class="header-actions flex gap-2">
+            <button class="btn btn-secondary" id="btn-modifica">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                Modifica
+            </button>
+            {# 'Disattiva' con la scritta rossa: non ha lo stesso peso di 'Modifica' #}
+            <button class="btn btn-secondary" id="btn-stato"></button>
+        </div>
     </div>
 </div>
 
@@ -111,10 +118,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-stato').addEventListener('click', toggleStato);
 });
 
-function riga(label, val) {
-    return `<div class="info-row" style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-color);gap:16px">
-        <span class="text-muted">${label}</span><span class="font-semibold" style="text-align:right">${val || '—'}</span></div>`;
-}
+// Stesso componente della scheda utente (rigaDati in app.js)
+const riga = rigaDati;
 
 async function carica() {
     try {
@@ -128,6 +133,7 @@ async function carica() {
     document.getElementById('page-sub').textContent = [dip.qualifica, dip.commessa].filter(Boolean).join(' · ') || 'Operatore OEPAC';
     const bs = document.getElementById('btn-stato');
     bs.textContent = dip.attivo ? 'Disattiva' : 'Riattiva';
+    bs.classList.toggle('text-danger', !!dip.attivo);
 
     document.getElementById('anagrafica').innerHTML =
         riga('Codice Fiscale', escapeHtml(dip.codice_fiscale)) +
@@ -135,8 +141,8 @@ async function carica() {
         riga('Telefono', escapeHtml(dip.telefono)) +
         riga('Commessa', escapeHtml(dip.commessa)) +
         riga('Sede', escapeHtml(dip.sede)) +
-        riga('Ore contrattuali sett.', dip.ore_contrattuali_settimanali != null ? dip.ore_contrattuali_settimanali + 'h' : '') +
-        riga('Ore assegnate sett.', (dip.ore_assegnate || 0) + 'h') +
+        riga('Ore contrattuali sett.', dip.ore_contrattuali_settimanali != null ? formatNumero(dip.ore_contrattuali_settimanali) + 'h' : '') +
+        riga('Ore assegnate sett.', formatNumero(dip.ore_assegnate || 0) + 'h') +
         riga('Data assunzione', escapeHtml(formatDataIT(dip.data_assunzione))) +
         (dip.note ? `<div style="margin-top:10px" class="text-muted">${escapeHtml(dip.note)}</div>` : '');
 
@@ -146,11 +152,11 @@ async function carica() {
     if (!dip.assistiti.length) {
         a.innerHTML = '<div class="empty-state"><p class="empty-state-text">Nessun assistito assegnato</p></div>';
     } else {
-        a.innerHTML = `<div class="table-responsive"><table class="table"><thead><tr><th>Assistito</th><th>Scuola</th><th class="text-right">Ore/sett.</th></tr></thead><tbody>
+        a.innerHTML = `<div class="table-responsive"><table class="table tabella-scheda"><thead><tr><th>Assistito</th><th>Scuola</th><th class="text-right">Ore/sett.</th></tr></thead><tbody>
             ${dip.assistiti.map(u => `<tr>
-                <td><a href="/utente/${u.utente_id}">${escapeHtml(u.ut_cognome)} ${escapeHtml(u.ut_nome)}</a></td>
-                <td class="text-muted text-sm">${escapeHtml((u.scuola || '').substring(0, 40))}</td>
-                <td class="text-right font-mono">${formatNumero(u.ore_settimanali)}</td></tr>`).join('')}
+                <td class="cella-nome"><a href="/utente/${u.utente_id}">${escapeHtml(u.ut_cognome)} ${escapeHtml(u.ut_nome)}</a></td>
+                <td class="text-muted text-sm cella-scuola" title="${escapeHtml(u.scuola || '')}">${escapeHtml(u.scuola || '—')}</td>
+                <td class="text-right">${formatNumero(u.ore_settimanali)}</td></tr>`).join('')}
             </tbody></table></div>`;
     }
 
@@ -177,11 +183,11 @@ async function caricaTurni() {
             box.innerHTML = '<div class="empty-state" style="padding:20px"><p class="empty-state-text">Nessun turno impostato</p></div>';
             return;
         }
-        box.innerHTML = `<div class="table-responsive"><table class="table"><tbody>
+        box.innerHTML = `<div class="table-responsive"><table class="table tabella-scheda"><tbody>
             ${d.turni.map(t => `<tr>
                 <td style="width:48px"><strong>${GIORNI_BREVI[t.giorno]}</strong></td>
-                <td class="font-mono">${t.ora_inizio}–${t.ora_fine}</td>
-                <td class="text-muted text-sm">${escapeHtml((t.scuola || '—').substring(0, 30))}</td></tr>`).join('')}
+                <td class="cella-orario">${t.ora_inizio}–${t.ora_fine}</td>
+                <td class="text-muted text-sm cella-scuola" title="${escapeHtml(t.scuola || '')}">${escapeHtml(t.scuola || '—')}</td></tr>`).join('')}
             </tbody></table></div>
             <div style="padding:8px 16px" class="text-muted text-sm">Totale: ${formatNumero(d.ore_pianificate)}h/settimana</div>`;
     } catch (e) { box.innerHTML = '<div class="empty-state" style="padding:20px"><p class="empty-state-text">—</p></div>'; }

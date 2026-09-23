@@ -7,6 +7,12 @@ from datetime import datetime
 import config
 
 DATABASE_PATH = config.DATABASE_PATH
+
+# Colore di una commessa nuova: il blu dell'app, primo campione della tavolozza di
+# Impostazioni > Commesse. Prima era un indaco (#6366f1) che non stava nella
+# tavolozza, per cui nella finestra 'Modifica' nessun colore risultava scelto.
+COLORE_COMMESSA = '#3B82F6'
+
 logger = config.setup_logging()
 
 def _connect():
@@ -96,12 +102,12 @@ def _init_schema(conn):
     cursor = conn.cursor()
 
     # Tabella Commesse (ora dinamica)
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS commesse (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nome TEXT UNIQUE NOT NULL,
             descrizione TEXT,
-            colore TEXT DEFAULT '#6366f1',
+            colore TEXT DEFAULT '{COLORE_COMMESSA}',
             attiva INTEGER DEFAULT 1,
             data_creazione TEXT NOT NULL
         )
@@ -114,7 +120,7 @@ def _init_schema(conn):
         pass  # Colonna già esistente
 
     try:
-        cursor.execute("ALTER TABLE commesse ADD COLUMN colore TEXT DEFAULT '#6366f1'")
+        cursor.execute(f"ALTER TABLE commesse ADD COLUMN colore TEXT DEFAULT '{COLORE_COMMESSA}'")
     except sqlite3.OperationalError:
         pass  # Colonna già esistente
 
@@ -130,7 +136,7 @@ def _init_schema(conn):
 
     # Aggiorna valori NULL
     cursor.execute("UPDATE commesse SET attiva = 1 WHERE attiva IS NULL")
-    cursor.execute("UPDATE commesse SET colore = '#6366f1' WHERE colore IS NULL")
+    cursor.execute("UPDATE commesse SET colore = ? WHERE colore IS NULL", (COLORE_COMMESSA,))
     cursor.execute("UPDATE commesse SET data_creazione = ? WHERE data_creazione IS NULL", (datetime.now().isoformat(),))
 
     # Inserisce le commesse predefinite se non esistono
@@ -138,9 +144,9 @@ def _init_schema(conn):
     if cursor.fetchone()[0] == 0:
         now = datetime.now().isoformat()
         cursor.execute("INSERT INTO commesse (nome, descrizione, colore, data_creazione) VALUES (?, ?, ?, ?)",
-                      ('OEPAC IV', 'Commessa OEPAC IV Municipio', '#6366f1', now))
+                      ('OEPAC IV', 'Commessa OEPAC IV Municipio', COLORE_COMMESSA, now))
         cursor.execute("INSERT INTO commesse (nome, descrizione, colore, data_creazione) VALUES (?, ?, ?, ?)",
-                      ('OEPAC V', 'Commessa OEPAC V Municipio', '#8b5cf6', now))
+                      ('OEPAC V', 'Commessa OEPAC V Municipio', '#BF5AF2', now))
 
     # Tabella Scuole
     cursor.execute('''
@@ -708,7 +714,7 @@ def get_commessa_by_nome(nome):
         result = cursor.fetchone()
         return dict(result) if result else None
 
-def create_commessa(nome, descrizione=None, colore='#6366f1'):
+def create_commessa(nome, descrizione=None, colore=COLORE_COMMESSA):
     """Crea una nuova commessa"""
     try:
         with get_db_context() as conn:
@@ -765,7 +771,7 @@ def get_or_create_scuola(commessa_nome, nome_completo):
             cursor.execute('''
                 INSERT INTO commesse (nome, descrizione, colore, attiva, data_creazione)
                 VALUES (?, ?, ?, 1, ?)
-            ''', (commessa_nome, f'Commessa {commessa_nome}', '#6366f1', datetime.now().isoformat()))
+            ''', (commessa_nome, f'Commessa {commessa_nome}', COLORE_COMMESSA, datetime.now().isoformat()))
             commessa_id = cursor.lastrowid
         else:
             commessa_id = commessa['id']

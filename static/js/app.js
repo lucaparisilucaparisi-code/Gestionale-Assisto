@@ -62,16 +62,28 @@ const SidebarManager = {
         // Mobile menu only
         this.mobileBtn?.addEventListener('click', () => this.toggleMobile());
 
-        // Close on mobile when clicking outside
+        // Menu a pannello (fino a 1024px, come nel CSS): si chiude toccando fuori,
+        // cioe' sul velo scuro, oppure con Esc. Prima valeva solo fino a 768px e con
+        // la finestra a meta' schermo (960px) il menu restava aperto sopra la pagina.
         document.addEventListener('click', (e) => {
-            if (window.innerWidth <= 768 &&
+            if (this._aPannello() &&
                 this.sidebar?.classList.contains('open') &&
                 !this.sidebar.contains(e.target) &&
                 !this.mobileBtn?.contains(e.target)) {
-                this.sidebar.classList.remove('open');
-                this._syncExpanded();
+                this.chiudi();
             }
         });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.sidebar?.classList.contains('open') &&
+                !document.querySelector('.modal-overlay.active')) {
+                this.chiudi();
+                this.mobileBtn?.focus();
+            }
+        });
+    },
+
+    _aPannello() {
+        return window.matchMedia('(max-width: 1024px)').matches;
     },
 
     toggleMobile() {
@@ -79,10 +91,17 @@ const SidebarManager = {
         this._syncExpanded();
     },
 
+    chiudi() {
+        this.sidebar?.classList.remove('open');
+        this._syncExpanded();
+    },
+
     _syncExpanded() {
-        // Mantiene aria-expanded del bottone allineato allo stato della sidebar
-        const open = this.sidebar?.classList.contains('open') ? 'true' : 'false';
-        this.mobileBtn?.setAttribute('aria-expanded', open);
+        // Mantiene aria-expanded del bottone allineato allo stato della sidebar e
+        // mette 'sidebar-open' sul body, che disegna il velo scuro (refine.css)
+        const aperto = !!this.sidebar?.classList.contains('open');
+        this.mobileBtn?.setAttribute('aria-expanded', aperto ? 'true' : 'false');
+        document.body.classList.toggle('sidebar-open', aperto);
     }
 };
 
@@ -426,7 +445,9 @@ function showToast(message, type = 'success', duration = 5000) {
 function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
-    return div.innerHTML;
+    // anche le virgolette: il risultato finisce spesso dentro title="..." e
+    // aria-label="..." (nomi delle scuole, delle persone)
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // ==================== CONFIRM DIALOG ====================
@@ -798,6 +819,126 @@ function showEmptyState(containerId, title, message, actionText = null, actionCa
         container.innerHTML = html;
     }
 }
+
+// ==================== ICONE E MENU AZIONI DELLE RIGHE ====================
+
+// Icone a linea dello stesso set del menu laterale: prendono il colore del testo
+// (stroke=currentColor), al posto delle emoji e dei caratteri ✎ e ×.
+const ICONE = {
+    matita: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
+    cestino: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+    altro: 'M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z',
+    storico: 'M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z',
+    archivia: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4',
+    ripristina: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
+};
+
+/** SVG di un'icona di ICONE, decorativa (il nome lo danno title/aria-label del pulsante). */
+function icona(nome, px = 16) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="${px}" height="${px}" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${ICONE[nome]}"/></svg>`;
+}
+
+/**
+ * Riga etichetta/valore delle schede Utente e Dipendente (stesso componente nelle
+ * due pagine). Il valore arriva gia' in HTML sicuro; se manca compare un trattino
+ * grigio, non in grassetto come se fosse un dato vero ('Non specificato').
+ */
+function rigaDati(etichetta, valore) {
+    const vuoto = valore === null || valore === undefined || String(valore).trim() === '';
+    return `<div class="dati-riga"><span class="dati-etichetta">${etichetta}</span>` +
+        `<span class="dati-valore${vuoto ? ' vuoto' : ''}">${vuoto ? '—' : valore}</span></div>`;
+}
+
+/**
+ * Menu '⋯' delle azioni secondarie di una riga (Storico, Archivia, Elimina...).
+ * voci: [{ testo, icona, azione, pericolo }] oppure 'separatore'.
+ * Il menu sta sopra la pagina (position:fixed), cosi' le tabelle che scorrono
+ * non lo tagliano; si chiude scegliendo una voce, cliccando fuori o con Esc.
+ * Frecce su/giu' per spostarsi tra le voci.
+ */
+const MenuAzioni = {
+    el: null,
+    trigger: null,
+
+    apri(trigger, voci) {
+        const giaAperto = this.trigger === trigger;
+        this.chiudi(false);
+        if (giaAperto) return;   // secondo clic sullo stesso pulsante: chiude
+        const menu = document.createElement('div');
+        menu.className = 'menu-azioni';
+        menu.setAttribute('role', 'menu');
+        voci.forEach(v => {
+            if (v === 'separatore') {
+                menu.insertAdjacentHTML('beforeend', '<div class="menu-azioni-sep" role="separator"></div>');
+                return;
+            }
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'menu-azioni-voce' + (v.pericolo ? ' pericolo' : '');
+            b.setAttribute('role', 'menuitem');
+            b.innerHTML = (v.icona ? icona(v.icona) : '') + `<span>${escapeHtml(v.testo)}</span>`;
+            b.addEventListener('click', () => { this.chiudi(false); v.azione(); });
+            menu.appendChild(b);
+        });
+        document.body.appendChild(menu);
+        this.el = menu;
+        this.trigger = trigger;
+        trigger.setAttribute('aria-expanded', 'true');
+
+        this._posiziona();
+        if (!this.el) return;   // pulsante fuori vista: niente menu
+        menu.querySelector('.menu-azioni-voce')?.focus({ preventScroll: true });
+
+        this._fuori = (e) => { if (!menu.contains(e.target) && !trigger.contains(e.target)) this.chiudi(false); };
+        this._tasti = (e) => {
+            const voci = [...menu.querySelectorAll('.menu-azioni-voce')];
+            const i = voci.indexOf(document.activeElement);
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.chiudi(true); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); voci[(i + 1) % voci.length].focus(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); voci[(i - 1 + voci.length) % voci.length].focus(); }
+            else if (e.key === 'Tab') { this.chiudi(true); }   // Tab riparte dal pulsante '⋯'
+        };
+        // se la pagina o la tabella scorrono il menu segue il pulsante (si chiude
+        // quando il pulsante esce dalla vista)
+        this._scorri = () => this._posiziona();
+        document.addEventListener('click', this._fuori, true);
+        document.addEventListener('keydown', this._tasti, true);
+        window.addEventListener('scroll', this._scorri, true);
+        window.addEventListener('resize', this._scorri);
+    },
+
+    _posiziona() {
+        const menu = this.el, trigger = this.trigger;
+        if (!menu || !trigger) return;
+        const r = trigger.getBoundingClientRect();
+        if (r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth || !r.width) {
+            this.chiudi(false);
+            return;
+        }
+        // sotto il pulsante, allineato al suo bordo destro; sopra se in basso non c'e' posto
+        const w = menu.offsetWidth, h = menu.offsetHeight;
+        const left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+        const top = (r.bottom + 4 + h > window.innerHeight - 8 && r.top - 4 - h > 8) ? r.top - 4 - h : r.bottom + 4;
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+    },
+
+    chiudi(rimettiFocus) {
+        if (!this.el) return;
+        document.removeEventListener('click', this._fuori, true);
+        document.removeEventListener('keydown', this._tasti, true);
+        window.removeEventListener('scroll', this._scorri, true);
+        window.removeEventListener('resize', this._scorri);
+        this.el.remove();
+        this.el = null;
+        const t = this.trigger;
+        this.trigger = null;
+        if (t) {
+            t.setAttribute('aria-expanded', 'false');
+            if (rimettiFocus) t.focus();
+        }
+    }
+};
 
 // ==================== MODALS ====================
 
@@ -1459,6 +1600,9 @@ window.showGlobalLoading = showGlobalLoading;
 window.hideGlobalLoading = hideGlobalLoading;
 window.setButtonLoading = setButtonLoading;
 window.showEmptyState = showEmptyState;
+window.icona = icona;
+window.rigaDati = rigaDati;
+window.MenuAzioni = MenuAzioni;
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.populateAnniScolastici = populateAnniScolastici;

@@ -48,7 +48,7 @@
 <div class="card">
     <div class="card-header">
         <h2 class="card-title">Elenco Dipendenti</h2>
-        <span class="badge badge-secondary" id="count-badge">0</span>
+        <span class="badge badge-secondary" id="count-badge">0 dipendenti</span>
     </div>
     <div class="card-body p-0">
         <div class="table-container" id="tabella-dipendenti">
@@ -171,7 +171,9 @@ async function carica() {
 }
 
 function render() {
-    document.getElementById('count-badge').textContent = dipendenti.length;
+    // '8 dipendenti' come '35 utenti' in Utenti (prima c'era il solo numero)
+    const n = dipendenti.length;
+    document.getElementById('count-badge').textContent = n + (n === 1 ? ' dipendente' : ' dipendenti');
     const c = document.getElementById('tabella-dipendenti');
     if (!dipendenti.length) {
         c.innerHTML = '<div class="empty-state"><h3 class="empty-state-title">Nessun dipendente</h3><p class="empty-state-text">Aggiungi un operatore o importa l\'anagrafica da Excel.</p></div>';
@@ -182,7 +184,7 @@ function render() {
             <thead><tr>
                 <th>Cognome e Nome</th><th>Qualifica</th><th>Commessa</th>
                 <th class="text-right">Ore contr.</th><th class="text-right">Assistiti</th>
-                <th class="text-right">Ore assegn.</th><th></th>
+                <th class="text-right">Ore assegn.</th><th class="text-right">Azioni</th>
             </tr></thead>
             <tbody>
                 ${dipendenti.map(d => `
@@ -191,11 +193,11 @@ function render() {
                             ${d.attivo ? '' : '<span class="badge badge-secondary" style="margin-left:6px">disattivato</span>'}</td>
                         <td>${escapeHtml(d.qualifica || '—')}</td>
                         <td>${escapeHtml(d.commessa || '—')}</td>
-                        <td class="text-right font-mono">${d.ore_contrattuali_settimanali != null ? d.ore_contrattuali_settimanali : '—'}</td>
-                        <td class="text-right font-mono">${d.assistiti}</td>
-                        <td class="text-right font-mono">${d.ore_assegnate}</td>
+                        <td class="text-right">${d.ore_contrattuali_settimanali != null ? formatNumero(d.ore_contrattuali_settimanali) : '—'}</td>
+                        <td class="text-right">${d.assistiti}</td>
+                        <td class="text-right">${formatNumero(d.ore_assegnate)}</td>
                         <td class="text-right">
-                            <button class="btn btn-sm btn-secondary" onclick='apriModifica(${d.id})' title="Modifica">Modifica</button>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick='apriModifica(${d.id})' title="Modifica" aria-label="Modifica ${escapeHtml(d.cognome)} ${escapeHtml(d.nome)}">${icona('matita')}Modifica</button>
                         </td>
                     </tr>`).join('')}
             </tbody>

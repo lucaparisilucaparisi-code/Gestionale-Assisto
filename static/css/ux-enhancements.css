@@ -1727,13 +1727,11 @@ textarea:focus-visible {
         font-size: 0.95rem;
     }
 
-    .btn {
-        width: 100%;
-    }
-
-    .btn + .btn {
-        margin-top: 8px;
-    }
+    /* Niente '.btn{width:100%}' e '.btn + .btn{margin-top:8px}' per tutti i pulsanti:
+       valevano anche per quelli in riga, nelle celle e negli avvisi (cestino largo
+       219px, freccia 'indietro' larga meta' schermo, pulsanti affiancati sfalsati).
+       Le file di pulsanti che devono riempire la riga lo dicono da se'
+       (.header-actions, .modal-footer in refine.css). */
 
     /* Stat cards */
     .stats-grid {

@@ -365,14 +365,22 @@ def api_auth_logout():
 def api_auth_status():
     """Ritorna lo stato di autenticazione corrente."""
     user = db.auth_get_user() if db.auth_is_configured() else None
-    return jsonify({
+    autenticato = bool(session.get('authenticated'))
+    stato = {
         'configured': db.auth_is_configured(),
-        'authenticated': bool(session.get('authenticated')),
+        'authenticated': autenticato,
         'method': session.get('auth_method'),
         'username': user['username'] if user else None,
         'webauthn_available': WEBAUTHN_AVAILABLE,
         'webauthn_registered': len(db.webauthn_get_credentials()) > 0 if db.auth_is_configured() else False,
-    })
+    }
+    # Profilo: data di creazione dell'account e accesso in corso (con il metodo).
+    # Prima la pagina li mostrava sempre come '—'. Solo a chi ha gia' fatto l'accesso.
+    if autenticato and user:
+        stato['data_creazione'] = user.get('data_creazione')
+        stato['ultimo_accesso'] = user.get('ultimo_accesso')
+        stato['ultimo_accesso_metodo'] = user.get('ultimo_accesso_metodo')
+    return jsonify(stato)
 
 
 # ---------- WEBAUTHN (impronta digitale / Windows Hello) ----------
@@ -2421,7 +2429,7 @@ def api_create_commessa():
     descrizione, err = validate_string(data.get('descrizione', ''), 'Descrizione', config.MAX_DESCRIZIONE_LENGTH, required=False)
     if err: errors.append(err)
 
-    colore = data.get('colore', '#6366f1')
+    colore = data.get('colore', db.COLORE_COMMESSA)
     if colore and not re.match(r'^#[0-9a-fA-F]{6}$', colore):
         errors.append('Colore non valido (formato: #RRGGBB)')
 
