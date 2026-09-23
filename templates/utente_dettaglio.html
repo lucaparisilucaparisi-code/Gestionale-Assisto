@@ -548,7 +548,7 @@ function renderAssegnazioni() {
         c.innerHTML = '<div class="empty-state"><p class="empty-state-text">Nessun operatore assegnato. Assegna gli operatori fino a coprire il monte ore.</p></div>';
         return;
     }
-    c.innerHTML = `<table class="table"><thead><tr>
+    c.innerHTML = `<div class="table-responsive"><table class="table"><thead><tr>
         <th>Operatore</th><th class="text-right">Ore/sett.</th><th>Validità</th><th></th></tr></thead><tbody>
         ${assegnazioniData.assegnazioni.map(a => {
             const periodo = (a.valido_da || a.valido_a)
@@ -562,7 +562,7 @@ function renderAssegnazioni() {
                     <button class="btn btn-sm btn-danger" onclick='rimuoviAssegnazione(${a.id})'>×</button>
                 </td></tr>`;
         }).join('')}
-        </tbody></table>`;
+        </tbody></table></div>`;
 }
 
 async function apriAssegnazione(id) {

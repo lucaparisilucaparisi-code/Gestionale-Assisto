@@ -75,8 +75,16 @@ body::before { background: none !important; }
 .btn-danger  { background: #dc2626 !important; border: 1px solid #dc2626 !important; color: #fff !important; }
 .btn-danger:hover { background: #c11f1f !important; }
 
-/* Marchio: quadratino in tinta accento (niente gradiente sgargiante) */
+/* Marchio: quadratino in tinta accento (niente gradiente sgargiante) e scritta
+   "Assisto" a tinta unita (theme-premium.css la sfumava fino al viola). */
 .brand-mark { background: var(--accent) !important; }
+.brand-name {
+    background: none !important;
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+    -webkit-text-fill-color: currentColor !important;
+    color: var(--text-primary) !important;
+}
 
 /* ---------- 4. Card: solide, bordo a un capello, ombra tenue ---------- */
 .card {
@@ -107,6 +115,10 @@ body::before { background: none !important; }
     font-weight: 600 !important;
 }
 .table tbody tr:hover { background: var(--accent-soft) !important; }
+/* Colonne di numeri: .table th/td{text-align:left} (style.css) e' piu' specifica di
+   .text-right/.text-center e annullava l'allineamento chiesto dalle pagine. */
+.table th.text-right, .table td.text-right { text-align: right !important; }
+.table th.text-center, .table td.text-center { text-align: center !important; }
 /* Numeri sempre tabellari e ben allineati */
 .table td, .stat-value, .kpi-value, .stat-content .stat-value,
 .table-input, .badge, td.numeric, .font-mono {
@@ -134,7 +146,20 @@ body::before { background: none !important; }
 .form-control, .filter-group select, .filter-group input {
     border-radius: var(--r-sm) !important;
     border: 1px solid var(--border-color) !important;
-    background: var(--bg-input) !important;
+    /* solo il colore: la forma breve "background" cancellava la freccia delle tendine */
+    background-color: var(--bg-input) !important;
+}
+/* Tendine: freccia grigia a destra, in entrambi i temi e anche con il focus
+   (altre regole con "background" la cancellavano: senza freccia una tendina
+   sembrava una normale casella di testo). */
+select.form-control, .filter-group select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23888'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 12px center !important;
+    background-size: 16px !important;
+    padding-right: 36px !important;
 }
 .form-control:focus {
     border-color: var(--accent) !important;
@@ -173,6 +198,33 @@ body::before { background: none !important; }
 .nav-link.active { background: var(--accent-soft) !important; color: var(--accent) !important; }
 .nav-link.active svg { color: var(--accent) !important; }
 .nav-section-title { letter-spacing: 0.08em; font-size: 0.66rem; }
+
+/* Menu laterale compatto: con gli spazi di style.css era alto 828px e su un
+   portatile 1366x768 (o 1440x900) 'Import Excel' e 'Impostazioni' finivano
+   sotto il bordo. Senza le righe di separazione (i titoli di sezione bastano)
+   e con voci un po' piu' basse tutte le 10 voci entrano anche a 1280x720. */
+.sidebar-nav { padding: 6px 0; }
+.nav-section { padding: 10px 12px 2px; }
+.nav-section:first-child { padding-top: 2px; }
+.nav-section:not(:first-child)::before { display: none; }
+.nav-section-title { margin-bottom: 4px; }
+.nav-link { padding: 8px 14px; margin: 1px 8px; }
+/* Sul telefono il menu e' alto quanto lo spazio davvero visibile (senza le barre del browser) */
+.sidebar { height: 100dvh; }
+
+/* Logo nella barra in alto solo quando il menu laterale e' nascosto (<=1024px):
+   su PC compariva due volte (theme-premium.css annullava la regola di style.css). */
+@media (min-width: 1025px) {
+    .topbar-logo { display: none !important; }
+}
+
+/* La scorciatoia "Ctrl+K" e i tasti suggeriti in fondo alla ricerca servono solo
+   con la tastiera: su telefono e tablet si nascondono (a 390px la barra in alto
+   sbordava di 3px e il pulsante Cerca mostrava solo "Ctrl+K"). */
+@media (max-width: 1024px), (hover: none) {
+    .topbar-kbd, .command-palette-footer { display: none; }
+    .topbar-btn { padding: 8px 10px; }
+}
 
 /* ---------- 10. Tabs (report, import, dettaglio utente) ---------- */
 .tab.active { color: var(--accent) !important; border-bottom-color: var(--accent) !important; }
@@ -277,3 +329,53 @@ details.section[open] > summary::before { transform: rotate(90deg); }
    comandi della barra in alto, senza barra di scorrimento. Con min-width:0 la
    pagina resta larga quanto la finestra e le tabelle scorrono nel loro riquadro. */
 .main-content { min-width: 0; }
+@media (max-width: 768px) {
+    /* Sul telefono le righe di schede (.flex.gap-4) diventano colonne (components.css):
+       con flex-wrap ogni "riga" prendeva la larghezza della scheda piu' larga e in
+       Statistiche le schede uscivano di 9px dallo schermo. Su una sola riga ogni
+       scheda e' larga quanto lo schermo. */
+    .flex.gap-4 { flex-wrap: nowrap; }
+    /* ux-enhancements.css dava a ogni .table min-width:600px: fuori da un riquadro
+       che scorre, la .card (overflow:hidden) tagliava la tabella e colonne e pulsanti
+       a destra non si potevano raggiungere (Sostituzioni, scheda dipendente,
+       Assegnazioni OEPAC, Report, Import). Ora i 600px restano solo agli elenchi
+       principali (.table-container, che scorrono di lato); le altre tabelle stanno
+       nello schermo e, se proprio non ci stanno, scorrono nel loro .table-responsive. */
+    .table { min-width: 0; }
+    .table-container .table { min-width: 600px; }
+}
+
+/* ---------- 15. Finestre (modali) ---------- */
+/* Sopra menu laterale e barra in alto: premium-effects.css dava a .content-area
+   z-index:1 (serviva ai puntini decorativi, ormai spenti) e cosi' le finestre, che
+   stanno dentro il contenuto, restavano sotto il menu (z 100) e la barra (z 90):
+   menu cliccabile a finestra aperta, wizard tagliato a sinistra, X non cliccabile
+   sul telefono. I figli del contenuto restano a z-index:1 (premium-effects.css). */
+.content-area { z-index: auto !important; }
+
+/* Titolo e pulsanti sempre visibili: scorre solo il corpo della finestra
+   (prima scorreva tutta la finestra e 'Annulla / Applica' restava sotto il bordo). */
+.modal { display: flex; flex-direction: column; overflow: hidden; }
+.modal-header, .modal-footer { flex-shrink: 0; }
+.modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.modal-footer { align-items: center; }
+/* Finestre con un elenco lungo (wizard "Utenti e monte ore"): scorre solo l'elenco,
+   con le intestazioni ferme; se lo spazio non basta scorre il corpo intero. */
+.modal-body-elenco { display: flex; flex-direction: column; }
+.modal-body-elenco > * { flex-shrink: 0; }
+.modal-body-elenco > .table-container { flex: 1 1 auto; min-height: 180px; overflow: auto; }
+/* sul telefono lo spazio e' poco: un solo scorrimento, quello del corpo */
+@media (max-width: 640px) {
+    .modal-body-elenco { display: block; }
+    .modal-body-elenco > .table-container { max-height: none; }
+}
+@media (max-width: 480px) {
+    /* pulsanti affiancati nel piede: niente scalino tra il primo e il secondo */
+    .modal-footer .btn + .btn { margin-top: 0; }
+}
+
+/* ---------- 16. Riquadri informativi ---------- */
+/* Il grassetto resta nella frase: con display:block (style.css) ogni parola in
+   grassetto andava a capo da sola e le virgole restavano isolate. Dove il grassetto
+   fa da titolo c'e' gia' un <br> subito dopo. */
+.alert strong { display: inline; margin: 0; }

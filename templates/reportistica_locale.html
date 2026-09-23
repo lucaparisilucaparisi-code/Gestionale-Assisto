@@ -55,8 +55,8 @@
                         <th>N. DD</th>
                         <th>Data DD</th>
                         <th>Mese Inizio</th>
-                        <th>Ore Settimanali</th>
-                        <th>Ore Annuali (-11%)</th>
+                        <th class="text-right">Ore Settimanali</th>
+                        <th class="text-right">Ore Annuali (-11%)</th>
                         <th>Note</th>
                         <th>Azioni</th>
                     </tr>
@@ -66,7 +66,7 @@
                 <tfoot>
                     <tr class="table-summary">
                         <td colspan="4"><strong>Totale Ore Annuali</strong></td>
-                        <td id="totale-dd-ore"><strong>0</strong></td>
+                        <td id="totale-dd-ore" class="text-right"><strong>0</strong></td>
                         <td colspan="2"></td>
                     </tr>
                 </tfoot>
@@ -86,13 +86,13 @@
                 <thead>
                     <tr>
                         <th>Mese</th>
-                        <th>GG Lav.</th>
-                        <th>Progettato</th>
-                        <th>Erogato</th>
-                        <th>Recuperi</th>
-                        <th>Saldo Ore</th>
-                        <th>Max Imponibile</th>
-                        <th>Effettivo</th>
+                        <th class="text-right">GG Lav.</th>
+                        <th class="text-right">Progettato</th>
+                        <th class="text-right">Erogato</th>
+                        <th class="text-right">Recuperi</th>
+                        <th class="text-right">Saldo Ore</th>
+                        <th class="text-right">Max Imponibile</th>
+                        <th class="text-right">Effettivo</th>
                     </tr>
                 </thead>
                 <tbody id="tbody-report">
@@ -100,13 +100,13 @@
                 <tfoot>
                     <tr class="table-summary">
                         <td><strong>TOTALI</strong></td>
-                        <td id="tot-giorni"></td>
-                        <td id="tot-progettato"></td>
-                        <td id="tot-erogato"></td>
-                        <td id="tot-recuperi"></td>
-                        <td id="tot-saldo"></td>
-                        <td id="tot-max-imp"></td>
-                        <td id="tot-effettivo"></td>
+                        <td id="tot-giorni" class="text-right"></td>
+                        <td id="tot-progettato" class="text-right"></td>
+                        <td id="tot-erogato" class="text-right"></td>
+                        <td id="tot-recuperi" class="text-right"></td>
+                        <td id="tot-saldo" class="text-right"></td>
+                        <td id="tot-max-imp" class="text-right"></td>
+                        <td id="tot-effettivo" class="text-right"></td>
                     </tr>
                 </tfoot>
             </table>
@@ -132,7 +132,7 @@
                 <thead>
                     <tr>
                         <th>Mese</th>
-                        <th>Ore Recupero</th>
+                        <th class="text-right">Ore Recupero</th>
                         <th>Note</th>
                         <th>Azioni</th>
                     </tr>
@@ -414,8 +414,8 @@ function renderDD() {
             <td>${dd.numero_dd || '-'}</td>
             <td>${dd.data_dd || '-'}</td>
             <td>${MESI_NOME[dd.mese_inizio]} ${dd.anno_inizio}</td>
-            <td>${dd.ore_settimanali.toFixed(2)}</td>
-            <td>${dd.ore_annuali.toFixed(2)}</td>
+            <td class="text-right">${dd.ore_settimanali.toFixed(2)}</td>
+            <td class="text-right">${dd.ore_annuali.toFixed(2)}</td>
             <td>${dd.note || '-'}</td>
             <td>
                 <button class="btn btn-secondary btn-sm" onclick="modificaDD(${dd.id})">
@@ -462,7 +462,7 @@ function renderTabellaReport() {
             ${progCell}
             ${erogCell}
             ${recCell}
-            <td class="${saldoClass}">${m.saldo >= 0 ? '+' : ''}${m.saldo.toFixed(2)}</td>
+            <td class="text-right ${saldoClass}">${m.saldo >= 0 ? '+' : ''}${m.saldo.toFixed(2)}</td>
             ${maxImpCell}
             ${effCell}
         `;
@@ -498,7 +498,7 @@ function buildEditableCell(m, campo, valore, valoreAuto, isOverride, decimali) {
         : 'Invio o clic per modificare';
     const indicator = isOverride ? '<span class="override-indicator">*</span>' : '';
 
-    return `<td class="editable-cell ${overrideClass}" tabindex="0" role="button" title="${title}"
+    return `<td class="editable-cell text-right ${overrideClass}" tabindex="0" role="button" title="${title}"
                 data-mese="${m.mese}" data-anno="${m.anno}" data-campo="${campo}"
                 data-valore="${valore}" data-auto="${valoreAuto}" data-override="${isOverride ? 1 : 0}"
                 data-decimali="${decimali ? 1 : 0}" data-currency="0">
@@ -513,7 +513,7 @@ function buildEditableCurrencyCell(m, campo, valore, valoreAuto, isOverride) {
         : 'Invio o clic per modificare';
     const indicator = isOverride ? '<span class="override-indicator">*</span>' : '';
 
-    return `<td class="editable-cell ${overrideClass}" tabindex="0" role="button" title="${title}"
+    return `<td class="editable-cell text-right ${overrideClass}" tabindex="0" role="button" title="${title}"
                 data-mese="${m.mese}" data-anno="${m.anno}" data-campo="${campo}"
                 data-valore="${valore}" data-auto="${valoreAuto}" data-override="${isOverride ? 1 : 0}"
                 data-decimali="1" data-currency="1">
@@ -708,7 +708,7 @@ function renderRecuperi() {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${MESI_NOME[r.mese]} ${r.anno}</td>
-            <td>${Number(r.ore_recupero || 0).toFixed(2)}</td>
+            <td class="text-right">${Number(r.ore_recupero || 0).toFixed(2)}</td>
             <td>${r.note ? escapeHtml(r.note) : '-'}</td>
             <td style="white-space: nowrap;">
                 <button class="btn btn-secondary btn-sm" onclick="modificaRecupero(${r.id})" title="Modifica" aria-label="Modifica recupero">

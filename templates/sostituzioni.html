@@ -115,7 +115,7 @@ async function caricaSostituzioni() {
         c.innerHTML = '<div class="empty-state"><h3 class="empty-state-title">Nessun turno da coprire</h3><p class="empty-state-text">Registra un\'assenza per generare i turni scoperti.</p></div>';
         return;
     }
-    c.innerHTML = `<table class="table"><thead><tr>
+    c.innerHTML = `<div class="table-responsive"><table class="table"><thead><tr>
         <th>Data</th><th>Orario</th><th>Scuola</th><th>Operatore assente</th><th>Sostituto</th><th></th>
         </tr></thead><tbody>
         ${sost.map(s => {
@@ -134,7 +134,7 @@ async function caricaSostituzioni() {
                         : `<button class="btn btn-sm btn-primary" onclick="trovaSostituto(${s.id})">Trova sostituto</button>`}
                 </td></tr>`;
         }).join('')}
-        </tbody></table>`;
+        </tbody></table></div>`;
 }
 
 async function trovaSostituto(id) {

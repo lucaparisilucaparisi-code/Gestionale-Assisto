@@ -378,8 +378,10 @@
         <!-- Anteprima Migrazione -->
         <div id="migrazione-preview" class="hidden mt-4">
             <div class="alert alert-warning">
-                <strong>Anteprima importazione:</strong>
-                <div id="migrazione-preview-content"></div>
+                <div>
+                    <strong>Anteprima importazione:</strong>
+                    <div id="migrazione-preview-content"></div>
+                </div>
             </div>
             <div class="flex gap-3 mt-3">
                 <div class="form-group" style="margin-bottom: 0;">
@@ -424,6 +426,7 @@
         <h2 class="card-title">Colonne Riconosciute (Import Excel)</h2>
     </div>
     <div class="card-body">
+        <div class="table-responsive">
         <table class="table">
             <thead>
                 <tr>
@@ -450,6 +453,7 @@
                 </tr>
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -620,6 +624,7 @@ async function loadCronologiaImport() {
         }
 
         container.innerHTML = `
+            <div class="table-responsive">
             <table class="table">
                 <thead>
                     <tr>
@@ -644,6 +649,7 @@ async function loadCronologiaImport() {
                     `).join('')}
                 </tbody>
             </table>
+            </div>
         `;
     } catch (error) {
         container.innerHTML = '<p class="text-danger">Errore caricamento cronologia</p>';
@@ -746,10 +752,12 @@ async function previewFile() {
         if (data.errors && data.errors.length > 0) {
             errorsDiv.innerHTML = `
                 <div class="alert alert-warning mb-3">
-                    <strong>${data.errors.length} righe con problemi:</strong>
-                    <ul style="margin: 8px 0 0 20px; list-style: disc;">
-                        ${data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
-                    </ul>
+                    <div>
+                        <strong>${data.errors.length} righe con problemi:</strong>
+                        <ul style="margin: 8px 0 0 20px; list-style: disc;">
+                            ${data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
+                        </ul>
+                    </div>
                 </div>
             `;
         } else {

@@ -227,7 +227,7 @@
 }
 
 [data-theme="light"] .form-control {
-    background: var(--bg-input);
+    background-color: var(--bg-input);
     border: 1px solid #C7C7CC;
     color: #1C1C1E;
 }
@@ -904,15 +904,14 @@ body {
     opacity: 0.85;
 }
 
-/* Hide topbar logo on desktop (shown in sidebar) */
-@media (min-width: 769px) {
+/* Logo nella barra in alto solo quando il menu laterale e' nascosto (fino a 1024px) */
+@media (min-width: 1025px) {
     .topbar-logo {
         display: none;
     }
 }
 
-/* Show topbar logo on mobile when sidebar is hidden */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     .topbar-logo {
         display: flex;
     }
@@ -2581,11 +2580,6 @@ select.form-control {
     to { opacity: 1; }
 }
 
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-
 .animate-delay-1 { animation-delay: 0.1s; }
 .animate-delay-2 { animation-delay: 0.2s; }
 .animate-delay-3 { animation-delay: 0.3s; }
@@ -3530,16 +3524,6 @@ tr.search-match {
 
 .table tbody tr:hover {
     background: rgba(255, 255, 255, 0.04);
-}
-
-/* Badge con animazione pulse per notifiche importanti */
-.badge-warning {
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
 }
 
 /* Filtri con sfondo migliorato */

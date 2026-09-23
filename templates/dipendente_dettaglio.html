@@ -146,12 +146,12 @@ async function carica() {
     if (!dip.assistiti.length) {
         a.innerHTML = '<div class="empty-state"><p class="empty-state-text">Nessun assistito assegnato</p></div>';
     } else {
-        a.innerHTML = `<table class="table"><thead><tr><th>Assistito</th><th>Scuola</th><th class="text-right">Ore/sett.</th></tr></thead><tbody>
+        a.innerHTML = `<div class="table-responsive"><table class="table"><thead><tr><th>Assistito</th><th>Scuola</th><th class="text-right">Ore/sett.</th></tr></thead><tbody>
             ${dip.assistiti.map(u => `<tr>
                 <td><a href="/utente/${u.utente_id}">${escapeHtml(u.ut_cognome)} ${escapeHtml(u.ut_nome)}</a></td>
                 <td class="text-muted text-sm">${escapeHtml((u.scuola || '').substring(0, 40))}</td>
                 <td class="text-right font-mono">${u.ore_settimanali}</td></tr>`).join('')}
-            </tbody></table>`;
+            </tbody></table></div>`;
     }
 
     caricaTurni();
@@ -177,12 +177,12 @@ async function caricaTurni() {
             box.innerHTML = '<div class="empty-state" style="padding:20px"><p class="empty-state-text">Nessun turno impostato</p></div>';
             return;
         }
-        box.innerHTML = `<table class="table"><tbody>
+        box.innerHTML = `<div class="table-responsive"><table class="table"><tbody>
             ${d.turni.map(t => `<tr>
                 <td style="width:48px"><strong>${GIORNI_BREVI[t.giorno]}</strong></td>
                 <td class="font-mono">${t.ora_inizio}–${t.ora_fine}</td>
                 <td class="text-muted text-sm">${escapeHtml((t.scuola || '—').substring(0, 30))}</td></tr>`).join('')}
-            </tbody></table>
+            </tbody></table></div>
             <div style="padding:8px 16px" class="text-muted text-sm">Totale: ${d.ore_pianificate}h/settimana</div>`;
     } catch (e) { box.innerHTML = '<div class="empty-state" style="padding:20px"><p class="empty-state-text">—</p></div>'; }
 }
@@ -195,11 +195,11 @@ async function caricaAssenze() {
             box.innerHTML = '<div class="empty-state" style="padding:20px"><p class="empty-state-text">Nessuna assenza registrata</p></div>';
             return;
         }
-        box.innerHTML = `<table class="table"><tbody>
+        box.innerHTML = `<div class="table-responsive"><table class="table"><tbody>
             ${ass.slice(0, 12).map(a => `<tr>
                 <td>${escapeHtml(a.data_inizio)}${a.data_fine && a.data_fine !== a.data_inizio ? ' → ' + escapeHtml(a.data_fine) : ''}</td>
                 <td><span class="badge badge-secondary">${escapeHtml(a.tipo || '—')}</span></td></tr>`).join('')}
-            </tbody></table>`;
+            </tbody></table></div>`;
     } catch (e) { box.innerHTML = '<div class="empty-state" style="padding:20px"><p class="empty-state-text">—</p></div>'; }
 }
 

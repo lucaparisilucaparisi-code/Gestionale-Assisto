@@ -250,13 +250,13 @@ async function caricaGiorno() {
     document.getElementById('giorno-count').textContent = turni.length;
     const c = document.getElementById('giorno-lista');
     if (!turni.length) { c.innerHTML = '<div class="empty-state"><p class="empty-state-text">Nessun turno in questo giorno</p></div>'; return; }
-    c.innerHTML = `<table class="table"><thead><tr><th>Orario</th><th>Operatore</th><th>Scuola</th><th>Assistito</th></tr></thead><tbody>
+    c.innerHTML = `<div class="table-responsive"><table class="table"><thead><tr><th>Orario</th><th>Operatore</th><th>Scuola</th><th>Assistito</th></tr></thead><tbody>
         ${turni.map(t => `<tr>
             <td class="font-mono">${t.ora_inizio}–${t.ora_fine}</td>
             <td>${escapeHtml(t.dip_cognome)} ${escapeHtml(t.dip_nome)}</td>
             <td class="text-muted text-sm">${escapeHtml((t.scuola||'—').substring(0,40))}</td>
             <td class="text-sm">${t.ut_cognome ? escapeHtml(t.ut_cognome+' '+t.ut_nome) : '—'}</td></tr>`).join('')}
-        </tbody></table>`;
+        </tbody></table></div>`;
 }
 </script>
 <style>

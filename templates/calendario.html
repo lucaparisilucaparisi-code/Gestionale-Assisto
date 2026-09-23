@@ -44,11 +44,12 @@
         {% set coeff = app_config.coefficiente_giornaliero %}
         <strong>Calcolo Media Mensile:</strong><br>
         Media Mensile = Monte Ore Settimanale × (Giorni Lavorativi × {{ ('%g' % coeff)|replace('.', ',') }})<br>
-        Esempio: 10 ore/sett × (16 giorni × {{ ('%g' % coeff)|replace('.', ',') }}) = 10 × {{ ('%g' % (16 * coeff))|replace('.', ',') }} = {{ ('%g' % (10 * 16 * coeff))|replace('.', ',') }} ore mensili<br>
-        <br>
-        <strong>Giugno</strong>: usa due valori distinti — <em>Infanzia</em> (fino al 30/06)
-        e <em>Altri ordini</em> (fino al termine scuole primarie/secondarie). Il sistema applica
-        automaticamente il valore giusto ad ogni utente in base al plesso.
+        Esempio: 10 ore/sett × (16 giorni × {{ ('%g' % coeff)|replace('.', ',') }}) = 10 × {{ ('%g' % (16 * coeff))|replace('.', ',') }} = {{ ('%g' % (10 * 16 * coeff))|replace('.', ',') }} ore mensili
+        <div class="mt-2">
+            <strong>Giugno</strong>: usa due valori distinti — <em>Infanzia</em> (fino al 30/06)
+            e <em>Altri ordini</em> (fino al termine scuole primarie/secondarie). Il sistema applica
+            automaticamente il valore giusto ad ogni utente in base al plesso.
+        </div>
     </div>
 </div>
 
@@ -290,6 +291,7 @@ function renderCalendario(data) {
     });
 
     let html = `
+        <div class="table-responsive">
         <table class="table">
             <thead>
                 <tr>
@@ -357,6 +359,7 @@ function renderCalendario(data) {
     html += `
             </tbody>
         </table>
+        </div>
     `;
 
     container.innerHTML = html;

@@ -269,6 +269,7 @@
     </div>
     <div class="card-body">
         <h3 style="margin-bottom: 1rem; font-size: 1rem;">Report Disponibili</h3>
+        <div class="table-responsive">
         <table class="table mb-4">
             <thead>
                 <tr>
@@ -299,8 +300,10 @@
                 </tr>
             </tbody>
         </table>
+        </div>
 
         <h3 style="margin-bottom: 1rem; font-size: 1rem;">Colonne Report Completo</h3>
+        <div class="table-responsive">
         <table class="table">
             <thead>
                 <tr>
@@ -335,6 +338,7 @@
                 </tr>
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -547,8 +551,8 @@ async function mostraAnteprima() {
         const righe = applicaFiltriAnteprima(data.dati, p.filtri);
         const filtrata = righe.length !== data.dati.length;
 
-        let html = '<table class="table" style="font-size: 0.8rem;"><thead><tr>';
-        html += '<th>Utente</th><th>Scuola</th><th>Monte Ore</th><th>Ore (60\')</th><th>Imponibile</th><th>Totale</th>';
+        let html = '<div class="table-responsive"><table class="table" style="font-size: 0.8rem;"><thead><tr>';
+        html += '<th>Utente</th><th>Scuola</th><th class="text-right">Monte Ore</th><th class="text-right">Ore (60\')</th><th class="text-right">Imponibile</th><th class="text-right">Totale</th>';
         html += '</tr></thead><tbody>';
 
         righe.slice(0, 20).forEach(d => {
@@ -569,7 +573,7 @@ async function mostraAnteprima() {
             html += '<tr><td colspan="6" class="text-center text-muted">Nessun utente corrisponde ai filtri</td></tr>';
         }
 
-        html += '</tbody></table>';
+        html += '</tbody></table></div>';
 
         // Totali: quelli ufficiali del server se non ci sono filtri, altrimenti sulle righe filtrate
         const totUtenti = filtrata ? righe.length : data.totale_generale.num_utenti;
@@ -606,7 +610,7 @@ async function generaConfrontoAnnuale() {
         const anni = await apiCall('/api/anni-scolastici');
 
         let html = '<h4 class="mb-4">Confronto ' + MESI[mese] + ' negli anni</h4>';
-        html += '<table class="table"><thead><tr><th>Anno Scolastico</th><th class="text-right">Ore Erogate</th><th class="text-right">Utenti</th><th class="text-right">Variazione</th></tr></thead><tbody>';
+        html += '<div class="table-responsive"><table class="table"><thead><tr><th>Anno Scolastico</th><th class="text-right">Ore Erogate</th><th class="text-right">Utenti</th><th class="text-right">Variazione</th></tr></thead><tbody>';
 
         let datiAnni = [];
 
@@ -643,7 +647,7 @@ async function generaConfrontoAnnuale() {
             </tr>`;
         });
 
-        html += '</tbody></table>';
+        html += '</tbody></table></div>';
         previewContent.innerHTML = html;
         previewCard.scrollIntoView({ behavior: 'smooth' });
     } catch (err) {
