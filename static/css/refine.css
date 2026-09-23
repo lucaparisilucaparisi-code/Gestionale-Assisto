@@ -270,3 +270,10 @@ details.section[open] > summary::before { transform: rotate(90deg); }
 @media (max-width: 860px) {
     .grid-2, .grid-3 { grid-template-columns: 1fr; }
 }
+
+/* ---------- 14. Larghezza della pagina ---------- */
+/* .main-content e' un elemento flex: senza min-width:0 si allarga fino alla tabella
+   piu' larga (Rendicontazione, Utenti) e porta fuori schermo pulsanti, colonne e
+   comandi della barra in alto, senza barra di scorrimento. Con min-width:0 la
+   pagina resta larga quanto la finestra e le tabelle scorrono nel loro riquadro. */
+.main-content { min-width: 0; }

@@ -254,6 +254,47 @@ let autoSaveTimeout = null;
 let scuoleList = [];
 let differenzeMesePrecedente = {}; // Memorizza le differenze rispetto al mese precedente
 const AUTO_SAVE_DELAY = 2000; // 2 secondi di debounce
+// Periodo della tabella MOSTRATA (impostato da loadData). Salvataggi e azioni usano
+// questo, non i menu: prima, cambiando mese senza ricaricare, le ore della tabella
+// visibile venivano salvate nel mese scelto nel menu (cioe' nel mese sbagliato).
+let periodoCaricato = null;   // { anno, mese, commessa }
+
+function periodoMostrato() {
+    if (!periodoCaricato) {
+        showToast('Carica prima un mese', 'error');
+        return null;
+    }
+    return periodoCaricato;
+}
+
+// Cambio di anno, mese o commessa: salva le modifiche in sospeso sul mese mostrato,
+// poi ricarica la tabella. Se il salvataggio non riesce, i menu tornano al mese mostrato.
+async function cambiaPeriodo() {
+    if (autoSaveTimeout) { clearTimeout(autoSaveTimeout); autoSaveTimeout = null; }
+    collectPendingChangesFromInputs();
+    if (periodoCaricato && Object.keys(pendingChanges).length > 0) {
+        await autoSave();
+        if (Object.keys(pendingChanges).length > 0) {
+            ripristinaMenuPeriodo();
+            showToast('Modifiche non salvate: resto sul mese mostrato. Riprova il salvataggio.', 'error');
+            return;
+        }
+    }
+    loadData();
+}
+
+function ripristinaMenuPeriodo() {
+    if (!periodoCaricato) return;
+    const { anno, mese, commessa } = periodoCaricato;
+    const annoScol = mese >= 9 ? `${anno}-${anno + 1}` : `${anno - 1}-${anno}`;
+    const annoSel = document.getElementById('filter-anno');
+    if (annoSel.value !== annoScol) {
+        annoSel.value = annoScol;
+        populateMesiScolastici('filter-mese', annoScol);
+    }
+    document.getElementById('filter-mese').value = `${mese}-${anno}`;
+    document.getElementById('filter-commessa').value = commessa || '';
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     await populateAnniScolastici('filter-anno');
@@ -261,7 +302,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('filter-anno').addEventListener('change', (e) => {
         populateMesiScolastici('filter-mese', e.target.value);
+        if (periodoCaricato) cambiaPeriodo();
     });
+    document.getElementById('filter-mese').addEventListener('change', () => { if (periodoCaricato) cambiaPeriodo(); });
+    document.getElementById('filter-commessa').addEventListener('change', () => { if (periodoCaricato) cambiaPeriodo(); });
 
     // Trigger initial population
     const annoSelect = document.getElementById('filter-anno');
@@ -340,6 +384,7 @@ async function loadData() {
         allData = data.dati; // Salva tutti i dati
         currentData = data.dati;
         pendingChanges = {};
+        periodoCaricato = { anno, mese, commessa };
 
         // Popola filtro scuole
         populateScuoleFilter(data.dati);
@@ -418,13 +463,9 @@ function populateScuoleFilter(dati) {
 }
 
 async function copiaDaMesePrecedente() {
-    const meseSelect = document.getElementById('filter-mese');
-    if (!meseSelect.value) {
-        showToast('Seleziona prima un mese', 'error');
-        return;
-    }
-
-    const [mese, anno] = meseSelect.value.split('-').map(Number);
+    const periodo = periodoMostrato();
+    if (!periodo) return;
+    const { mese, anno } = periodo;
 
     // Calcola nome mese precedente per il messaggio di conferma
     // (coerente col server: per settembre il precedente e' Giugno)
@@ -472,13 +513,9 @@ async function copiaDaMesePrecedente() {
 }
 
 async function compilaConMedia() {
-    const meseSelect = document.getElementById('filter-mese');
-    if (!meseSelect.value) {
-        showToast('Seleziona prima un mese', 'error');
-        return;
-    }
-
-    const [mese, anno] = meseSelect.value.split('-').map(Number);
+    const periodo = periodoMostrato();
+    if (!periodo) return;
+    const { mese, anno } = periodo;
     const senzaOre = currentData.filter(d => !d.ore_lavorate_60 || d.ore_lavorate_60 === 0).length;
 
     showConfirmDialog(
@@ -515,19 +552,14 @@ async function compilaConMedia() {
 }
 
 async function esportaFiltrati() {
-    const meseSelect = document.getElementById('filter-mese');
-    if (!meseSelect.value) {
-        showToast('Seleziona prima un mese', 'error');
-        return;
-    }
-
-    const [mese, anno] = meseSelect.value.split('-').map(Number);
-    const commessaSelect = document.getElementById('filter-commessa');
+    const periodo = periodoMostrato();
+    if (!periodo) return;
+    const { mese, anno } = periodo;
     const scuolaSelect = document.getElementById('filter-scuola');
 
     let url = `/api/export/excel/${anno}/${mese}`;
     const params = [];
-    if (commessaSelect.value) params.push(`commessa=${encodeURIComponent(commessaSelect.value)}`);
+    if (periodo.commessa) params.push(`commessa=${encodeURIComponent(periodo.commessa)}`);
     if (scuolaSelect.value) params.push(`scuola=${encodeURIComponent(scuolaSelect.value)}`);
     // Anche il testo cercato: il file contiene esattamente le righe a schermo
     const search = (document.getElementById('search-input')?.value || '').trim();
@@ -679,9 +711,8 @@ function filterByScuola() {
         currentData = allData.filter(d => d.scuola === scuolaFilter);
     }
 
-    // Re-render con i dati filtrati
-    const meseSelect = document.getElementById('filter-mese');
-    const [mese, anno] = meseSelect.value.split('-').map(Number);
+    // Re-render con i dati filtrati (periodo della tabella mostrata)
+    const anno = periodoCaricato ? periodoCaricato.anno : null;
 
     const totali_scuola = calculateTotaliScuola(currentData);
     const totale_generale = calculateTotaleGenerale(currentData);
@@ -1059,8 +1090,9 @@ async function autoSave() {
     `;
 
     try {
-        const meseSelect = document.getElementById('filter-mese');
-        const [mese, anno] = meseSelect.value.split('-').map(Number);
+        // Sempre il mese MOSTRATO in tabella, non quello selezionato nel menu
+        if (!periodoCaricato) throw new Error('Nessun mese caricato');
+        const { mese, anno } = periodoCaricato;
 
         const updates = Object.values(pendingChanges);
 
@@ -1489,8 +1521,9 @@ function resetExcelFilter() {
 }
 
 async function saveChanges() {
-    const meseSelect = document.getElementById('filter-mese');
-    const [mese, anno] = meseSelect.value.split('-').map(Number);
+    const periodo = periodoMostrato();
+    if (!periodo) return;
+    const { mese, anno } = periodo;
 
     const updates = Object.values(pendingChanges);
     if (updates.length === 0) {
