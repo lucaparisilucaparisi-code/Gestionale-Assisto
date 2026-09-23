@@ -69,7 +69,9 @@
             <h2 class="card-title">Andamento Mensile</h2>
         </div>
         <div class="card-body">
-            <canvas id="chart-andamento" height="200"></canvas>
+            <div class="chart-container" style="height: 240px;">
+                <canvas id="chart-andamento"></canvas>
+            </div>
         </div>
     </div>
 </div>
@@ -716,36 +718,23 @@ function renderAnagrafica(data) {
 }
 
 function renderChartAndamento(storico) {
-    const ctx = document.getElementById('chart-andamento').getContext('2d');
-    const MESI = ['', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+    const MESI_BREVI = ['', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+    // Lo storico arriva dal mese piu' recente (come la tabella Storico): il grafico
+    // va da sinistra a destra nel tempo, da settembre a giugno (prima era al contrario)
+    const serie = [...storico].reverse();
 
-    const labels = storico.map(s => `${MESI[s.mese]} ${s.anno}`);
-    const oreData = storico.map(s => s.ore_lavorate_60 || 0);
-
-    if (chartAndamento) chartAndamento.destroy();
-
-    chartAndamento = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Ore Erogate',
-                data: oreData,
-                borderColor: '#6366f1',
-                backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                fill: true,
-                tension: 0.3
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true }
-            }
-        }
-    });
+    // ChartManager: blu dell'app (non indaco), colori del tema e unita' "ore";
+    // si ridisegna da solo al cambio di tema
+    chartAndamento = ChartManager.createLineChart('chart-andamento',
+        serie.map(s => `${MESI_BREVI[s.mese]} ${s.anno}`),
+        [{
+            label: 'Ore erogate',
+            data: serie.map(s => s.ore_lavorate_60 || 0),
+            ruolo: 'primary',
+            backgroundColor: 'rgba(59, 130, 246, 0.10)',
+            fill: true
+        }],
+        'ore');
 }
 
 function renderDocumenti(documenti) {

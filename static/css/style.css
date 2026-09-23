@@ -35,6 +35,10 @@
        bianco su #16A34A era 3,3:1 e su #30D158 2,0:1; su #15803D e' 5,0:1. */
     --success-strong: #15803D;
     --success-strong-hover: #166534;
+    /* Colori dei tipi di report (icone e strisce, mai testo): verde Excel e blu
+       Word schiariti sul fondo scuro, dove #217346 e #2B579A erano 2,4-2,9:1 */
+    --report-excel: #4ADE80;
+    --report-word: #6EA8FE;
 
     /* Dark Theme - Truly Dark Like Apple */
     --bg-primary: #000000;
@@ -158,6 +162,8 @@
     --danger: #B91C1C;
     /* Blu dei testi sul fondo chiaro: #3B82F6 era 2,9-3,7:1, #1D4ED8 e' 5,3-6,7:1 */
     --accent-text: #1D4ED8;
+    --report-excel: #217346;
+    --report-word: #2B579A;
 }
 
 /* Light Theme - Componenti specifici */

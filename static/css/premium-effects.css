@@ -675,17 +675,8 @@
     position: relative;
 }
 
-.chart-container::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 50%;
-    background: linear-gradient(to top, rgba(10, 132, 255, 0.05), transparent);
-    pointer-events: none;
-    border-radius: 0 0 var(--radius) var(--radius);
-}
+/* (la sfumatura azzurra sulla meta' bassa dei grafici e' stata tolta: sembrava
+   un riquadro con gli angoli arrotondati che finiva a meta' grafico) */
 
 /* ==================== FILTER BAR EFFECTS ==================== */
 .filters {
@@ -738,27 +729,9 @@
     transition: all 0.3s ease;
 }
 
-.da-completare-item::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: linear-gradient(180deg, var(--warning), var(--warning-light));
-    transform: scaleY(0);
-    transition: transform 0.3s ease;
-    border-radius: 0 2px 2px 0;
-}
-
-.da-completare-item:hover::before {
-    transform: scaleY(1);
-}
-
-.da-completare-item:hover {
-    transform: translateX(6px);
-    background: rgba(255, 159, 10, 0.1);
-}
+/* (via lo spostamento a destra e la tinta arancio al passaggio del mouse:
+   facevano sembrare cliccabili righe che non lo erano; ora le righe sono link
+   e il loro stato "hover" e' in refine.css) */
 
 /* ==================== RESPONSIVE ADJUSTMENTS ==================== */
 @media (max-width: 768px) {

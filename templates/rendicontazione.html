@@ -281,6 +281,8 @@ const AUTO_SAVE_DELAY = 2000; // 2 secondi di debounce
 let periodoCaricato = null;   // { anno, mese, commessa }
 // Filtro "solo senza ore" (pulsante 'N senza ore' sopra la tabella)
 let soloSenzaOre = false;
+// Nome arrivato con ?cerca= : si applica al primo caricamento (poi il filtro si azzera come sempre)
+let cercaIniziale = '';
 // Totali del server per il Riepilogo: si rimettono togliendo il filtro, se nel
 // frattempo non e' stata modificata nessuna ora (altrimenti si ricalcolano).
 let totaliServer = null;
@@ -318,16 +320,37 @@ function ripristinaMenuPeriodo() {
     document.getElementById('filter-commessa').value = commessa || '';
 }
 
-// Porta i menu Anno scolastico e Mese su mese/anno (se l'anno esiste nell'elenco)
+// Porta i menu Anno scolastico e Mese su mese/anno. Ritorna false (e non tocca i
+// menu) se quel mese non c'e' nell'elenco: anno scolastico senza calendario, oppure
+// luglio e agosto.
 function impostaMenuPeriodo(anno, mese) {
     const annoScol = mese >= 9 ? `${anno}-${anno + 1}` : `${anno - 1}-${anno}`;
     const annoSel = document.getElementById('filter-anno');
-    if (!annoSel.querySelector(`option[value="${annoScol}"]`)) return;
+    if (!MESI_SCOLASTICI.includes(mese)) return false;
+    if (!annoSel.querySelector(`option[value="${annoScol}"]`)) return false;
     if (annoSel.value !== annoScol) {
         annoSel.value = annoScol;
         populateMesiScolastici('filter-mese', annoScol);
     }
     document.getElementById('filter-mese').value = `${mese}-${anno}`;
+    return true;
+}
+
+// Link a un mese che qui non si puo' aprire (es. dalla Dashboard a settembre, prima
+// di preparare il calendario): la pagina resta sul mese proposto e lo dice.
+function avvisaMeseNonApribile(anno, mese) {
+    const meseSel = document.getElementById('filter-mese');
+    const aperto = meseSel.selectedOptions[0]?.textContent;
+    const ancheAperto = aperto ? ` È aperto ${aperto}.` : '';
+    if (!MESI_SCOLASTICI.includes(mese)) {
+        showToast(`${MESI[mese]} non è un mese di scuola: le ore si registrano da settembre a giugno.${ancheAperto}`, 'warning', 10000);
+        return;
+    }
+    const annoScol = mese >= 9 ? `${anno}-${anno + 1}` : `${anno - 1}-${anno}`;
+    // Anno in corso o prossimo: il calendario si prepara dalla Dashboard; gli altri da Calendario
+    const futuro = annoScol >= getCurrentAnnoScolastico();
+    showToast(`${MESI[mese]} ${anno} non si può ${futuro ? 'ancora ' : ''}aprire: manca il calendario del ${annoScol} ` +
+        `(${futuro ? 'preparalo dalla Dashboard o da Calendario' : 'crealo da Calendario'}).${ancheAperto}`, 'warning', 12000);
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -354,8 +377,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     const qs = new URLSearchParams(window.location.search);
     const qAnno = parseInt(qs.get('anno'), 10);
     const qMese = parseInt(qs.get('mese'), 10);
-    if (qAnno && qMese >= 1 && qMese <= 12) impostaMenuPeriodo(qAnno, qMese);
-    soloSenzaOre = qs.get('senza_ore') === '1';
+    let meseChiestoAperto = true;
+    if (qAnno && qMese >= 1 && qMese <= 12) {
+        meseChiestoAperto = impostaMenuPeriodo(qAnno, qMese);
+        if (!meseChiestoAperto) avvisaMeseNonApribile(qAnno, qMese);
+    }
+    // &senza_ore=1 e &cerca=Nome Cognome (righe dello Stato del mese in Dashboard):
+    // il mese si apre gia' filtrato. Solo se si e' aperto proprio quel mese: su un
+    // altro mese nomi e "senza ore" sarebbero di un periodo diverso da quello letto.
+    if (meseChiestoAperto) {
+        soloSenzaOre = qs.get('senza_ore') === '1';
+        cercaIniziale = (qs.get('cerca') || '').trim();
+    }
 
     document.getElementById('btn-load').addEventListener('click', loadData);
     document.getElementById('btn-save').addEventListener('click', saveChanges);
@@ -470,6 +503,11 @@ async function loadData() {
 
         // Reset filtro quando si caricano nuovi dati (resta solo "senza ore", se attivo)
         resetExcelFilter();
+        if (cercaIniziale) {
+            document.getElementById('search-input').value = cercaIniziale;
+            document.getElementById('search-clear').style.display = 'flex';
+            cercaIniziale = '';
+        }
 
         if (data.dati.length > 0) {
             // Distinguo infanzia/altri (il plesso contiene "INFANZIA" per l'infanzia)
@@ -518,7 +556,9 @@ async function loadData() {
         document.getElementById('btn-copia-precedente').style.display = senzaOre > 0 ? 'inline-flex' : 'none';
         document.getElementById('btn-compila-media').style.display = senzaOre > 0 ? 'inline-flex' : 'none';
         document.getElementById('btn-esporta-filtrati').style.display = data.dati.length > 0 ? 'inline-flex' : 'none';
-        if (soloSenzaOre) applyExcelFilter('');
+        // filtro "solo senza ore" o nome arrivato con ?cerca=
+        const filtroNome = document.getElementById('search-input').value.trim();
+        if (soloSenzaOre || filtroNome) applyExcelFilter(filtroNome);
 
         // Carica differenze rispetto al mese precedente
         await loadDifferenzeMesePrecedente(anno, mese);

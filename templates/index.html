@@ -34,8 +34,10 @@
     </div>
 </div>
 
+<!-- In cima: lo stato del mese e le cose da fare (affiancati sul PC) -->
+<div class="dash-top">
 <!-- Stato del Mese -->
-<div class="card mb-4" id="stato-mese-card">
+<div class="card" id="stato-mese-card">
     <div class="card-header">
         <h2 class="card-title">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -52,7 +54,7 @@
         <div class="flex items-center justify-between mt-3 flex-wrap gap-3">
             <span id="stato-mese-testo" class="text-muted">Caricamento…</span>
             <div class="flex gap-2 flex-wrap">
-                <a href="/rendicontazione" class="btn btn-sm btn-primary">
+                <a href="/rendicontazione" class="btn btn-sm btn-primary" id="stato-mese-link">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
@@ -66,24 +68,80 @@
                 </a>
             </div>
         </div>
-        <div id="lista-da-completare" class="da-completare-list" style="margin-top: 12px; max-height: 280px; overflow-y: auto;"></div>
+        <div id="lista-da-completare" class="da-completare-list"></div>
     </div>
 </div>
 
-<!-- Alert Automatici (visibile solo se presenti) -->
-<div class="card mb-4" id="alerts-panel" style="display: none;">
+<div class="dash-colonna">
+<!-- Da fare: avvisi e controlli dei dati in un solo elenco, senza ripetere lo
+     Stato del mese (utenti senza ore, percentuale completata) -->
+<div class="card" id="da-fare-panel">
     <div class="card-header">
         <h2 class="card-title">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
-            Avvisi
+            Da fare
         </h2>
-        <span class="badge badge-danger" id="alerts-count" style="display: none;">0</span>
+        <span class="badge badge-secondary" id="da-fare-count">--</span>
     </div>
-    <div class="card-body" style="padding: 12px; max-height: 300px; overflow-y: auto;">
-        <div id="alerts-list"></div>
+    <div class="card-body p-0" id="da-fare-list">
+        <div class="loading" style="padding: 20px;">
+            <div class="spinner"></div>
+        </div>
     </div>
+</div>
+
+<!-- Banner nuovo anno scolastico: visibile da giugno a ottobre se il prossimo
+     anno non ha ancora il calendario. Una riga con i due passi; la spiegazione
+     si apre con "Dettagli" (prima era un riquadro sempre aperto alto 435px). -->
+<div class="card" id="nuovo-anno-card" style="display:none;">
+    <div class="nuovo-anno-riga">
+        <div class="nuovo-anno-titolo">
+            <strong>🎒 Prepara il nuovo anno scolastico <span id="nuovo-anno-label"></span></strong>
+            <span class="text-muted" id="nuovo-anno-progresso"></span>
+            <button type="button" class="nuovo-anno-dettagli" id="btn-nuovo-anno-dettagli" aria-expanded="false" aria-controls="nuovo-anno-body">Dettagli</button>
+        </div>
+        <div class="nuovo-anno-azioni">
+            <span id="passo-calendario-ok" class="wizard-ok" style="display:none;">✔ Calendario</span>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-prepara-anno">1 · Prepara il calendario</button>
+            <span id="passo-utenti-ok" class="wizard-ok" style="display:none;">✔ Utenti e monte ore</span>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-wizard-utenti">2 · Rivedi utenti e monte ore</button>
+        </div>
+    </div>
+    <div class="card-body nuovo-anno-body" id="nuovo-anno-body" hidden>
+        <p class="text-muted" style="margin-top:0;">
+            Due passi, entrambi rivedibili in seguito: il <strong>calendario</strong> dei giorni lavorativi
+            (regole Regione Lazio, correggibile mese per mese) e gli <strong>utenti</strong>: chiusura delle
+            variazioni monte ore dell'anno scorso, monte ore di partenza, archiviazione di chi è uscito.
+        </p>
+        <div class="wizard-passi">
+            <div class="wizard-passo" id="passo-calendario">
+                <div class="wizard-passo-num">1</div>
+                <div class="wizard-passo-body">
+                    <strong>Calendario scolastico</strong>
+                    <div class="text-muted" style="font-size:0.9rem;">Giorni lavorativi di ogni mese, da settembre a giugno.</div>
+                    <div class="mt-2 flex gap-2 flex-wrap">
+                        <a href="/calendario" class="btn btn-secondary btn-sm">Apri il calendario</a>
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-passo" id="passo-utenti">
+                <div class="wizard-passo-num">2</div>
+                <div class="wizard-passo-body">
+                    <strong>Utenti e monte ore</strong>
+                    <div class="text-muted" style="font-size:0.9rem;">Un'unica tabella per rivedere il monte ore di partenza di ogni assistito,
+                        chiudere al 31 agosto le variazioni dell'anno scorso e archiviare chi ha lasciato il servizio.</div>
+                    <div class="mt-2 flex gap-2 flex-wrap">
+                        <a href="/utenti" class="btn btn-secondary btn-sm">Apri gli utenti</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="nuovo-anno-esito" class="nuovo-anno-esito"></div>
+</div>
+</div>
 </div>
 
 <!-- Checklist di primo avvio: visibile solo finche' non ci sono utenti -->
@@ -109,49 +167,6 @@
         <p class="text-muted mt-3" style="font-size:0.85rem; margin-bottom:0;">
             Questa guida scompare da sola appena l'anagrafica contiene almeno un utente.
         </p>
-    </div>
-</div>
-
-<!-- Banner nuovo anno scolastico: visibile da giugno a ottobre se il prossimo
-     anno non ha ancora il calendario -->
-<div class="card mb-4" id="nuovo-anno-card" style="display:none;">
-    <div class="card-header">
-        <h2 class="card-title">🎒 Prepara il nuovo anno scolastico <span id="nuovo-anno-label"></span></h2>
-    </div>
-    <div class="card-body" id="nuovo-anno-body">
-        <p class="text-muted" style="margin-top:0;">
-            Due passi, entrambi rivedibili in seguito: il <strong>calendario</strong> dei giorni lavorativi
-            (regole Regione Lazio, correggibile mese per mese) e gli <strong>utenti</strong>: chiusura delle
-            variazioni monte ore dell'anno scorso, monte ore di partenza, archiviazione di chi è uscito.
-        </p>
-        <div class="wizard-passi">
-            <div class="wizard-passo" id="passo-calendario">
-                <div class="wizard-passo-num">1</div>
-                <div class="wizard-passo-body">
-                    <strong>Calendario scolastico</strong>
-                    <div class="text-muted" style="font-size:0.9rem;">Giorni lavorativi di ogni mese, da settembre a giugno.</div>
-                    <div class="mt-2 flex gap-2 flex-wrap">
-                        <button type="button" class="btn btn-primary btn-sm" id="btn-prepara-anno">Prepara il calendario</button>
-                        <span id="passo-calendario-ok" class="wizard-ok" style="display:none;">✔ Fatto</span>
-                        <a href="/calendario" class="btn btn-secondary btn-sm">Apri il calendario</a>
-                    </div>
-                </div>
-            </div>
-            <div class="wizard-passo" id="passo-utenti">
-                <div class="wizard-passo-num">2</div>
-                <div class="wizard-passo-body">
-                    <strong>Utenti e monte ore</strong>
-                    <div class="text-muted" style="font-size:0.9rem;">Un'unica tabella per rivedere il monte ore di partenza di ogni assistito,
-                        chiudere al 31 agosto le variazioni dell'anno scorso e archiviare chi ha lasciato il servizio.</div>
-                    <div class="mt-2 flex gap-2 flex-wrap">
-                        <button type="button" class="btn btn-primary btn-sm" id="btn-wizard-utenti">Rivedi utenti e monte ore</button>
-                        <span id="passo-utenti-ok" class="wizard-ok" style="display:none;">✔ Fatto</span>
-                        <a href="/utenti" class="btn btn-secondary btn-sm">Apri gli utenti</a>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div id="nuovo-anno-esito" class="mt-3"></div>
     </div>
 </div>
 
@@ -199,135 +214,43 @@
     </div>
 </div>
 
-<!-- Stats Grid - KPI cliccabili -->
-<div class="stats-grid">
-    <a href="/utenti" class="stat-card stat-card-clickable animate-delay-1">
-        <div class="stat-icon blue">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-        </div>
-        <div class="stat-content">
-            <div class="stat-value" id="stat-utenti">0</div>
-            <div class="stat-label">Utenti Totali</div>
-        </div>
-        <div class="stat-arrow">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-        </div>
+<!-- Numeri del servizio: cambiano di rado, bastano in una striscia compatta
+     (prima 4 riquadri alti 110px sopra i grafici) -->
+<nav class="dash-numeri" aria-label="Numeri del servizio">
+    <a href="/utenti" class="dash-numero">
+        <span class="dash-numero-valore" id="stat-utenti">0</span>
+        <span class="dash-numero-label">utenti</span>
+        <span class="dash-numero-dettaglio" id="stat-utenti-commesse"></span>
     </a>
-
-    <a href="/utenti" class="stat-card stat-card-clickable animate-delay-2">
-        <div class="stat-icon green">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-        </div>
-        <div class="stat-content">
-            <div class="stat-value" id="stat-scuole">0</div>
-            <div class="stat-label">Scuole / IC</div>
-        </div>
-        <div class="stat-arrow">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-        </div>
+    <a href="/utenti" class="dash-numero">
+        <span class="dash-numero-valore" id="stat-scuole">0</span>
+        <span class="dash-numero-label">scuole / IC</span>
     </a>
-
-    <a href="/commesse" class="stat-card stat-card-clickable animate-delay-3">
-        <div class="stat-icon purple">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-        </div>
-        <div class="stat-content">
-            <div class="stat-value" id="stat-commesse">0</div>
-            <div class="stat-label">Commesse Attive</div>
-        </div>
-        <div class="stat-arrow">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-        </div>
+    <a href="/commesse" class="dash-numero">
+        <span class="dash-numero-valore" id="stat-commesse">0</span>
+        <span class="dash-numero-label" id="stat-commesse-label">commesse attive</span>
     </a>
-
-    <a href="/rendicontazione" class="stat-card stat-card-clickable animate-delay-4">
-        <div class="stat-icon orange">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-        </div>
-        <div class="stat-content">
-            <div class="stat-value" id="stat-monte-ore">0</div>
-            <div class="stat-label">Monte Ore Totale</div>
-        </div>
-        <div class="stat-arrow">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-        </div>
+    <a href="/rendicontazione" class="dash-numero" title="Somma del monte ore settimanale degli utenti">
+        <span class="dash-numero-valore"><span id="stat-monte-ore">0</span> h</span>
+        <span class="dash-numero-label">monte ore a settimana</span>
     </a>
-</div>
+</nav>
 
-<!-- Validazione Dati -->
-<div class="card mb-4" id="validazione-panel">
+<!-- Trend dell'anno scolastico (segue il filtro commessa) -->
+<div class="card mb-4">
     <div class="card-header">
         <h2 class="card-title">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
-            Validazione Dati
+            <span id="trend-titolo">Trend ore erogate</span>
         </h2>
-        <div class="header-actions flex gap-2 items-center">
-            <span class="badge" id="validazione-badge">--</span>
-            <button class="btn btn-sm btn-secondary" onclick="loadValidazione()" title="Aggiorna validazione">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-            </button>
-        </div>
+        <a href="/statistiche" class="btn btn-sm btn-secondary">Tutte le statistiche</a>
     </div>
-    <div class="card-body p-0" id="validazione-content">
-        <div class="loading" style="padding: 20px;">
-            <div class="spinner"></div>
-        </div>
-    </div>
-</div>
-
-<!-- Grafici -->
-<div class="flex gap-4" style="flex-wrap: wrap; margin-bottom: 24px;">
-    <div class="card" style="flex: 1; min-width: 300px;">
-        <div class="card-header">
-            <h2 class="card-title">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                </svg>
-                Distribuzione per Commessa
-            </h2>
-        </div>
-        <div class="card-body">
-            <div class="chart-container" style="height: 180px;">
-                <canvas id="chart-commesse"></canvas>
-            </div>
-            <div class="chart-legend" id="legend-commesse"></div>
-        </div>
-    </div>
-
-    <div class="card" style="flex: 2; min-width: 400px;">
-        <div class="card-header">
-            <h2 class="card-title">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
-                Trend Ore Erogate
-            </h2>
-            <a href="/statistiche" class="btn btn-sm btn-secondary">Tutte le statistiche</a>
-        </div>
-        <div class="card-body">
-            <div class="chart-container" style="height: 210px;">
-                <canvas id="chart-trend"></canvas>
-            </div>
+    <div class="card-body">
+        <div class="chart-container" style="height: 210px;">
+            <canvas id="chart-trend"></canvas>
+            <div class="chart-vuoto" id="trend-vuoto" hidden></div>
         </div>
     </div>
 </div>
@@ -352,25 +275,28 @@
                     </svg>
                 </div>
                 <span class="report-quick-title">Report Completo</span>
-                <span class="report-quick-desc">Periodo selezionato</span>
+                <span class="report-quick-desc"><svg class="report-quick-dl" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>Scarica .xlsx</span>
+                <span class="report-quick-periodo"></span>
             </a>
-            <a href="/report" class="report-quick-card municipale" onclick="event.preventDefault(); quickExportMunicipale();">
+            <a href="/report" class="report-quick-card municipale" onclick="event.preventDefault(); quickExportMunicipale();" title="Tariffa {{ ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') }} € + IVA">
                 <div class="report-quick-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                     </svg>
                 </div>
                 <span class="report-quick-title">Municipale</span>
-                <span class="report-quick-desc">Tariffa {{ ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') }}</span>
+                <span class="report-quick-desc"><svg class="report-quick-dl" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>Scarica .xlsx</span>
+                <span class="report-quick-periodo"></span>
             </a>
-            <a href="/report" class="report-quick-card dipartimentale" onclick="event.preventDefault(); quickExportDipartimentale();">
+            <a href="/report" class="report-quick-card dipartimentale" onclick="event.preventDefault(); quickExportDipartimentale();" title="Tariffa {{ ('%.2f' % (app_config.tariffa_oraria * (1 + app_config.iva_percentuale)))|replace('.', ',') }} € IVA inclusa">
                 <div class="report-quick-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                 </div>
                 <span class="report-quick-title">Dipartimentale</span>
-                <span class="report-quick-desc">Tariffa 25,27</span>
+                <span class="report-quick-desc"><svg class="report-quick-dl" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>Scarica .xlsx</span>
+                <span class="report-quick-periodo"></span>
             </a>
             <a href="/reportistica-locale" class="report-quick-card locale">
                 <div class="report-quick-icon">
@@ -379,7 +305,7 @@
                     </svg>
                 </div>
                 <span class="report-quick-title">Report DD</span>
-                <span class="report-quick-desc">Per commessa</span>
+                <span class="report-quick-desc">Apri la pagina →</span>
             </a>
             <a href="/statistiche" class="report-quick-card stats">
                 <div class="report-quick-icon">
@@ -388,7 +314,7 @@
                     </svg>
                 </div>
                 <span class="report-quick-title">Statistiche</span>
-                <span class="report-quick-desc">Analisi avanzate</span>
+                <span class="report-quick-desc">Apri la pagina →</span>
             </a>
         </div>
     </div>

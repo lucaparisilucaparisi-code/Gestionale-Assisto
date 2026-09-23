@@ -220,6 +220,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
     color: var(--text-primary) !important;
 }
 .kpi-card:hover .kpi-value { transform: none !important; }
+/* Valori della stessa riga alla stessa altezza anche quando un'etichetta va
+   su due righe (Statistiche: "Monte ore settimanale oggi" sotto i 1366px):
+   etichetta in alto, valore in fondo alla scheda. */
+.kpi-grid .kpi-card { display: flex; flex-direction: column; justify-content: space-between; }
 
 /* ---------- 9. Topbar / sidebar: piu' quieti ---------- */
 .topbar { backdrop-filter: none !important; background: var(--bg-primary) !important; border-bottom: 1px solid var(--border-color); }
@@ -488,4 +492,344 @@ details.section[open] > summary::before { transform: rotate(90deg); }
     .table-container { max-height: none !important; overflow: visible !important; }
     /* Titolo nero: .page-title (sopra) lo forzava al colore del tema, bianco nel tema scuro */
     .page-title { color: #000 !important; -webkit-text-fill-color: #000 !important; }
+}
+
+/* ---------- 20. Dashboard ---------- */
+/* In cima lo Stato del mese e il pannello "Da fare", affiancati sul PC: a
+   1366x768 si vedono senza scorrere (prima la pagina era lunga 3 schermate e
+   sopra c'erano solo lo stato e meta' degli avvisi). */
+.dash-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: var(--sp-4);
+    align-items: start;
+    margin-bottom: var(--sp-4);
+}
+.dash-top > .card { margin-bottom: 0; }
+.dash-colonna { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+.dash-colonna > .card { margin-bottom: 0; }
+@media (max-width: 1100px) {
+    .dash-top { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Stato del mese: righe cliccabili verso la Rendicontazione (prima erano <div>
+   che al passaggio del mouse si spostavano e diventavano gialle, senza fare
+   nulla) e nessuno scorrimento nascosto dentro il riquadro. */
+.da-completare-list { margin-top: var(--sp-3); }
+.da-completare-list:empty { display: none; }
+/* Angoli vivi: con gli angoli arrotondati la linea di separazione in basso si
+   curvava agli estremi ("a sorriso") */
+.da-completare-item {
+    gap: var(--sp-3);
+    padding: 9px 12px;
+    color: inherit;
+    text-decoration: none;
+    border-radius: 0;
+    transform: none !important;
+}
+a.da-completare-item:hover,
+[data-theme="light"] a.da-completare-item:hover { background: var(--accent-soft); }
+/* Righe non cliccabili (mese che la Rendicontazione non puo' ancora aprire):
+   nessun cambio al passaggio del mouse */
+.da-completare-item:not(a):hover,
+[data-theme="light"] .da-completare-item:not(a):hover { background: transparent; }
+a.da-completare-item:hover .da-completare-nome { color: var(--accent-text); }
+a.da-completare-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.da-completare-monte { flex-shrink: 0; font-weight: 500; }
+.da-completare-more {
+    display: block;
+    margin-top: var(--sp-2);
+    padding: 9px 12px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: var(--bg-tertiary);
+    color: var(--accent-text);
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-decoration: none;
+}
+.da-completare-more:hover { text-decoration: underline; }
+/* Al posto di "Vedi tutti" quando il mese non ha ancora il calendario */
+.da-completare-avviso {
+    margin: var(--sp-2) 0 0;
+    padding: 9px 12px;
+    border-radius: var(--r-sm);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+.da-completare-avviso a { color: var(--accent-text); font-weight: 600; white-space: nowrap; }
+.da-completare-ok { margin: var(--sp-3) 0 0; color: var(--success); font-weight: 600; text-align: center; }
+
+/* Da fare: avvisi e controlli dei dati in un solo elenco */
+.da-fare-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+.da-fare-icona { width: 20px; height: 20px; flex-shrink: 0; margin-top: 1px; }
+.da-fare-danger .da-fare-icona { color: var(--danger); }
+.da-fare-warning .da-fare-icona { color: var(--warning); }
+.da-fare-info .da-fare-icona { color: var(--accent-text); }
+.da-fare-testo { flex: 1; min-width: 0; }
+.da-fare-titolo { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
+.da-fare-messaggio { font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px; }
+.da-fare-nomi { font-size: 0.78rem; color: var(--text-tertiary); margin-top: 6px; }
+.da-fare-nomi a { color: var(--accent-text); }
+.da-fare-azione { flex-shrink: 0; }
+.da-fare-vuoto { margin: 0; padding: 18px 16px; color: var(--success); font-weight: 600; }
+@media (max-width: 640px) {
+    /* sul telefono il pulsante va sotto il testo (lo copriva) */
+    .da-fare-item { flex-wrap: wrap; }
+    .da-fare-testo { flex-basis: calc(100% - 32px); }
+    .da-fare-azione { margin-left: 32px; width: auto !important; }
+}
+
+/* Nuovo anno scolastico: una riga con i due passi, spiegazione su richiesta
+   (sta sotto "Da fare", dove prima restava uno spazio vuoto) */
+.nuovo-anno-riga {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--sp-2) var(--sp-4);
+    padding: 12px 16px;
+}
+.nuovo-anno-titolo { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px var(--sp-3); }
+.nuovo-anno-titolo .text-muted { font-size: 0.85rem; }
+.nuovo-anno-azioni { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.nuovo-anno-dettagli {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--accent-text);
+    text-decoration: underline;
+    cursor: pointer;
+}
+.nuovo-anno-dettagli::after { content: " ▾"; text-decoration: none; }
+.nuovo-anno-dettagli[aria-expanded="true"]::after { content: " ▴"; }
+.nuovo-anno-dettagli:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.nuovo-anno-body { border-top: 1px solid var(--border-color); }
+.nuovo-anno-esito { padding: 0 16px 12px; }
+.nuovo-anno-esito:empty { display: none; }
+
+/* Numeri del servizio: striscia compatta (erano 4 riquadri alti 110px) */
+.dash-numeri {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: var(--sp-4);
+    background: var(--bg-card-solid);
+    border: 1px solid var(--border-color);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-1);
+    overflow: hidden;
+}
+a.dash-numero, a.dash-numero:hover {
+    color: var(--text-secondary);   /* non il blu dei link del tema chiaro */
+}
+.dash-numero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    padding: 12px 16px;
+    text-decoration: none;
+    border-left: 1px solid var(--border-color);
+    min-width: 0;
+}
+.dash-numero:first-child { border-left: 0; }
+.dash-numero:hover { background: var(--accent-soft); }
+.dash-numero:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dash-numero-valore {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+.dash-numero-label { font-size: 0.85rem; }
+.dash-numero-dettaglio { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 0.78rem; color: var(--text-tertiary); }
+.dash-numero-dettaglio:empty { display: none; }
+.dash-numero-commessa { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.dash-numero-commessa .legend-dot { width: 8px; height: 8px; }
+@media (max-width: 900px) {
+    .dash-numeri { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dash-numero:nth-child(3) { border-left: 0; }
+    .dash-numero:nth-child(n+3) { border-top: 1px solid var(--border-color); }
+}
+
+/* Grafico senza dati: una frase al posto della linea piatta a zero */
+.chart-vuoto {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--sp-4);
+    text-align: center;
+    color: var(--text-tertiary);
+}
+.chart-vuoto[hidden] { display: none; }
+/* senza dati il riquadro si riduce a una riga (non 210px vuoti) */
+.chart-container:has(> .chart-vuoto:not([hidden])) { height: auto !important; min-height: 64px; }
+
+/* Report rapidi: stesso colore per tipo di report in Dashboard e in Report
+   (il Dipartimentale era viola qui e arancio nella pagina Report); chi scarica
+   subito un file lo dice, con l'icona e il mese. */
+.report-quick-card.excel { border-left-color: var(--report-excel); }
+.report-quick-card.municipale { border-left-color: var(--primary); }
+.report-quick-card.dipartimentale { border-left-color: var(--warning); }
+.report-quick-card.locale { border-left-color: var(--secondary); }
+.report-quick-card.stats { border-left-color: var(--cyan); }
+.report-quick-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.report-quick-desc { display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-size: 0.75rem; }
+.report-quick-dl { width: 14px; height: 14px; flex-shrink: 0; }
+.report-quick-periodo { font-size: 0.75rem; color: var(--text-tertiary); text-align: center; }
+.report-quick-periodo:empty { display: none; }
+
+/* ---------- 21. Statistiche ---------- */
+/* Filtri: tendine larghe quanto il testo ('Tutte le commes', 'Settembre 20…')
+   e un solo "Mese di riferimento" per tutti i riquadri mensili */
+.stat-filtri { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sp-3); }
+.stat-filtri .form-control { width: auto; }
+.stat-filtro-commessa { min-width: 190px; }
+.stat-filtro-anno { min-width: 150px; }
+.stat-filtro-mese { display: inline-flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: 0.85rem; color: var(--text-secondary); }
+.stat-filtro-mese .form-control { min-width: 175px; }
+@media (max-width: 640px) {
+    .stat-filtri { justify-content: stretch; }
+    .stat-filtri > .form-control, .stat-filtro-mese { flex: 1 1 100%; }
+    .stat-filtro-mese .form-control { flex: 1; min-width: 0; }
+}
+/* Etichetta grigia del periodo nell'intestazione dei riquadri ("Giugno 2026") */
+.card-periodo { font-size: 0.8rem; color: var(--text-tertiary); white-space: nowrap; }
+@media (max-width: 640px) { .card-periodo { white-space: normal; } }
+
+/* Heatmap: una tinta per ogni fascia (prima 2 e 3, 4 e 5 differivano solo per la
+   trasparenza) e numeri leggibili in entrambi i temi (bianco su pastello era
+   1,4-2,1:1 nel tema chiaro). */
+.heatmap-cell { font-size: 0.75rem; }
+.heatmap-cell[data-level="1"] { background: rgba(239, 68, 68, 0.42); color: #fff; }
+.heatmap-cell[data-level="2"] { background: rgba(249, 115, 22, 0.45); color: #fff; }
+.heatmap-cell[data-level="3"] { background: rgba(234, 179, 8, 0.38); color: #fff; }
+.heatmap-cell[data-level="4"] { background: rgba(74, 222, 128, 0.28); color: #fff; }
+.heatmap-cell[data-level="5"] { background: #047857; color: #fff; }
+[data-theme="light"] .heatmap-cell[data-level="0"] { background: #E5E7EB; color: #374151; }
+[data-theme="light"] .heatmap-cell[data-level="1"] { background: #FECACA; color: #7F1D1D; }
+[data-theme="light"] .heatmap-cell[data-level="2"] { background: #FED7AA; color: #7C2D12; }
+[data-theme="light"] .heatmap-cell[data-level="3"] { background: #FEF08A; color: #713F12; }
+[data-theme="light"] .heatmap-cell[data-level="4"] { background: #BBF7D0; color: #14532D; }
+[data-theme="light"] .heatmap-cell[data-level="5"] { background: #22C55E; color: #052E16; }
+.heatmap-table td:first-child { max-width: 190px; }
+.heatmap-altri { display: flex; align-items: center; justify-content: center; gap: var(--sp-2); padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); }
+.heatmap-altri[hidden] { display: none; }
+/* Legenda a parole, testo di 12px (era 9,6px) */
+.heatmap-legenda-riga { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); padding: 12px 16px; font-size: 0.8rem; }
+.heatmap-legenda { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; margin: 0; padding: 0; list-style: none; }
+.heatmap-legenda li { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-secondary); }
+.heatmap-legenda .heatmap-cell { width: 14px; height: 14px; border-radius: 3px; cursor: default; }
+.heatmap-legenda .heatmap-cell:hover { transform: none; box-shadow: none; }
+
+/* Top 5 scuole: tutte e 5 visibili (prima la quinta era in uno scorrimento interno) */
+.top-scuola { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border-color); }
+.top-scuola:last-child { border-bottom: 0; }
+.top-scuola-pos {
+    width: 24px; height: 24px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: var(--accent-strong); color: #fff;
+    font-weight: 700; font-size: 0.75rem;
+}
+.top-scuola-info { flex: 1; min-width: 0; }
+.top-scuola-nome { font-weight: 500; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-scuola-dettaglio { font-size: 0.75rem; color: var(--text-tertiary); }
+.top-scuola-ore { font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
+
+/* Confronto mese */
+.confronto-variazione { font-size: 2rem; font-weight: 700; line-height: 1.2; }
+.confronto-nota { font-size: 0.78rem; color: var(--text-tertiary); text-align: center; }
+.confronto-vuoto { padding: 8px 0; color: var(--text-tertiary); }
+.confronto-colonna { flex: 1; text-align: center; }
+.confronto-etichetta { font-size: 0.72rem; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.03em; }
+.confronto-ore { font-size: 1.1rem; font-weight: 600; }
+.confronto-dettaglio { font-size: 0.75rem; color: var(--text-secondary); }
+/* Confronto annuale accanto ai "10 utenti": 5 colonne corte, niente 600px minimi */
+#confronto-annuale-container .table { min-width: 0; }
+#confronto-annuale-container .table th,
+#confronto-annuale-container .table td { padding-left: 12px; padding-right: 12px; }
+#confronto-annuale-container .table th { white-space: normal; }
+
+/* ---------- 22. Pagina Report e Import ---------- */
+/* Le 4 schede di download sono pulsanti veri (Tab + Invio): prima erano <div>
+   cliccabili solo col mouse. Stanno su una riga anche a 1366px (erano 3+1). */
+.report-cards-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-4); }
+button.report-card {
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    align-items: stretch;
+}
+.report-card-icon, .report-card-title, .report-card-desc { display: block; }
+.report-card-icon { display: flex; }
+.report-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* "Scarica ..." nel colore del testo: verde Excel e blu Word sul fondo scuro, o
+   arancio sul bianco, scendevano a 2,0-2,9:1. Il colore del tipo di report resta
+   alla striscia in alto, all'icona e alla freccia. */
+.report-card-action { color: var(--text-primary); }
+.report-card-action svg { color: var(--report-card-color, var(--primary)); }
+.report-card-icon,
+[data-theme="light"] .report-card-icon {
+    background: color-mix(in srgb, var(--report-card-color, var(--primary)) 14%, transparent);
+}
+/* Stessa mappa colori dei "Report rapidi" della Dashboard */
+.report-card.excel { --report-card-color: var(--report-excel); }
+.report-card.word { --report-card-color: var(--report-word); }
+
+/* Zone "Clicca per selezionare" dell'Import: raggiungibili col Tab (app.js) */
+.file-upload:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Guida "Cosa contiene ogni report": chiusa di base */
+.report-guida { margin-top: var(--sp-5); }
+
+/* ---------- 23. Reportistica DD ---------- */
+/* "Carica Report" alla stessa altezza dei campi: .form-group:last-child perdeva
+   il margine in basso e, allineato in fondo alla griglia, scendeva di 20px */
+.form-group-azione { display: flex; align-items: flex-end; }
+.form-row > .form-group-azione:last-child { margin-bottom: 20px; }
+@media (max-width: 768px) {
+    .form-row > .form-group-azione:last-child { margin-bottom: 0; }
+}
+
+/* Cestino sulle righe: icona tranquilla che diventa rossa al passaggio del mouse
+   o col Tab (era un pulsante rosso pieno su ogni riga, piu' vistoso dei dati) */
+.btn.btn-icon-danger {
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    color: var(--text-tertiary) !important;
+}
+.btn.btn-icon-danger:hover,
+.btn.btn-icon-danger:focus-visible {
+    background: rgba(220, 38, 38, 0.12) !important;
+    border-color: rgba(220, 38, 38, 0.35) !important;
+    color: var(--danger) !important;
+}
+
+/* ---------- 24. Riquadri numerici (stat-card) ---------- */
+/* Il valore resta intero e dentro la scheda (a 1366px '32.471,40 €' usciva e
+   perdeva il '€'): nelle schede strette (meno di 280px, tutte quelle di una
+   riga hanno la stessa larghezza) l'icona va SOPRA il valore, cosi' la riga
+   resta uniforme; se un valore non ci sta comunque accanto all'icona va a capo
+   da solo invece di uscire. Nessun valore viene rimpicciolito. La scritta sotto
+   non decide l'a capo (contain): si adatta alla larghezza che c'e'. */
+.stat-card:has(> .stat-content) { container-type: inline-size; flex-wrap: wrap; row-gap: 10px; min-width: 0; }
+.stat-card .stat-content { flex: 1 1 auto; }
+.stat-content .stat-value { white-space: nowrap; }
+.stat-content .stat-label { contain: inline-size; }
+@container (max-width: 280px) {
+    .stat-card .stat-content { flex-basis: 100%; }
 }

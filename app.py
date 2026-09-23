@@ -2490,8 +2490,10 @@ def api_stats_advanced():
 
 @app.route('/api/stats/utenti-meno-ore/<int:anno>/<int:mese>')
 def api_utenti_meno_ore(anno, mese):
-    """Ottiene i 10 utenti con meno ore erogate rispetto alle previste"""
-    utenti = db.get_utenti_meno_ore(anno, mese, limit=10)
+    """Ottiene i 10 utenti con meno ore erogate rispetto alle previste
+    (?commessa= come gli altri riquadri di Statistiche)"""
+    commessa = (request.args.get('commessa') or '').strip() or None
+    utenti = db.get_utenti_meno_ore(anno, mese, limit=10, commessa=commessa)
     return jsonify(utenti)
 
 
@@ -2681,14 +2683,8 @@ def api_batch_update_rendicontazione(anno, mese):
 
 
 def _mese_scolastico_precedente(anno, mese):
-    """Mese precedente NELL'ANNO SCOLASTICO: per settembre e' giugno (luglio e
-    agosto non sono mesi scolastici e sono sempre vuoti), per gennaio e' dicembre
-    dell'anno prima. Ritorna (anno, mese)."""
-    if mese == 9:
-        return anno, 6
-    if mese == 1:
-        return anno - 1, 12
-    return anno, mese - 1
+    """Mese precedente nell'anno scolastico (regola unica in config)."""
+    return config.mese_scolastico_precedente(anno, mese)
 
 
 @app.route('/api/rendicontazione/<int:anno>/<int:mese>/copia-precedente', methods=['POST'])
@@ -2954,9 +2950,15 @@ def api_confronto_mese_precedente(anno, mese):
 
 @app.route('/api/alerts', methods=['GET'])
 def api_get_alerts():
-    """Ottiene alert automatici per la dashboard"""
+    """Ottiene alert automatici per la dashboard.
+
+    Con ?commessa= gli avvisi sugli utenti riguardano solo quella commessa, come
+    lo "Stato del mese" accanto (prima il filtro diceva 16 utenti e gli avvisi 35).
+    Ogni avviso ha una 'categoria' fissa: la Dashboard la usa per non ripetere cio'
+    che lo Stato del mese dice gia' (utenti senza ore, percentuale completata)."""
     anno = request.args.get('anno', type=int)
     mese = request.args.get('mese', type=int)
+    commessa = (request.args.get('commessa') or '').strip() or None
 
     if not anno or not mese:
         # Default: mese corrente
@@ -2968,11 +2970,12 @@ def api_get_alerts():
     alerts = []
 
     # 1. Utenti senza ore nel mese corrente
-    dati = db.get_rendicontazione_completa(anno, mese)
+    dati = db.get_rendicontazione_completa(anno, mese, commessa)
     senza_ore = [d for d in dati if not d.get('ore_lavorate_60') or d['ore_lavorate_60'] == 0]
     if senza_ore:
         alerts.append({
             'type': 'warning',
+            'categoria': 'senza_ore',
             'title': f'{len(senza_ore)} utenti senza ore registrate',
             'message': f'Nel mese di {MESI_NOME.get(mese, "")} {anno}',
             'action': '/rendicontazione',
@@ -2988,6 +2991,7 @@ def api_get_alerts():
     if sotto_media:
         alerts.append({
             'type': 'danger',
+            'categoria': 'sotto_media',
             'title': f'{len(sotto_media)} utenti con ore < 50% della media',
             'message': 'Ore erogate significativamente sotto la media prevista',
             'action': '/rendicontazione',
@@ -3004,6 +3008,7 @@ def api_get_alerts():
     if sopra_media:
         alerts.append({
             'type': 'info',
+            'categoria': 'sopra_media',
             'title': f'{len(sopra_media)} utenti con ore > 150% della media',
             'message': 'Verificare se le ore extra sono corrette',
             'action': '/rendicontazione',
@@ -3025,6 +3030,7 @@ def api_get_alerts():
     if cal_count < 10:  # Meno di 10 mesi configurati
         alerts.append({
             'type': 'warning',
+            'categoria': 'calendario',
             'title': 'Calendario scolastico incompleto',
             'message': f'Solo {cal_count}/10 mesi configurati per {anno_scolastico}',
             'action': '/calendario',
@@ -3039,6 +3045,7 @@ def api_get_alerts():
         if perc < 100:
             alerts.append({
                 'type': 'info',
+                'categoria': 'completamento',
                 'title': f'Completamento mese: {perc}%',
                 'message': f'{completati}/{len(dati)} utenti rendicontati',
                 'action': '/rendicontazione',
@@ -3046,12 +3053,27 @@ def api_get_alerts():
                 'progress': perc
             })
 
+    # Utenti della commessa scelta (tutti, anche fuori dal periodo): filtro per
+    # gli avvisi che non passano dalla rendicontazione del mese
+    ids_commessa = None
+    if commessa:
+        with db.get_db_context() as conn:
+            ids_commessa = {r['id'] for r in conn.execute('''
+                SELECT u.id FROM utenti u
+                JOIN scuole s ON u.scuola_id = s.id
+                JOIN commesse c ON s.commessa_id = c.id
+                WHERE c.nome = ?
+            ''', (commessa,)).fetchall()}
+
     # 6. Documenti in scadenza nei prossimi 30 giorni
     try:
         docs = db.get_documenti_in_scadenza(giorni=30)
+        if ids_commessa is not None:
+            docs = [d for d in docs if d['utente_id'] in ids_commessa]
         if docs:
             alerts.append({
                 'type': 'warning',
+                'categoria': 'documenti',
                 'title': f'{len(docs)} documenti in scadenza',
                 'message': 'Documenti utente in scadenza nei prossimi 30 giorni',
                 'count': len(docs),
@@ -3063,9 +3085,12 @@ def api_get_alerts():
     # 7. Budget ore quasi esaurito
     try:
         critici = db.get_utenti_budget_critico(anno_scolastico, 80)
+        if commessa:
+            critici = [u for u in critici if u['commessa'] == commessa]
         if critici:
             alerts.append({
                 'type': 'danger',
+                'categoria': 'budget',
                 'title': f"{len(critici)} utenti oltre l'80% del budget ore",
                 'message': f'Budget annuale quasi esaurito ({anno_scolastico})',
                 'count': len(critici),
@@ -3079,6 +3104,7 @@ def api_get_alerts():
         'anno': anno,
         'mese': mese,
         'mese_nome': MESI_NOME.get(mese, ''),
+        'commessa': commessa,
         'total_alerts': len(alerts)
     })
 
@@ -3987,10 +4013,17 @@ def api_stats_scuole_dettaglio():
 
 @app.route('/api/stats/validazione')
 def api_stats_validazione():
-    """Verifica anomalie nei dati e restituisce avvisi"""
+    """Verifica anomalie nei dati e restituisce avvisi.
+
+    Con ?commessa= i controlli guardano solo gli utenti (e la commessa) scelti,
+    come lo "Stato del mese" della Dashboard."""
     try:
         anno = request.args.get('anno', type=int)
         mese = request.args.get('mese', type=int)
+        commessa = (request.args.get('commessa') or '').strip() or None
+        # Filtro SQL sulla commessa, da aggiungere alle query che hanno "cm"
+        filtro_cm = ' AND cm.nome = ?' if commessa else ''
+        param_cm = [commessa] if commessa else []
 
         if not anno or not mese:
             now = datetime.now()
@@ -4018,7 +4051,7 @@ def api_stats_validazione():
                     SELECT DISTINCT utente_id FROM rendicontazione
                     WHERE anno = ? AND mese = ? AND ore_lavorate_60 > 0
                 )
-            """, [periodo_val, periodo_val, anno, mese])
+            """ + filtro_cm, [periodo_val, periodo_val, anno, mese] + param_cm)
             utenti_senza_ore = [dict(row) for row in cursor.fetchall()]
 
             if utenti_senza_ore:
@@ -4037,9 +4070,11 @@ def api_stats_validazione():
                 SELECT u.id, u.nome, u.cognome, r.ore_lavorate_60, u.monte_ore_settimanale
                 FROM rendicontazione r
                 JOIN utenti u ON r.utente_id = u.id
+                JOIN scuole s ON u.scuola_id = s.id
+                JOIN commesse cm ON s.commessa_id = cm.id
                 WHERE r.anno = ? AND r.mese = ?
                 AND (r.ore_lavorate_60 < 0 OR r.ore_lavorate_60 > 200)
-            """, [anno, mese])
+            """ + filtro_cm, [anno, mese] + param_cm)
             ore_anomale = [dict(row) for row in cursor.fetchall()]
 
             if ore_anomale:
@@ -4058,10 +4093,12 @@ def api_stats_validazione():
                 SELECT u.id, u.nome, u.cognome, r.ore_lavorate_60
                 FROM rendicontazione r
                 JOIN utenti u ON r.utente_id = u.id
+                JOIN scuole s ON u.scuola_id = s.id
+                JOIN commesse cm ON s.commessa_id = cm.id
                 WHERE r.anno = ? AND r.mese = ?
                 AND u.monte_ore_settimanale = 0
                 AND r.ore_lavorate_60 > 0
-            """, [anno, mese])
+            """ + filtro_cm, [anno, mese] + param_cm)
             monte_ore_zero = [dict(row) for row in cursor.fetchall()]
 
             if monte_ore_zero:
@@ -4083,12 +4120,14 @@ def api_stats_validazione():
                     COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate
                 FROM utenti u
                 JOIN scuole s ON u.scuola_id = s.id
+                JOIN commesse cm ON s.commessa_id = cm.id
                 LEFT JOIN rendicontazione r ON u.id = r.utente_id AND r.anno = ? AND r.mese = ?
                 WHERE u.attivo = 1 AND u.monte_ore_settimanale > 0
                 AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
                 AND (u.data_fine IS NULL OR u.data_fine >= ?)
+            """ + filtro_cm + """
                 GROUP BY u.id
-            """, [anno, mese, periodo_val, periodo_val])
+            """, [anno, mese, periodo_val, periodo_val] + param_cm)
 
             # Giorni lavorativi con la stessa regola della vista mensile
             # (tipo scuola infanzia/altri + fallback al default)
@@ -4135,9 +4174,10 @@ def api_stats_validazione():
                 LEFT JOIN scuole s ON s.commessa_id = c.id
                 LEFT JOIN utenti u ON u.scuola_id = s.id AND u.attivo = 1
                 WHERE c.attiva = 1
+            """ + (' AND c.nome = ?' if commessa else '') + """
                 GROUP BY c.id
                 HAVING num_utenti = 0
-            """)
+            """, param_cm)
             commesse_vuote = [dict(row) for row in cursor.fetchall()]
 
             if commesse_vuote:
@@ -4161,7 +4201,8 @@ def api_stats_validazione():
         return jsonify({
             'anomalie': anomalie,
             'riepilogo': riepilogo,
-            'periodo': {'anno': anno, 'mese': mese}
+            'periodo': {'anno': anno, 'mese': mese},
+            'commessa': commessa
         })
     except Exception as e:
         logger.error(f"Errore validazione: {e}")

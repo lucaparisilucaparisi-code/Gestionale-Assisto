@@ -157,9 +157,23 @@ def api_stats_trend():
     return jsonify(risultati)
 
 
+def _giorni_lavorativi_medi(anno, mese, commessa):
+    """Giorni lavorativi del mese per il servizio: media dei giorni dei singoli
+    utenti in servizio (infanzia e altre scuole possono differire, a giugno)."""
+    dati = db.get_rendicontazione_completa(anno, mese, commessa)
+    giorni = [d.get('giorni_lavorativi') or 0 for d in dati]
+    giorni = [g for g in giorni if g > 0]
+    return round(sum(giorni) / len(giorni), 1) if giorni else 0
+
+
 @dashboard_bp.route('/api/stats/confronto-mese')
 def api_stats_confronto_mese():
-    """Confronto ore tra mese corrente e mese precedente"""
+    """Confronto ore tra un mese e il mese precedente dell'anno scolastico.
+
+    Oltre alla variazione delle ore totali c'e' quella delle ore PER GIORNO
+    LAVORATIVO: giugno ha ~8 giorni di scuola contro i ~20 di maggio e sulle ore
+    totali mostrava un grande "-74%" rosso anche con un servizio regolare.
+    Per settembre il mese precedente e' giugno (luglio e agosto sono vuoti)."""
     anno = request.args.get('anno', type=int)
     mese = request.args.get('mese', type=int)
     commessa = request.args.get('commessa')
@@ -169,11 +183,7 @@ def api_stats_confronto_mese():
         anno = now.year
         mese = now.month
 
-    # Calcola mese precedente
-    if mese == 1:
-        mese_prec, anno_prec = 12, anno - 1
-    else:
-        mese_prec, anno_prec = mese - 1, anno
+    anno_prec, mese_prec = config.mese_scolastico_precedente(anno, mese)
 
     with db.get_db_context() as conn:
         cursor = conn.cursor()
@@ -211,6 +221,15 @@ def api_stats_confronto_mese():
         else:
             variazione_perc = 100 if ore_corr > 0 else 0
 
+        giorni_corr = _giorni_lavorativi_medi(anno, mese, commessa)
+        giorni_prec = _giorni_lavorativi_medi(anno_prec, mese_prec, commessa)
+        ore_giorno_corr = ore_corr / giorni_corr if giorni_corr else None
+        ore_giorno_prec = ore_prec / giorni_prec if giorni_prec else None
+        if ore_corr > 0 and ore_giorno_corr is not None and ore_giorno_prec:
+            variazione_giornaliera = round((ore_giorno_corr - ore_giorno_prec) / ore_giorno_prec * 100, 1)
+        else:
+            variazione_giornaliera = None
+
         result = {
             'mese_corrente': {
                 'anno': anno,
@@ -218,7 +237,9 @@ def api_stats_confronto_mese():
                 'mese_nome': MESI_NOME.get(mese, ''),
                 'ore': round(ore_corr, 2),
                 'utenti_attivi': corrente['utenti_attivi'] or 0,
-                'pasti': corrente['pasti'] or 0
+                'pasti': corrente['pasti'] or 0,
+                'giorni_lavorativi': giorni_corr,
+                'ore_giorno': round(ore_giorno_corr, 2) if ore_giorno_corr is not None else None
             },
             'mese_precedente': {
                 'anno': anno_prec,
@@ -226,11 +247,15 @@ def api_stats_confronto_mese():
                 'mese_nome': MESI_NOME.get(mese_prec, ''),
                 'ore': round(ore_prec, 2),
                 'utenti_attivi': precedente['utenti_attivi'] or 0,
-                'pasti': precedente['pasti'] or 0
+                'pasti': precedente['pasti'] or 0,
+                'giorni_lavorativi': giorni_prec,
+                'ore_giorno': round(ore_giorno_prec, 2) if ore_giorno_prec is not None else None
             },
             'variazione': {
                 'ore': round(ore_corr - ore_prec, 2),
-                'percentuale': variazione_perc
+                'percentuale': variazione_perc,
+                # None se uno dei due mesi non ha ore o giorni lavorativi
+                'percentuale_giornaliera': variazione_giornaliera
             }
         }
 

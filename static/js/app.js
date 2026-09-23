@@ -688,6 +688,10 @@ function populateMesiScolastici(selectId, annoScolastico) {
     const option = select.querySelector(`option[value="${currentValue}"]`);
     if (option) {
         select.value = currentValue;
+    } else if (current.anno * 12 + current.mese > annoFine * 12 + 6) {
+        // Anno scolastico gia' finito (o luglio/agosto): il mese piu' utile e' giugno,
+        // non settembre dell'anno prima
+        select.value = select.options[select.options.length - 1].value;
     }
 }
 
@@ -869,6 +873,18 @@ function initFileUpload(uploadId, inputId, onFileSelect) {
 
     uploadArea.addEventListener('click', () => fileInput.click());
 
+    // Raggiungibile anche con la tastiera (Tab, poi Invio o Spazio): il campo file
+    // vero e' nascosto con display:none e prima la zona si poteva usare solo col mouse.
+    if (!uploadArea.hasAttribute('tabindex')) uploadArea.setAttribute('tabindex', '0');
+    uploadArea.setAttribute('role', 'button');
+    uploadArea.addEventListener('keydown', (e) => {
+        if (e.target !== uploadArea) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInput.click();
+        }
+    });
+
     uploadArea.addEventListener('dragover', (e) => {
         e.preventDefault();
         uploadArea.classList.add('dragover');
@@ -899,76 +915,147 @@ function initFileUpload(uploadId, inputId, onFileSelect) {
 
 const ChartManager = {
     charts: {},
+    // Come ridisegnare ogni grafico: al cambio di tema si rifanno tutti con i
+    // colori nuovi (prima assi e griglia restavano bianchi sul fondo chiaro).
+    _ricette: {},
 
+    /**
+     * Colori dei grafici presi dai token CSS del tema attivo: un solo blu
+     * (--primary) per le ore erogate, grigio neutro per i riferimenti (ore
+     * previste), le tinte di stato per il resto. Prima era una tavolozza scritta
+     * a mano (#0A84FF, un azzurro diverso dai pulsanti, e il viola #BF5AF2).
+     */
     getColors() {
-        const isDark = ThemeManager.current === 'dark';
+        const css = getComputedStyle(document.documentElement);
+        const token = (nome, riserva) => (css.getPropertyValue(nome) || '').trim() || riserva;
+        const isDark = ThemeManager.current !== 'light';
+        const c = {
+            primary: token('--primary', '#3B82F6'),
+            neutro: isDark ? '#6B7280' : '#CBD5E1',
+            success: token('--success', '#30D158'),
+            warning: token('--warning', '#FF9F0A'),
+            danger: token('--danger', '#FF453A'),
+            cyan: token('--cyan', '#64D2FF'),
+            text: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.68)',
+            grid: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+            fondo: token('--bg-card-solid', isDark ? '#1C1C1E' : '#FFFFFF'),
+            testo: token('--text-primary', isDark ? '#FFFFFF' : '#000000'),
+            tooltipBg: isDark ? 'rgba(28, 28, 30, 0.95)' : 'rgba(255, 255, 255, 0.97)',
+            tooltipText: isDark ? '#FFFFFF' : '#1D1D1F',
+            tooltipBody: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.72)',
+            tooltipBorder: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.12)'
+        };
+        // ripiego per le serie senza un colore proprio
+        c.serie = [c.primary, c.neutro, c.success, c.warning, c.danger, c.cyan];
+        return c;
+    },
+
+    /** Riquadro del suggerimento coerente col tema (stesso aspetto in tutte le pagine). */
+    tooltip(colors, extra = {}) {
         return {
-            primary: '#0A84FF',
-            secondary: '#BF5AF2',
-            success: '#30D158',
-            warning: '#FF9F0A',
-            danger: '#FF453A',
-            cyan: '#64D2FF',
-            text: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)',
-            grid: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+            backgroundColor: colors.tooltipBg,
+            titleColor: colors.tooltipText,
+            bodyColor: colors.tooltipBody,
+            borderColor: colors.tooltipBorder,
+            borderWidth: 1,
+            cornerRadius: 8,
+            padding: 12,
+            ...extra
         };
     },
 
-    createPieChart(canvasId, data, labels) {
-        const ctx = document.getElementById(canvasId)?.getContext('2d');
-        if (!ctx) return null;
+    /** Libera la tela: un secondo 'new Chart' sulla stessa tela va in errore. */
+    _libera(canvasId) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return null;
+        Chart.getChart(canvas)?.destroy();
+        delete this.charts[canvasId];
+        return canvas;
+    },
+
+    /**
+     * Ciambella. `colori` (facoltativo): un colore per fetta, per esempio il
+     * colore scelto per ogni commessa in Impostazioni > Commesse. Al centro il
+     * totale con `etichettaTotale` (es. 'utenti').
+     */
+    createPieChart(canvasId, data, labels, colori = null, etichettaTotale = '') {
+        this._ricette[canvasId] = () => this.createPieChart(canvasId, data, labels, colori, etichettaTotale);
+        const canvas = this._libera(canvasId);
+        if (!canvas) return null;
 
         const colors = this.getColors();
+        const totale = data.reduce((a, b) => a + (Number(b) || 0), 0);
+        const testoCentrale = {
+            id: 'testoCentrale',
+            afterDraw(chart) {
+                if (!etichettaTotale) return;
+                const meta = chart.getDatasetMeta(0);
+                const arco = meta && meta.data && meta.data[0];
+                if (!arco) return;
+                const { ctx } = chart;
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = colors.testo;
+                ctx.font = '700 22px -apple-system, "Segoe UI", Roboto, sans-serif';
+                ctx.fillText(totale.toLocaleString('it-IT'), arco.x, arco.y - 7);
+                ctx.fillStyle = colors.text;
+                ctx.font = '500 12px -apple-system, "Segoe UI", Roboto, sans-serif';
+                ctx.fillText(etichettaTotale, arco.x, arco.y + 14);
+                ctx.restore();
+            }
+        };
 
-        if (this.charts[canvasId]) {
-            this.charts[canvasId].destroy();
-        }
-
-        this.charts[canvasId] = new Chart(ctx, {
+        this.charts[canvasId] = new Chart(canvas, {
             type: 'doughnut',
             data: {
                 labels: labels,
                 datasets: [{
                     data: data,
-                    backgroundColor: [colors.primary, colors.secondary, colors.success, colors.warning, colors.danger, colors.cyan],
-                    borderWidth: 0,
-                    hoverOffset: 8
+                    backgroundColor: labels.map((_, i) => (colori && colori[i]) || colors.serie[i % colors.serie.length]),
+                    borderColor: colors.fondo,
+                    borderWidth: 2,
+                    hoverOffset: 6
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                cutout: '65%',
+                cutout: '68%',
                 plugins: {
-                    legend: {
-                        display: false
-                    }
+                    legend: { display: false },
+                    tooltip: this.tooltip(colors)
                 }
-            }
+            },
+            plugins: [testoCentrale]
         });
 
         return this.charts[canvasId];
     },
 
-    createBarChart(canvasId, labels, datasets) {
-        const ctx = document.getElementById(canvasId)?.getContext('2d');
-        if (!ctx) return null;
+    /**
+     * Barre. Ogni serie puo' portare il suo colore (backgroundColor) oppure un
+     * `ruolo` della tavolozza del tema ('primary', 'neutro', ...): prima il colore
+     * veniva sempre sostituito, per questo le "ore previste" uscivano viola pieno.
+     * `unita` (es. 'ore') compare nel suggerimento e sull'asse.
+     */
+    createBarChart(canvasId, labels, datasets, unita = '') {
+        this._ricette[canvasId] = () => this.createBarChart(canvasId, labels, datasets, unita);
+        const canvas = this._libera(canvasId);
+        if (!canvas) return null;
 
         const colors = this.getColors();
+        const conUnita = (v) => `${formatNumber(v)}${unita ? ' ' + unita : ''}`;
 
-        if (this.charts[canvasId]) {
-            this.charts[canvasId].destroy();
-        }
-
-        this.charts[canvasId] = new Chart(ctx, {
+        this.charts[canvasId] = new Chart(canvas, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: datasets.map((ds, i) => ({
                     ...ds,
-                    backgroundColor: [colors.primary, colors.secondary, colors.success][i] || colors.primary,
-                    borderRadius: 6,
-                    barThickness: 24
+                    backgroundColor: ds.backgroundColor ?? colors[ds.ruolo] ?? colors.serie[i] ?? colors.primary,
+                    borderRadius: 4,
+                    maxBarThickness: 24
                 }))
             },
             options: {
@@ -982,9 +1069,12 @@ const ChartManager = {
                             color: colors.text,
                             padding: 20,
                             usePointStyle: true,
-                            pointStyle: 'circle'
+                            pointStyle: 'rectRounded'
                         }
-                    }
+                    },
+                    tooltip: this.tooltip(colors, {
+                        callbacks: { label: (ctx) => `${ctx.dataset.label}: ${conUnita(ctx.parsed.y)}` }
+                    })
                 },
                 scales: {
                     x: {
@@ -993,7 +1083,8 @@ const ChartManager = {
                     },
                     y: {
                         grid: { color: colors.grid },
-                        ticks: { color: colors.text },
+                        ticks: { color: colors.text, callback: (v) => Number(v).toLocaleString('it-IT') },
+                        title: { display: !!unita, text: unita, color: colors.text },
                         beginAtZero: true
                     }
                 }
@@ -1003,29 +1094,31 @@ const ChartManager = {
         return this.charts[canvasId];
     },
 
-    createLineChart(canvasId, labels, datasets) {
-        const ctx = document.getElementById(canvasId)?.getContext('2d');
-        if (!ctx) return null;
+    createLineChart(canvasId, labels, datasets, unita = '') {
+        this._ricette[canvasId] = () => this.createLineChart(canvasId, labels, datasets, unita);
+        const canvas = this._libera(canvasId);
+        if (!canvas) return null;
 
         const colors = this.getColors();
+        const conUnita = (v) => `${formatNumber(v)}${unita ? ' ' + unita : ''}`;
 
-        if (this.charts[canvasId]) {
-            this.charts[canvasId].destroy();
-        }
-
-        this.charts[canvasId] = new Chart(ctx, {
+        this.charts[canvasId] = new Chart(canvas, {
             type: 'line',
             data: {
                 labels: labels,
-                datasets: datasets.map((ds, i) => ({
-                    ...ds,
-                    borderColor: [colors.primary, colors.secondary, colors.success][i] || colors.primary,
-                    backgroundColor: 'transparent',
-                    tension: 0.4,
-                    pointRadius: 4,
-                    pointHoverRadius: 6,
-                    borderWidth: 3
-                }))
+                datasets: datasets.map((ds, i) => {
+                    const colore = ds.borderColor ?? colors[ds.ruolo] ?? colors.serie[i] ?? colors.primary;
+                    return {
+                        ...ds,
+                        borderColor: colore,
+                        backgroundColor: ds.backgroundColor ?? 'transparent',
+                        pointBackgroundColor: colore,
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 3
+                    };
+                })
             },
             options: {
                 responsive: true,
@@ -1044,7 +1137,10 @@ const ChartManager = {
                             usePointStyle: true,
                             pointStyle: 'circle'
                         }
-                    }
+                    },
+                    tooltip: this.tooltip(colors, {
+                        callbacks: { label: (ctx) => conUnita(ctx.parsed.y) }
+                    })
                 },
                 scales: {
                     x: {
@@ -1053,7 +1149,8 @@ const ChartManager = {
                     },
                     y: {
                         grid: { color: colors.grid },
-                        ticks: { color: colors.text },
+                        ticks: { color: colors.text, callback: (v) => Number(v).toLocaleString('it-IT') },
+                        title: { display: !!unita, text: unita, color: colors.text },
                         beginAtZero: true
                     }
                 }
@@ -1061,54 +1158,18 @@ const ChartManager = {
         });
 
         return this.charts[canvasId];
+    },
+
+    /** Ridisegna i grafici ancora presenti nella pagina con i colori del tema attivo. */
+    aggiornaTema() {
+        Object.entries(this._ricette).forEach(([canvasId, ridisegna]) => {
+            if (document.getElementById(canvasId)) ridisegna();
+            else delete this._ricette[canvasId];
+        });
     }
 };
 
-// ==================== DASHBOARD STATS ====================
-
-async function loadDashboardStats() {
-    try {
-        const stats = await apiCall('/api/stats/advanced');
-
-        // Update stat cards
-        animateCounter(document.getElementById('stat-utenti'), stats.num_utenti || 0);
-        animateCounter(document.getElementById('stat-scuole'), stats.num_scuole || 0);
-        animateCounter(document.getElementById('stat-commesse'), stats.num_commesse || 0);
-        animateCounter(document.getElementById('stat-monte-ore'), stats.monte_ore_totale || 0);
-
-        // Create pie chart for commesse distribution
-        if (stats.utenti_per_commessa?.length) {
-            const labels = stats.utenti_per_commessa.map(c => c.nome);
-            const data = stats.utenti_per_commessa.map(c => c.count);
-            ChartManager.createPieChart('chart-commesse', data, labels);
-
-            // Update legend
-            const legendContainer = document.getElementById('legend-commesse');
-            if (legendContainer) {
-                const colors = ['#0A84FF', '#BF5AF2', '#30D158', '#FF9F0A', '#FF453A', '#64D2FF'];
-                legendContainer.innerHTML = stats.utenti_per_commessa.map((c, i) => `
-                    <div class="legend-item">
-                        <span class="legend-dot" style="background: ${colors[i % colors.length]}"></span>
-                        <span>${c.nome}: ${c.count}</span>
-                    </div>
-                `).join('');
-            }
-        }
-
-        // Create trend chart
-        if (stats.trend_mensile?.length) {
-            const labels = stats.trend_mensile.map(t => MESI[t.mese]?.substring(0, 3));
-            const data = stats.trend_mensile.map(t => t.ore_totali || 0);
-            ChartManager.createLineChart('chart-trend', labels, [{
-                label: 'Ore Erogate',
-                data: data
-            }]);
-        }
-
-    } catch (error) {
-        console.error('Errore caricamento statistiche:', error);
-    }
-}
+window.addEventListener('themechange', () => ChartManager.aggiornaTema());
 
 function animateCounter(element, targetValue, duration = 1000) {
     if (!element) return;
@@ -1345,11 +1406,6 @@ document.addEventListener('DOMContentLoaded', () => {
     SidebarManager.init();
     KeyboardShortcuts.init();
     CommandPalette.init();
-
-    // Load dashboard stats if on dashboard
-    if (document.getElementById('stat-utenti')) {
-        loadDashboardStats();
-    }
 
     // Add entrance animations with stagger
     document.querySelectorAll('.card, .stat-card').forEach((el, index) => {

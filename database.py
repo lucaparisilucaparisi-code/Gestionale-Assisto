@@ -1597,7 +1597,7 @@ def get_statistiche_avanzate(anno=None, mese=None, commessa=None):
         return stats
 
 
-def get_utenti_meno_ore(anno, mese, limit=10):
+def get_utenti_meno_ore(anno, mese, limit=10, commessa=None):
     """Ottiene gli utenti con meno ore erogate (maggior debito) per un mese specifico.
 
     credito_debito = media_con_assenza - ore_lavorate_60
@@ -1605,7 +1605,7 @@ def get_utenti_meno_ore(anno, mese, limit=10):
     - debito_credito < 0 -> utente in CREDITO (ha lavorato più del previsto)
     Vogliamo i 10 con il debito maggiore (credito_debito più alto), quindi ordine DESC.
     """
-    dati = get_rendicontazione_completa(anno, mese)
+    dati = get_rendicontazione_completa(anno, mese, commessa)
 
     # Filtra solo utenti con monte ore previsto > 0 (quelli per cui ha senso parlare di debito)
     # e ordina per credito_debito DECRESCENTE (debito più alto = meno ore erogate rispetto alle previste)

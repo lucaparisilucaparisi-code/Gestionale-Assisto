@@ -9,30 +9,36 @@
 {% block content %}
 {% include '_report_tabs.html' %}
 
-<div class="header-actions mb-4" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
-    <select id="filter-commessa" aria-label="Commessa" class="form-control" style="width: 160px;">
+<!-- Filtri: commessa, anno e UN SOLO mese di riferimento per tutti i riquadri
+     mensili (prima ognuno usava un mese diverso, spesso senza dirlo) -->
+<div class="header-actions stat-filtri mb-4">
+    <select id="filter-commessa" aria-label="Commessa" class="form-control stat-filtro-commessa">
         <option value="">Tutte le commesse</option>
     </select>
-    <select id="filter-anno" aria-label="Anno scolastico" class="form-control" style="width: 150px;">
+    <select id="filter-anno" aria-label="Anno scolastico" class="form-control stat-filtro-anno">
     </select>
+    <label class="stat-filtro-mese">
+        <span>Mese di riferimento</span>
+        <select id="filter-mese" class="form-control"></select>
+    </label>
 </div>
 
-<!-- KPI Row -->
+<!-- KPI Row: sono i numeri di oggi, non dell'anno scelto -->
 <div class="kpi-grid mb-4">
     <div class="kpi-card">
-        <div class="kpi-label">Utenti Totali</div>
+        <div class="kpi-label">Utenti attivi oggi</div>
         <div class="kpi-value" id="kpi-utenti">0</div>
     </div>
     <div class="kpi-card">
-        <div class="kpi-label">Scuole</div>
+        <div class="kpi-label">Scuole oggi</div>
         <div class="kpi-value" id="kpi-scuole">0</div>
     </div>
     <div class="kpi-card">
-        <div class="kpi-label">Monte Ore Totale</div>
+        <div class="kpi-label">Monte ore settimanale oggi</div>
         <div class="kpi-value" id="kpi-monte-ore">0</div>
     </div>
     <div class="kpi-card">
-        <div class="kpi-label">Commesse Attive</div>
+        <div class="kpi-label">Commesse attive oggi</div>
         <div class="kpi-value" id="kpi-commesse">0</div>
     </div>
 </div>
@@ -47,6 +53,7 @@
                 </svg>
                 Utenti per Commessa
             </h2>
+            <span class="card-periodo">oggi</span>
         </div>
         <div class="card-body">
             <div class="chart-container" style="height: 220px;">
@@ -64,7 +71,7 @@
                 </svg>
                 Ore Erogate vs Previste
             </h2>
-            <p class="text-muted" style="font-size: 0.75rem; margin: 0;">Previste = Media -{{ (app_config.tasso_assenza * 100)|round|int }}%</p>
+            <span class="card-periodo"><span data-anno-scelto></span> · previste = media −{{ (app_config.tasso_assenza * 100)|round|int }}%</span>
         </div>
         <div class="card-body">
             <div class="chart-container" style="height: 280px;">
@@ -83,9 +90,7 @@
             </svg>
             Heatmap Presenza Mensile
         </h2>
-        <div class="header-actions flex gap-2 items-center">
-            <span class="text-muted text-xs">% ore erogate vs previste</span>
-        </div>
+        <span class="card-periodo"><span data-anno-scelto></span> · % ore erogate sulle previste</span>
     </div>
     <div class="card-body p-0">
         <div class="heatmap-container" id="heatmap-container">
@@ -93,62 +98,22 @@
                 <div class="spinner"></div>
             </div>
         </div>
+        <div class="heatmap-altri" id="heatmap-altri" hidden></div>
     </div>
-    <div class="card-footer" style="padding: 12px 16px;">
-        <div class="flex items-center gap-4 justify-center flex-wrap">
-            <span class="text-xs text-muted">Legenda:</span>
-            <div class="flex gap-2 items-center">
-                <span class="heatmap-cell" data-level="0" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">0%</span>
-                <span class="heatmap-cell" data-level="1" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">&lt;50</span>
-                <span class="heatmap-cell" data-level="2" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">&lt;80</span>
-                <span class="heatmap-cell" data-level="3" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">&lt;95</span>
-                <span class="heatmap-cell" data-level="4" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">&lt;110</span>
-                <span class="heatmap-cell" data-level="5" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">&ge;110</span>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Charts Row 2 -->
-<div class="flex gap-4 mb-4 flex-wrap">
-    <div class="card" style="flex: 1; min-width: 400px;">
-        <div class="card-header">
-            <h2 class="card-title">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
-                Trend Mensile Ore Erogate
-            </h2>
-        </div>
-        <div class="card-body">
-            <div class="chart-container" style="height: 280px;">
-                <canvas id="chart-trend"></canvas>
-            </div>
-        </div>
-    </div>
-
-    <div class="card" style="flex: 1; min-width: 350px;">
-        <div class="card-header">
-            <h2 class="card-title">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-                10 Utenti con Meno Ore
-            </h2>
-            <div class="header-actions">
-                <select id="filter-mese-utenti" aria-label="Mese" class="form-control" style="width: 140px; font-size: 0.8rem;">
-                </select>
-            </div>
-        </div>
-        <div class="card-body" id="utenti-meno-ore-container">
-            <div class="loading">
-                <div class="spinner"></div>
-            </div>
-        </div>
+    <div class="card-footer heatmap-legenda-riga">
+        <span class="text-muted">Legenda:</span>
+        <ul class="heatmap-legenda">
+            <li><span class="heatmap-cell" data-level="0" aria-hidden="true"></span>nessuna ora</li>
+            <li><span class="heatmap-cell" data-level="1" aria-hidden="true"></span>sotto 50% · molto bassa</li>
+            <li><span class="heatmap-cell" data-level="2" aria-hidden="true"></span>50–79% · bassa</li>
+            <li><span class="heatmap-cell" data-level="3" aria-hidden="true"></span>80–94% · quasi regolare</li>
+            <li><span class="heatmap-cell" data-level="4" aria-hidden="true"></span>95–109% · regolare</li>
+            <li><span class="heatmap-cell" data-level="5" aria-hidden="true"></span>110% e oltre · piena</li>
+        </ul>
     </div>
 </div>
 
-<!-- Widget Mese Corrente -->
+<!-- Riquadri del mese di riferimento: ognuno scrive il mese nell'intestazione -->
 <div class="flex gap-4 mb-4 flex-wrap">
     <!-- Confronto Mese/Mese -->
     <div class="card" style="flex: 1; min-width: 280px;">
@@ -159,6 +124,7 @@
                 </svg>
                 Confronto Mese
             </h2>
+            <span class="card-periodo" data-mese-scelto></span>
         </div>
         <div class="card-body" id="confronto-mese-container">
             <div class="text-center text-muted py-4">Caricamento...</div>
@@ -174,8 +140,9 @@
                 </svg>
                 Top 5 Scuole
             </h2>
+            <span class="card-periodo" data-mese-scelto></span>
         </div>
-        <div class="card-body" style="padding: 0; max-height: 220px; overflow-y: auto;">
+        <div class="card-body p-0">
             <div id="top-scuole-list" class="top-scuole-list">
                 <div class="text-center text-muted py-4">Caricamento...</div>
             </div>
@@ -191,6 +158,7 @@
                 </svg>
                 Bilancio Ore
             </h2>
+            <span class="card-periodo" data-mese-scelto></span>
         </div>
         <div class="card-body" id="credito-debito-container">
             <div class="text-center text-muted py-4">Caricamento...</div>
@@ -198,7 +166,28 @@
     </div>
 </div>
 
-<!-- Confronto Annuale -->
+<!-- Utenti con meno ore: a tutta larghezza, su due colonne (1-5 | 6-10) sul PC.
+     Prima stava accanto a un "Trend mensile" che ripeteva le barre di "Ore erogate
+     vs previste", poi accanto al Confronto annuale (una riga per anno): in entrambi
+     i casi il riquadro vicino restava mezzo vuoto. -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h2 class="card-title">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            10 Utenti con Meno Ore
+        </h2>
+        <span class="card-periodo" data-mese-scelto></span>
+    </div>
+    <div class="card-body" id="utenti-meno-ore-container">
+        <div class="loading">
+            <div class="spinner"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Confronto Annuale: a tutta larghezza, alto quanto la sua tabella -->
 <div class="card mb-4">
     <div class="card-header">
         <h2 class="card-title">
@@ -207,10 +196,7 @@
             </svg>
             Confronto Annuale
         </h2>
-        <div class="header-actions flex gap-2">
-            <select id="confronto-mese" class="form-control" style="width: 130px; font-size: 0.8rem;">
-            </select>
-        </div>
+        <span class="card-periodo" id="confronto-annuale-periodo"></span>
     </div>
     <div class="card-body" id="confronto-annuale-container">
         <div class="loading">
@@ -230,6 +216,22 @@
 .utente-item:last-child {
     border-bottom: none;
 }
+/* 10 utenti con meno ore: due colonne affiancate dove c'e' spazio (prima la
+   lista stava accanto a un altro riquadro, che restava mezzo vuoto) */
+.utenti-meno-ore-colonne {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 40px;
+}
+@media (min-width: 1200px) {
+    .utenti-meno-ore-colonne { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Una colonna sola: la seconda meta' continua sotto la prima, con la sua linea */
+@media (max-width: 1199.98px) {
+    .utenti-meno-ore-colonna + .utenti-meno-ore-colonna:not(:empty) { border-top: 1px solid var(--border-color); }
+}
+/* Numero di posizione: cerchio uguale per tutti (i primi tre avevano la classe
+   globale "alert" ed erano ovali piu' grandi con righe piu' alte) */
 .utente-rank {
     width: 24px;
     height: 24px;
@@ -243,8 +245,10 @@
     color: var(--text-secondary);
     flex-shrink: 0;
 }
-.utente-rank.alert { background: linear-gradient(135deg, #FF453A, #FF6961); color: white; }
-.utente-rank.warning { background: linear-gradient(135deg, #FF9F0A, #FFB340); color: white; }
+/* Colori pieni e leggibili: bianco su rosso scuro (6,5:1), testo scuro su arancio
+   (8:1). Prima bianco su sfumature arancio e rosso chiaro (1,8-3,4:1). */
+.utente-rank.rank-alta { background: #B91C1C; color: #fff; }
+.utente-rank.rank-media { background: #FF9F0A; color: #1C1C1E; }
 .utente-info {
     flex: 1;
     min-width: 0;
@@ -258,8 +262,8 @@
     text-overflow: ellipsis;
 }
 .utente-scuola {
-    font-size: 0.7rem;
-    color: var(--text-muted);
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -268,49 +272,56 @@
     text-align: right;
     flex-shrink: 0;
 }
+/* Ore fatte nel colore del testo: in rosso resta solo la differenza */
 .utente-ore-erogate {
     font-weight: 700;
-    color: var(--danger);
+    color: var(--text-primary);
     font-size: 0.85rem;
 }
 .utente-ore-previste {
-    font-size: 0.7rem;
-    color: var(--text-muted);
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
 }
 .utente-differenza {
     font-weight: 600;
     font-size: 0.75rem;
     padding: 2px 6px;
     border-radius: 4px;
-    background: rgba(255, 69, 58, 0.1);
+    background: rgba(255, 69, 58, 0.12);
     color: var(--danger);
     flex-shrink: 0;
-    min-width: 50px;
+    min-width: 58px;
     text-align: center;
 }
+[data-theme="light"] .utente-differenza { background: #FEE2E2; color: #991B1B; }
+.utente-differenza.in-credito,
+[data-theme="light"] .utente-differenza.in-credito { background: var(--bg-tertiary); color: var(--text-secondary); }
 </style>
 {% endblock %}
 
 {% block scripts %}
 <script>
-let currentMese = null;
-let currentAnno = null;
+const MESI_BREVI = ['', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Popola filtri
     await populateAnniScolastici('filter-anno');
     await populateCommesseSelect();
-    populateMesiSelect();
-    populateConfrontoMese();
+    populateMeseRiferimento();
 
     // Carica statistiche
     loadStatistiche();
 
     // Event listeners
-    document.getElementById('filter-anno').addEventListener('change', loadStatistiche);
+    document.getElementById('filter-anno').addEventListener('change', () => {
+        populateMeseRiferimento();
+        loadStatistiche();
+    });
     document.getElementById('filter-commessa').addEventListener('change', loadStatistiche);
-    document.getElementById('filter-mese-utenti').addEventListener('change', loadUtentiMenoOre);
-    document.getElementById('confronto-mese').addEventListener('change', loadConfrontoAnnualeDettaglio);
+    document.getElementById('filter-mese').addEventListener('change', () => {
+        aggiornaEtichettePeriodo();
+        loadRiquadriMese();
+    });
 });
 
 async function populateCommesseSelect() {
@@ -318,59 +329,43 @@ async function populateCommesseSelect() {
         const commesse = await apiCall('/api/commesse');
         const select = document.getElementById('filter-commessa');
         select.innerHTML = '<option value="">Tutte le commesse</option>' +
-            commesse.map(c => `<option value="${c.nome}">${c.nome}</option>`).join('');
+            commesse.map(c => `<option value="${escapeHtml(c.nome)}">${escapeHtml(c.nome)}</option>`).join('');
     } catch (e) {
         console.error('Errore caricamento commesse:', e);
     }
 }
 
-function populateMesiSelect() {
-    const select = document.getElementById('filter-mese-utenti');
+/**
+ * Mese proposto per l'anno scelto: anno in corso -> mese di oggi (luglio e
+ * agosto -> giugno); anno passato -> giugno, l'ultimo mese dell'anno.
+ */
+function meseProposto(annoScolastico) {
     const now = new Date();
-    const annoScolastico = document.getElementById('filter-anno').value || '2025-2026';
+    const meseOggi = now.getMonth() + 1;
+    const annoOggi = now.getFullYear();
+    if (!annoScolastico) return { anno: annoOggi, mese: meseOggi };
     const [annoInizio, annoFine] = annoScolastico.split('-').map(Number);
-
-    const mesi = [
-        { mese: 9, anno: annoInizio, nome: 'Settembre' },
-        { mese: 10, anno: annoInizio, nome: 'Ottobre' },
-        { mese: 11, anno: annoInizio, nome: 'Novembre' },
-        { mese: 12, anno: annoInizio, nome: 'Dicembre' },
-        { mese: 1, anno: annoFine, nome: 'Gennaio' },
-        { mese: 2, anno: annoFine, nome: 'Febbraio' },
-        { mese: 3, anno: annoFine, nome: 'Marzo' },
-        { mese: 4, anno: annoFine, nome: 'Aprile' },
-        { mese: 5, anno: annoFine, nome: 'Maggio' },
-        { mese: 6, anno: annoFine, nome: 'Giugno' }
-    ];
-
-    select.innerHTML = mesi.map(m =>
-        `<option value="${m.anno}-${m.mese}">${m.nome} ${m.anno}</option>`
-    ).join('');
-
-    const meseCurrent = now.getMonth() + 1;
-    const annoCurrent = now.getFullYear();
-
-    for (const m of mesi) {
-        if (m.anno === annoCurrent && m.mese === meseCurrent) {
-            select.value = `${m.anno}-${m.mese}`;
-            break;
-        }
+    const eCorrente = (meseOggi >= 9 ? annoOggi : annoOggi - 1) === annoInizio;
+    if (eCorrente) {
+        if (meseOggi === 7 || meseOggi === 8) return { anno: annoFine, mese: 6 };
+        return { anno: annoOggi, mese: meseOggi };
     }
-
-    if (!select.value) {
-        select.value = `${annoInizio}-10`;
-    }
+    return { anno: annoFine, mese: 6 };
 }
 
-function populateConfrontoMese() {
-    const select = document.getElementById('confronto-mese');
-    const now = new Date();
-    const mesiNomi = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-                      'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
-
-    select.innerHTML = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6].map(m =>
-        `<option value="${m}" ${m === (now.getMonth() + 1) ? 'selected' : ''}>${mesiNomi[m]}</option>`
-    ).join('');
+/** Un solo "Mese di riferimento" per tutti i riquadri mensili della pagina. */
+function populateMeseRiferimento() {
+    const select = document.getElementById('filter-mese');
+    const annoScolastico = document.getElementById('filter-anno').value;
+    if (!annoScolastico) { select.innerHTML = ''; return; }
+    const [annoInizio, annoFine] = annoScolastico.split('-').map(Number);
+    select.innerHTML = MESI_SCOLASTICI.map(m => {
+        const anno = m >= 9 ? annoInizio : annoFine;
+        return `<option value="${anno}-${m}">${MESI[m]} ${anno}</option>`;
+    }).join('');
+    const { anno, mese } = meseProposto(annoScolastico);
+    select.value = `${anno}-${mese}`;
+    aggiornaEtichettePeriodo();
 }
 
 function getFilters() {
@@ -380,136 +375,151 @@ function getFilters() {
     };
 }
 
+/** Mese di riferimento scelto: { anno, mese }. */
+function getMeseRiferimento() {
+    const v = document.getElementById('filter-mese')?.value;
+    if (!v) return meseProposto(getFilters().annoScolastico);
+    const [anno, mese] = v.split('-').map(Number);
+    return { anno, mese };
+}
+
+/** Querystring del mese di riferimento con la commessa scelta. */
+function qsMese() {
+    const { anno, mese } = getMeseRiferimento();
+    const { commessa } = getFilters();
+    return `?anno=${anno}&mese=${mese}${commessa ? `&commessa=${encodeURIComponent(commessa)}` : ''}`;
+}
+
+/** Scrive anno e mese nelle intestazioni dei riquadri (prima non lo diceva nessuno). */
+function aggiornaEtichettePeriodo() {
+    const { anno, mese } = getMeseRiferimento();
+    const { annoScolastico } = getFilters();
+    document.querySelectorAll('[data-mese-scelto]').forEach(el => { el.textContent = `${MESI[mese]} ${anno}`; });
+    document.querySelectorAll('[data-anno-scelto]').forEach(el => { el.textContent = annoScolastico; });
+    const confronto = document.getElementById('confronto-annuale-periodo');
+    if (confronto) confronto.textContent = `${MESI[mese]}, anno per anno`;
+}
+
 async function loadStatistiche() {
     const filters = getFilters();
     const annoScolastico = filters.annoScolastico;
-
-    populateMesiSelect();
+    aggiornaEtichettePeriodo();
 
     try {
         const qs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}` : '';
         const stats = await apiCall(`/api/stats/advanced${qs}`);
 
-        // Update KPIs
+        // KPI (numeri di oggi)
         animateCounter(document.getElementById('kpi-utenti'), stats.num_utenti || 0);
         animateCounter(document.getElementById('kpi-scuole'), stats.num_scuole || 0);
         animateCounter(document.getElementById('kpi-monte-ore'), Math.round(stats.monte_ore_totale || 0));
         animateCounter(document.getElementById('kpi-commesse'), stats.num_commesse || 0);
 
-        // Distribuzione per commessa
+        // Utenti per commessa: col colore scelto in Impostazioni > Commesse e il totale al centro
         if (stats.utenti_per_commessa?.length) {
-            const labels = stats.utenti_per_commessa.map(c => c.nome);
-            const data = stats.utenti_per_commessa.map(c => c.count);
-            ChartManager.createPieChart('chart-distribuzione', data, labels);
-
-            const colors = ['#0A84FF', '#BF5AF2', '#30D158', '#FF9F0A', '#FF453A', '#64D2FF'];
-            document.getElementById('legend-distribuzione').innerHTML = stats.utenti_per_commessa.map((c, i) => `
+            const voci = stats.utenti_per_commessa;
+            const colori = voci.map(c => c.colore || null);
+            ChartManager.createPieChart('chart-distribuzione', voci.map(c => c.count), voci.map(c => c.nome), colori, 'utenti');
+            const usati = ChartManager.charts['chart-distribuzione']?.data.datasets[0].backgroundColor || [];
+            document.getElementById('legend-distribuzione').innerHTML = voci.map((c, i) => `
                 <div class="legend-item">
-                    <span class="legend-dot" style="background: ${colors[i % colors.length]}"></span>
-                    <span>${c.nome}: ${c.count}</span>
+                    <span class="legend-dot" style="background: ${escapeHtml(usati[i] || '')}"></span>
+                    <span>${escapeHtml(c.nome)}: ${c.count}</span>
                 </div>
             `).join('');
         }
 
-        // Trend chart
-        if (stats.trend_mensile?.length) {
-            const labels = stats.trend_mensile.map(t => MESI[t.mese]?.substring(0, 3));
-            const data = stats.trend_mensile.map(t => t.ore_totali || 0);
-            ChartManager.createLineChart('chart-trend', labels, [{
-                label: 'Ore Erogate',
-                data: data
-            }]);
-        }
-
-        // Confronto annuale grafico
         if (annoScolastico) {
             loadConfrontoAnnualeChart(annoScolastico);
+            loadHeatmap(annoScolastico, stats.num_utenti || 0);
         }
-
-        // Heatmap
-        if (annoScolastico) {
-            loadHeatmap(annoScolastico);
-        }
-
-        // Confronto annuale dettaglio
-        loadConfrontoAnnualeDettaglio();
-
-        // Utenti con meno ore
-        loadUtentiMenoOre();
-
-        // Widget mese corrente (spostati dalla dashboard)
-        loadConfrontoMese();
-        loadTopScuole();
-        loadCreditoDebito();
-
+        loadRiquadriMese();
     } catch (error) {
         console.error('Errore statistiche:', error);
         showToast('Errore caricamento statistiche', 'error');
     }
 }
 
+/** Riquadri che dipendono dal mese di riferimento. */
+function loadRiquadriMese() {
+    loadConfrontoMese();
+    loadTopScuole();
+    loadCreditoDebito();
+    loadUtentiMenoOre();
+    loadConfrontoAnnualeDettaglio();
+}
+
 async function loadConfrontoAnnualeChart(annoScolastico) {
+    const tasso = Math.round(((window.APP_CONFIG || {}).tasso_assenza ?? 0.11) * 100);
     try {
         const filters = getFilters();
         const qs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}` : '';
         const dati = await apiCall(`/api/stats/ore-confronto/${annoScolastico}${qs}`);
 
         if (dati && dati.length) {
-            const labels = dati.map(d => d.mese_nome);
-            const oreErogate = dati.map(d => d.ore_erogate);
-            const orePreviste = dati.map(d => d.ore_previste);
-
-            ChartManager.createBarChart('chart-confronto', labels, [
-                { label: 'Ore Erogate', data: oreErogate, backgroundColor: 'rgba(10, 132, 255, 0.8)' },
-                { label: `Ore Previste (-${Math.round(((window.APP_CONFIG || {}).tasso_assenza ?? 0.11) * 100)}%)`, data: orePreviste, backgroundColor: 'rgba(191, 90, 242, 0.5)' }
-            ]);
+            // Ore erogate nel blu dell'app; le previste (il riferimento) in grigio
+            ChartManager.createBarChart('chart-confronto', dati.map(d => d.mese_nome), [
+                { label: 'Ore erogate', data: dati.map(d => d.ore_erogate), ruolo: 'primary' },
+                { label: `Ore previste (−${tasso}%)`, data: dati.map(d => d.ore_previste), ruolo: 'neutro' }
+            ], 'ore');
         }
     } catch (error) {
         console.error('Errore caricamento confronto:', error);
-        const mesi = ['Set', 'Ott', 'Nov', 'Dic', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu'];
+        const mesi = MESI_SCOLASTICI.map(m => MESI_BREVI[m]);
         ChartManager.createBarChart('chart-confronto', mesi, [
-            { label: 'Ore Erogate', data: Array(10).fill(0) },
-            { label: `Ore Previste (-${Math.round(((window.APP_CONFIG || {}).tasso_assenza ?? 0.11) * 100)}%)`, data: Array(10).fill(0) }
-        ]);
+            { label: 'Ore erogate', data: Array(10).fill(0), ruolo: 'primary' },
+            { label: `Ore previste (−${tasso}%)`, data: Array(10).fill(0), ruolo: 'neutro' }
+        ], 'ore');
     }
 }
 
-async function loadHeatmap(annoScolastico) {
+// Utenti mostrati nella heatmap: gli altri con "Mostra tutti" (tabella lunga)
+const HEATMAP_LIMITE = 50;
+
+async function loadHeatmap(annoScolastico, totaleUtenti, tutti = false) {
     const container = document.getElementById('heatmap-container');
+    const altri = document.getElementById('heatmap-altri');
     container.innerHTML = '<div class="loading" style="padding: 40px;"><div class="spinner"></div></div>';
+    altri.hidden = true;
 
     try {
         const filters = getFilters();
-        const qs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}&limit=30` : '?limit=30';
-        const data = await apiCall(`/api/stats/heatmap/${annoScolastico}${qs}`);
+        const limite = tutti ? Math.max(totaleUtenti, HEATMAP_LIMITE) : HEATMAP_LIMITE;
+        const qs = new URLSearchParams({ limit: limite });
+        if (filters.commessa) qs.set('commessa', filters.commessa);
+        const data = await apiCall(`/api/stats/heatmap/${annoScolastico}?${qs}`);
 
         if (!data.heatmap || data.heatmap.length === 0) {
             container.innerHTML = '<div class="text-center text-muted py-4">Nessun dato disponibile</div>';
             return;
         }
 
-        const mesiNomi = ['', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
-
         let html = '<table class="heatmap-table"><thead><tr><th>Utente</th>';
         data.mesi.forEach(m => {
-            html += `<th>${mesiNomi[m.mese]}</th>`;
+            html += `<th>${MESI_BREVI[m.mese]}</th>`;
         });
         html += '</tr></thead><tbody>';
 
         data.heatmap.forEach(u => {
-            html += `<tr><td title="${escapeHtml(u.nome)}">${escapeHtml(u.nome.substring(0, 25))}${u.nome.length > 25 ? '...' : ''}</td>`;
-
+            html += `<tr><td title="${escapeHtml(u.nome)}">${escapeHtml(u.nome)}</td>`;
             u.mesi.forEach(m => {
                 const level = getHeatmapLevel(m.percentuale);
-                html += `<td><span class="heatmap-cell" data-level="${level}" title="${formatNumber(m.ore)}h / ${formatNumber(m.ore_previste)}h (${formatNumero(m.percentuale, 1)}%)">${m.percentuale > 0 ? Math.round(m.percentuale) : '-'}</span></td>`;
+                const titolo = `${MESI[m.mese]} ${m.anno}: ${formatNumber(m.ore)} h su ${formatNumber(m.ore_previste)} h previste (${formatNumero(m.percentuale, 1)}%)`;
+                html += `<td><span class="heatmap-cell" data-level="${level}" title="${escapeHtml(titolo)}">${m.percentuale > 0 ? Math.round(m.percentuale) : '-'}</span></td>`;
             });
-
             html += '</tr>';
         });
 
         html += '</tbody></table>';
         container.innerHTML = html;
 
+        // Prima ne mostrava 30 su 35 senza dirlo
+        if (data.heatmap.length < totaleUtenti) {
+            altri.hidden = false;
+            altri.innerHTML = `Mostrati ${data.heatmap.length} utenti su ${totaleUtenti} ·
+                <button type="button" class="btn btn-sm btn-secondary" id="btn-heatmap-tutti">Mostra tutti</button>`;
+            document.getElementById('btn-heatmap-tutti').addEventListener('click', () => loadHeatmap(annoScolastico, totaleUtenti, true));
+        }
     } catch (e) {
         console.error('Errore heatmap:', e);
         container.innerHTML = '<div class="text-center text-muted py-4">Errore nel caricamento</div>';
@@ -527,7 +537,7 @@ function getHeatmapLevel(percentuale) {
 
 async function loadConfrontoAnnualeDettaglio() {
     const container = document.getElementById('confronto-annuale-container');
-    const mese = parseInt(document.getElementById('confronto-mese').value);
+    const { mese } = getMeseRiferimento();
 
     container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
 
@@ -540,9 +550,6 @@ async function loadConfrontoAnnualeDettaglio() {
             container.innerHTML = '<div class="text-center text-muted py-4">Nessun dato disponibile</div>';
             return;
         }
-
-        const mesiNomi = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-                          'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 
         let html = `
             <div class="table-container">
@@ -559,17 +566,17 @@ async function loadConfrontoAnnualeDettaglio() {
                     <tbody>
         `;
 
-        data.confronto.forEach((c, i) => {
+        data.confronto.forEach(c => {
             const varColor = c.variazione === null ? '' : (c.variazione >= 0 ? 'color: var(--success)' : 'color: var(--danger)');
             const varIcon = c.variazione === null ? '' : (c.variazione >= 0 ? '&#9650;' : '&#9660;');
 
             html += `
-                <tr class="font-semibold" ${i === 0 ? '' : ''}>
-                    <td><strong>${c.anno_scolastico}</strong><br><span class="text-muted text-xs">${mesiNomi[c.mese]} ${c.anno}</span></td>
+                <tr class="font-semibold">
+                    <td><strong>${escapeHtml(c.anno_scolastico)}</strong><br><span class="text-muted text-xs">${MESI[c.mese]} ${c.anno}</span></td>
                     <td class="text-right">${c.num_utenti}</td>
-                    <td class="text-right">${formatNumber(c.ore_erogate)}h</td>
+                    <td class="text-right">${formatNumber(c.ore_erogate)} h</td>
                     <td class="text-right">${formatCurrency(c.imponibile)}</td>
-                    <td style="text-align: right; ${varColor}">
+                    <td class="text-right" style="${varColor}">
                         ${c.variazione !== null ? `${varIcon} ${c.variazione > 0 ? '+' : ''}${formatNumero(c.variazione, 1)}%` : '-'}
                     </td>
                 </tr>
@@ -587,21 +594,14 @@ async function loadConfrontoAnnualeDettaglio() {
 
 async function loadUtentiMenoOre() {
     const container = document.getElementById('utenti-meno-ore-container');
-    const meseValue = document.getElementById('filter-mese-utenti').value;
-
-    if (!meseValue) {
-        container.innerHTML = '<div class="empty-state"><p class="text-muted">Seleziona un mese</p></div>';
-        return;
-    }
-
-    const [anno, mese] = meseValue.split('-').map(Number);
-    currentAnno = anno;
-    currentMese = mese;
+    const { anno, mese } = getMeseRiferimento();
+    const { commessa } = getFilters();
 
     container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
 
     try {
-        const utenti = await apiCall(`/api/stats/utenti-meno-ore/${anno}/${mese}`);
+        const qs = commessa ? `?commessa=${encodeURIComponent(commessa)}` : '';
+        const utenti = await apiCall(`/api/stats/utenti-meno-ore/${anno}/${mese}${qs}`);
         renderUtentiMenoOre(utenti);
     } catch (error) {
         console.error('Errore caricamento utenti:', error);
@@ -621,87 +621,78 @@ function renderUtentiMenoOre(utenti) {
         return;
     }
 
-    container.innerHTML = utenti.map((u, i) => {
-        const rankClass = i < 3 ? 'alert' : (i < 6 ? 'warning' : '');
+    const righe = utenti.map((u, i) => {
+        const rankClass = i < 3 ? 'rank-alta' : (i < 6 ? 'rank-media' : '');
         const nome = `${u.nome} ${u.cognome}`;
-        const scuola = (u.scuola || '').substring(0, 35);
+        const scuola = u.scuola || '';
+        // differenza = previste - erogate: positiva = ore mancanti (in rosso)
+        const inDebito = u.differenza > 0;
+        const classeDiff = inDebito ? 'utente-differenza' : 'utente-differenza in-credito';
 
         return `
             <div class="utente-item">
                 <div class="utente-rank ${rankClass}">${i + 1}</div>
                 <div class="utente-info">
-                    <div class="utente-nome" title="${nome}">${nome}</div>
-                    <div class="utente-scuola" title="${u.scuola}">${scuola}${u.scuola?.length > 35 ? '...' : ''}</div>
+                    <div class="utente-nome" title="${escapeHtml(nome)}">${escapeHtml(nome)}</div>
+                    <div class="utente-scuola" title="${escapeHtml(scuola)}">${escapeHtml(scuola)}</div>
                 </div>
                 <div class="utente-ore">
-                    <div class="utente-ore-erogate">${formatNumber(u.ore_erogate)}h</div>
-                    <div class="utente-ore-previste">su ${formatNumber(u.ore_previste)}h</div>
+                    <div class="utente-ore-erogate">${formatNumber(u.ore_erogate)} h</div>
+                    <div class="utente-ore-previste">su ${formatNumber(u.ore_previste)} h</div>
                 </div>
-                <div class="utente-differenza">${formatNumber(u.differenza)}h</div>
-            </div>
-        `;
-    }).join('');
+                <div class="${classeDiff}" title="${inDebito ? 'Ore mancanti' : 'Ore in più'} rispetto alle previste">${inDebito ? '−' : '+'}${formatNumber(Math.abs(u.differenza))} h</div>
+            </div>`;
+    });
+    // Due colonne (1-5 | 6-10): sul PC stanno affiancate, su schermi stretti una sotto l'altra
+    const meta = Math.ceil(righe.length / 2);
+    container.innerHTML = '<div class="utenti-meno-ore-colonne">' +
+        `<div class="utenti-meno-ore-colonna">${righe.slice(0, meta).join('')}</div>` +
+        `<div class="utenti-meno-ore-colonna">${righe.slice(meta).join('')}</div>` +
+        '</div>';
 }
 
-// ==================== WIDGET MESE CORRENTE (ex dashboard) ====================
-
-/**
- * Mese di riferimento dei widget: segue il filtro "Anno scolastico" della pagina
- * (prima usavano sempre il mese di calendario reale, ignorando il filtro).
- * Anno corrente -> mese di oggi (luglio/agosto -> giugno); anno passato -> giugno.
- */
-function getMeseCorrente() {
-    const now = new Date();
-    const meseOggi = now.getMonth() + 1;
-    const annoOggi = now.getFullYear();
-    const annoScolastico = getFilters().annoScolastico;
-    if (!annoScolastico) {
-        return { anno: annoOggi, mese: meseOggi };
-    }
-    const [annoInizio, annoFine] = annoScolastico.split('-').map(Number);
-    const eCorrente = (meseOggi >= 9 ? annoOggi : annoOggi - 1) === annoInizio;
-    if (eCorrente) {
-        if (meseOggi === 7 || meseOggi === 8) return { anno: annoInizio + 1, mese: 6 };
-        return { anno: annoOggi, mese: meseOggi };
-    }
-    return { anno: annoFine, mese: 6 };
-}
+// ==================== RIQUADRI DEL MESE DI RIFERIMENTO ====================
 
 async function loadConfrontoMese() {
     const container = document.getElementById('confronto-mese-container');
     try {
-        const filters = getFilters();
-        const { anno, mese } = getMeseCorrente();
+        const { anno, mese } = getMeseRiferimento();
+        const data = await apiCall(`/api/stats/confronto-mese${qsMese()}`);
+        const corr = data.mese_corrente;
+        const prec = data.mese_precedente;
+        const perGiorno = data.variazione.percentuale_giornaliera;
 
-        const qs = `?anno=${anno}&mese=${mese}${filters.commessa ? `&commessa=${encodeURIComponent(filters.commessa)}` : ''}`;
-        const data = await apiCall(`/api/stats/confronto-mese${qs}`);
+        const colonna = (m, etichetta) => `
+            <div class="confronto-colonna">
+                <div class="confronto-etichetta">${escapeHtml(etichetta)}</div>
+                <div class="confronto-ore">${formatNumber(m.ore)} h</div>
+                <div class="confronto-dettaglio">${m.utenti_attivi} utenti${m.ore ? ` · ${formatNumero(m.giorni_lavorativi, 0)} giorni lav.` : ''}</div>
+            </div>`;
 
-        const variazione = data.variazione.percentuale;
-        const isPositive = variazione >= 0;
-        const varColor = isPositive ? 'var(--success)' : 'var(--danger)';
-        const varIcon = isPositive ? '&#9650;' : '&#9660;';
+        let principale;
+        if (!corr.ore) {
+            principale = `<div class="confronto-vuoto">Nessuna ora registrata a ${MESI[mese]} ${anno}</div>`;
+        } else if (perGiorno === null || perGiorno === undefined) {
+            principale = `<div class="confronto-vuoto">Nessun dato a ${escapeHtml(prec.mese_nome)} ${prec.anno} da confrontare</div>`;
+        } else {
+            // Si confrontano le ore PER GIORNO LAVORATIVO: giugno ha pochi giorni
+            // di scuola e sulle ore totali sembrava sempre un crollo
+            const colore = perGiorno >= 0 ? 'var(--success)' : 'var(--danger)';
+            const icona = perGiorno >= 0 ? '&#9650;' : '&#9660;';
+            principale = `
+                <div class="confronto-variazione" style="color: ${colore};">${icona} ${formatNumero(Math.abs(perGiorno), 1)}%</div>
+                <div class="confronto-nota">ore per giorno lavorativo, rispetto a ${escapeHtml(prec.mese_nome)}</div>`;
+        }
 
+        const giorniDiversi = perGiorno !== null && perGiorno !== undefined &&
+            Math.abs(corr.giorni_lavorativi - prec.giorni_lavorativi) >= 3;
         container.innerHTML = `
-            <div class="text-center mb-4">
-                <div style="font-size: 2rem; font-weight: 700; color: ${varColor};">
-                    ${varIcon} ${formatNumero(Math.abs(variazione), 1)}%
-                </div>
-                <div style="font-size: 0.75rem; color: var(--text-tertiary);">
-                    vs ${data.mese_precedente.mese_nome}
-                </div>
-            </div>
+            <div class="text-center mb-4">${principale}</div>
             <div class="flex justify-between gap-4">
-                <div style="text-align: center; flex: 1;">
-                    <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">${MESI[mese] || 'Corrente'} ${anno}</div>
-                    <div style="font-size: 1.1rem; font-weight: 600;">${formatNumber(data.mese_corrente.ore)}h</div>
-                    <div style="font-size: 0.7rem; color: var(--text-secondary);">${data.mese_corrente.utenti_attivi} utenti</div>
-                </div>
-                <div style="text-align: center; flex: 1;">
-                    <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">${data.mese_precedente.mese_nome || 'Precedente'}</div>
-                    <div style="font-size: 1.1rem; font-weight: 600;">${formatNumber(data.mese_precedente.ore)}h</div>
-                    <div style="font-size: 0.7rem; color: var(--text-secondary);">${data.mese_precedente.utenti_attivi} utenti</div>
-                </div>
+                ${colonna(corr, `${MESI[mese]} ${anno}`)}
+                ${colonna(prec, `${prec.mese_nome} ${prec.anno}`)}
             </div>
+            ${giorniDiversi && corr.ore ? `<p class="confronto-nota mt-3 mb-0">Sulle ore totali: ${data.variazione.percentuale > 0 ? '+' : ''}${formatNumero(data.variazione.percentuale, 1)}% (mesi con giorni di scuola diversi)</p>` : ''}
         `;
     } catch (e) {
         container.innerHTML = '<div class="text-center text-muted py-4">Dati non disponibili</div>';
@@ -711,33 +702,23 @@ async function loadConfrontoMese() {
 async function loadTopScuole() {
     const container = document.getElementById('top-scuole-list');
     try {
-        const filters = getFilters();
-        const { anno, mese } = getMeseCorrente();
-
-        const qs = `?anno=${anno}&mese=${mese}${filters.commessa ? `&commessa=${encodeURIComponent(filters.commessa)}` : ''}`;
-        const data = await apiCall(`/api/stats/top-scuole${qs}`);
+        const data = await apiCall(`/api/stats/top-scuole${qsMese()}`);
 
         if (data.top_scuole.length === 0) {
             container.innerHTML = '<div class="text-center text-muted py-4">Nessun dato disponibile</div>';
             return;
         }
 
-        const colors = ['#FFD700', '#C0C0C0', '#CD7F32', '#0A84FF', '#0A84FF'];
-
+        // oro, argento, bronzo (testo scuro); poi il blu pieno dei pulsanti (bianco 5,2:1)
+        const colori = ['#FFD700', '#C0C0C0', '#CD7F32'];
         container.innerHTML = data.top_scuole.map((s, i) => `
-            <div style="display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border-color); gap: 12px;">
-                <div style="width: 24px; height: 24px; border-radius: 50%; background: ${colors[i]}; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem; color: ${i < 3 ? '#000' : '#fff'};">
-                    ${i + 1}
+            <div class="top-scuola">
+                <div class="top-scuola-pos" style="${i < 3 ? `background: ${colori[i]}; color: #1C1C1E;` : ''}">${i + 1}</div>
+                <div class="top-scuola-info">
+                    <div class="top-scuola-nome" title="${escapeHtml(s.scuola_full || s.scuola)}">${escapeHtml(s.scuola)}</div>
+                    <div class="top-scuola-dettaglio">${s.num_utenti} utenti · ${escapeHtml(s.commessa)}</div>
                 </div>
-                <div style="flex: 1; min-width: 0;">
-                    <div style="font-weight: 500; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(s.scuola_full || s.scuola)}">
-                        ${escapeHtml(s.scuola)}
-                    </div>
-                    <div style="font-size: 0.7rem; color: var(--text-tertiary);">${s.num_utenti} utenti - ${escapeHtml(s.commessa)}</div>
-                </div>
-                <div class="text-right">
-                    <div style="font-weight: 600; font-size: 0.9rem;">${formatNumber(s.ore_erogate)}h</div>
-                </div>
+                <div class="top-scuola-ore">${formatNumber(s.ore_erogate)} h</div>
             </div>
         `).join('');
     } catch (e) {
@@ -748,11 +729,7 @@ async function loadTopScuole() {
 async function loadCreditoDebito() {
     const container = document.getElementById('credito-debito-container');
     try {
-        const filters = getFilters();
-        const { anno, mese } = getMeseCorrente();
-
-        const qs = `?anno=${anno}&mese=${mese}${filters.commessa ? `&commessa=${encodeURIComponent(filters.commessa)}` : ''}`;
-        const data = await apiCall(`/api/stats/credito-debito${qs}`);
+        const data = await apiCall(`/api/stats/credito-debito${qsMese()}`);
 
         const saldoColor = data.saldo_netto >= 0 ? 'var(--success)' : 'var(--danger)';
         const saldoLabel = data.saldo_netto >= 0 ? 'Credito netto' : 'Debito netto';

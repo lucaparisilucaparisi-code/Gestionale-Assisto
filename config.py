@@ -36,6 +36,18 @@ def anno_scolastico_di(anno: int, mese: int, sep: str = '-') -> str:
     return f"{anno - 1}{sep}{anno}"
 
 
+def mese_scolastico_precedente(anno: int, mese: int) -> tuple:
+    """Mese precedente NELL'ANNO SCOLASTICO: per settembre e' giugno (luglio e
+    agosto non sono mesi scolastici e sono sempre vuoti), per gennaio e' dicembre
+    dell'anno prima. Ritorna (anno, mese). Regola unica per "Copia Mese Prec.",
+    lo scostamento in Rendicontazione e il "Confronto Mese" di Statistiche."""
+    if mese == 9:
+        return anno, 6
+    if mese == 1:
+        return anno - 1, 12
+    return anno, mese - 1
+
+
 def anno_scolastico_corrente(sep: str = '-') -> str:
     """Anno scolastico di oggi: default unico per filtri e API (niente anni
     scritti a mano nel codice, che invecchiano ad ogni settembre)."""

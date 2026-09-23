@@ -99,69 +99,69 @@
             </button>
         </div>
         <div class="report-cards-grid">
-            <div class="report-card excel" onclick="downloadExcel()">
-                <div class="report-card-icon">
+            <button type="button" class="report-card excel" onclick="downloadExcel()">
+                <span class="report-card-icon" aria-hidden="true">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                </div>
-                <h3 class="report-card-title">Report Completo</h3>
-                <p class="report-card-desc">Report dettagliato con riepilogo, dettaglio utenti e statistiche per commessa. Formato Excel.</p>
-                <div class="report-card-action">
+                </span>
+                <span class="report-card-title">Report Completo</span>
+                <span class="report-card-desc">Report dettagliato con riepilogo, dettaglio utenti e statistiche per commessa. Formato Excel.</span>
+                <span class="report-card-action">
                     <span>Scarica Excel</span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
-                </div>
-            </div>
+                </span>
+            </button>
 
-            <div class="report-card municipale" onclick="downloadMunicipale()">
-                <div class="report-card-icon">
+            <button type="button" class="report-card municipale" onclick="downloadMunicipale()">
+                <span class="report-card-icon" aria-hidden="true">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                     </svg>
-                </div>
-                <h3 class="report-card-title">Riepilogo Municipale</h3>
-                <p class="report-card-desc">Report per il Municipio: ore erogate per scuola, tariffa {{ ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') }}€, IVA {{ (app_config.iva_percentuale * 100)|round|int }}%, totali e riepilogo utenti.</p>
-                <div class="report-card-action">
+                </span>
+                <span class="report-card-title">Riepilogo Municipale</span>
+                <span class="report-card-desc">Report per il Municipio: ore erogate per scuola, tariffa {{ ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') }}€, IVA {{ (app_config.iva_percentuale * 100)|round|int }}%, totali e riepilogo utenti.</span>
+                <span class="report-card-action">
                     <span>Scarica Excel</span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
-                </div>
-            </div>
+                </span>
+            </button>
 
-            <div class="report-card dipartimentale" onclick="downloadDipartimentale()">
-                <div class="report-card-icon">
+            <button type="button" class="report-card dipartimentale" onclick="downloadDipartimentale()">
+                <span class="report-card-icon" aria-hidden="true">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
-                </div>
-                <h3 class="report-card-title">Monitoraggio Dipartimentale</h3>
-                <p class="report-card-desc">Report aggregato per livello scolastico con tariffa 25,27€ (IVA inclusa).</p>
-                <div class="report-card-action">
+                </span>
+                <span class="report-card-title">Monitoraggio Dipartimentale</span>
+                <span class="report-card-desc">Report aggregato per livello scolastico con tariffa {{ ('%.2f' % (app_config.tariffa_oraria * (1 + app_config.iva_percentuale)))|replace('.', ',') }}€ (IVA inclusa).</span>
+                <span class="report-card-action">
                     <span>Scarica Excel</span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
-                </div>
-            </div>
+                </span>
+            </button>
 
-            <div class="report-card word" onclick="downloadWord()">
-                <div class="report-card-icon">
+            <button type="button" class="report-card word" onclick="downloadWord()">
+                <span class="report-card-icon" aria-hidden="true">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                </div>
-                <h3 class="report-card-title">Relazione Mensile</h3>
-                <p class="report-card-desc">Documento Word con relazione mensile dettagliata delle attività svolte.</p>
-                <div class="report-card-action">
+                </span>
+                <span class="report-card-title">Relazione Mensile</span>
+                <span class="report-card-desc">Documento Word con relazione mensile dettagliata delle attività svolte.</span>
+                <span class="report-card-action">
                     <span>Scarica Word</span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
-                </div>
-            </div>
+                </span>
+            </button>
         </div>
     </div>
 </div>
@@ -243,13 +243,14 @@
         </div>
 
         <div class="form-group">
-            <label class="form-label">Opzioni Privacy</label>
-            <div class="flex gap-4">
+            <label class="form-label">Opzioni</label>
+            <div class="flex gap-4 flex-wrap">
                 <label class="flex items-center gap-2 pointer">
                     <input type="checkbox" id="annual-privacy">
-                    <span>Mostra nomi puntati (privacy)</span>
+                    <span>Nomi puntati (privacy)</span>
                 </label>
             </div>
+            <p class="form-help">Se selezionato, i nomi saranno in formato M. R.</p>
         </div>
     </div>
     <div class="card-footer">
@@ -262,11 +263,11 @@
     </div>
 </div>
 
-<!-- Info Report -->
-<div class="card mt-4">
-    <div class="card-header">
-        <h2 class="card-title">Descrizione Report</h2>
-    </div>
+<!-- Guida ai report: chiusa, si apre con un clic (erano due tabelle di
+     riferimento sempre aperte, circa 600px in fondo alla pagina) -->
+<details class="section report-guida">
+    <summary>Cosa contiene ogni report</summary>
+    <div class="card mt-2">
     <div class="card-body">
         <h3 style="margin-bottom: 1rem; font-size: 1rem;">Report Disponibili</h3>
         <div class="table-responsive">
@@ -340,7 +341,8 @@
         </table>
         </div>
     </div>
-</div>
+    </div>
+</details>
 {% endblock %}
 
 {% block scripts %}

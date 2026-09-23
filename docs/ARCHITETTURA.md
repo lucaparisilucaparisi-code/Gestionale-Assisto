@@ -33,6 +33,8 @@ reimplementarla inline (a schermo, in SQL o negli export).
 - **Anno scolastico** → `config.anno_scolastico_di(anno, mese, sep)` (mese ≥ 9 →
   anno/anno+1). `sep='-'` è il formato chiave del DB, `sep='/'` quello dei report.
   L'anno di oggi è `config.anno_scolastico_corrente()`: mai anni scritti a mano.
+- **Mese precedente** → `config.mese_scolastico_precedente(anno, mese)` (settembre →
+  giugno, gennaio → dicembre): "Copia Mese Prec.", scostamenti e "Confronto Mese".
 - **Monte ore effettivo** → `database.risolvi_monte_ore(base, variazioni, 'YYYY-MM')`
   (singolo utente) e `get_monte_ore_effettivo_bulk(anno, mese)` (vista mensile): vale
   l'ultima variazione iniziata entro il mese e non terminata (`mese_fine` NULL o ≥ mese).
@@ -81,6 +83,10 @@ reimplementarla inline (a schermo, in SQL o negli export).
   un test lo verifica. Le chiamate API passano da `apiCall` (errori con `code`/`status`).
 - I token di colore (un solo blu primario, `--primary`, con `--accent` come alias)
   vivono in `static/css/style.css`; `refine.css` è il layer finale e non ridefinisce colori.
+- I grafici passano da `ChartManager` (app.js): colori dai token del tema attivo
+  (`getColors()`: blu `--primary` per le ore erogate, grigio `neutro` per le previste,
+  `commessa.colore` per le fette per commessa), tela liberata prima di ridisegnare e
+  ridisegno automatico al cambio di tema. Niente tavolozze scritte a mano.
 - Ordine dei fogli (conta per la cascata): style → premium-effects → ux-enhancements →
   components → theme-premium → refine. Prima di togliere o rinominare CSS: il test
   `tests/test_css_integrita.py` segnala le classi usate dalle pagine rimaste senza stile,
