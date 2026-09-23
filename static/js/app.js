@@ -289,8 +289,14 @@ function decimalToSessagesimal(decimal) {
     return `${hours}:${minutes.toString().padStart(2, '0')}`;
 }
 
+// ==================== FORMATI ITALIANI (numeri, ore, date) ====================
+// Un solo modo di scrivere numeri e date in tutta l'app: '61,94', '5.963,00',
+// '28/09/2026', 'settembre 2025'. Prima convivevano '61.94' (toFixed, all'inglese)
+// e '1.490,90 €' nella stessa riga, e date tecniche come '2026-09-28'.
+// Solo per il testo mostrato: il valore di un <input type="number"> vuole il punto.
+
 function formatHours(value) {
-    return (value || 0).toFixed(2);
+    return formatNumber(value, 2);
 }
 
 function formatCurrency(value) {
@@ -303,7 +309,77 @@ function formatCurrency(value) {
 }
 
 function formatNumber(value, decimals = 2) {
-    return (value || 0).toFixed(decimals);
+    let n = Number(value);
+    if (!isFinite(n)) n = 0;
+    // arrotonda prima, cosi' -0,001 non diventa '-0,00'
+    const f = Math.pow(10, decimals);
+    n = Math.round(n * f) / f + 0;
+    return n.toLocaleString('it-IT', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+/**
+ * Ore decimali all'italiana: 61.94 -> '61,94'. Con segno=true i valori positivi
+ * hanno il '+' davanti (crediti/saldi: '+56,67', '-19,25').
+ */
+function formatOre(value, segno = false, decimals = 2) {
+    const testo = formatNumber(value, decimals);
+    return segno && Number(value) > 0 && testo !== formatNumber(0, decimals) ? `+${testo}` : testo;
+}
+
+/** Numero senza zeri inutili: 12 -> '12', 12.5 -> '12,5' (monte ore, giorni). */
+function formatNumero(value, maxDecimali = 2) {
+    const n = Number(value);
+    if (value === null || value === undefined || value === '' || !isFinite(n)) return value == null ? '' : String(value);
+    return (n + 0).toLocaleString('it-IT', { maximumFractionDigits: maxDecimali });
+}
+
+const _GIORNI_BREVI = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
+
+/** '2026-09-28' (anche con l'ora dopo) -> Date locale, senza slittamenti di fuso. */
+function _dataDaIso(valore) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(valore || ''));
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+
+/**
+ * Data all'italiana: '2026-09-28' -> '28/09/2026'; con conGiorno 'lun 28/09/2026'.
+ * Un solo mese ('2025-09') diventa 'settembre 2025'. Un valore che non e' una
+ * data resta com'e'; vuoto -> ''.
+ */
+function formatDataIT(valore, conGiorno = false) {
+    if (!valore) return '';
+    const d = _dataDaIso(valore);
+    if (!d) return /^\d{4}-\d{2}$/.test(String(valore)) ? formatMeseIT(valore) : String(valore);
+    const testo = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    return conGiorno ? `${_GIORNI_BREVI[d.getDay()]} ${testo}` : testo;
+}
+
+/**
+ * Periodo tra due date: '28/09 → 02/10/2026' (stesso anno) o '28/12/2025 → 02/01/2026';
+ * senza fine: '28/09/2026 → sempre' (il testo finale si puo' cambiare).
+ */
+function formatPeriodoIT(da, a, senzaFine = 'sempre') {
+    if (!a) return `${formatDataIT(da)} → ${senzaFine}`;
+    const d1 = _dataDaIso(da), d2 = _dataDaIso(a);
+    if (d1 && d2 && d1.getFullYear() === d2.getFullYear()) {
+        return `${formatDataIT(da).slice(0, 5)} → ${formatDataIT(a)}`;
+    }
+    return `${formatDataIT(da)} → ${formatDataIT(a)}`;
+}
+
+/** Mese all'italiana: '2025-09' (o '2025-09-01') -> 'settembre 2025'. */
+function formatMeseIT(valore) {
+    const m = /^(\d{4})-(\d{2})/.exec(String(valore || ''));
+    if (!m) return valore ? String(valore) : '';
+    return `${MESI[Number(m[2])].toLowerCase()} ${m[1]}`;
+}
+
+/** Data e ora senza secondi: '23/09/2026, 08:43'. */
+function formatDataOraIT(valore) {
+    if (!valore) return '';
+    const d = new Date(String(valore).replace(' ', 'T'));
+    if (isNaN(d)) return String(valore);
+    return d.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 // ==================== TOAST NOTIFICATIONS ====================
@@ -1310,6 +1386,12 @@ window.decimalToSessagesimal = decimalToSessagesimal;
 window.formatHours = formatHours;
 window.formatCurrency = formatCurrency;
 window.formatNumber = formatNumber;
+window.formatOre = formatOre;
+window.formatNumero = formatNumero;
+window.formatDataIT = formatDataIT;
+window.formatPeriodoIT = formatPeriodoIT;
+window.formatMeseIT = formatMeseIT;
+window.formatDataOraIT = formatDataOraIT;
 window.showToast = showToast;
 window.escapeHtml = escapeHtml;
 window.showConfirmDialog = showConfirmDialog;

@@ -503,10 +503,10 @@ function renderTable(utenti) {
         rows += '<tr>'
             + '<td><span class="badge badge-primary">' + esc(u.commessa) + '</span></td>'
             + '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(u.scuola) + '">' + esc(u.scuola) + '</td>'
-            + '<td><a href="/utente/' + u.id + '" style="color:var(--primary);text-decoration:none;"><strong>' + esc(u.nome) + '</strong></a></td>'
-            + '<td><a href="/utente/' + u.id + '" style="color:var(--primary);text-decoration:none;"><strong>' + esc(u.cognome) + '</strong></a></td>'
+            + '<td><a href="/utente/' + u.id + '" style="color:var(--accent-text);text-decoration:none;"><strong>' + esc(u.nome) + '</strong></a></td>'
+            + '<td><a href="/utente/' + u.id + '" style="color:var(--accent-text);text-decoration:none;"><strong>' + esc(u.cognome) + '</strong></a></td>'
             + '<td>' + esc(u.nome_puntato) + '</td>'
-            + '<td class="text-center">' + u.monte_ore_settimanale + '</td>'
+            + '<td class="text-center">' + formatNumero(u.monte_ore_settimanale) + '</td>'
             + '<td>' + periodo + '</td>'
             + '<td>' + lista + '</td>'
             + '<td style="white-space:nowrap;">'
@@ -877,7 +877,7 @@ function showStoricoMonteOre(utenteId) {
     apiCall('/api/utenti/' + utenteId + '/storico-monte-ore').then(function(data) {
         var html = '<div style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">';
         html += '<strong>' + esc(data.utente.nome) + ' ' + esc(data.utente.cognome || '') + '</strong><br>';
-        html += '<span style="font-size: 0.85rem; color: var(--text-secondary);">Monte ore attuale: <strong>' + data.utente.monte_ore_attuale + 'h</strong></span>';
+        html += '<span style="font-size: 0.85rem; color: var(--text-secondary);">Monte ore attuale: <strong>' + formatNumero(data.utente.monte_ore_attuale) + 'h</strong></span>';
         html += '</div>';
 
         if (data.storico.length === 0) {
@@ -886,9 +886,9 @@ function showStoricoMonteOre(utenteId) {
             html += '<table class="table" style="font-size: 0.85rem;"><thead><tr><th>Data</th><th>Da</th><th>A</th></tr></thead><tbody>';
             data.storico.forEach(function(s) {
                 html += '<tr>';
-                html += '<td>' + new Date(s.timestamp).toLocaleDateString('it-IT') + '</td>';
-                html += '<td>' + (s.monte_ore_precedente || '-') + 'h</td>';
-                html += '<td><strong>' + (s.monte_ore_nuovo || '-') + 'h</strong></td>';
+                html += '<td>' + esc(formatDataIT(s.timestamp)) + '</td>';
+                html += '<td>' + (s.monte_ore_precedente ? formatNumero(s.monte_ore_precedente) : '-') + 'h</td>';
+                html += '<td><strong>' + (s.monte_ore_nuovo ? formatNumero(s.monte_ore_nuovo) : '-') + 'h</strong></td>';
                 html += '</tr>';
             });
             html += '</tbody></table>';
@@ -930,7 +930,7 @@ function loadVariazioniMonteOre() {
 
         var html = '<div style="padding: 10px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 12px;">';
         html += '<strong>' + esc(nomeUtente) + '</strong><br>';
-        html += '<span style="font-size:0.85rem; color:var(--text-secondary);">Monte ore base: <strong>' + (u ? u.monte_ore_settimanale : '-') + 'h</strong></span>';
+        html += '<span style="font-size:0.85rem; color:var(--text-secondary);">Monte ore base: <strong>' + (u ? formatNumero(u.monte_ore_settimanale) : '-') + 'h</strong></span>';
         html += '</div>';
 
         if (variazioni.length === 0) {
@@ -941,7 +941,7 @@ function loadVariazioniMonteOre() {
                 html += '<tr>';
                 html += '<td>' + fmtMeseAnno(v.mese_inizio) + '</td>';
                 html += '<td>' + (v.mese_fine ? fmtMeseAnno(v.mese_fine) : '<span class="text-muted">aperta</span>') + '</td>';
-                html += '<td><strong>' + v.monte_ore + 'h</strong></td>';
+                html += '<td><strong>' + formatNumero(v.monte_ore) + 'h</strong></td>';
                 html += '<td style="color:var(--text-secondary);">' + esc(v.nota || '-') + '</td>';
                 html += '<td class="text-right"><button class="btn btn-sm btn-danger" onclick="deleteVariazioneMO(' + v.id + ')">Elimina</button></td>';
                 html += '</tr>';

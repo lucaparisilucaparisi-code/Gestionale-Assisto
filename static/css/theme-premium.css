@@ -17,8 +17,6 @@
     --gradient-hero: linear-gradient(135deg, #ffffff 0%, #a8c7ff 40%, #bf5af2 100%);
     --gradient-accent: linear-gradient(135deg, var(--primary) 0%, #BF5AF2 100%);
     --gradient-border-card: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02));
-
-    --ring-primary: 0 0 0 1px rgba(59, 130, 246, 0.35), 0 0 18px rgba(59, 130, 246, 0.12);
 }
 
 [data-theme="light"] {
@@ -290,13 +288,15 @@ body::before {
 }
 
 /* ==================== FORM / INPUT ==================== */
+/* stesso aspetto di .form-control:focus (refine.css): bordo blu e alone tenue,
+   senza il bagliore di 18px in un altro blu che aveva solo 'Filtra' */
 .form-control:focus,
 input:focus,
 select:focus,
 textarea:focus {
     outline: none;
-    border-color: rgba(10, 132, 255, 0.6);
-    box-shadow: var(--ring-primary);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* ==================== SCROLLBAR ==================== */

@@ -297,8 +297,8 @@ function renderCalendario(data) {
                 <tr>
                     <th style="width: 180px;">Mese</th>
                     <th style="width: 100px;">Anno</th>
-                    <th style="width: 180px;">Giorni Lavorativi <small style="opacity:.7">(Infanzia)</small></th>
-                    <th style="width: 180px;">Giorni "Altri" <small style="opacity:.7">(solo giugno)</small></th>
+                    <th style="width: 180px;">Giorni Lavorativi <small>(Infanzia)</small></th>
+                    <th style="width: 180px;">Giorni "Altri" <small>(solo giugno)</small></th>
                     <th style="width: 120px;">Coefficiente</th>
                     <th>Azioni</th>
                 </tr>
@@ -311,7 +311,7 @@ function renderCalendario(data) {
         const key = `${m.mese}-${anno}`;
         const giorni = giorniMap[key] || 0;
         const giorniAltri = giorniAltriMap[key];
-        const coefficiente = (giorni * COEFF).toFixed(1);
+        const coefficiente = formatNumber(giorni * COEFF, 1);
         const isGiugno = m.mese === 6;
 
         // Campo "altri": editabile solo a giugno
@@ -320,13 +320,13 @@ function renderCalendario(data) {
                       data-mese="${m.mese}" data-anno="${anno}" aria-label="Giorni altri ordini ${m.nome} ${anno}"
                       value="${giorniAltri !== null && giorniAltri !== undefined ? giorniAltri : ''}"
                       placeholder="es. 5" min="0" max="31" style="width: 110px;">`
-            : `<span style="opacity:.4;">—</span>`;
+            : `<span class="text-muted">—</span>`;
 
         // Coefficiente: a giugno mostriamo entrambi
         let coeffCell = `<span class="coefficiente">${coefficiente}</span>`;
         if (isGiugno) {
             const coeffAltri = giorniAltri !== null && giorniAltri !== undefined
-                ? (giorniAltri * COEFF).toFixed(1) : '—';
+                ? formatNumber(giorniAltri * COEFF, 1) : '—';
             coeffCell = `
                 <div style="font-size:0.85rem; line-height:1.4;">
                     <div>Inf: <strong class="coefficiente">${coefficiente}</strong></div>
@@ -368,7 +368,7 @@ function renderCalendario(data) {
     container.querySelectorAll('.giorni-input').forEach(input => {
         input.addEventListener('input', (e) => {
             const giorni = parseInt(e.target.value) || 0;
-            e.target.closest('tr').querySelector('.coefficiente').textContent = (giorni * COEFF).toFixed(1);
+            e.target.closest('tr').querySelector('.coefficiente').textContent = formatNumber(giorni * COEFF, 1);
             segnaModificata(e.target);
         });
         input.addEventListener('keydown', (e) => {
@@ -385,7 +385,7 @@ function renderCalendario(data) {
     container.querySelectorAll('.giorni-altri-input').forEach(input => {
         input.addEventListener('input', (e) => {
             const giorni = parseInt(e.target.value);
-            const coeff = isNaN(giorni) ? '—' : (giorni * COEFF).toFixed(1);
+            const coeff = isNaN(giorni) ? '—' : formatNumber(giorni * COEFF, 1);
             const altriEl = e.target.closest('tr').querySelector('.coefficiente-altri');
             if (altriEl) altriEl.textContent = coeff;
             segnaModificata(e.target);

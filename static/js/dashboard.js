@@ -154,7 +154,7 @@ async function loadStatoMese() {
                         <span class="da-completare-nome">${escapeHtml(u.nome)} ${escapeHtml(u.cognome)}</span>
                         <span class="da-completare-scuola">${escapeHtml(u.commessa)} - ${escapeHtml(u.scuola.substring(0, 40))}${u.scuola.length > 40 ? '...' : ''}</span>
                     </div>
-                    <span class="badge badge-secondary">${u.monte_ore}h</span>
+                    <span class="badge badge-secondary">${formatNumero(u.monte_ore)}h</span>
                 </div>
             `).join('');
             if (daCompletare.length > 8) {
@@ -232,10 +232,12 @@ async function loadValidazione() {
 
         if (data.riepilogo.critiche > 0) {
             badge.className = 'badge badge-danger';
-            badge.textContent = `${data.riepilogo.critiche} critici`;
+            const n = data.riepilogo.critiche;
+            badge.textContent = `${n} ${n === 1 ? 'critico' : 'critici'}`;
         } else if (data.riepilogo.avvisi > 0) {
             badge.className = 'badge badge-warning';
-            badge.textContent = `${data.riepilogo.avvisi} avvisi`;
+            const n = data.riepilogo.avvisi;
+            badge.textContent = `${n} ${n === 1 ? 'avviso' : 'avvisi'}`;
         } else {
             badge.className = 'badge badge-success';
             badge.textContent = 'OK';
@@ -618,11 +620,12 @@ function renderWizardUtenti() {
         return `<tr class="${archivia ? 'wizard-riga-archivia' : ''}">
             <td><strong>${escapeHtml(u.nome)} ${escapeHtml(u.cognome || '')}</strong>
                 <div class="text-muted" style="font-size:0.8rem;">${escapeHtml(u.scuola || '')}</div></td>
-            <td class="text-center">${u.monte_ore_base}</td>
-            <td class="text-center ${diverso ? 'wizard-diff' : ''}" title="${u.variazioni_aperte} variazione/i ancora aperta/e">${u.effettivo_giugno}${diverso ? ' ⚠' : ''}</td>
+            <td class="text-center">${formatNumero(u.monte_ore_base)}</td>
+            <td class="text-center ${diverso ? 'wizard-diff' : ''}" title="${u.variazioni_aperte} variazione/i ancora aperta/e">${formatNumero(u.effettivo_giugno)}${diverso ? ' ⚠' : ''}</td>
             <td><input type="number" class="form-control wizard-nuovo-mo" data-id="${u.id}" value="${nuovo}" step="0.5" min="0" max="40" style="width:100px;" aria-label="Nuovo monte ore"></td>
-            <td class="text-center"><input type="checkbox" class="wizard-archivia" data-id="${u.id}" ${archivia ? 'checked' : ''} aria-label="Archivia">
-                ${u.data_fine ? `<div class="text-muted" style="font-size:0.75rem;">fine ${escapeHtml(u.data_fine)}</div>` : ''}</td>
+            <td class="text-center wizard-cella-archivia"><label class="wizard-archivia-label">
+                <input type="checkbox" class="wizard-archivia" data-id="${u.id}" ${archivia ? 'checked' : ''} aria-label="Archivia ${escapeHtml(u.nome)} ${escapeHtml(u.cognome || '')}">
+                ${u.data_fine ? `<span class="text-muted" style="font-size:0.75rem;">fine ${escapeHtml(formatDataIT(u.data_fine))}</span>` : ''}</label></td>
         </tr>`;
     }).join('');
     aggiornaRiepilogoWizard();

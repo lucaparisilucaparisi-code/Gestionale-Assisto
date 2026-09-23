@@ -559,8 +559,8 @@ async function mostraAnteprima() {
             html += `<tr>
                 <td>${escapeHtml(d.nome)} ${escapeHtml(d.cognome || '')}</td>
                 <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml((d.scuola || '').substring(0, 30))}</td>
-                <td class="text-right">${d.monte_ore_settimanale}</td>
-                <td class="text-right">${(d.ore_lavorate_60 || 0).toFixed(2)}</td>
+                <td class="text-right">${formatNumero(d.monte_ore_settimanale)}</td>
+                <td class="text-right">${decimalToSessagesimal(d.ore_lavorate_60) || '0:00'}</td>
                 <td class="text-right">${formatCurrency(d.imponibile_100 || 0)}</td>
                 <td class="text-right">${formatCurrency(d.totale_100 || 0)}</td>
             </tr>`;
@@ -580,7 +580,7 @@ async function mostraAnteprima() {
         const totOre = filtrata ? righe.reduce((s, d) => s + (d.ore_lavorate_60 || 0), 0) : (data.totale_generale.ore_lavorate_60 || 0);
         const totEuro = filtrata ? righe.reduce((s, d) => s + (d.totale_100 || 0), 0) : (data.totale_generale.totale_100 || 0);
         html += `<div style="margin-top: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
-            <strong>Totali:</strong> ${totUtenti} utenti, ${totOre.toFixed(2)} ore, ${formatCurrency(totEuro)}
+            <strong>Totali:</strong> ${totUtenti} utenti, ${decimalToSessagesimal(totOre) || '0:00'} ore (60'), ${formatCurrency(totEuro)}
             ${filtrata ? `<span class="text-muted">(filtrati da ${data.dati.length} utenti)</span>` : ''}
         </div>`;
 
@@ -635,13 +635,13 @@ async function generaConfrontoAnnuale() {
         datiAnni.forEach((d, i) => {
             let variazione = '-';
             if (i > 0 && datiAnni[i-1].oreTotal > 0) {
-                const diff = ((d.oreTotal - datiAnni[i-1].oreTotal) / datiAnni[i-1].oreTotal * 100).toFixed(1);
+                const diff = (d.oreTotal - datiAnni[i-1].oreTotal) / datiAnni[i-1].oreTotal * 100;
                 const color = diff >= 0 ? 'var(--success)' : 'var(--danger)';
-                variazione = `<span style="color: ${color}">${diff >= 0 ? '+' : ''}${diff}%</span>`;
+                variazione = `<span style="color: ${color}">${diff >= 0 ? '+' : ''}${formatNumber(diff, 1)}%</span>`;
             }
             html += `<tr>
                 <td><strong>${d.annoScolastico}</strong></td>
-                <td class="text-right">${d.oreTotal.toFixed(2)}</td>
+                <td class="text-right">${formatNumber(d.oreTotal)}</td>
                 <td class="text-right">${d.numUtenti}</td>
                 <td class="text-right">${variazione}</td>
             </tr>`;

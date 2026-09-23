@@ -153,12 +153,14 @@
 
 .auth-btn--primary {
     margin-top: 8px;
-    background: linear-gradient(135deg, var(--primary), var(--primary-dark, #0060cc));
+    /* fondo pieno piu' scuro: bianco su #3B82F6 era 3,7:1, su --accent-strong 5,2:1 */
+    background: var(--accent-strong);
     color: white;
     box-shadow: 0 4px 14px rgba(10, 132, 255, 0.35);
 }
 
 .auth-btn--primary:hover:not(:disabled) {
+    background: var(--accent-strong-hover);
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgba(10, 132, 255, 0.45);
 }

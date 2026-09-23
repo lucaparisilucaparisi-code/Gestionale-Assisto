@@ -422,11 +422,11 @@ async function loadData() {
             if (gInf !== undefined && gAltri !== undefined && gInf !== gAltri) {
                 // Mese con valori distinti (tipicamente giugno)
                 labelGiorni = `${gAltri} / ${gInf}`;
-                labelCoeff = `${(gAltri * CFG.coefficiente_giornaliero).toFixed(1)} / ${(gInf * CFG.coefficiente_giornaliero).toFixed(1)}`;
+                labelCoeff = `${formatNumber(gAltri * CFG.coefficiente_giornaliero, 1)} / ${formatNumber(gInf * CFG.coefficiente_giornaliero, 1)}`;
             } else {
                 const g = gInf !== undefined ? gInf : gAltri;
                 labelGiorni = g;
-                labelCoeff = (g * CFG.coefficiente_giornaliero).toFixed(1);
+                labelCoeff = formatNumber(g * CFG.coefficiente_giornaliero, 1);
             }
             document.getElementById('info-giorni').textContent = labelGiorni;
             document.getElementById('info-coefficiente').textContent = labelCoeff;
@@ -621,8 +621,8 @@ function updateDifferenzeIndicators() {
                         color: ${diffValue >= 0 ? 'var(--success)' : 'var(--danger)'};
                         background: ${diffValue >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'};
                     `;
-                    indicator.textContent = `${diffValue >= 0 ? '+' : ''}${diffPerc}%`;
-                    indicator.title = `Mese prec: ${diff.ore_precedente}h`;
+                    indicator.textContent = `${diffValue >= 0 ? '+' : ''}${formatNumero(diffPerc, 1)}%`;
+                    indicator.title = `Mese prec: ${formatNumber(diff.ore_precedente)}h`;
                     oreInput.parentElement.appendChild(indicator);
                 }
             }
@@ -662,9 +662,9 @@ async function showStoricoUtente(utenteId) {
                 html += `
                     <tr>
                         <td><strong>${s.mese_nome} ${s.anno}</strong></td>
-                        <td style="text-align:right; font-family: monospace;">${s.ore_lavorate_60.toFixed(2)}</td>
-                        <td style="text-align:right; font-family: monospace; color: var(--text-tertiary);">${s.media_prevista.toFixed(2)}</td>
-                        <td style="text-align:right; font-family: monospace;" class="${cdClass}">${s.credito_debito >= 0 ? '+' : ''}${s.credito_debito.toFixed(2)}</td>
+                        <td style="text-align:right; font-family: monospace;">${formatNumber(s.ore_lavorate_60)}</td>
+                        <td style="text-align:right; font-family: monospace; color: var(--text-tertiary);">${formatNumber(s.media_prevista)}</td>
+                        <td style="text-align:right; font-family: monospace;" class="${cdClass}">${formatOre(s.credito_debito, true)}</td>
                         <td class="text-right">${s.pasti}</td>
                     </tr>
                 `;
@@ -680,17 +680,17 @@ async function showStoricoUtente(utenteId) {
                 <div style="display: flex; gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
                     <div style="flex: 1; text-align: center;">
                         <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Tot. Ore</div>
-                        <div style="font-size: 1.2rem; font-weight: 600;">${totOre.toFixed(2)}h</div>
+                        <div style="font-size: 1.2rem; font-weight: 600;">${formatNumber(totOre)}h</div>
                     </div>
                     <div style="flex: 1; text-align: center;">
                         <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Saldo C/D</div>
                         <div style="font-size: 1.2rem; font-weight: 600; color: ${totCD >= 0 ? 'var(--success)' : 'var(--danger)'};">
-                            ${totCD >= 0 ? '+' : ''}${totCD.toFixed(2)}h
+                            ${formatOre(totCD, true)}h
                         </div>
                     </div>
                     <div style="flex: 1; text-align: center;">
                         <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Media/Mese</div>
-                        <div style="font-size: 1.2rem; font-weight: 600;">${(totOre / data.storico.length).toFixed(2)}h</div>
+                        <div style="font-size: 1.2rem; font-weight: 600;">${formatNumber(totOre / data.storico.length)}h</div>
                     </div>
                 </div>
             `;
@@ -866,7 +866,7 @@ function renderTable(data) {
                         </a>
                     </td>
                     <td class="text-muted">${row.nome_puntato}</td>
-                    <td class="numeric font-mono">${row.monte_ore_variato ? '<span title="Variazione attiva (base: ' + row.monte_ore_settimanale + 'h)" style="color:var(--warning);cursor:help;">' + row.monte_ore_effettivo + '</span>' : row.monte_ore_settimanale}</td>
+                    <td class="numeric font-mono">${row.monte_ore_variato ? '<span title="Variazione attiva (base: ' + formatNumero(row.monte_ore_settimanale) + 'h)" style="color:var(--warning);cursor:help;">' + formatNumero(row.monte_ore_effettivo) + '</span>' : formatNumero(row.monte_ore_settimanale)}</td>
                     <td class="numeric font-mono">${formatNumber(row.media_mensile_60)}</td>
                     <td class="numeric font-mono">${formatNumber(row.media_con_assenza_60)}</td>
                     <td ${warningAttr}>
@@ -1000,7 +1000,7 @@ function applicaStatoMeseChiuso(dataChiusura) {
     }
     if (chiuso) {
         const quando = new Date(dataChiusura);
-        const quandoTxt = isNaN(quando.getTime()) ? '' : ` il ${quando.toLocaleDateString('it-IT')}`;
+        const quandoTxt = isNaN(quando.getTime()) ? '' : ` il ${quando.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
         banner.innerHTML = `<div><strong>Mese chiuso${quandoTxt}.</strong> Le ore non si possono modificare: `
             + `per correggerle riapri il mese dalla <a href="/chiusura-mese">Chiusura Mese</a>.</div>`;
         banner.style.display = 'flex';
@@ -1180,7 +1180,7 @@ function handleOreChange(input) {
     if (ore60 > maxOre) {
         input.classList.add('ore-anomale');
         parentTd.setAttribute('data-warning', `Ore superiori al massimo possibile (${maxOre}h)`);
-        showToast(`Attenzione: ore inserite (${ore60.toFixed(2)}) superiori al massimo possibile (${maxOre}h)`, 'warning');
+        showToast(`Attenzione: ore inserite (${formatNumber(ore60)}) superiori al massimo possibile (${maxOre}h)`, 'warning');
     } else {
         input.classList.remove('ore-anomale');
         parentTd.removeAttribute('data-warning');

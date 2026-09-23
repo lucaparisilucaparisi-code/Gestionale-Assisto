@@ -1269,27 +1269,10 @@ select.form-control:focus {
     color: var(--primary);
 }
 
-/* === Input Glow Animation === */
+/* Niente animazione al focus dei campi: il segnale e' il contorno fermo di refine.css */
 .form-control,
 .table-input {
     position: relative;
-}
-
-.form-control:focus,
-.table-input:focus {
-    animation: inputGlow 0.4s ease;
-}
-
-@keyframes inputGlow {
-    0% {
-        box-shadow: 0 0 0 0 var(--primary-glow);
-    }
-    50% {
-        box-shadow: 0 0 0 8px var(--primary-glow), 0 0 20px rgba(10, 132, 255, 0.3);
-    }
-    100% {
-        box-shadow: 0 0 0 4px var(--primary-glow);
-    }
 }
 
 /* === Staggered List Animation === */
@@ -1592,7 +1575,6 @@ tr.utente-senza-ore {
 }
 
 .table-input:focus {
-    transform: scale(1.02);
     box-shadow: 0 0 0 3px var(--primary-glow);
     z-index: 1;
     position: relative;

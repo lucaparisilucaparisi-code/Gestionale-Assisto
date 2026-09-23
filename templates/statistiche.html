@@ -98,12 +98,12 @@
         <div class="flex items-center gap-4 justify-center flex-wrap">
             <span class="text-xs text-muted">Legenda:</span>
             <div class="flex gap-2 items-center">
-                <span class="heatmap-cell" data-level="0" style="width: 24px; height: 20px; font-size: 0.6rem;">0%</span>
-                <span class="heatmap-cell" data-level="1" style="width: 24px; height: 20px; font-size: 0.6rem;">&lt;50</span>
-                <span class="heatmap-cell" data-level="2" style="width: 24px; height: 20px; font-size: 0.6rem;">&lt;80</span>
-                <span class="heatmap-cell" data-level="3" style="width: 24px; height: 20px; font-size: 0.6rem;">&lt;95</span>
-                <span class="heatmap-cell" data-level="4" style="width: 24px; height: 20px; font-size: 0.6rem;">&lt;110</span>
-                <span class="heatmap-cell" data-level="5" style="width: 24px; height: 20px; font-size: 0.6rem;">&ge;110</span>
+                <span class="heatmap-cell" data-level="0" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">0%</span>
+                <span class="heatmap-cell" data-level="1" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">&lt;50</span>
+                <span class="heatmap-cell" data-level="2" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">&lt;80</span>
+                <span class="heatmap-cell" data-level="3" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">&lt;95</span>
+                <span class="heatmap-cell" data-level="4" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">&lt;110</span>
+                <span class="heatmap-cell" data-level="5" style="min-width: 36px; height: 22px; padding: 0 4px; font-size: 0.75rem;">&ge;110</span>
             </div>
         </div>
     </div>
@@ -501,7 +501,7 @@ async function loadHeatmap(annoScolastico) {
 
             u.mesi.forEach(m => {
                 const level = getHeatmapLevel(m.percentuale);
-                html += `<td><span class="heatmap-cell" data-level="${level}" title="${m.ore}h / ${m.ore_previste}h (${m.percentuale}%)">${m.percentuale > 0 ? Math.round(m.percentuale) : '-'}</span></td>`;
+                html += `<td><span class="heatmap-cell" data-level="${level}" title="${formatNumber(m.ore)}h / ${formatNumber(m.ore_previste)}h (${formatNumero(m.percentuale, 1)}%)">${m.percentuale > 0 ? Math.round(m.percentuale) : '-'}</span></td>`;
             });
 
             html += '</tr>';
@@ -567,10 +567,10 @@ async function loadConfrontoAnnualeDettaglio() {
                 <tr class="font-semibold" ${i === 0 ? '' : ''}>
                     <td><strong>${c.anno_scolastico}</strong><br><span class="text-muted text-xs">${mesiNomi[c.mese]} ${c.anno}</span></td>
                     <td class="text-right">${c.num_utenti}</td>
-                    <td class="text-right">${c.ore_erogate.toLocaleString('it-IT')}h</td>
+                    <td class="text-right">${formatNumber(c.ore_erogate)}h</td>
                     <td class="text-right">${formatCurrency(c.imponibile)}</td>
                     <td style="text-align: right; ${varColor}">
-                        ${c.variazione !== null ? `${varIcon} ${c.variazione > 0 ? '+' : ''}${c.variazione}%` : '-'}
+                        ${c.variazione !== null ? `${varIcon} ${c.variazione > 0 ? '+' : ''}${formatNumero(c.variazione, 1)}%` : '-'}
                     </td>
                 </tr>
             `;
@@ -634,10 +634,10 @@ function renderUtentiMenoOre(utenti) {
                     <div class="utente-scuola" title="${u.scuola}">${scuola}${u.scuola?.length > 35 ? '...' : ''}</div>
                 </div>
                 <div class="utente-ore">
-                    <div class="utente-ore-erogate">${u.ore_erogate.toFixed(1)}h</div>
-                    <div class="utente-ore-previste">su ${u.ore_previste.toFixed(1)}h</div>
+                    <div class="utente-ore-erogate">${formatNumber(u.ore_erogate)}h</div>
+                    <div class="utente-ore-previste">su ${formatNumber(u.ore_previste)}h</div>
                 </div>
-                <div class="utente-differenza">${u.differenza.toFixed(1)}h</div>
+                <div class="utente-differenza">${formatNumber(u.differenza)}h</div>
             </div>
         `;
     }).join('');
@@ -684,7 +684,7 @@ async function loadConfrontoMese() {
         container.innerHTML = `
             <div class="text-center mb-4">
                 <div style="font-size: 2rem; font-weight: 700; color: ${varColor};">
-                    ${varIcon} ${Math.abs(variazione)}%
+                    ${varIcon} ${formatNumero(Math.abs(variazione), 1)}%
                 </div>
                 <div style="font-size: 0.75rem; color: var(--text-tertiary);">
                     vs ${data.mese_precedente.mese_nome}
@@ -693,12 +693,12 @@ async function loadConfrontoMese() {
             <div class="flex justify-between gap-4">
                 <div style="text-align: center; flex: 1;">
                     <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">${MESI[mese] || 'Corrente'} ${anno}</div>
-                    <div style="font-size: 1.1rem; font-weight: 600;">${data.mese_corrente.ore.toLocaleString('it-IT')}h</div>
+                    <div style="font-size: 1.1rem; font-weight: 600;">${formatNumber(data.mese_corrente.ore)}h</div>
                     <div style="font-size: 0.7rem; color: var(--text-secondary);">${data.mese_corrente.utenti_attivi} utenti</div>
                 </div>
                 <div style="text-align: center; flex: 1;">
                     <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">${data.mese_precedente.mese_nome || 'Precedente'}</div>
-                    <div style="font-size: 1.1rem; font-weight: 600;">${data.mese_precedente.ore.toLocaleString('it-IT')}h</div>
+                    <div style="font-size: 1.1rem; font-weight: 600;">${formatNumber(data.mese_precedente.ore)}h</div>
                     <div style="font-size: 0.7rem; color: var(--text-secondary);">${data.mese_precedente.utenti_attivi} utenti</div>
                 </div>
             </div>
@@ -736,7 +736,7 @@ async function loadTopScuole() {
                     <div style="font-size: 0.7rem; color: var(--text-tertiary);">${s.num_utenti} utenti - ${escapeHtml(s.commessa)}</div>
                 </div>
                 <div class="text-right">
-                    <div style="font-weight: 600; font-size: 0.9rem;">${s.ore_erogate.toLocaleString('it-IT')}h</div>
+                    <div style="font-weight: 600; font-size: 0.9rem;">${formatNumber(s.ore_erogate)}h</div>
                 </div>
             </div>
         `).join('');
@@ -760,26 +760,26 @@ async function loadCreditoDebito() {
         container.innerHTML = `
             <div class="text-center mb-3">
                 <div style="font-size: 1.8rem; font-weight: 700; color: ${saldoColor};">
-                    ${data.saldo_netto >= 0 ? '+' : ''}${data.saldo_netto.toLocaleString('it-IT')}h
+                    ${formatOre(data.saldo_netto, true)}h
                 </div>
                 <div style="font-size: 0.75rem; color: var(--text-tertiary);">${saldoLabel}</div>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center;">
                 <div style="padding: 8px; background: rgba(16, 185, 129, 0.1); border-radius: 8px;">
                     <div style="font-size: 1.1rem; font-weight: 600; color: var(--success);">${data.utenti_in_credito}</div>
-                    <div style="font-size: 0.65rem; color: var(--text-tertiary);">In credito</div>
+                    <div style="font-size: 0.75rem; color: var(--text-tertiary);">In credito</div>
                 </div>
                 <div style="padding: 8px; background: rgba(107, 114, 128, 0.1); border-radius: 8px;">
                     <div style="font-size: 1.1rem; font-weight: 600;">${data.utenti_in_pari}</div>
-                    <div style="font-size: 0.65rem; color: var(--text-tertiary);">In pari</div>
+                    <div style="font-size: 0.75rem; color: var(--text-tertiary);">In pari</div>
                 </div>
                 <div style="padding: 8px; background: rgba(239, 68, 68, 0.1); border-radius: 8px;">
                     <div style="font-size: 1.1rem; font-weight: 600; color: var(--danger);">${data.utenti_in_debito}</div>
-                    <div style="font-size: 0.65rem; color: var(--text-tertiary);">In debito</div>
+                    <div style="font-size: 0.75rem; color: var(--text-tertiary);">In debito</div>
                 </div>
             </div>
-            <div style="margin-top: 12px; font-size: 0.7rem; color: var(--text-tertiary); text-align: center;">
-                +${data.totale_credito.toLocaleString('it-IT')}h / -${data.totale_debito.toLocaleString('it-IT')}h
+            <div style="margin-top: 12px; font-size: 0.75rem; color: var(--text-tertiary); text-align: center;">
+                +${formatNumber(data.totale_credito)}h / -${formatNumber(data.totale_debito)}h
             </div>
         `;
     } catch (e) {

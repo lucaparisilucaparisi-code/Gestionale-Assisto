@@ -172,11 +172,11 @@
     font-size: 0.85rem;
 }
 .chiusura-step.active .chiusura-step-num {
-    background: var(--primary);
+    background: var(--accent-strong);
     color: #fff;
 }
 .chiusura-step.done .chiusura-step-num {
-    background: var(--success);
+    background: var(--success-strong);
     color: #fff;
 }
 .chiusura-step-label {
@@ -370,10 +370,12 @@ async function loadStep2() {
 
         if (data.riepilogo.critiche > 0) {
             badge.className = 'badge badge-danger';
-            badge.textContent = `${data.riepilogo.critiche} critiche`;
+            const n = data.riepilogo.critiche;
+            badge.textContent = `${n} ${n === 1 ? 'critica' : 'critiche'}`;
         } else if (data.riepilogo.avvisi > 0) {
             badge.className = 'badge badge-warning';
-            badge.textContent = `${data.riepilogo.avvisi} avvisi`;
+            const n = data.riepilogo.avvisi;
+            badge.textContent = `${n} ${n === 1 ? 'avviso' : 'avvisi'}`;
         } else {
             badge.className = 'badge badge-success';
             badge.textContent = 'Nessuna anomalia';
@@ -409,26 +411,21 @@ async function loadStep3() {
         const data = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}`);
         const dati = data.dati || [];
 
-        const tot = dati.reduce((acc, d) => {
-            acc.ore60 += d.ore_lavorate_60 || 0;
-            acc.ore100 += d.ore_lavorate_100 || 0;
-            acc.imponibile += d.imponibile_100 || 0;
-            acc.iva += d.iva_100 || 0;
-            acc.totale += d.totale_100 || 0;
-            acc.pasti += d.pasti || 0;
-            return acc;
-        }, { ore60: 0, ore100: 0, imponibile: 0, iva: 0, totale: 0, pasti: 0 });
-
-        const fmtEur = v => v.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
-        const fmtH = v => v.toLocaleString('it-IT', { maximumFractionDigits: 2 });
+        // Totali presi dal server (totale_generale): gli importi sono calcolati una volta
+        // sulla somma delle ore, come in Rendicontazione e nei documenti ufficiali.
+        // Sommare qui le righe gia' arrotondate dava 1 centesimo di differenza.
+        const tot = data.totale_generale || {};
+        const fmtEur = v => formatCurrency(v);
+        // Ore (60') in ore e minuti, come in Rendicontazione ('358:19')
+        const fmtH60 = v => decimalToSessagesimal(v) || '0:00';
 
         totaliEl.innerHTML = `
             <div class="stat-card"><div class="stat-content"><div class="stat-value">${dati.length}</div><div class="stat-label">Utenti</div></div></div>
-            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtH(tot.ore60)}</div><div class="stat-label">Ore (60')</div></div></div>
-            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtH(tot.ore100)}</div><div class="stat-label">Ore (100')</div></div></div>
-            <div class="stat-card"><div class="stat-content"><div class="stat-value">${tot.pasti}</div><div class="stat-label">Pasti</div></div></div>
-            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtEur(tot.imponibile)}</div><div class="stat-label">Imponibile</div></div></div>
-            <div class="stat-card"><div class="stat-content"><div class="stat-value text-success">${fmtEur(tot.totale)}</div><div class="stat-label">Totale con IVA ${Math.round(((window.APP_CONFIG || {}).iva_percentuale ?? 0.05) * 100)}%</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtH60(tot.ore_lavorate_60)}</div><div class="stat-label">Ore (60')</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${formatNumber(tot.ore_lavorate_100)}</div><div class="stat-label">Ore (100')</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${tot.pasti || 0}</div><div class="stat-label">Pasti</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtEur(tot.imponibile_100)}</div><div class="stat-label">Imponibile</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value text-success">${fmtEur(tot.totale_100)}</div><div class="stat-label">Totale con IVA ${Math.round(((window.APP_CONFIG || {}).iva_percentuale ?? 0.05) * 100)}%</div></div></div>
         `;
 
         // Riepilogo per commessa
@@ -450,7 +447,7 @@ async function loadStep3() {
                             <tr>
                                 <td><strong>${escapeHtml(nome)}</strong></td>
                                 <td class="text-right">${v.utenti}</td>
-                                <td class="text-right">${fmtH(v.ore)}</td>
+                                <td class="text-right">${fmtH60(v.ore)}</td>
                                 <td class="text-right">${fmtEur(v.totale)}</td>
                             </tr>
                         `).join('')}
@@ -523,7 +520,7 @@ function aggiornaBadgeChiusura(data) {
     if (!btn || !badge) return;
     if (data.chiuso) {
         const d = new Date(data.data_chiusura);
-        badge.textContent = `✓ Mese chiuso il ${d.toLocaleDateString('it-IT')}`;
+        badge.textContent = `✓ Mese chiuso il ${d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
         badge.style.display = '';
         btn.textContent = 'Riapri mese';
     } else {

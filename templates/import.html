@@ -1203,7 +1203,7 @@ async function handleMigrazioneFile(e) {
             <div class="mt-2">
                 <strong>File:</strong> ${escapeHtml(file.name)}<br>
                 <strong>Versione:</strong> ${data.versione || 'N/D'}<br>
-                <strong>Data esportazione:</strong> ${data.data_esportazione ? new Date(data.data_esportazione).toLocaleString('it-IT') : 'N/D'}<br>
+                <strong>Data esportazione:</strong> ${data.data_esportazione ? escapeHtml(formatDataOraIT(data.data_esportazione)) : 'N/D'}<br>
                 <strong>Contenuto:</strong> ${data.completo
                     ? `completo (${Object.keys(data.tabelle || {}).length} tabelle: anche variazioni monte ore, personale, turni, note, DD…)`
                     : 'formato precedente: solo anagrafica, ore e calendario (la modalità "Sostituisci tutto" non è disponibile)'}<br>

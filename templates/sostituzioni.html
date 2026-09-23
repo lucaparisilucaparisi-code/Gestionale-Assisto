@@ -123,7 +123,7 @@ async function caricaSostituzioni() {
             const orario = (s.ora_inizio) ? `${s.ora_inizio}–${s.ora_fine}` : '—';
             const coperta = s.stato === 'coperta' && s.sost_cognome;
             return `<tr>
-                <td>${escapeHtml(s.data)}<div class="text-xs text-muted">${giorno}</div></td>
+                <td>${escapeHtml(formatDataIT(s.data))}<div class="text-xs text-muted">${giorno}</div></td>
                 <td class="font-mono">${orario}</td>
                 <td class="text-sm text-muted">${escapeHtml((s.scuola||'—').substring(0,32))}</td>
                 <td>${escapeHtml((s.assente_cognome||'')+' '+(s.assente_nome||''))}</td>

@@ -412,10 +412,10 @@ function renderDD() {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${dd.numero_dd || '-'}</td>
-            <td>${dd.data_dd || '-'}</td>
+            <td>${dd.data_dd ? escapeHtml(formatDataIT(dd.data_dd)) : '-'}</td>
             <td>${MESI_NOME[dd.mese_inizio]} ${dd.anno_inizio}</td>
-            <td class="text-right">${dd.ore_settimanali.toFixed(2)}</td>
-            <td class="text-right">${dd.ore_annuali.toFixed(2)}</td>
+            <td class="text-right">${formatNumber(dd.ore_settimanali)}</td>
+            <td class="text-right">${formatNumber(dd.ore_annuali)}</td>
             <td>${dd.note || '-'}</td>
             <td>
                 <button class="btn btn-secondary btn-sm" onclick="modificaDD(${dd.id})">
@@ -433,7 +433,7 @@ function renderDD() {
         tbody.appendChild(tr);
     });
 
-    document.getElementById('totale-dd-ore').innerHTML = `<strong>${totaleOre.toFixed(2)}</strong>`;
+    document.getElementById('totale-dd-ore').innerHTML = `<strong>${formatNumber(totaleOre)}</strong>`;
 }
 
 function renderTabellaReport() {
@@ -462,7 +462,7 @@ function renderTabellaReport() {
             ${progCell}
             ${erogCell}
             ${recCell}
-            <td class="text-right ${saldoClass}">${m.saldo >= 0 ? '+' : ''}${m.saldo.toFixed(2)}</td>
+            <td class="text-right ${saldoClass}">${formatOre(m.saldo, true)}</td>
             ${maxImpCell}
             ${effCell}
         `;
@@ -474,10 +474,10 @@ function renderTabellaReport() {
     const saldoClass = t.saldo >= 0 ? 'text-success' : 'text-danger';
 
     document.getElementById('tot-giorni').textContent = totGiorni;
-    document.getElementById('tot-progettato').innerHTML = `<strong>${t.progettato.toFixed(2)}</strong>`;
-    document.getElementById('tot-erogato').innerHTML = `<strong>${t.erogato.toFixed(2)}</strong>`;
-    document.getElementById('tot-recuperi').innerHTML = `<strong>${t.recuperi.toFixed(2)}</strong>`;
-    document.getElementById('tot-saldo').innerHTML = `<strong class="${saldoClass}">${t.saldo >= 0 ? '+' : ''}${t.saldo.toFixed(2)}</strong>`;
+    document.getElementById('tot-progettato').innerHTML = `<strong>${formatNumber(t.progettato)}</strong>`;
+    document.getElementById('tot-erogato').innerHTML = `<strong>${formatNumber(t.erogato)}</strong>`;
+    document.getElementById('tot-recuperi').innerHTML = `<strong>${formatNumber(t.recuperi)}</strong>`;
+    document.getElementById('tot-saldo').innerHTML = `<strong class="${saldoClass}">${formatOre(t.saldo, true)}</strong>`;
     document.getElementById('tot-max-imp').innerHTML = `<strong>${formatCurrency(t.max_imponibile)}</strong>`;
     document.getElementById('tot-effettivo').innerHTML = `<strong>${formatCurrency(t.effettivo)}</strong>`;
 
@@ -491,8 +491,8 @@ function renderTabellaReport() {
 // Prima ogni valore si cambiava con una finestra di sistema (prompt).
 function buildEditableCell(m, campo, valore, valoreAuto, isOverride, decimali) {
     const overrideClass = isOverride ? 'has-override' : '';
-    const displayValue = decimali ? Number(valore).toFixed(2) : valore;
-    const displayAuto = decimali ? Number(valoreAuto).toFixed(2) : valoreAuto;
+    const displayValue = decimali ? formatNumber(valore) : valore;
+    const displayAuto = decimali ? formatNumber(valoreAuto) : valoreAuto;
     const title = isOverride
         ? `Valore modificato (automatico: ${displayAuto}). Invio o clic per modificare; vuoto = torna all'automatico`
         : 'Invio o clic per modificare';
@@ -574,9 +574,11 @@ function avviaModificaCella(td) {
     input.type = 'text';
     input.inputMode = 'decimal';
     input.className = 'form-control cella-input';
-    input.value = decimali ? valoreAttuale.toFixed(2) : String(valoreAttuale);
+    // virgola come nella cella, senza separatore delle migliaia (la conferma legge ',' e '.')
+    input.value = decimali ? valoreAttuale.toFixed(2).replace('.', ',') : String(valoreAttuale);
     input.setAttribute('aria-label', `${CAMPO_NOMI[d.campo] || d.campo} ${MESI_NOME[d.mese]} ${d.anno}`);
-    input.title = `Automatico: ${d.currency === '1' ? formatCurrency(Number(d.auto)) : d.auto}. Vuoto = torna all'automatico`;
+    const autoTesto = d.currency === '1' ? formatCurrency(Number(d.auto)) : (decimali ? formatNumber(Number(d.auto)) : d.auto);
+    input.title = `Automatico: ${autoTesto}. Vuoto = torna all'automatico`;
     td.classList.add('in-modifica');
     if (span) span.style.display = 'none';
     td.appendChild(input);
@@ -708,7 +710,7 @@ function renderRecuperi() {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${MESI_NOME[r.mese]} ${r.anno}</td>
-            <td class="text-right">${Number(r.ore_recupero || 0).toFixed(2)}</td>
+            <td class="text-right">${formatNumber(r.ore_recupero)}</td>
             <td>${r.note ? escapeHtml(r.note) : '-'}</td>
             <td style="white-space: nowrap;">
                 <button class="btn btn-secondary btn-sm" onclick="modificaRecupero(${r.id})" title="Modifica" aria-label="Modifica recupero">
@@ -791,7 +793,7 @@ function modificaDD(ddId) {
     document.getElementById('dd-ore-settimanali').value = dd.ore_settimanali;
 
     // Mostra preview con valore attuale
-    updateOreAnnualiPreview(`Valore attuale salvato: ${dd.ore_annuali.toFixed(2)} h`);
+    updateOreAnnualiPreview(`Valore attuale salvato: ${formatNumber(dd.ore_annuali)} h`);
     document.getElementById('dd-ore-annuali').value = dd.ore_annuali;
     document.getElementById('dd-note').value = dd.note || '';
 
@@ -944,7 +946,7 @@ async function salvaRecupero() {
 
 function eliminaRecupero(id) {
     const r = (recuperiCorrenti || []).find(x => x.id === id);
-    const cosa = r ? `${MESI_NOME[r.mese]} ${r.anno} (${Number(r.ore_recupero || 0).toFixed(2)} ore)` : 'questo recupero';
+    const cosa = r ? `${MESI_NOME[r.mese]} ${r.anno} (${formatNumber(r.ore_recupero)} ore)` : 'questo recupero';
     showConfirmDialog(
         'Elimina recupero',
         `Eliminare il recupero di ${cosa}? L'operazione non si puo' annullare.`,
@@ -1037,7 +1039,7 @@ function calcolaOreAnnuali() {
     const oreAnnuali = oreDecurtate * settimane;
 
     document.getElementById('dd-ore-annuali').value = oreAnnuali.toFixed(2);
-    updateOreAnnualiPreview(`${oreSettimanali.toFixed(0)} h/sett x ${fattore.toFixed(2)} x ${settimane} sett = ${oreAnnuali.toFixed(2)} h`);
+    updateOreAnnualiPreview(`${formatNumero(oreSettimanali)} h/sett x ${formatNumber(fattore)} x ${settimane} sett = ${formatNumber(oreAnnuali)} h`);
 }
 
 function updateOreAnnualiPreview(text) {

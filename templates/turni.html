@@ -174,7 +174,7 @@ async function caricaSettimana() {
             html += '<div class="empty-state" style="padding:16px"><p class="empty-state-text text-sm">Nessun turno</p></div>';
         } else {
             html += turni.map(t => {
-                const periodo = (t.valido_da || t.valido_a) ? `<div class="text-xs text-warning">${t.valido_da || '…'} → ${t.valido_a || 'sempre'}</div>` : '';
+                const periodo = (t.valido_da || t.valido_a) ? `<div class="text-xs text-warning">${t.valido_da ? formatPeriodoIT(t.valido_da, t.valido_a) : `… → ${formatDataIT(t.valido_a)}`}</div>` : '';
                 const dove = [t.scuola, (t.ut_cognome ? t.ut_cognome + ' ' + t.ut_nome : null)].filter(Boolean).map(escapeHtml).join(' · ');
                 return `<div class="turno-item">
                     <div class="flex justify-between items-center gap-2">

@@ -581,7 +581,6 @@ html.theme-transitioning .page-title {
 }
 
 .table-input:focus {
-    transform: scale(1.05);
     z-index: 10;
     position: relative;
 }

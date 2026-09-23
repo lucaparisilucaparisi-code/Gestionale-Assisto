@@ -14,6 +14,14 @@
     --accent: var(--primary);
     --accent-hover: var(--primary-dark);
     --accent-soft: rgba(59, 130, 246, 0.12);
+    /* Blu piu' scuro per i fondi pieni con testo bianco (pulsanti principali,
+       numeri dei passi, "Accedi", "Salta al contenuto"): bianco su #3B82F6 era
+       3,7:1, su #2563EB e' 5,2:1. Bordi, icone e sottolineature restano #3B82F6. */
+    --accent-strong: #2563EB;
+    --accent-strong-hover: #1D4ED8;
+    /* Blu per i soli testi (scheda attiva, voce di menu attiva, nomi cliccabili):
+       sul fondo scuro #3B82F6 scendeva a 3,8:1 nella scheda attiva. */
+    --accent-text: var(--primary-light);
     --accent-light: #32D74B;
     --cyan: #64D2FF;
 
@@ -23,6 +31,10 @@
     --warning-light: #FFD60A;
     --danger: #FF453A;
     --danger-light: #FF6961;
+    /* Verde pieno per i fondi con testo bianco (pulsanti verdi, passi completati):
+       bianco su #16A34A era 3,3:1 e su #30D158 2,0:1; su #15803D e' 5,0:1. */
+    --success-strong: #15803D;
+    --success-strong-hover: #166534;
 
     /* Dark Theme - Truly Dark Like Apple */
     --bg-primary: #000000;
@@ -38,7 +50,7 @@
     --text-primary: #FFFFFF;
     --text-secondary: rgba(255, 255, 255, 0.82);
     --text-tertiary: rgba(255, 255, 255, 0.65);
-    --text-quaternary: rgba(255, 255, 255, 0.45);
+    --text-quaternary: rgba(255, 255, 255, 0.55);
 
     /* Borders */
     --border-color: rgba(255, 255, 255, 0.1);
@@ -136,6 +148,16 @@
     --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.25);
 
     --primary-glow: rgba(59, 130, 246, 0.25);
+
+    /* Colori di stato piu' scuri sul fondo chiaro: i toni del tema scuro
+       (#30D158, #FF9F0A, #FF453A) come testo scendevano a 1,6-3,4:1 (crediti,
+       totali, monte ore, "Salvataggio automatico attivo", "Scarica Excel").
+       Dove fanno da sfondo il testo e' bianco, che con questi toni migliora. */
+    --success: #15803D;
+    --warning: #B45309;
+    --danger: #B91C1C;
+    /* Blu dei testi sul fondo chiaro: #3B82F6 era 2,9-3,7:1, #1D4ED8 e' 5,3-6,7:1 */
+    --accent-text: #1D4ED8;
 }
 
 /* Light Theme - Componenti specifici */
@@ -153,7 +175,7 @@
 }
 
 [data-theme="light"] .nav-section-title {
-    color: #8E8E93;
+    color: #6E6E73;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -233,7 +255,7 @@
 }
 
 [data-theme="light"] .form-control::placeholder {
-    color: #8E8E93;
+    color: #6E6E73;
 }
 
 [data-theme="light"] .form-control:focus {
@@ -361,24 +383,6 @@
     border-color: rgba(10, 132, 255, 0.25);
 }
 
-[data-theme="light"] .badge-success {
-    background: rgba(52, 199, 89, 0.15);
-    color: #1B873B;
-    border-color: rgba(52, 199, 89, 0.25);
-}
-
-[data-theme="light"] .badge-warning {
-    background: rgba(255, 159, 10, 0.15);
-    color: #9A6700;
-    border-color: rgba(255, 159, 10, 0.3);
-}
-
-[data-theme="light"] .badge-danger {
-    background: rgba(255, 69, 58, 0.12);
-    color: #C41E3A;
-    border-color: rgba(255, 69, 58, 0.25);
-}
-
 [data-theme="light"] .badge-info {
     background: rgba(90, 200, 250, 0.15);
     color: #0077B5;
@@ -443,7 +447,7 @@
 }
 
 [data-theme="light"] .command-input::placeholder {
-    color: #8E8E93;
+    color: #6E6E73;
 }
 
 [data-theme="light"] .command-item {
@@ -522,7 +526,7 @@
 }
 
 [data-theme="light"] .search-input::placeholder {
-    color: #8E8E93;
+    color: #6E6E73;
 }
 
 /* Light Theme - KPI Cards */
@@ -673,7 +677,7 @@
 }
 
 [data-theme="light"] .modal-close {
-    color: #8E8E93;
+    color: #6E6E73;
 }
 
 [data-theme="light"] .modal-close:hover {
@@ -1934,7 +1938,6 @@ select.form-control {
 
 .table-input.ore-input:focus,
 .table-input.pasti-input:focus {
-    transform: scale(1.02);
     z-index: 1;
     position: relative;
 }
@@ -2469,7 +2472,7 @@ select.form-control {
 }
 
 .file-upload-text strong {
-    color: var(--primary);
+    color: var(--accent-text);
 }
 
 .file-upload input[type="file"] {
@@ -4081,13 +4084,19 @@ tr.search-match {
 }
 .wizard-passo-num {
     width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
-    background: var(--primary); color: #fff; font-weight: 700;
+    background: var(--accent-strong); color: #fff; font-weight: 700;
     display: flex; align-items: center; justify-content: center;
 }
-.wizard-passo.fatto .wizard-passo-num { background: var(--success); }
+.wizard-passo.fatto .wizard-passo-num { background: var(--success-strong); }
 .wizard-ok { color: var(--success); font-weight: 600; align-self: center; }
 .wizard-diff { color: var(--warning); font-weight: 600; }
 .wizard-riga-archivia td:not(:last-child) { opacity: 0.55; text-decoration: line-through; }
+/* Casella "Archivia": si clicca tutta la cella, non solo il quadratino */
+.table td.wizard-cella-archivia { padding: 0; height: 1px; }
+.wizard-archivia-label {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    height: 100%; min-height: 44px; padding: 8px 12px; cursor: pointer;
+}
 
 /* ==================== MODIFICA IN CELLA (Reportistica DD) ==================== */
 .editable-cell:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }

@@ -532,15 +532,15 @@ async function loadAssegnazioni() {
 function renderAssegnazioni() {
     const b = assegnazioniData.bilancio || { monte_ore: 0, assegnate: 0, differenza: 0, stato: 'ok' };
     document.getElementById('badge-assegnazioni').textContent = assegnazioniData.assegnazioni.length;
-    document.getElementById('bil-monte').textContent = b.monte_ore + 'h';
-    document.getElementById('bil-assegnate').textContent = b.assegnate + 'h';
+    document.getElementById('bil-monte').textContent = formatNumero(b.monte_ore) + 'h';
+    document.getElementById('bil-assegnate').textContent = formatNumero(b.assegnate) + 'h';
     const stato = document.getElementById('bil-stato');
     if (b.stato === 'ok') {
         stato.innerHTML = '<span class="badge badge-success">Bilanciato</span>';
     } else if (b.stato === 'sotto') {
-        stato.innerHTML = `<span class="badge badge-warning">Mancano ${Math.abs(b.differenza)}h da assegnare</span>`;
+        stato.innerHTML = `<span class="badge badge-warning">Mancano ${formatNumero(Math.abs(b.differenza))}h da assegnare</span>`;
     } else {
-        stato.innerHTML = `<span class="badge badge-danger">${b.differenza}h oltre il monte ore</span>`;
+        stato.innerHTML = `<span class="badge badge-danger">${formatNumero(b.differenza)}h oltre il monte ore</span>`;
     }
 
     const c = document.getElementById('lista-assegnazioni');
@@ -551,11 +551,11 @@ function renderAssegnazioni() {
     c.innerHTML = `<div class="table-responsive"><table class="table"><thead><tr>
         <th>Operatore</th><th class="text-right">Ore/sett.</th><th>Validità</th><th></th></tr></thead><tbody>
         ${assegnazioniData.assegnazioni.map(a => {
-            const periodo = (a.valido_da || a.valido_a)
-                ? `${a.valido_da || '…'} → ${a.valido_a || 'sempre'}` : 'Sempre';
+            const periodo = !(a.valido_da || a.valido_a) ? 'Sempre'
+                : (a.valido_da ? formatPeriodoIT(a.valido_da, a.valido_a) : `… → ${formatDataIT(a.valido_a)}`);
             return `<tr ${a.dip_attivo ? '' : 'style="opacity:.55"'}>
                 <td><a href="/dipendente/${a.dipendente_id}">${escapeHtml(a.dip_cognome)} ${escapeHtml(a.dip_nome)}</a></td>
-                <td class="text-right font-mono">${a.ore_settimanali}</td>
+                <td class="text-right font-mono">${formatNumero(a.ore_settimanali)}</td>
                 <td class="text-muted text-sm">${escapeHtml(periodo)}${a.note ? ' · ' + escapeHtml(a.note) : ''}</td>
                 <td class="text-right">
                     <button class="btn btn-sm btn-secondary" onclick='apriAssegnazione(${a.id})'>Modifica</button>
@@ -670,7 +670,7 @@ function renderAnagrafica(data) {
             </div>
             <div class="info-item">
                 <div class="info-label">Monte Ore Settimanale (base)</div>
-                <div class="info-value">${u.monte_ore_settimanale}h <span id="variazioni-badge"></span></div>
+                <div class="info-value">${formatNumero(u.monte_ore_settimanale)}h <span id="variazioni-badge"></span></div>
             </div>
             <div class="info-item">
                 <div class="info-label">Stato</div>
@@ -681,11 +681,11 @@ function renderAnagrafica(data) {
             </div>
             <div class="info-item">
                 <div class="info-label">Attivo Da</div>
-                <div class="info-value">${u.data_inizio || 'Non specificato'}</div>
+                <div class="info-value">${u.data_inizio ? escapeHtml(formatDataIT(u.data_inizio)) : 'Non specificato'}</div>
             </div>
             <div class="info-item">
                 <div class="info-label">Attivo Fino A</div>
-                <div class="info-value">${u.data_fine || 'Non specificato'}</div>
+                <div class="info-value">${u.data_fine ? escapeHtml(formatDataIT(u.data_fine)) : 'Non specificato'}</div>
             </div>
         </div>
     `;
@@ -694,7 +694,7 @@ function renderAnagrafica(data) {
     document.getElementById('riepilogo-ore').innerHTML = `
         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
             <div class="stat-card">
-                <div class="stat-value">${t.totale_ore}</div>
+                <div class="stat-value">${formatNumber(t.totale_ore)}</div>
                 <div class="stat-label">Ore Totali</div>
             </div>
             <div class="stat-card">
@@ -706,7 +706,7 @@ function renderAnagrafica(data) {
                 <div class="stat-label">Mesi Attivi</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">${t.media_ore_mese}</div>
+                <div class="stat-value">${formatNumber(t.media_ore_mese)}</div>
                 <div class="stat-label">Media Ore/Mese</div>
             </div>
         </div>
@@ -770,8 +770,8 @@ function renderDocumenti(documenti) {
             <td><span class="badge">${escapeHtml(d.tipo_documento)}</span></td>
             <td>${escapeHtml(d.nome_originale)}</td>
             <td>${escapeHtml(d.descrizione || '-')}</td>
-            <td class="${scadenzaClass}">${d.data_scadenza || '-'}</td>
-            <td>${new Date(d.data_caricamento).toLocaleDateString('it')}</td>
+            <td class="${scadenzaClass}">${d.data_scadenza ? escapeHtml(formatDataIT(d.data_scadenza)) : '-'}</td>
+            <td>${escapeHtml(formatDataIT(d.data_caricamento))}</td>
             <td>
                 <button class="btn btn-ghost btn-sm" onclick="downloadDocumento(${d.id})" title="Scarica">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
@@ -803,7 +803,7 @@ function renderNote(note) {
         html += `<div class="note-card priorita-${n.priorita}">
             <div class="note-header">
                 <span class="note-tipo">${escapeHtml(n.tipo)}</span>
-                <span class="note-data">${new Date(n.data_creazione).toLocaleString('it')}</span>
+                <span class="note-data">${escapeHtml(formatDataOraIT(n.data_creazione))}</span>
             </div>
             <div class="note-contenuto">${escapeHtml(n.contenuto)}</div>
             <div class="note-actions">
@@ -828,8 +828,8 @@ function renderAssenze(assenze) {
     assenze.forEach(a => {
         html += `<tr>
             <td><span class="badge">${escapeHtml(a.tipo)}</span></td>
-            <td>${escapeHtml(a.data_inizio)}</td>
-            <td>${escapeHtml(a.data_fine || '-')}</td>
+            <td>${escapeHtml(formatDataIT(a.data_inizio))}</td>
+            <td>${a.data_fine ? escapeHtml(formatDataIT(a.data_fine)) : '-'}</td>
             <td>${escapeHtml(a.motivazione || '-')}</td>
             <td>${escapeHtml(a.note || '-')}</td>
             <td>
@@ -861,7 +861,7 @@ function renderStorico(storico) {
     storico.forEach(s => {
         html += `<tr>
             <td>${MESI[s.mese]} ${s.anno}</td>
-            <td><strong>${s.ore_lavorate_60 || 0}h</strong></td>
+            <td><strong>${formatNumber(s.ore_lavorate_60)} h</strong></td>
             <td>${s.pasti || 0}</td>
             <td>${s.giorni_lavorativi || '-'}</td>
             <td>${escapeHtml(s.note || '-')}</td>
@@ -886,13 +886,13 @@ function renderBudget(budget) {
 
         document.getElementById('stato-budget').innerHTML = `
             <div class="stat-card mb-4">
-                <div class="stat-value">${budget.ore_erogate}h</div>
-                <div class="stat-label">Ore Utilizzate su ${budget.budget_annuale}h</div>
+                <div class="stat-value">${formatNumber(budget.ore_erogate)} h</div>
+                <div class="stat-label">Ore Utilizzate su ${formatNumber(budget.budget_annuale)} h</div>
                 <div class="progress-bar">
                     <div class="progress-fill ${progressClass}" style="width: ${Math.min(percentuale, 100)}%"></div>
                 </div>
                 <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary);">
-                    ${percentuale}% utilizzato - ${budget.ore_rimanenti}h rimanenti
+                    ${formatNumero(percentuale, 1)}% utilizzato - ${formatNumber(budget.ore_rimanenti)} h rimanenti
                 </div>
             </div>
         `;

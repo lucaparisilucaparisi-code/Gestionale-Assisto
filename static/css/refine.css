@@ -57,11 +57,11 @@ body::before { background: none !important; }
 .btn::after, .btn::before { display: none !important; }   /* via shimmer/ripple decorativi */
 
 .btn-primary {
-    background: var(--accent) !important;
-    border: 1px solid var(--accent) !important;
+    background: var(--accent-strong) !important;
+    border: 1px solid var(--accent-strong) !important;
     color: #fff !important;
 }
-.btn-primary:hover { background: var(--accent-hover) !important; border-color: var(--accent-hover) !important; }
+.btn-primary:hover { background: var(--accent-strong-hover) !important; border-color: var(--accent-strong-hover) !important; }
 
 .btn-secondary {
     background: var(--bg-tertiary) !important;
@@ -70,10 +70,15 @@ body::before { background: none !important; }
 }
 .btn-secondary:hover { background: var(--bg-card-solid) !important; border-color: var(--border-light) !important; }
 
-.btn-success { background: #16a34a !important; border: 1px solid #16a34a !important; color: #fff !important; }
-.btn-success:hover { background: #15893f !important; }
+.btn-success { background: var(--success-strong) !important; border: 1px solid var(--success-strong) !important; color: #fff !important; }
+.btn-success:hover { background: var(--success-strong-hover) !important; border-color: var(--success-strong-hover) !important; }
 .btn-danger  { background: #dc2626 !important; border: 1px solid #dc2626 !important; color: #fff !important; }
 .btn-danger:hover { background: #c11f1f !important; }
+/* "Salta al contenuto" (compare col tasto Tab): nel tema chiaro il colore dei link
+   (#0055D4) finiva sul fondo blu, 1,8:1. */
+.skip-link, .skip-link:hover { background: var(--accent-strong) !important; color: #fff !important; }
+/* Suggerimento sulle ore anomale: testo scuro sull'arancio (bianco era 2,1:1) */
+[data-warning]::before { background: #FF9F0A !important; color: #1C1C1E !important; }
 
 /* Marchio: quadratino in tinta accento (niente gradiente sgargiante) e scritta
    "Assisto" a tinta unita (theme-premium.css la sfumava fino al viola). */
@@ -115,9 +120,14 @@ body::before { background: none !important; }
     font-weight: 600 !important;
 }
 .table tbody tr:hover { background: var(--accent-soft) !important; }
+/* Nomi cliccabili nelle tabelle: blu dei testi (sul fondo scuro #3B82F6 era 3,7:1) */
+.table td a:not(.btn) { color: var(--accent-text); }
 /* Colonne di numeri: .table th/td{text-align:left} (style.css) e' piu' specifica di
    .text-right/.text-center e annullava l'allineamento chiesto dalle pagine. */
 .table th.text-right, .table td.text-right { text-align: right !important; }
+/* note tra parentesi nelle intestazioni ('(Infanzia)'): stessa misura e colore del
+   titolo, non 'smaller' (erano 9,3px e in piu' semitrasparenti) */
+.table th small { font-size: inherit; }
 .table th.text-center, .table td.text-center { text-align: center !important; }
 /* Numeri sempre tabellari e ben allineati */
 .table td, .stat-value, .kpi-value, .stat-content .stat-value,
@@ -140,6 +150,14 @@ body::before { background: none !important; }
 .badge-success { background: rgba(22,163,74,.15) !important;  color: #4ade80 !important; }
 .badge-warning { background: rgba(245,158,11,.15) !important; color: #fbbf24 !important; }
 .badge-danger  { background: rgba(220,38,38,.15) !important;  color: #f87171 !important; }
+/* Tema chiaro: fondo pastello e testo scuro della stessa famiglia (6,4-6,8:1).
+   Con i colori qui sopra 'Attivo', 'Marzo', '12 senza ore', '0%' scendevano a 1,2-2,2:1. */
+[data-theme="light"] .badge-success { background: #DCFCE7 !important; color: #166534 !important; border-color: #BBF7D0; }
+[data-theme="light"] .badge-warning { background: #FEF3C7 !important; color: #92400E !important; border-color: #FDE68A; }
+[data-theme="light"] .badge-danger  { background: #FEE2E2 !important; color: #991B1B !important; border-color: #FECACA; }
+/* Testo arancio dentro i riquadri azzurri ("Le righe in giallo..."): li' #B45309 arriva
+   solo a 4,0:1, serve la tinta piu' scura della stessa famiglia (5,7:1). */
+[data-theme="light"] .alert-info .text-warning { color: #92400E !important; }
 
 /* ---------- 7. Barra filtri coerente ---------- */
 .filters { gap: var(--sp-3); align-items: flex-end; }
@@ -165,6 +183,17 @@ select.form-control, .filter-group select {
     border-color: var(--accent) !important;
     box-shadow: 0 0 0 3px var(--accent-soft) !important;
     outline: none !important;
+}
+/* Focus da tastiera (Tab): lo stesso contorno blu fermo su tutti i campi, come su
+   pulsanti e link. Prima tendine e filtri avevano solo un alone al 12% quasi
+   invisibile sul fondo scuro, 'Filtra' un bagliore di un altro blu e il campo ore
+   si ingrandiva a ogni passaggio. */
+input:focus-visible, select:focus-visible, textarea:focus-visible,
+.form-control:focus-visible, .table-input:focus-visible {
+    outline: 2px solid var(--accent) !important;
+    outline-offset: 1px !important;
+    border-color: var(--accent) !important;
+    box-shadow: none !important;
 }
 
 /* ---------- 8. Stat / KPI card: piatte ---------- */
@@ -195,9 +224,12 @@ select.form-control, .filter-group select {
 /* ---------- 9. Topbar / sidebar: piu' quieti ---------- */
 .topbar { backdrop-filter: none !important; background: var(--bg-primary) !important; border-bottom: 1px solid var(--border-color); }
 .sidebar { background: var(--bg-sidebar) !important; border-right: 1px solid var(--border-color); }
-.nav-link.active { background: var(--accent-soft) !important; color: var(--accent) !important; }
-.nav-link.active svg { color: var(--accent) !important; }
-.nav-section-title { letter-spacing: 0.08em; font-size: 0.66rem; }
+.nav-link.active { background: var(--accent-soft) !important; color: var(--accent-text) !important; }
+.nav-link.active svg { color: var(--accent-text) !important; }
+/* Scritte piccole del menu ('PRINCIPALE', 'OEPAC · GESTIONALE', versione): erano
+   10,6-10,9px, ora 12px come il resto dei testi secondari. */
+.nav-section-title { letter-spacing: 0.08em; font-size: 0.75rem; }
+.brand-tagline, .sidebar-footer-text { font-size: 0.75rem; }
 
 /* Menu laterale compatto: con gli spazi di style.css era alto 828px e su un
    portatile 1366x768 (o 1440x900) 'Import Excel' e 'Impostazioni' finivano
@@ -227,7 +259,11 @@ select.form-control, .filter-group select {
 }
 
 /* ---------- 10. Tabs (report, import, dettaglio utente) ---------- */
-.tab.active { color: var(--accent) !important; border-bottom-color: var(--accent) !important; }
+.tab.active { color: var(--accent-text) !important; border-bottom-color: var(--accent) !important; }
+/* Tema chiaro: le schede fatte con link (Report, Impostazioni) prendevano il blu dei
+   link (#0055D4) e sembravano piu' "selezionate" di quella attiva. */
+[data-theme="light"] a.tab:not(.active) { color: var(--text-secondary) !important; }
+[data-theme="light"] a.tab:not(.active):hover { color: var(--text-primary) !important; }
 
 /* ---------- 10b. Breadcrumb ---------- */
 .breadcrumb {
@@ -322,6 +358,10 @@ details.section[open] > summary::before { transform: rotate(90deg); }
 @media (max-width: 860px) {
     .grid-2, .grid-3 { grid-template-columns: 1fr; }
 }
+
+/* Caselle di spunta un po' piu' grandi (13px di base del browser) e nel blu dell'app.
+   :where() non pesa: vince qualunque regola piu' precisa (interruttori, ecc.). */
+:where(input[type="checkbox"]) { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
 
 /* ---------- 14. Larghezza della pagina ---------- */
 /* .main-content e' un elemento flex: senza min-width:0 si allarga fino alla tabella
