@@ -1,0 +1,407 @@
+/* =====================================================================
+   COMPONENTI (components.css)
+   Regole ripristinate da advanced-features.css (rimosso in v1.8.0 perche' in
+   gran parte inutilizzato): qui restano SOLO i componenti davvero usati dalle
+   pagine - report rapidi (Dashboard, Chiusura Mese), filtri avanzati (Report),
+   righe di validazione, heatmap (Statistiche). Il file e' caricato nella stessa
+   posizione della cascata del vecchio file, cosi' l'aspetto e' identico.
+   ===================================================================== */
+
+.stat-card {
+    position: relative;
+}
+
+.heatmap-cell {
+    border-radius: 2px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    cursor: pointer;
+}
+
+.heatmap-cell:hover {
+    transform: scale(1.3);
+    box-shadow: 0 0 8px rgba(10, 132, 255, 0.5);
+    z-index: 10;
+}
+
+@media print {
+    .sidebar, .topbar, .toast-container, .command-palette-overlay, .global-loading-overlay, .filters, .scroll-indicator {
+        display: none !important;
+    }
+    .app-container {
+        display: block !important;
+    }
+    .main-content {
+        margin-left: 0 !important;
+        padding: 0 !important;
+    }
+    .content-area {
+        padding: 0 !important;
+    }
+    .card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+        background: white !important;
+        margin-bottom: 20px;
+    }
+    .card-header {
+        background: #f5f5f5 !important;
+        border-bottom: 1px solid #ddd !important;
+    }
+    .table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+    }
+    .table th, .table td {
+        border: 1px solid #ddd !important;
+        padding: 8px !important;
+        background: white !important;
+        color: black !important;
+    }
+    .table th {
+        background: #f5f5f5 !important;
+        font-weight: bold !important;
+    }
+    .table tbody tr:nth-child(even) {
+        background: #fafafa !important;
+    }
+    .stat-card {
+        background: white !important;
+        border: 1px solid #ddd !important;
+    }
+    .stat-value {
+        color: black !important;
+    }
+    .stat-label {
+        color: #666 !important;
+    }
+    .badge {
+        background: #eee !important;
+        color: black !important;
+        border: 1px solid #ccc !important;
+    }
+}
+
+#email-report-modal .modal {
+    max-width: 480px;
+}
+
+#email-report-modal .form-group {
+    margin-bottom: 16px;
+}
+
+.topbar-btn {
+    position: relative;
+}
+
+[data-theme="light"] .heatmap-cell:hover {
+    box-shadow: 0 0 8px rgba(10, 132, 255, 0.4);
+}
+
+.report-quick-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+}
+
+.report-quick-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 12px;
+    border-radius: var(--radius);
+    text-decoration: none;
+    transition: all var(--transition-fast);
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.report-quick-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+    border-color: var(--primary);
+}
+
+.report-quick-card.excel {
+    border-left: 3px solid #30D158;
+}
+
+.report-quick-card.excel:hover {
+    background: rgba(48, 209, 88, 0.08);
+}
+
+.report-quick-card.municipale {
+    border-left: 3px solid #0A84FF;
+}
+
+.report-quick-card.municipale:hover {
+    background: rgba(10, 132, 255, 0.08);
+}
+
+.report-quick-card.dipartimentale {
+    border-left: 3px solid #BF5AF2;
+}
+
+.report-quick-card.dipartimentale:hover {
+    background: rgba(191, 90, 242, 0.08);
+}
+
+.report-quick-card.locale {
+    border-left: 3px solid #FF9F0A;
+}
+
+.report-quick-card.locale:hover {
+    background: rgba(255, 159, 10, 0.08);
+}
+
+.report-quick-card.stats {
+    border-left: 3px solid #64D2FF;
+}
+
+.report-quick-card.stats:hover {
+    background: rgba(100, 210, 255, 0.08);
+}
+
+.report-quick-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+}
+
+.report-quick-icon svg {
+    width: 28px;
+    height: 28px;
+}
+
+.report-quick-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: center;
+}
+
+.report-quick-desc {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    text-align: center;
+    margin-top: 2px;
+}
+
+.validation-item {
+    transition: background-color var(--transition-fast);
+}
+
+.validation-item:hover {
+    background-color: var(--bg-hover, rgba(255,255,255,0.02));
+}
+
+.validation-item:last-child {
+    border-bottom: none;
+}
+
+.validation-success {
+    background: linear-gradient(135deg, rgba(48, 209, 88, 0.05), rgba(48, 209, 88, 0.02));
+}
+
+.heatmap-container {
+    overflow-x: auto;
+    padding-bottom: 8px;
+}
+
+.heatmap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+}
+
+.heatmap-table th, .heatmap-table td {
+    padding: 6px 8px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.heatmap-table th {
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.heatmap-table th:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+}
+
+.heatmap-table td:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background: var(--bg-secondary);
+    font-weight: 500;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.heatmap-cell {
+    width: 50px;
+    height: 32px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 500;
+    transition: transform var(--transition-fast);
+}
+
+.heatmap-cell:hover {
+    transform: scale(1.1);
+    z-index: 10;
+}
+
+.heatmap-cell[data-level="0"] { background: rgba(107, 114, 128, 0.2); color: var(--text-tertiary); }
+
+.heatmap-cell[data-level="1"] { background: rgba(239, 68, 68, 0.3); color: #fff; }
+
+.heatmap-cell[data-level="2"] { background: rgba(245, 158, 11, 0.4); color: #fff; }
+
+.heatmap-cell[data-level="3"] { background: rgba(245, 158, 11, 0.6); color: #fff; }
+
+.heatmap-cell[data-level="4"] { background: rgba(16, 185, 129, 0.5); color: #fff; }
+
+.heatmap-cell[data-level="5"] { background: rgba(16, 185, 129, 0.8); color: #fff; }
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 150px;
+}
+
+.filter-group label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.filter-details {
+    margin-top: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-tertiary);
+}
+
+.filter-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+
+.filter-summary::-webkit-details-marker {
+    display: none;
+}
+
+.filter-summary::after {
+    content: '';
+    margin-left: auto;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid var(--text-tertiary);
+    transition: transform var(--transition-fast);
+}
+
+.filter-details[open] .filter-summary::after {
+    transform: rotate(180deg);
+}
+
+.filter-summary:hover {
+    color: var(--text-primary);
+}
+
+.filter-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--primary);
+    border-radius: 10px;
+}
+
+.filter-content {
+    padding: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+@media (max-width: 768px) {
+    .report-quick-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .filter-group {
+        width: 100%;
+    }
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .flex.gap-4 {
+        flex-direction: column;
+    }
+    .flex.gap-4 > .card {
+        min-width: 100% !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .report-quick-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    .report-quick-card {
+        padding: 12px 8px;
+    }
+    .report-quick-icon {
+        width: 32px;
+        height: 32px;
+    }
+    .report-quick-icon svg {
+        width: 22px;
+        height: 22px;
+    }
+    .report-quick-title {
+        font-size: 0.75rem;
+    }
+    .report-quick-desc {
+        font-size: 0.65rem;
+    }
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

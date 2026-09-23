@@ -247,7 +247,10 @@ def test_nessuna_richiesta_a_font_esterni_e_asset_morti_rimossi():
         assert not os.path.exists(os.path.join(PROJECT_DIR, f)), f
     base = _leggi('templates/base.html')
     assert 'advanced-features' not in base and 'chart.umd.min.js' not in base
-    # le regole heatmap sopravvivono in style.css e le pagine con grafici caricano Chart.js
-    assert '.heatmap-table' in _leggi('static/css/style.css')
+    # le regole ancora usate (heatmap, report rapidi, filtri avanzati) vivono in components.css
+    css = _leggi('static/css/components.css')
+    for cls in ('.heatmap-table', '.report-quick-card', '.report-quick-icon', '.filter-details', '.validation-item'):
+        assert cls in css, cls
+    assert 'components.css' in base
     for t in ('templates/index.html', 'templates/statistiche.html', 'templates/utente_dettaglio.html'):
         assert 'chart.umd.min.js' in _leggi(t), t

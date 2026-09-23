@@ -81,6 +81,10 @@ reimplementarla inline (a schermo, in SQL o negli export).
   un test lo verifica. Le chiamate API passano da `apiCall` (errori con `code`/`status`).
 - I token di colore (un solo blu primario, `--primary`, con `--accent` come alias)
   vivono in `static/css/style.css`; `refine.css` è il layer finale e non ridefinisce colori.
+- Ordine dei fogli (conta per la cascata): style → premium-effects → ux-enhancements →
+  components → theme-premium → refine. Prima di togliere o rinominare CSS: il test
+  `tests/test_css_integrita.py` segnala le classi usate dalle pagine rimaste senza stile,
+  ma confronta comunque le schermate prima/dopo (il test non vede i problemi di cascata).
 
 ## Sviluppo
 
