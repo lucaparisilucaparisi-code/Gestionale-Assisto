@@ -29,7 +29,7 @@ def _blocchi(css, selettore):
 
 
 def test_una_sola_animazione_d_ingresso_e_menu_senza_alone():
-    premium = _leggi('static/css/premium-effects.css')
+    premium = _leggi('static/css/components.css')   # contiene l'ex premium-effects.css
     assert 'animation: pageSlideIn' not in premium and '@keyframes pageSlideIn' not in premium
     style = _leggi('static/css/style.css')
     for sel in ('.nav-link.active', '[data-theme="light"] .nav-link.active'):
@@ -75,7 +75,7 @@ def test_pagina_di_accesso_senza_sfumature_ne_aloni():
             assert 'box-shadow' not in corpo and 'transform' not in corpo, sel
     # campi del login come quelli dell'app (grigio pieno = disattivato)
     assert re.search(r'\.auth-field input \{[^}]*background: var\(--bg-input\)', auth)
-    premium = _leggi('static/css/theme-premium.css')
+    premium = _leggi('static/css/refine.css')   # contiene l'ex theme-premium.css
     titolo = _blocchi(premium, '.auth-title')
     assert titolo and all('gradient' not in c and 'background' not in c for c in titolo)
 
@@ -183,7 +183,7 @@ def test_scheda_utente_senza_componenti_comuni_ridefiniti():
     refine = _leggi('static/css/refine.css')
     corpo = re.search(r'\.ud-budget \.progress-bar \{([^}]*)\}', refine).group(1)
     assert 'background: var(--bg-card-solid)' in corpo and 'height: 8px' in corpo
-    assert '[data-theme="light"] .progress-fill' not in _leggi('static/css/ux-enhancements.css')
+    assert '[data-theme="light"] .progress-fill' not in _leggi('static/css/components.css')
     # niente caratteri scritti a mano su avvisi ed etichette
     assert 'style="font-size:0.75rem;cursor:help;"' not in ud
     assert 'class="alert alert-info" style=' not in _leggi('templates/utenti.html')

@@ -1,4 +1,362 @@
 /* =====================================================================
+   REFINE.CSS - layer finale, caricato per ultimo da TUTTE le pagine
+   (app, login e setup). Riunisce, nello stesso ordine di cascata:
+     1. ex theme-premium.css - vetro leggero, bordi, badge, pagina di accesso
+     2. refine.css           - design system "calmo & premium" (sotto)
+   ===================================================================== */
+
+/* ====================== PARTE: ex theme-premium.css ====================== */
+
+/* ==================== WORLDQUANT-INSPIRED AESTHETIC (LITE) ==================== */
+/* Layer finale ottimizzato per performance:
+   - Aurora mesh STATICO (niente animazione continua)
+   - Niente noise SVG
+   - backdrop-filter ridotto al minimo indispensabile
+   - GPU hints solo dove serve davvero
+   Mantiene il look premium: gradient text, bordi luminosi su hover,
+   glassmorphism leggero su topbar/sidebar/auth-card.
+*/
+
+:root {
+    --aurora-1: rgba(10, 132, 255, 0.16);
+    --aurora-2: rgba(191, 90, 242, 0.12);
+    --aurora-3: rgba(48, 209, 88, 0.08);
+    --aurora-4: rgba(100, 210, 255, 0.10);
+
+    --gradient-hero: linear-gradient(135deg, #ffffff 0%, #a8c7ff 40%, #bf5af2 100%);
+    --gradient-accent: linear-gradient(135deg, var(--primary) 0%, #BF5AF2 100%);
+    --gradient-border-card: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02));
+}
+
+[data-theme="light"] {
+    --aurora-1: rgba(10, 132, 255, 0.10);
+    --aurora-2: rgba(191, 90, 242, 0.07);
+    --aurora-3: rgba(48, 209, 88, 0.05);
+    --aurora-4: rgba(100, 210, 255, 0.07);
+    --gradient-hero: linear-gradient(135deg, var(--primary) 0%, #5E2BA3 60%, #0b1a2d 100%);
+    --gradient-border-card: linear-gradient(135deg, rgba(0,0,0,0.08), rgba(0,0,0,0.02));
+}
+
+/* ==================== AURORA MESH STATICO ==================== */
+/* Niente animazione: la GPU non viene stressata.
+   Lo sfondo e' fisso, elegante, con quattro bolle radiali. */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Il gradient del container originale viene ridotto */
+.app-container::before { opacity: 0.35; }
+
+/* ==================== HERO TYPOGRAPHY ==================== */
+
+.page-subtitle {
+    letter-spacing: -0.005em;
+}
+
+/* ==================== CARDS (senza blur: solidi con trasparenza) ==================== */
+.card {
+    position: relative;
+    will-change: auto;
+}
+
+/* Bordo gradient SOLO su hover: nessun pseudo-element sempre attivo */
+.card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(10, 132, 255, 0.28);
+}
+
+/* ==================== STAT CARDS ==================== */
+.stat-value {
+    font-weight: 700;
+}
+
+.stat-label {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+}
+
+/* Linea accent: solo un bordo statico, niente pseudo animato */
+.stat-card {
+    position: relative;
+    isolation: isolate;
+}
+
+/* ==================== BUTTONS ==================== */
+.btn-primary {
+    box-shadow: 0 4px 12px -4px rgba(10, 132, 255, 0.5);
+    letter-spacing: -0.005em;
+    font-weight: 600;
+}
+
+.btn-primary:hover {
+    box-shadow: 0 6px 18px -6px rgba(10, 132, 255, 0.65);
+    filter: brightness(1.05);
+}
+
+.btn-primary:active { filter: brightness(0.98); }
+
+/* Secondary senza blur */
+.btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning) {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    transition: background 150ms ease, border-color 150ms ease;
+}
+
+.btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning):hover {
+    background: rgba(255,255,255,0.09);
+    border-color: rgba(255,255,255,0.16);
+}
+
+[data-theme="light"] .btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning) {
+    background: rgba(11, 26, 45, 0.04);
+    border-color: rgba(11, 26, 45, 0.08);
+}
+
+/* ==================== TOPBAR & SIDEBAR ==================== */
+/* Blur leggero, solo qui: superfici piccole e fisse, impatto minimo */
+.topbar {
+    -webkit-backdrop-filter: blur(10px);
+}
+
+[data-theme="light"] .topbar {
+    border-bottom: 1px solid rgba(11, 26, 45, 0.06);
+}
+
+[data-theme="light"] .sidebar {
+    border-right: 1px solid rgba(11, 26, 45, 0.06);
+}
+
+/* Nav link accent */
+.nav-link {
+    position: relative;
+}
+
+.nav-link::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 10px; bottom: 10px;
+    width: 2px;
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+
+.nav-link.active::before,
+.nav-link:hover::before {
+    opacity: 1;
+}
+
+/* ==================== LOGO / BRAND ==================== */
+.brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.brand-mark::after {
+    content: 'A';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1rem;
+    color: white;
+    letter-spacing: -0.02em;
+}
+
+.brand-mark--sm {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+}
+
+.brand-mark--sm::after { font-size: 0.85rem; }
+
+.brand-name {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-size: 1.05rem;
+}
+
+.brand-name--sm { font-size: 0.95rem; }
+
+.brand-tagline {
+    display: block;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+    font-weight: 500;
+}
+
+.brand-text { display: inline-flex; flex-direction: column; line-height: 1.15; }
+
+.sidebar-logo, .topbar-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: inherit;
+}
+
+/* ==================== FORM / INPUT ==================== */
+/* stesso aspetto di .form-control:focus (refine.css): bordo blu e alone tenue,
+   senza il bagliore di 18px in un altro blu che aveva solo 'Filtra' */
+.form-control:focus,
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ==================== SCROLLBAR ==================== */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.08);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); background-clip: padding-box; border: 2px solid transparent; }
+
+[data-theme="light"] *::-webkit-scrollbar-thumb { background: rgba(11,26,45,0.12); background-clip: padding-box; border: 2px solid transparent; }
+[data-theme="light"] *::-webkit-scrollbar-thumb:hover { background: rgba(11,26,45,0.22); background-clip: padding-box; border: 2px solid transparent; }
+
+/* ==================== TABLE ==================== */
+.table th {
+    text-transform: uppercase;
+}
+
+/* ==================== BADGES ==================== */
+.badge {
+    letter-spacing: 0.02em;
+}
+
+/* ==================== ANIMAZIONI INGRESSO (solo 1 volta) ==================== */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translate3d(0, 10px, 0); }
+    to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.page-header,
+.stats-grid > * {
+    animation: fadeInUp 400ms ease both;
+}
+
+.stats-grid > *:nth-child(1) { animation-delay: 30ms; }
+.stats-grid > *:nth-child(2) { animation-delay: 60ms; }
+.stats-grid > *:nth-child(3) { animation-delay: 90ms; }
+.stats-grid > *:nth-child(4) { animation-delay: 120ms; }
+.stats-grid > *:nth-child(5) { animation-delay: 150ms; }
+.stats-grid > *:nth-child(6) { animation-delay: 180ms; }
+
+@media (prefers-reduced-motion: reduce) {
+    .page-header,
+    .stats-grid > * { animation: none; }
+}
+
+/* ==================== FOCUS VISIBLE ==================== */
+:focus-visible {
+    outline: 2px solid rgba(10,132,255,0.6);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+/* ==================== AUTH PAGES ==================== */
+.auth-card {
+    background: rgba(28, 28, 30, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow:
+        0 1px 0 rgba(255,255,255,0.05) inset,
+        0 20px 60px -18px rgba(0,0,0,0.55);
+}
+
+[data-theme="light"] .auth-card {
+    background: rgba(255,255,255,0.92);
+    border: 1px solid rgba(11,26,45,0.06);
+}
+
+/* Titolo dell'accesso a tinta unita (era sfumato dal bianco, o dal blu, al viola) */
+.auth-title {
+    letter-spacing: -0.03em;
+    font-weight: 700;
+}
+
+/* ==================== PERFORMANCE OVERRIDES ==================== */
+/* Riduce blur costosi lasciati dai CSS precedenti.
+   Manteniamo il blur SOLO su: topbar, sidebar, auth-card, modal, command-palette.
+   Su tutto il resto -> disabilitato o fortemente ridotto. */
+
+.stat-card,
+.card-header,
+.card-body,
+.card-footer,
+.tooltip,
+.toast {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Sidebar: niente blur (colonna alta, costa molto) */
+.sidebar {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Floating particles layer: rimosso, spreca memoria GPU */
+.content-area::before { display: none !important; }
+
+/* Animazioni infinite meno critiche: disabilitate.
+   Rimangono attive solo quelle realmente informative (spinner, status dot live). */
+.empty-state-icon {
+    animation: none !important;
+}
+
+/* GPU acceleration mirata solo dove serve (hover transform) */
+.card,
+.btn,
+.nav-link,
+.stat-card {
+    transform: translateZ(0);
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 768px) {
+    /* Su mobile: niente aurora (risparmio batteria) */
+    body::before { display: none; }
+}
+
+/* Dispositivi a bassa potenza: ulteriore alleggerimento */
+@media (max-width: 480px), (prefers-reduced-motion: reduce) {
+    .topbar {
+        -webkit-backdrop-filter: none !important;
+    }
+    .auth-card {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+}
+
+/* ====================== PARTE: ex refine.css ====================== */
+
+/* =====================================================================
    ASSISTO · DESIGN SYSTEM  (refine.css)
    Layer unico e autorevole del look "calmo & premium".
    Caricato per ultimo: sobrieta', coerenza, spazio bianco.
@@ -66,7 +424,6 @@ button, input, select, textarea { font-family: inherit; }
 .btn {
     border-radius: var(--r-sm) !important;
     font-weight: 550;
-    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
     box-shadow: none !important;
 }
 .btn::after, .btn::before { display: none !important; }   /* via shimmer/ripple decorativi */
@@ -415,26 +772,6 @@ details.section[open] > summary::before { transform: rotate(90deg); }
    tratto pieno, senza il riflesso bianco che scorreva senza fine ogni 2 secondi */
 .progress-bar-fill::after { display: none !important; }
 
-/* Skeleton loader (placeholder durante i caricamenti) */
-.skeleton {
-    position: relative;
-    overflow: hidden;
-    background: var(--bg-tertiary);
-    border-radius: 6px;
-}
-.skeleton::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
-    animation: ds-shimmer 1.3s infinite;
-}
-.skeleton-line { height: 12px; margin: 8px 0; }
-.skeleton-line.sm { width: 40%; }
-.skeleton-line.md { width: 70%; }
-@keyframes ds-shimmer { 100% { transform: translateX(100%); } }
-
 /* ---------- 12. Meno animazioni: rispetta chi le riduce ---------- */
 @media (prefers-reduced-motion: reduce) {
     *, .content-area > * { animation: none !important; transition: none !important; }
@@ -447,9 +784,8 @@ details.section[open] > summary::before { transform: rotate(90deg); }
 /* Griglie a colonne usate nelle schede di dettaglio (erano usate ma mai definite) */
 .grid { display: grid; gap: var(--sp-4); }
 .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 860px) {
-    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
 }
 
 /* Caselle di spunta un po' piu' grandi (13px di base del browser) e nel blu dell'app.

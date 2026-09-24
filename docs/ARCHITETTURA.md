@@ -92,10 +92,28 @@ reimplementarla inline (a schermo, in SQL o negli export).
   Angoli: 6px etichette, 8px pulsanti e campi, 12px riquadri e finestre (`--r-*` in
   `refine.css`). Numeri nel carattere del testo (`--font-mono` = `--font-sans`, cifre
   incolonnate con `tabular-nums`); `--font-code` solo per i tasti (`kbd`).
-- Ordine dei fogli (conta per la cascata): style → premium-effects → ux-enhancements →
-  components → theme-premium → refine. Prima di togliere o rinominare CSS: il test
-  `tests/test_css_integrita.py` segnala le classi usate dalle pagine rimaste senza stile,
-  ma confronta comunque le schermate prima/dopo (il test non vede i problemi di cascata).
+- Fogli di stile in `static/css/`; l'ordine di caricamento conta per la cascata:
+  - pagine dell'app (`base.html`): `style.css` → `components.css` → `refine.css`;
+  - accesso e prima configurazione (`login.html`, `setup.html`): `style.css` → `auth.css` → `refine.css`.
+
+  | Foglio | Dove | Cosa contiene |
+  |---|---|---|
+  | `style.css` | tutte le pagine | token (colori, caratteri, raggi, ombre) e tema chiaro, reset, layout (menu laterale, barra in alto), componenti di base (card, riquadri numerici, pulsanti, campi, tabelle, filtri, badge, avvisi, finestre, toast, ricerca Ctrl+K, schede), utilità |
+  | `components.css` | solo app | tre parti, nell'ordine in cui erano caricate: 1) effetti su card, pulsanti, campi, menu, toast, finestre e filtri (ex `premium-effects.css`); 2) tooltip, barre di avanzamento, focus da tastiera, conferme, errori dei campi, telefono e tablet (ex `ux-enhancements.css`); 3) stampa, report rapidi, filtri avanzati, validazione, heatmap, Rendicontazione e Calendario (ex `components.css`) |
+  | `auth.css` | login e setup | la scheda di accesso |
+  | `refine.css` | tutte le pagine, per ultimo | due parti: 1) sfondo, titoli, bordi, badge, pagina di accesso e riduzioni per le prestazioni (ex `theme-premium.css`); 2) il design system "calmo & premium" con le correzioni per pagina |
+
+  Dove mettere le regole nuove: prima cercare il selettore in tutti i fogli e correggere
+  la regola d'origine (non aggiungere un `!important` in coda che la scavalchi); le regole
+  nuove di una pagina vanno nella sezione di quella pagina in `refine.css`. Non spostare
+  regole tra fogli o tra le parti di un foglio: cambierebbe la cascata. `components.css`
+  non vale per login e setup, quindi non va unito a `style.css`.
+- Prima di togliere o rinominare CSS: il test `tests/test_css_integrita.py` segnala le
+  classi usate dalle pagine rimaste senza stile, ma confronta comunque gli stili calcolati
+  e le schermate prima/dopo (il test non vede i problemi di cascata). Le classi costruite
+  a runtime (`badge-${…}`, `btn-${…}`, `toast ${tipo}`, `toast-${…}`, `alert-…`,
+  `da-fare-${…}`, `priorita-${…}`) non compaiono intere nel codice: le loro regole non
+  vanno tolte solo perché il nome completo non si trova cercandolo.
 
 ## Sviluppo
 

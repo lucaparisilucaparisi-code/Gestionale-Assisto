@@ -56,5 +56,9 @@ def test_un_solo_blu_primario():
     refine = _leggi('static/css/refine.css')
     assert re.search(r'^\s*--(primary|accent):', refine, re.M) is None, 'refine.css ridefinisce i colori'
     assert json.loads(_leggi('static/manifest.json'))['theme_color'] == '#3B82F6'
-    for f in ('static/css/theme-premium.css', 'static/css/premium-effects.css', 'static/css/refine.css'):
-        assert '0A84FF' not in _leggi(f).upper().replace('#', ''), f
+    # refine.css contiene l'ex theme-premium.css; components.css l'ex premium-effects.css
+    # e l'ex components.css, dove resta un solo #0A84FF: il bordo del report rapido
+    # "municipale" (colore della tessera, non il blu primario)
+    assert '0A84FF' not in _leggi('static/css/refine.css').upper().replace('#', '')
+    componenti = re.sub(r'\.report-quick-card\.municipale \{[^}]*\}', '', _leggi('static/css/components.css'))
+    assert '0A84FF' not in componenti.upper().replace('#', '')

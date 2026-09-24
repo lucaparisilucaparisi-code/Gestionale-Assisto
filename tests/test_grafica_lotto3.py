@@ -77,8 +77,9 @@ def test_confronto_di_settembre_usa_giugno(client, db_mod):
 
 
 def test_riga_totale_scuola_senza_cella_in_piu():
-    # premium-effects.css ha ancora .scuola-totale::before con content: refine.css
-    # deve annullarlo, altrimenti gli importi scalano di una colonna.
+    # components.css (ex premium-effects.css) ha ancora una regola .scuola-totale::before
+    # (barra di 3px): refine.css deve annullarla con content: none, altrimenti gli importi
+    # scalano di una colonna.
     refine = re.sub(r'/\*.*?\*/', '', _leggi('static/css/refine.css'), flags=re.S)
     assert re.search(r'\.scuola-totale::before\s*\{[^}]*content:\s*none\s*!important', refine)
     tpl = _leggi('templates/rendicontazione.html')

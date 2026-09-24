@@ -68,7 +68,7 @@ def test_riquadri_informativi_con_il_testo_in_un_blocco_unico():
 
 
 def test_tabelle_sul_telefono_non_tagliate_dalla_scheda():
-    # Sul telefono ux-enhancements.css da' a ogni .table min-width:600px: fuori da un
+    # Sul telefono components.css (ex ux-enhancements.css) da' a ogni .table min-width:600px: fuori da un
     # riquadro che scorre, la .card (overflow:hidden) tagliava colonne e pulsanti
     # ("Trova sostituto", "Ore/sett.", Assegnazioni OEPAC). I 600px restano solo agli
     # elenchi in .table-container; le altre tabelle stanno nello schermo.

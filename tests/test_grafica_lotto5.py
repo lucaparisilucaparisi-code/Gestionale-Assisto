@@ -83,10 +83,13 @@ def test_menu_laterale_a_pannello_fino_a_1024():
 
 
 def test_pulsanti_non_tutti_a_tutta_larghezza_sul_telefono():
-    ux = re.sub(r'/\*.*?\*/', '', _leggi('static/css/ux-enhancements.css'), flags=re.S)
+    # components.css contiene l'ex ux-enhancements.css (lotto 6b)
+    ux = re.sub(r'/\*.*?\*/', '', _leggi('static/css/components.css'), flags=re.S)
     # la regola generale '.btn { width: 100% }' (non quelle di un contenitore preciso)
     assert not re.search(r'(^|[{}])\s*\.btn\s*\{\s*width:\s*100%', ux)
-    assert not re.search(r'\.btn\s*\+\s*\.btn\s*\{\s*margin-top', ux)
+    # nessuno spazio sopra i pulsanti affiancati ('.rend-azioni .btn + .btn { margin-top: 0 }',
+    # dell'ex components.css, lo azzera soltanto)
+    assert not re.search(r'\.btn\s*\+\s*\.btn\s*\{\s*margin-top:(?!\s*0[\s;])', ux)
 
 
 def test_niente_emoji_come_icone_e_niente_cestini_rossi_sulle_righe():

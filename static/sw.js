@@ -16,10 +16,7 @@ const STATIC_CACHE = `static-${VERSIONE}`;
 
 const STATIC_ASSETS = [
     '/static/css/style.css',
-    '/static/css/premium-effects.css',
-    '/static/css/ux-enhancements.css',
     '/static/css/components.css',
-    '/static/css/theme-premium.css',
     '/static/css/refine.css',
     '/static/css/auth.css',
     '/static/js/app.js',

@@ -24,13 +24,8 @@
 .auth-card {
     width: 100%;
     max-width: 420px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
     border-radius: var(--radius);   /* 12px come le card dell'app (era 20px) */
     padding: 36px 36px 30px;
-    box-shadow:
-        0 20px 60px rgba(0, 0, 0, 0.3),
-        0 0 0 1px rgba(255, 255, 255, 0.05) inset;
     animation: authFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -48,8 +43,6 @@
 
 .auth-title {
     font-size: 1.5rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
     margin: 0 0 8px;
     color: var(--text-primary);
 }

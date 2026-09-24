@@ -22,12 +22,10 @@
     <!-- Font di sistema: nessuna richiesta a server esterni (l'app gira anche offline) -->
 
     <!-- Styles & Scripts -->
+    {# L'ordine conta per la cascata: base -> componenti ed effetti (solo app) -> layer finale.
+       Mappa dei fogli e dove mettere le regole nuove: docs/ARCHITETTURA.md, sezione Front-end. #}
     <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
-    <link rel="stylesheet" href="{{ static_url('css/premium-effects.css') }}">
-    <link rel="stylesheet" href="{{ static_url('css/ux-enhancements.css') }}">
-    {# components.css: componenti ancora usati (report rapidi, filtri avanzati, heatmap), nella stessa posizione di cascata del foglio da cui provengono #}
     <link rel="stylesheet" href="{{ static_url('css/components.css') }}">
-    <link rel="stylesheet" href="{{ static_url('css/theme-premium.css') }}">
     <link rel="stylesheet" href="{{ static_url('css/refine.css') }}">
     {# Chart.js (200 KB) e' caricato solo dalle pagine che lo usano, nel block head #}
     {% block head %}{% endblock %}
