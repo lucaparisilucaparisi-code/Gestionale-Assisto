@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block head %}
 <script src="{{ static_url('js/vendor/chart.umd.min.js') }}"></script>
@@ -43,7 +44,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Stato del mese — <span id="stato-mese-nome">…</span>
+            <span>Stato del mese — <span id="stato-mese-nome">…</span></span>
         </h2>
         <span class="badge badge-secondary" id="stato-mese-percent">--%</span>
     </div>
@@ -178,10 +179,10 @@
     <div class="modal" style="max-width: 980px;">
         <div class="modal-header">
             <h3 class="modal-title">Utenti e monte ore per il <span id="wizard-utenti-anno"></span></h3>
-            <button class="modal-close" onclick="closeModal('modal-nuovo-anno-utenti')" aria-label="Chiudi">&times;</button>
+            {{ modal_close("closeModal('modal-nuovo-anno-utenti')") }}
         </div>
         <div class="modal-body modal-body-elenco">
-            <div class="alert alert-info" style="font-size:0.9rem;">
+            <div class="alert alert-info">
                 <div>
                     <strong>Nuovo monte ore</strong> è il valore di partenza da settembre (proposto: il monte ore base).
                     <strong>A giugno</strong> sono le ore effettive di fine anno: se diverse dalla base (⚠) c'era una variazione in corso.

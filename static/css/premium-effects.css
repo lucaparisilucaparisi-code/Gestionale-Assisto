@@ -535,18 +535,7 @@
     overflow: hidden;
 }
 
-.theme-toggle svg {
-    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.theme-toggle:hover svg {
-    transform: rotate(20deg) scale(1.1);
-}
-
-.theme-toggle:active svg {
-    transform: rotate(360deg) scale(0.9);
-    transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
+/* (niente rotazione dell'icona al passaggio del mouse: l'app non usa effetti di movimento) */
 
 /* ==================== SCROLLBAR PREMIUM ==================== */
 ::-webkit-scrollbar {
@@ -584,33 +573,13 @@
 }
 
 /* ==================== PAGE TRANSITIONS ==================== */
-/* Animazione sottile all'ingresso - NON usare opacity 0 che nasconde contenuto */
-/* ESCLUDI .modal-overlay: transform crea un containing block che rompe position:fixed */
-.content-area > *:not(.modal-overlay) {
-    animation: pageSlideIn 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) both;
-}
-
-.content-area > *:not(.modal-overlay):nth-child(1) { animation-delay: 0s; }
-.content-area > *:not(.modal-overlay):nth-child(2) { animation-delay: 0.03s; }
-.content-area > *:not(.modal-overlay):nth-child(3) { animation-delay: 0.06s; }
-.content-area > *:not(.modal-overlay):nth-child(4) { animation-delay: 0.09s; }
-.content-area > *:not(.modal-overlay):nth-child(5) { animation-delay: 0.12s; }
+/* L'ingresso delle pagine e' la dissolvenza breve di refine.css (ds-fade-in):
+   qui c'era pageSlideIn (0,5s con ritardi a cascata), che la copriva. */
 
 /* Assicura che i modal non ereditino transform da animazioni */
 .content-area > .modal-overlay {
     animation: none !important;
     transform: none !important;
-}
-
-@keyframes pageSlideIn {
-    0% {
-        opacity: 0.5;
-        transform: translateY(10px);
-    }
-    100% {
-        opacity: 1;
-        transform: translateY(0);
-    }
 }
 
 /* ==================== STAGGERED CARD ANIMATIONS ==================== */

@@ -1255,10 +1255,6 @@ textarea:focus-visible {
     background: #E5E5EA;
 }
 
-[data-theme="light"] .progress-fill {
-    box-shadow: 0 0 8px rgba(10, 132, 255, 0.4);
-}
-
 [data-theme="light"] .chip {
     background: #F2F2F7;
     border: 1px solid #D1D1D6;

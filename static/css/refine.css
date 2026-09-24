@@ -15,8 +15,12 @@
     --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;  --sp-4: 16px;
     --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
 
-    /* Raggi e bordi sobri */
-    --r-sm: 8px; --r-md: 10px; --r-lg: 14px;
+    /* Tre soli arrotondamenti: 6px etichette (badge), 8px pulsanti e campi,
+       12px riquadri, card e finestre. Sullo schermo ce n'erano 9 (card 14, barra
+       filtri 16, riquadri numerici 10, finestre 20...). I nomi della scala di
+       style.css restano, come sinonimi, finche' i fogli non vengono riordinati. */
+    --r-sm: 8px; --r-md: 12px; --r-lg: 12px;
+    --radius-lg: 12px; --radius-xl: 12px; --radius-2xl: 12px;
 
     /* Ombre tenui (niente glow) */
     --shadow-1: 0 1px 2px rgba(0,0,0,.20), 0 1px 3px rgba(0,0,0,.12);
@@ -52,6 +56,11 @@ body::before { background: none !important; }
        usciva dal pulsante). */
     .header-actions .btn { flex: 1 1 auto; }
 }
+
+/* Pulsanti, tendine e caselle nel carattere della pagina: il browser dava loro il
+   suo (Arial) e 'Importa da Excel' (link) e 'Nuovo Dipendente' (pulsante), uno
+   accanto all'altro, erano in due caratteri diversi. */
+button, input, select, textarea { font-family: inherit; }
 
 /* ---------- 3. Pulsanti: tinta unita, niente gradienti/glow/shimmer ---------- */
 .btn {
@@ -107,7 +116,13 @@ body::before { background: none !important; }
     border-radius: var(--r-lg) !important;
 }
 .card::before, .card::after { display: none !important; }   /* via bordi luminosi animati */
+/* Icona del titolo ferma: al passaggio del mouse sulla card ruotava e si ingrandiva */
+.card:hover .card-title svg { transform: none !important; }
 .card-header { border-bottom: 1px solid var(--border-color); }
+/* L'intestazione sta sopra il corpo: .card-body ha position:relative e z-index:1 e,
+   con le misure frazionarie del telefono, copriva la riga di separazione (Chiusura
+   Mese, Statistiche) */
+.card > .card-header { position: relative; z-index: 2; }
 .card-header::before, .card-header::after { display: none !important; }   /* via la riga sfumata */
 .card-title {
     font-size: 1rem !important;
@@ -151,6 +166,9 @@ body::before { background: none !important; }
     box-shadow: none !important;
     border: 1px solid transparent;
 }
+/* Via l'alone sfocato al passaggio del mouse (premium-effects.css): sporgeva di 2px
+   per lato e il pulsante '12 senza ore' risultava piu' stretto del suo contenuto */
+.badge::before { display: none; }
 .badge-primary,
 .badge-secondary { background: var(--bg-tertiary) !important; color: var(--text-secondary) !important; border-color: var(--border-color); }
 .badge-success { background: rgba(22,163,74,.15) !important;  color: #4ade80 !important; }
@@ -167,6 +185,27 @@ body::before { background: none !important; }
 
 /* ---------- 7. Barra filtri coerente ---------- */
 .filters { gap: var(--sp-3); align-items: flex-end; }
+/* Etichette dei filtri come quelle dei moduli (.form-label, style.css): testo
+   normale. Erano in MAIUSCOLO da 12px nelle barre dei filtri e normali da 13,6px
+   nei moduli (Sostituzioni), e salivano di 2px quando il campo prendeva il focus. */
+.filter-group label, .filter-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: none;
+    letter-spacing: 0.01em;
+}
+[data-theme="light"] .filter-group label, [data-theme="light"] .filter-label { color: #1C1C1E; font-weight: 500; }
+.filter-group:focus-within .filter-label { transform: none; }
+/* Casella di spunta nella barra ('Mostra disattivati'): e' un'opzione, non il titolo
+   di un campo (era in maiuscolo come le etichette) */
+.filter-group label.pointer { font-weight: 400; color: var(--text-primary); }
+/* Larghezze standard dei campi nelle barre dei filtri, al posto delle misure scritte
+   a mano in ogni pagina (200/300/200/150px in Utenti, 240/180px in Dipendenti...).
+   Sotto i 768px i campi prendono tutta la riga (style.css). */
+.w-sm { width: 160px; }
+.w-md { width: 200px; }
+.w-lg { width: 280px; }
 .form-control, .filter-group select, .filter-group input {
     border-radius: var(--r-sm) !important;
     border: 1px solid var(--border-color) !important;
@@ -236,6 +275,18 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
 .sidebar { background: var(--bg-sidebar) !important; border-right: 1px solid var(--border-color); }
 .nav-link.active { background: var(--accent-soft) !important; color: var(--accent-text) !important; }
 .nav-link.active svg { color: var(--accent-text) !important; }
+/* Menu senza effetti: un solo blu e niente movimento. Al passaggio del mouse si
+   sommavano una barretta blu-viola, due sottolineature (una sfumata), uno
+   spostamento di 2px e l'icona che ruotava e rimbalzava; il quadratino 'A' e la
+   voce attiva avevano un alone luminoso. Resta la barretta, in blu. */
+.nav-link::after, .nav-link span::after { display: none !important; }
+.nav-link::before { background: var(--accent) !important; box-shadow: none !important; }
+.nav-link, .nav-link svg { transform: none !important; animation: none !important; }
+.nav-link.active, .brand-mark { box-shadow: none !important; }
+/* Riga sopra le barre dei filtri (blu-viola-verde) e barra di scorrimento in cima
+   alla pagina (blu-viola): la prima via, la seconda nel blu dell'app */
+.filters::before { display: none !important; }
+.scroll-indicator { background: var(--accent) !important; }
 /* Scritte piccole del menu ('PRINCIPALE', 'OEPAC · GESTIONALE', versione): erano
    10,6-10,9px, ora 12px come il resto dei testi secondari. */
 .nav-section-title { letter-spacing: 0.08em; font-size: 0.75rem; }
@@ -277,7 +328,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
    con la tastiera: su telefono e tablet si nascondono (a 390px la barra in alto
    sbordava di 3px e il pulsante Cerca mostrava solo "Ctrl+K"). */
 @media (max-width: 1024px), (hover: none) {
-    .topbar-kbd, .command-palette-footer { display: none; }
+    .topbar-kbd, .command-palette-footer, .command-palette .command-kbd { display: none; }
     .topbar-btn { padding: 8px 10px; }
 }
 
@@ -348,9 +399,21 @@ details.section[open] > summary::before { transform: rotate(90deg); }
 .empty-state-icon { width: 44px; height: 44px; color: var(--text-quaternary); margin: 0 auto var(--sp-3); }
 .empty-state-title { font-size: 1rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
 .empty-state-text { color: var(--text-tertiary); font-size: 0.88rem; }
+/* Cerchio dell'icona senza l'anello blu-viola attorno (Turni 'Scegli un operatore',
+   Stato budget della scheda utente) */
+.empty-state-icon-wrapper::before { display: none !important; }
 
-/* Spinner piu' sobrio */
-.spinner { border-width: 2px !important; }
+/* Spinner piu' sobrio: un solo arco blu che gira regolare (era blu e viola, con
+   un secondo anello e una rotazione "a molla") */
+.spinner {
+    border-width: 2px !important;
+    border-right-color: var(--border-color) !important;
+    animation-timing-function: linear !important;
+}
+.spinner::before { display: none !important; }
+/* Barre di avanzamento ('Stato del mese' in Dashboard, passo 1 di Chiusura Mese):
+   tratto pieno, senza il riflesso bianco che scorreva senza fine ogni 2 secondi */
+.progress-bar-fill::after { display: none !important; }
 
 /* Skeleton loader (placeholder durante i caricamenti) */
 .skeleton {
@@ -422,6 +485,49 @@ details.section[open] > summary::before { transform: rotate(90deg); }
    menu cliccabile a finestra aperta, wizard tagliato a sinistra, X non cliccabile
    sul telefono. I figli del contenuto restano a z-index:1 (premium-effects.css). */
 .content-area { z-index: auto !important; }
+
+/* Finestre, conferme e ricerca rapida con un solo aspetto: fondo pieno, bordo a un
+   capello, angoli da 12px e comparsa in dissolvenza breve (0,18s), senza rimbalzo
+   ne' sfocatura. Erano tre versioni: la finestra trasparente al 70% con sfocatura,
+   angoli da 20px e apertura "a molla"; la conferma piena con angoli da 16px e
+   anch'essa a molla; la ricerca trasparente con angoli da 20px. */
+:root .modal, :root .confirm-dialog, :root .command-palette {
+    background: var(--bg-card-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border: 1px solid var(--border-color);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-xl);
+}
+.modal-overlay .modal, .modal-overlay.active .modal,
+.confirm-dialog-overlay .confirm-dialog, .confirm-dialog-overlay.active .confirm-dialog,
+.command-palette-overlay .command-palette, .command-palette-overlay.active .command-palette {
+    transform: none;
+    animation: none;
+    transition: none;
+}
+.modal-overlay, .modal-overlay.active, .confirm-dialog-overlay, .command-palette-overlay {
+    background: rgba(0, 0, 0, 0.6);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+/* Dissolvenza, ma 'visibility' cambia SUBITO all'apertura (e solo a dissolvenza finita
+   alla chiusura): con 'visibility .18s' la finestra era ancora nascosta nell'istante
+   di focus() e con Ctrl+K le prime lettere andavano perse */
+.modal-overlay, .confirm-dialog-overlay, .command-palette-overlay {
+    transition: opacity .18s ease, visibility 0s linear .18s;
+}
+.modal-overlay.active, .confirm-dialog-overlay.active, .command-palette-overlay.active {
+    transition: opacity .18s ease, visibility 0s linear 0s;
+}
+[data-theme="light"] .modal-overlay,
+[data-theme="light"] .confirm-dialog-overlay,
+[data-theme="light"] .command-palette-overlay { background: rgba(0, 0, 0, 0.5); }
+/* Guida alle scorciatoie (tasto ?): finestra normale, righe nome / tasti */
+.scorciatoia-riga { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); padding: 7px 0; border-bottom: 1px solid var(--border-color); }
+.scorciatoie-sezione { margin: var(--sp-4) 0 2px; font-weight: 600; color: var(--text-secondary); }
+.scorciatoie-nota { margin: var(--sp-4) 0 0; font-size: 0.8rem; color: var(--text-tertiary); }
+.scorciatoia-riga .command-kbd, .scorciatoie-nota .command-kbd { display: inline-flex; }   /* style.css le nasconde sotto i 640px */
 
 /* Titolo e pulsanti sempre visibili: scorre solo il corpo della finestra
    (prima scorreva tutta la finestra e 'Annulla / Applica' restava sotto il bordo). */
@@ -729,14 +835,12 @@ a.dash-numero, a.dash-numero:hover {
 /* senza dati il riquadro si riduce a una riga (non 210px vuoti) */
 .chart-container:has(> .chart-vuoto:not([hidden])) { height: auto !important; min-height: 64px; }
 
-/* Report rapidi: stesso colore per tipo di report in Dashboard e in Report
-   (il Dipartimentale era viola qui e arancio nella pagina Report); chi scarica
-   subito un file lo dice, con l'icona e il mese. */
-.report-quick-card.excel { border-left-color: var(--report-excel); }
-.report-quick-card.municipale { border-left-color: var(--primary); }
-.report-quick-card.dipartimentale { border-left-color: var(--warning); }
-.report-quick-card.locale { border-left-color: var(--secondary); }
-.report-quick-card.stats { border-left-color: var(--cyan); }
+/* Report rapidi: riquadri neutri, il blu solo al passaggio del mouse. Avevano il
+   bordo sinistro verde, blu, arancio e viola senza significato (verde e arancio
+   nell'app vogliono dire 'fatto' e 'attenzione'); chi scarica subito un file lo
+   dice, con l'icona e il mese. */
+.report-quick-grid .report-quick-card { border-left: 1px solid var(--border-color); }
+.report-quick-grid .report-quick-card:hover { background: var(--accent-soft); border-color: var(--accent); }
 .report-quick-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .report-quick-desc { display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-size: 0.75rem; }
 .report-quick-dl { width: 14px; height: 14px; flex-shrink: 0; }
@@ -770,6 +874,9 @@ a.dash-numero, a.dash-numero:hover {
 .heatmap-cell[data-level="3"] { background: rgba(234, 179, 8, 0.38); color: #fff; }
 .heatmap-cell[data-level="4"] { background: rgba(74, 222, 128, 0.28); color: #fff; }
 .heatmap-cell[data-level="5"] { background: #047857; color: #fff; }
+/* Casella sotto il mouse: ferma, con un bordo blu netto. Si ingrandiva del 10% con
+   un alone blu sfocato (components.css). */
+.heatmap-table .heatmap-cell:hover { transform: none; box-shadow: 0 0 0 2px var(--accent); }
 [data-theme="light"] .heatmap-cell[data-level="0"] { background: #E5E7EB; color: #374151; }
 [data-theme="light"] .heatmap-cell[data-level="1"] { background: #FECACA; color: #7F1D1D; }
 [data-theme="light"] .heatmap-cell[data-level="2"] { background: #FED7AA; color: #7C2D12; }
@@ -838,8 +945,9 @@ button.report-card {
 [data-theme="light"] .report-card-icon {
     background: color-mix(in srgb, var(--report-card-color, var(--primary)) 14%, transparent);
 }
-/* Stessa mappa colori dei "Report rapidi" della Dashboard */
-.report-card.excel { --report-card-color: var(--report-excel); }
+/* Il colore dice il tipo di file: verde Excel per i tre file .xlsx, blu Word per
+   la relazione (prima Municipale era blu e Dipartimentale arancio, come un avviso) */
+.report-card.excel, .report-card.municipale, .report-card.dipartimentale { --report-card-color: var(--report-excel); }
 .report-card.word { --report-card-color: var(--report-word); }
 
 /* Zone "Clicca per selezionare" dell'Import: raggiungibili col Tab (app.js) */
@@ -907,6 +1015,15 @@ button.report-card {
 .menu-azioni-sep { height: 1px; margin: 4px 0; background: var(--border-color); }
 
 /* ---------- 24. Riquadri numerici (stat-card) ---------- */
+/* Icone grigie e ferme (Riepilogo Totali della Rendicontazione): erano blu, viola,
+   azzurra e verde, con un alone sfocato e si ingrandivano al passaggio del mouse */
+.stat-card .stat-icon { background: var(--bg-tertiary); color: var(--text-secondary); box-shadow: none; }
+.stat-icon::before { display: none; }
+.stat-card:hover .stat-icon, .stat-card:hover .stat-icon svg { transform: none; }
+/* Anche il numero resta fermo: al passaggio del mouse si ingrandiva del 5% e sotto
+   si allungava una sottolineatura blu-viola (premium-effects.css) */
+.stat-value::after { display: none !important; }
+.stat-card:hover .stat-value { transform: none !important; }
 /* Il valore resta intero e dentro la scheda (a 1366px '32.471,40 €' usciva e
    perdeva il '€'): nelle schede strette (meno di 280px, tutte quelle di una
    riga hanno la stessa larghezza) l'icona va SOPRA il valore, cosi' la riga
@@ -930,6 +1047,14 @@ button.report-card {
 .table.prima-colonna-fissa thead th:first-child { z-index: 11; }
 .table.prima-colonna-fissa tbody td:first-child { z-index: 2; background: var(--bg-card-solid); }
 .table.prima-colonna-fissa tbody tr:hover td:first-child {
+    background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-card-solid);
+}
+/* Tema chiaro: la cella ferma delle righe pari ha la stessa tinta della riga
+   (style.css, rgba(0,0,0,.015)); restava bianca, anche al passaggio del mouse */
+[data-theme="light"] .table.prima-colonna-fissa tbody tr:nth-child(even) td:first-child {
+    background: linear-gradient(rgba(0, 0, 0, 0.015), rgba(0, 0, 0, 0.015)), var(--bg-card-solid);
+}
+[data-theme="light"] .table.prima-colonna-fissa tbody tr:nth-child(even):hover td:first-child {
     background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-card-solid);
 }
 /* Elenco compatto: a 1366px entra tutto, azioni comprese, senza scorrere di lato
@@ -1049,6 +1174,17 @@ button.report-card {
 }
 .ud-kpi-valore { font-size: 1.75rem; font-weight: 700; line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .ud-kpi-etichetta { font-size: 0.8125rem; color: var(--text-secondary); }
+/* Stato budget: stesso riquadro, con la barra a tutta larghezza e la nota sotto.
+   Barra alta 8px come le altre; binario del colore della card, perche' il grigio
+   comune (bg-tertiary, #E5E5EA nel chiaro) e' lo stesso del riquadro e il binario
+   spariva. Tratto pieno senza alone; arancio sopra il 70%, rosso sopra il 90%. */
+.ud-budget .progress-bar { align-self: stretch; height: 8px; margin-top: 4px; border-radius: 4px; background: var(--bg-card-solid); }
+.ud-budget .progress-fill { height: 100%; border-radius: 4px; background: var(--primary); transition: width .3s ease; }
+.ud-budget .progress-fill.warning { background: var(--warning); }
+.ud-budget .progress-fill.danger { background: var(--danger); }
+.ud-budget-nota { margin-top: 4px; font-size: 0.8125rem; color: var(--text-secondary); }
+/* Etichetta "N variaz." accanto al monte ore: il dettaglio e' nel suggerimento */
+.ud-badge-variazioni { cursor: help; }
 
 /* Orari nelle tabelle delle schede: su una riga, carattere normale */
 .cella-orario { white-space: nowrap; font-weight: 600; }
@@ -1063,6 +1199,34 @@ button.report-card {
     select, textarea, .form-control, .table input.table-input { font-size: 16px !important; }
     .btn { min-height: 40px; }
 }
+/* Nuova variazione del monte ore: due campi per riga, uno per riga sul telefono
+   (a 360px il campo 'A partire da' usciva dalla finestra: le colonne '1fr' non
+   scendevano sotto la larghezza minima del campo mese) */
+.griglia-variazione { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.griglia-variazione .form-control { min-width: 0; }
+/* l'ultimo campo ('Fino a') perdeva il margine (.form-group:last-child) e 'Nota' gli
+   stava attaccata */
+.griglia-variazione > .form-group:last-child { margin-bottom: var(--space-2); }
+@media (max-width: 480px) {
+    .griglia-variazione { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
 /* Due campi affiancati (Attivo da / fino a, Data inizio / fine): ciascuno sta nella
    sua meta' anche sul telefono (il campo mese usciva a destra dalla finestra) */
 .form-row > .form-group { min-width: 0; }
+
+/* ---------- 29. Ricerca rapida (Ctrl+K) ---------- */
+/* Icone grigie, la voce scelta in blu e ferma. Erano riquadri blu, viola, verdi,
+   azzurri e arancioni (verde e arancio sono i colori di 'fatto' e 'attenzione') e
+   la voce scelta si spostava di 6px con una barra blu-viola. */
+.command-palette .command-item-icon { background: var(--bg-tertiary); color: var(--text-secondary); }
+.command-palette .command-item.selected .command-item-icon { background: var(--accent-soft); color: var(--accent-text); }
+.command-item:hover, .command-item.selected { transform: none !important; }
+.command-item::before { display: none !important; }
+
+/* ---------- 30. Messaggi a comparsa (toast) ---------- */
+/* La X sempre sul bordo destro e grigia: seguiva la lunghezza del testo (con piu'
+   messaggi stava ogni volta in un punto diverso) e prendeva il colore dell'icona
+   di stato, cosi' in 'Errore nel salvataggio' sembrava una seconda icona rossa. */
+.toast > span { flex: 1; min-width: 0; }
+.toast-close { margin-left: auto; }
+.toast .toast-close svg { color: inherit; }

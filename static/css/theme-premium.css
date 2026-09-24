@@ -384,11 +384,8 @@ textarea:focus {
     border: 1px solid rgba(11,26,45,0.06);
 }
 
+/* Titolo dell'accesso a tinta unita (era sfumato dal bianco, o dal blu, al viola) */
 .auth-title {
-    background: var(--gradient-hero);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
     letter-spacing: -0.03em;
     font-weight: 700;
 }

@@ -115,11 +115,12 @@
             </label>
             <div style="display:flex; gap:8px;">
                 <input type="text" id="cartella-esterna" class="form-control" style="flex:1;"
-                       placeholder="Es. D:\Backup oppure C:\Users\...\OneDrive\BackupGestionale">
+                       placeholder="Es. D:\Backup">
                 <button type="button" class="btn btn-secondary" id="btn-salva-cartella">Salva</button>
             </div>
-            <small class="text-muted">Ogni nuovo backup verrà copiato anche lì (chiavetta o cartella
-            sincronizzata col cloud). Lascia vuoto per disattivare.</small>
+            <small class="text-muted">Ogni nuovo backup verrà copiato anche lì: una chiavetta (D:\Backup)
+            o una cartella sincronizzata col cloud (C:\Users\...\OneDrive\BackupGestionale).
+            Lascia vuoto per disattivare.</small>
         </div>
         <div id="backup-list">
             <div class="loading"><div class="spinner"></div></div>
@@ -149,13 +150,13 @@
     gap: 14px;
     padding: 14px;
     background: var(--bg-tertiary);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     margin-bottom: 10px;
 }
 .credential-icon {
     width: 40px; height: 40px;
     border-radius: 10px;
-    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    background: var(--accent);   /* un solo blu, come il quadratino 'A' del marchio */
     display: flex; align-items: center; justify-content: center;
     color: white;
     flex-shrink: 0;

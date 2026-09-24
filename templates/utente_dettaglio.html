@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block head %}
 <script src="{{ static_url('js/vendor/chart.umd.min.js') }}"></script>
@@ -116,9 +117,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title" id="ass-titolo">Assegna operatore</h3>
-            <button class="modal-close" onclick="closeModal('modal-assegnazione')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
+            {{ modal_close("closeModal('modal-assegnazione')") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="ass-id">
@@ -260,7 +259,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Carica Documento</h3>
-            <button class="modal-close" onclick="closeModal('modal-documento')">×</button>
+            {{ modal_close("closeModal('modal-documento')") }}
         </div>
         <div class="modal-body">
             <div class="form-group">
@@ -298,7 +297,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Aggiungi Nota</h3>
-            <button class="modal-close" onclick="closeModal('modal-nota')">×</button>
+            {{ modal_close("closeModal('modal-nota')") }}
         </div>
         <div class="modal-body">
             <div class="form-group">
@@ -335,7 +334,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Registra Assenza</h3>
-            <button class="modal-close" onclick="closeModal('modal-assenza')">×</button>
+            {{ modal_close("closeModal('modal-assenza')") }}
         </div>
         <div class="modal-body">
             <div class="form-group">
@@ -374,23 +373,11 @@
 </div>
 
 <style>
-/* riquadro dello Stato budget (i dati dell'anagrafica usano .dati-riga, refine.css) */
-.stat-card {
-    text-align: center;
-    padding: 20px;
-    background: var(--bg-tertiary);
-    border-radius: 12px;
-}
-.stat-value {
-    font-size: 32px;
-    font-weight: 700;
-    color: var(--primary);
-}
-.stat-label {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin-top: 4px;
-}
+/* Stato budget: riquadro .ud-kpi come il Riepilogo ore, con la barra comune
+   .progress-bar (refine.css). Qui c'erano .stat-card/.stat-value/.stat-label,
+   .progress-bar ed .empty-state ridefinite: numero, etichetta, barra e nota finivano
+   su una riga sola, il binario della barra spariva nel tema chiaro e i riquadri
+   vuoti delle schede avevano margini diversi dal resto dell'app. */
 .note-card {
     background: var(--bg-tertiary);
     border-radius: 12px;
@@ -428,30 +415,6 @@
     margin-top: 12px;
     display: flex;
     gap: 8px;
-}
-.progress-bar {
-    height: 12px;
-    background: var(--bg-secondary);
-    border-radius: 6px;
-    overflow: hidden;
-    margin-top: 8px;
-}
-.progress-fill {
-    height: 100%;
-    background: var(--primary);
-    border-radius: 6px;
-    transition: width 0.3s;
-}
-.progress-fill.warning {
-    background: var(--warning);
-}
-.progress-fill.danger {
-    background: var(--danger);
-}
-.empty-state {
-    text-align: center;
-    padding: 40px;
-    color: var(--text-secondary);
 }
 </style>
 
@@ -631,7 +594,7 @@ async function loadVariazioniBadge() {
                 var parts = v.mese_inizio.split('-');
                 return v.monte_ore + 'h da ' + MESI[parseInt(parts[1])] + ' ' + parts[0];
             }).join(', ');
-            badge.innerHTML = '<span class="badge badge-warning" title="' + detail + '" style="font-size:0.75rem;cursor:help;">' + data.variazioni.length + ' variaz.</span>';
+            badge.innerHTML = '<span class="badge badge-warning ud-badge-variazioni" title="' + detail + '">' + data.variazioni.length + ' variaz.</span>';
         } else if (badge) {
             badge.innerHTML = '';
         }
@@ -817,9 +780,12 @@ function renderStorico(storico) {
     document.getElementById('table-storico').innerHTML = html;
 }
 
+// Riquadro vuoto dello Stato budget, come quelli delle altre schede
+const AIUTO_BUDGET = 'Inserisci il budget ore annuale in «Configurazione Budget» e premi «Salva Budget».';
+
 function renderBudget(budget) {
     if (!budget) {
-        document.getElementById('stato-budget').innerHTML = '<div class="empty-state">Budget non configurato</div>';
+        showEmptyState('stato-budget', 'Budget non configurato', AIUTO_BUDGET, null, null, 'chart');
         return;
     }
 
@@ -831,19 +797,19 @@ function renderBudget(budget) {
         const progressClass = percentuale > 90 ? 'danger' : percentuale > 70 ? 'warning' : '';
 
         document.getElementById('stato-budget').innerHTML = `
-            <div class="stat-card mb-4">
-                <div class="stat-value">${formatNumber(budget.ore_erogate)} h</div>
-                <div class="stat-label">Ore Utilizzate su ${formatNumber(budget.budget_annuale)} h</div>
+            <div class="ud-kpi ud-budget mb-4">
+                <div class="ud-kpi-valore">${formatNumber(budget.ore_erogate)} h</div>
+                <div class="ud-kpi-etichetta">Ore utilizzate su ${formatNumber(budget.budget_annuale)} h</div>
                 <div class="progress-bar">
                     <div class="progress-fill ${progressClass}" style="width: ${Math.min(percentuale, 100)}%"></div>
                 </div>
-                <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary);">
-                    ${formatNumero(percentuale, 1)}% utilizzato - ${formatNumber(budget.ore_rimanenti)} h rimanenti
+                <div class="ud-budget-nota">
+                    ${formatNumero(percentuale, 1)}% utilizzato · ${formatNumber(budget.ore_rimanenti)} h rimanenti
                 </div>
             </div>
         `;
     } else {
-        document.getElementById('stato-budget').innerHTML = '<div class="empty-state">Budget annuale non configurato</div>';
+        showEmptyState('stato-budget', 'Budget annuale non configurato', AIUTO_BUDGET, null, null, 'chart');
     }
 }
 
@@ -877,7 +843,7 @@ function downloadDocumento(id) {
 }
 
 function deleteDocumento(id) {
-    showConfirmDialog('Elimina documento', 'Eliminare questo documento? Il file verra\' rimosso.', async () => {
+    showConfirmDialog('Elimina documento', 'Eliminare questo documento? Il file verrà rimosso.', async () => {
         try {
             const data = await apiCall(`/api/documento/${id}`, { method: 'DELETE' });
             if (data && data.success === false) throw new Error(data.error || 'eliminazione non riuscita');

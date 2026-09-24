@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block title %}Gestione Commesse - Gestionale OEPAC{% endblock %}
 
@@ -37,11 +38,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Nuova Commessa</h3>
-            <button class="modal-close" onclick="closeModal('modal-nuova-commessa')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
+            {{ modal_close("closeModal('modal-nuova-commessa')") }}
         </div>
         <div class="modal-body">
             <div class="form-group">
@@ -79,11 +76,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Modifica Commessa</h3>
-            <button class="modal-close" onclick="closeModal('modal-modifica-commessa')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
+            {{ modal_close("closeModal('modal-modifica-commessa')") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="edit-id">
@@ -393,7 +386,7 @@ async function deleteCommessa(id) {
 
     showConfirmDialog(
         'Eliminare commessa?',
-        `Stai per eliminare la commessa "${commessa.nome}". Questa azione disattivera' la commessa.`,
+        `Stai per eliminare la commessa "${commessa.nome}". Questa azione disattiverà la commessa.`,
         async () => {
             try {
                 await apiCall(`/api/commesse/${id}`, { method: 'DELETE' });

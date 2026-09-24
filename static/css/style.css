@@ -83,7 +83,12 @@
 
     /* Fonts - Cross-platform */
     --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+    /* Numeri nello stesso carattere del testo: le cifre restano incolonnate con
+       tabular-nums (refine.css). JetBrains Mono non viene piu' scaricato e su
+       Windows si vedevano Consolas o Cascadia a seconda della regola, anche nella
+       stessa tabella. Carattere a larghezza fissa solo per i tasti (kbd). */
+    --font-mono: var(--font-sans);
+    --font-code: 'SF Mono', 'Cascadia Code', 'Consolas', 'Monaco', monospace;
 
     /* Apple Transitions - Smooth and Responsive */
     --ease-apple: cubic-bezier(0.25, 0.1, 0.25, 1);
@@ -200,7 +205,6 @@
 [data-theme="light"] .nav-link.active {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: white;
-    box-shadow: 0 4px 12px rgba(10, 132, 255, 0.25);
 }
 
 [data-theme="light"] .nav-link.active svg {
@@ -812,9 +816,6 @@ body {
     opacity: 0.92;
 }
 
-.sidebar-logo:hover .brand-mark {
-    transform: rotate(-6deg) scale(1.05);
-}
 
 .brand-mark {
     width: 34px;
@@ -1024,7 +1025,6 @@ body {
 .nav-link.active {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: white;
-    box-shadow: 0 4px 12px rgba(10, 132, 255, 0.35);
     font-weight: 600;
 }
 
@@ -1260,7 +1260,7 @@ body {
     border: 1px solid var(--border-color);
     border-radius: 4px;
     font-size: 0.7rem;
-    font-family: var(--font-mono);
+    font-family: var(--font-code);
     color: var(--text-tertiary);
 }
 
@@ -1436,7 +1436,7 @@ body {
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.2;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-feature-settings: 'tnum';
 }
 
@@ -1848,12 +1848,12 @@ select.form-control {
 
 .table td.numeric {
     text-align: right;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 
 .table td.currency {
     text-align: right;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     color: var(--success);
 }
 
@@ -1866,7 +1866,7 @@ select.form-control {
     text-align: center;
     font-size: 0.875rem;
     color: var(--text-primary);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     transition: all var(--transition-fast);
 }
 
@@ -2275,6 +2275,7 @@ select.form-control {
 .toast.success { border-left: 3px solid var(--success); }
 .toast.error { border-left: 3px solid var(--danger); }
 .toast.warning { border-left: 3px solid var(--warning); }
+.toast.info { border-left: 3px solid var(--primary); }
 
 .toast svg { width: 20px; height: 20px; flex-shrink: 0; }
 .toast.success svg { color: var(--success); }
@@ -2551,7 +2552,7 @@ select.form-control {
     font-size: 1.4rem;
     font-weight: 700;
     color: var(--text-primary);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     line-height: 1.2;
 }
 
@@ -2783,7 +2784,7 @@ select.form-control {
 .font-bold { font-weight: 700; }
 .font-semibold { font-weight: 600; }
 .font-medium { font-weight: 500; }
-.font-mono { font-family: 'JetBrains Mono', monospace; }
+.font-mono { font-family: var(--font-mono); }
 .text-sm { font-size: 0.875rem; }
 .text-xs { font-size: 0.75rem; }
 .text-lg { font-size: 1.125rem; }
@@ -3636,7 +3637,7 @@ tr.search-match {
     border: 1px solid var(--border-color);
     border-radius: 6px;
     font-size: 0.7rem;
-    font-family: var(--font-mono);
+    font-family: var(--font-code);
     color: var(--text-tertiary);
 }
 

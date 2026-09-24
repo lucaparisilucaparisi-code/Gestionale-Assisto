@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block title %}Gestione Utenti - Gestionale OEPAC{% endblock %}
 
@@ -37,26 +38,26 @@
 <div class="filters">
     <div class="filter-group">
         <label class="filter-label">Commessa</label>
-        <select id="filter-commessa" class="form-control" style="width: 200px;">
+        <select id="filter-commessa" class="form-control w-md">
             <option value="">Tutte</option>
         </select>
     </div>
 
     <div class="filter-group">
         <label class="filter-label">Scuola</label>
-        <select id="filter-scuola" class="form-control" style="width: 300px;">
+        <select id="filter-scuola" class="form-control w-lg">
             <option value="">Tutte le scuole</option>
         </select>
     </div>
 
     <div class="filter-group">
         <label class="filter-label">Cerca</label>
-        <input type="text" id="filter-search" class="form-control" placeholder="Nome o cognome..." style="width: 200px;">
+        <input type="text" id="filter-search" class="form-control w-md" placeholder="Nome o cognome...">
     </div>
 
     <div class="filter-group">
         <label class="filter-label">Stato</label>
-        <select id="filter-stato" class="form-control" style="width: 150px;">
+        <select id="filter-stato" class="form-control w-sm">
             <option value="">Tutti</option>
             <option value="attivo">Attivi</option>
             <option value="lista_attesa">In Lista Attesa</option>
@@ -89,7 +90,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Aggiungi Nuovo Utente</h3>
-            <button class="modal-close" onclick="closeModal('modal-nuovo-utente')">✕</button>
+            {{ modal_close("closeModal('modal-nuovo-utente')") }}
         </div>
         <div class="modal-body">
             <div class="form-group">
@@ -127,7 +128,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Reset Dati</h3>
-            <button class="modal-close" onclick="closeModal('modal-reset')">✕</button>
+            {{ modal_close("closeModal('modal-reset')") }}
         </div>
         <div class="modal-body">
             <p style="color:red;font-weight:bold;">⚠️ Attenzione! Questa operazione non può essere annullata.</p>
@@ -153,7 +154,7 @@
     <div class="modal" style="max-width: 600px;">
         <div class="modal-header">
             <h3 class="modal-title">Modifica Utente</h3>
-            <button class="modal-close" onclick="closeModal('modal-edit')">✕</button>
+            {{ modal_close("closeModal('modal-edit')") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="edit-utente-id">
@@ -221,7 +222,7 @@
     <div class="modal" style="max-width: 500px;">
         <div class="modal-header">
             <h3 class="modal-title">Import Utenti da CSV</h3>
-            <button class="modal-close" onclick="closeModal('modal-import-csv')">✕</button>
+            {{ modal_close("closeModal('modal-import-csv')") }}
         </div>
         <div class="modal-body">
             <div class="alert alert-info mb-4">
@@ -259,7 +260,7 @@
     <div class="modal" style="max-width: 500px;">
         <div class="modal-header">
             <h3 class="modal-title">Cambia Scuola</h3>
-            <button class="modal-close" onclick="closeModal('modal-cambio-scuola')">✕</button>
+            {{ modal_close("closeModal('modal-cambio-scuola')") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="cambio-scuola-utente-id">
@@ -299,7 +300,7 @@
     <div class="modal" style="max-width: 500px;">
         <div class="modal-header">
             <h3 class="modal-title">Storico Monte Ore</h3>
-            <button class="modal-close" onclick="closeModal('modal-storico-monte-ore')">✕</button>
+            {{ modal_close("closeModal('modal-storico-monte-ore')") }}
         </div>
         <div class="modal-body" id="storico-monte-ore-content">
             <div class="text-center text-muted py-4">Caricamento...</div>
@@ -312,10 +313,10 @@
     <div class="modal" style="max-width: 600px;">
         <div class="modal-header">
             <h3 class="modal-title">Variazioni Monte Ore</h3>
-            <button class="modal-close" onclick="closeModal('modal-variazioni-monte-ore')">✕</button>
+            {{ modal_close("closeModal('modal-variazioni-monte-ore')") }}
         </div>
         <div class="modal-body">
-            <div class="alert alert-info" style="margin-bottom: 16px; font-size: 0.85rem;">
+            <div class="alert alert-info mb-4">
                 Aggiungi incrementi o decrementi del monte ore che si applicano a partire da un determinato mese.
                 Il sistema userà automaticamente il valore corretto nei calcoli della rendicontazione.
             </div>
@@ -327,7 +328,7 @@
             <hr style="margin: 16px 0;">
 
             <h4 style="font-size: 0.95rem; margin-bottom: 12px;">Nuova variazione</h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="griglia-variazione">
                 <div class="form-group mb-2">
                     <label class="form-label">Nuovo monte ore *</label>
                     <input type="number" id="var-monte-ore" class="form-control" placeholder="es. 18" step="0.5" min="0" max="40">
@@ -339,7 +340,7 @@
                 <div class="form-group mb-2">
                     <label class="form-label">Fino a (opzionale)</label>
                     <input type="month" id="var-mese-fine" class="form-control"
-                           title="Ultimo mese in cui vale. Vuoto = resta valida finche' non la chiudi (il wizard di settembre chiude quelle aperte al 31/8)">
+                           title="Ultimo mese in cui vale. Vuoto = resta valida finché non la chiudi (il wizard di settembre chiude quelle aperte al 31/8)">
                 </div>
             </div>
             <div class="form-group mb-3">
@@ -719,7 +720,7 @@ function inviaNuovoUtente(payload) {
         // Ora si chiede se e' davvero una persona diversa.
         if (err.code === 'UTENTE_DUPLICATO' && !payload.forza) {
             showConfirmDialog(
-                'Utente gia\' presente',
+                'Utente già presente',
                 err.message + ' Vuoi creare comunque un secondo utente con lo stesso nome (persona diversa)?',
                 function() { inviaNuovoUtente(Object.assign({}, payload, { forza: true })); },
                 { confirmText: 'Crea comunque', type: 'warning' }
@@ -909,7 +910,7 @@ function archiviaUtente(id) {
     var u = utentiMap[id];
     var nome = u ? (u.nome + ' ' + (u.cognome || '')).trim() : 'questo utente';
     showConfirmDialog('Archivia utente',
-        'Archiviare ' + nome + '? Non comparira\' piu\' in rendicontazione e negli elenchi, ma tutto lo storico resta: potrai ripristinarlo dal filtro "Archiviati".',
+        'Archiviare ' + nome + '? Non comparirà più in rendicontazione e negli elenchi, ma tutto lo storico resta: potrai ripristinarlo dal filtro "Archiviati".',
         function() {
             apiCall('/api/utenti/' + id, { method: 'PUT', body: JSON.stringify({ attivo: false }) }).then(function() {
                 showToast('Utente archiviato', 'success');
@@ -994,7 +995,9 @@ function loadVariazioniMonteOre() {
         if (variazioni.length === 0) {
             html += '<div class="text-center text-muted py-3" style="font-size:0.85rem;">Nessuna variazione programmata. Il valore base viene usato per tutti i mesi.</div>';
         } else {
-            html += '<table class="table" style="font-size: 0.85rem;"><thead><tr><th>Da</th><th>Fino a</th><th>Monte Ore</th><th>Nota</th><th></th></tr></thead><tbody>';
+            // l'elenco scorre di lato nel suo riquadro: sul telefono era piu' largo
+            // della finestra e faceva scorrere di lato anche i campi qui sotto
+            html += '<div class="table-responsive"><table class="table" style="font-size: 0.85rem;"><thead><tr><th>Da</th><th>Fino a</th><th>Monte Ore</th><th>Nota</th><th></th></tr></thead><tbody>';
             variazioni.forEach(function(v) {
                 html += '<tr>';
                 html += '<td>' + fmtMeseAnno(v.mese_inizio) + '</td>';
@@ -1004,7 +1007,7 @@ function loadVariazioniMonteOre() {
                 html += '<td class="text-right"><button type="button" class="btn btn-sm btn-icon-danger btn-solo-icona" onclick="deleteVariazioneMO(' + v.id + ')" title="Elimina" aria-label="Elimina la variazione da ' + fmtMeseAnno(v.mese_inizio) + '">' + icona('cestino') + '</button></td>';
                 html += '</tr>';
             });
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
         }
 
         list.innerHTML = html;

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block title %}Dipendenti - Gestionale OEPAC{% endblock %}
 
@@ -29,11 +30,11 @@
 <div class="filters">
     <div class="filter-group">
         <label class="filter-label">Cerca</label>
-        <input type="text" id="filter-q" class="form-control" placeholder="Nome, cognome o C.F." style="width: 240px;">
+        <input type="text" id="filter-q" class="form-control w-md" placeholder="Nome, cognome o C.F.">
     </div>
     <div class="filter-group">
         <label class="filter-label">Commessa</label>
-        <select id="filter-commessa" class="form-control" style="width: 180px;">
+        <select id="filter-commessa" class="form-control w-md">
             <option value="">Tutte</option>
         </select>
     </div>
@@ -62,9 +63,7 @@
     <div class="modal" style="max-width: 620px;">
         <div class="modal-header">
             <h3 class="modal-title" id="modal-titolo">Nuovo Dipendente</h3>
-            <button class="modal-close" onclick="closeModal('modal-dipendente')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
+            {{ modal_close("closeModal('modal-dipendente')") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="dip-id">

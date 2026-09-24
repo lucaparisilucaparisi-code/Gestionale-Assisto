@@ -10,18 +10,6 @@
     position: relative;
 }
 
-/* Sfondo decorativo con gradient mesh */
-.auth-body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background:
-        radial-gradient(ellipse 80% 60% at 10% 0%, rgba(10, 132, 255, 0.15), transparent),
-        radial-gradient(ellipse 60% 50% at 90% 100%, rgba(191, 90, 242, 0.12), transparent);
-    pointer-events: none;
-    z-index: 0;
-}
-
 .auth-shell {
     min-height: 100vh;
     display: flex;
@@ -38,7 +26,7 @@
     max-width: 420px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 20px;
+    border-radius: var(--radius);   /* 12px come le card dell'app (era 20px) */
     padding: 36px 36px 30px;
     box-shadow:
         0 20px 60px rgba(0, 0, 0, 0.3),
@@ -105,9 +93,11 @@
 .auth-field input {
     width: 100%;
     padding: 12px 14px;
-    background: var(--bg-tertiary);
+    /* fondo dei campi dell'app: nel tema chiaro il grigio pieno (--bg-tertiary)
+       sembrava un campo disattivato */
+    background: var(--bg-input);
     border: 1px solid var(--border-color);
-    border-radius: 10px;
+    border-radius: var(--radius-sm);   /* 8px come i campi dell'app */
     color: var(--text-primary);
     font-size: 0.95rem;
     font-family: inherit;
@@ -137,7 +127,7 @@
     width: 100%;
     padding: 13px 16px;
     border: none;
-    border-radius: 10px;
+    border-radius: var(--radius-sm);   /* 8px come i pulsanti dell'app */
     font-size: 0.95rem;
     font-weight: 600;
     font-family: inherit;
@@ -151,34 +141,29 @@
     cursor: not-allowed;
 }
 
+/* Pulsanti piatti come nel resto dell'app: niente alone ne' spostamento */
 .auth-btn--primary {
     margin-top: 8px;
     /* fondo pieno piu' scuro: bianco su #3B82F6 era 3,7:1, su --accent-strong 5,2:1 */
     background: var(--accent-strong);
     color: white;
-    box-shadow: 0 4px 14px rgba(10, 132, 255, 0.35);
 }
 
 .auth-btn--primary:hover:not(:disabled) {
     background: var(--accent-strong-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(10, 132, 255, 0.45);
 }
 
-.auth-btn--primary:active:not(:disabled) {
-    transform: translateY(0);
-}
-
+/* Impronta / passkey: pulsante secondario (era una sfumatura viola con alone) */
 .auth-btn--webauthn {
-    background: linear-gradient(135deg, var(--secondary, #BF5AF2), #9d3dd1);
-    color: white;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
     margin-bottom: 12px;
-    box-shadow: 0 4px 14px rgba(191, 90, 242, 0.3);
 }
 
 .auth-btn--webauthn:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(191, 90, 242, 0.4);
+    background: var(--bg-card-solid);
+    border-color: var(--border-light);
 }
 
 /* ==================== DIVIDER ==================== */
@@ -214,7 +199,7 @@
     padding: 12px 14px;
     background: rgba(255, 69, 58, 0.1);
     border: 1px solid rgba(255, 69, 58, 0.3);
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     color: #ff6961;
     font-size: 0.875rem;
     opacity: 0;
@@ -248,7 +233,7 @@
     padding: 12px 14px;
     background: rgba(10, 132, 255, 0.08);
     border: 1px solid rgba(10, 132, 255, 0.2);
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     font-size: 0.825rem;
     line-height: 1.5;
@@ -292,7 +277,7 @@
 @media (max-width: 480px) {
     .auth-card {
         padding: 28px 24px 24px;
-        border-radius: 16px;
+        border-radius: var(--radius);
     }
     .auth-title { font-size: 1.35rem; }
 }

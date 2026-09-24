@@ -395,7 +395,7 @@ function compilaConMedia() {
     const pct = Math.round(((window.APP_CONFIG || {}).tasso_assenza ?? 0.11) * 100);
     showConfirmDialog(
         'Compila con la media',
-        `Compilare tutti gli utenti senza ore con la media prevista (-${pct}%)? Chi ha gia' delle ore non viene toccato.`,
+        `Compilare tutti gli utenti senza ore con la media prevista (-${pct}%)? Chi ha già delle ore non viene toccato.`,
         async () => {
             try {
                 const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/compila-media`, {
@@ -417,7 +417,7 @@ function copiaMesePrecedente() {
     if (!p) return;
     showConfirmDialog(
         'Copia dal mese precedente',
-        'Copiare le ore del mese precedente per gli utenti che non hanno ancora ore? Chi ha gia\' delle ore non viene toccato.',
+        'Copiare le ore del mese precedente per gli utenti che non hanno ancora ore? Chi ha già delle ore non viene toccato.',
         async () => {
             try {
                 const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/copia-precedente`, {

@@ -181,67 +181,43 @@ const KeyboardShortcuts = {
         // Rimuovi se esiste
         document.getElementById('shortcuts-help-modal')?.remove();
 
+        // Finestra normale (.modal, come le altre): prima era una terza versione con
+        // stili scritti qui, angoli da 16px e fondo nero pieno
+        const riga = (nome, tasti) => `<div class="scorciatoia-riga"><span>${nome}</span><kbd class="command-kbd">${tasti}</kbd></div>`;
+        const pagine = [['1', 'Dashboard'], ['2', 'Rendicontazione'], ['3', 'Utenti'], ['4', 'Commesse'],
+            ['5', 'Import'], ['6', 'Report'], ['7', 'Calendario']];
+
         const modal = document.createElement('div');
         modal.id = 'shortcuts-help-modal';
         modal.className = 'modal-overlay active';
-        modal.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9999;';
-
         modal.innerHTML = `
-            <div style="background: var(--bg-primary); border-radius: 16px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);">
-                <h3 style="margin: 0 0 16px; font-size: 1.1rem; font-weight: 600;">Scorciatoie da tastiera</h3>
-                <div style="display: grid; gap: 8px;">
-                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
-                        <span>Ricerca globale</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Ctrl/Cmd + K</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
-                        <span>Salva modifiche</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Ctrl/Cmd + S</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
-                        <span>Annulla</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Ctrl/Cmd + Z</kbd>
-                    </div>
-                    <div style="font-weight: 600; margin-top: 12px; margin-bottom: 4px;">Navigazione rapida</div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Dashboard</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 1</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Rendicontazione</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 2</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Utenti</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 3</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Commesse</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 4</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Import</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 5</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Report</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 6</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Calendario</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 7</kbd>
-                    </div>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="shortcuts-help-titolo" style="max-width: 420px;">
+                <div class="modal-header">
+                    <h3 class="modal-title" id="shortcuts-help-titolo">Scorciatoie da tastiera</h3>
+                    <button type="button" class="modal-close" data-chiudi aria-label="Chiudi" title="Chiudi">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
                 </div>
-                <button onclick="this.closest('.modal-overlay').remove()" style="margin-top: 20px; width: 100%; padding: 10px; border: none; background: var(--primary); color: white; border-radius: 8px; cursor: pointer; font-weight: 500;">Chiudi</button>
-                <p style="text-align: center; margin-top: 12px; font-size: 0.75rem; color: var(--text-tertiary);">Premi <kbd style="background: var(--bg-secondary); padding: 1px 4px; border-radius: 3px;">?</kbd> per mostrare questa guida</p>
+                <div class="modal-body">
+                    ${riga('Ricerca rapida', 'Ctrl+K')}
+                    ${riga('Salva modifiche', 'Ctrl+S')}
+                    ${riga('Annulla', 'Ctrl+Z')}
+                    <div class="scorciatoie-sezione">Navigazione rapida</div>
+                    ${pagine.map(([n, nome]) => riga(nome, `Alt+${n}`)).join('')}
+                    <p class="scorciatoie-nota">Premi <kbd class="command-kbd">?</kbd> per mostrare questa guida</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-chiudi>Chiudi</button>
+                </div>
             </div>
         `;
 
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.remove();
+            if (e.target === modal || e.target.closest('[data-chiudi]')) modal.remove();
         });
 
         document.body.appendChild(modal);
+        modal.querySelector('.modal-footer .btn')?.focus();
     }
 };
 
@@ -505,9 +481,9 @@ function showConfirmDialog(title, message, onConfirm, options = {}) {
     requestAnimationFrame(() => {
         overlay.classList.add('active');
         if (requireInput) {
-            document.getElementById('confirm-dialog-input')?.focus();
+            focusInFinestra(document.getElementById('confirm-dialog-input'));
         } else {
-            document.getElementById('confirm-dialog-cancel')?.focus();
+            focusInFinestra(document.getElementById('confirm-dialog-cancel'));
         }
     });
 
@@ -945,6 +921,22 @@ const MenuAzioni = {
 // Elemento che aveva il focus prima dell'apertura, per ripristinarlo alla chiusura
 let _modalFocusPrecedente = null;
 
+/**
+ * Mette il focus su un elemento di una finestra appena aperta. Le finestre passano
+ * da visibility:hidden a visible con una transizione: nell'istante dell'apertura
+ * sono ancora 'hidden' e focus() non ha effetto (con Ctrl+K si scriveva nel vuoto).
+ * Se il primo tentativo non riesce, si riprova appena la finestra e' visibile.
+ */
+function focusInFinestra(el) {
+    if (!el || !el.focus) return;
+    el.focus();
+    if (document.activeElement === el) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (document.activeElement !== el) el.focus();
+    }));
+    setTimeout(() => { if (document.activeElement !== el && el.offsetParent !== null) el.focus(); }, 120);
+}
+
 const _FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), ' +
                    'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -960,7 +952,7 @@ function openModal(modalId) {
         dialog.setAttribute('aria-modal', 'true');
         _modalFocusPrecedente = document.activeElement;
         const primo = dialog.querySelector(_FOCUSABLE);
-        (primo || dialog).focus?.();
+        focusInFinestra(primo || dialog);
 
         // Trap del Tab: il focus cicla dentro la modale
         modal.addEventListener('keydown', _modalTrapTab);
@@ -1401,14 +1393,9 @@ const CommandPalette = {
             return;
         }
 
-        // Shortcuts numerici ⌘1-5
-        if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '5') {
-            e.preventDefault();
-            const urls = ['/', '/rendicontazione', '/utenti', '/report', '/commesse'];
-            const index = parseInt(e.key) - 1;
-            if (urls[index]) window.location.href = urls[index];
-            return;
-        }
+        // Niente Ctrl+1..5 qui: in Chrome ed Edge passano da una scheda del browser
+        // all'altra. Le scorciatoie di pagina sono Alt+numero (KeyboardShortcuts.navMap),
+        // le stesse indicate nella ricerca.
 
         if (!this.isOpen) return;
 
@@ -1440,7 +1427,7 @@ const CommandPalette = {
         this.isOpen = true;
         this.overlay.classList.add('active');
         this.input.value = '';
-        this.input.focus();
+        focusInFinestra(this.input);
         this.resetSearch();
         this.selectedIndex = 0;
         this.updateSelection();

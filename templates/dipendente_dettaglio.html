@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block title %}Scheda Dipendente - Gestionale OEPAC{% endblock %}
 
@@ -72,9 +73,7 @@
     <div class="modal" style="max-width: 620px;">
         <div class="modal-header">
             <h3 class="modal-title">Modifica Dipendente</h3>
-            <button class="modal-close" onclick="closeModal('modal-dipendente')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
+            {{ modal_close("closeModal('modal-dipendente')") }}
         </div>
         <div class="modal-body">
             <div class="form-row">
@@ -271,7 +270,7 @@ function toggleStato() {
     if (dip.attivo) {
         showConfirmDialog(
             'Disattiva dipendente',
-            'Disattivare questo dipendente? Non comparira\' piu\' tra gli operatori disponibili; i suoi dati restano e potrai riattivarlo da qui.',
+            'Disattivare questo dipendente? Non comparirà più tra gli operatori disponibili; i suoi dati restano e potrai riattivarlo da qui.',
             () => esegui(false),
             { confirmText: 'Disattiva', type: 'warning' }
         );

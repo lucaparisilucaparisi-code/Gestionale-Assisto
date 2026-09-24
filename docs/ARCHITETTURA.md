@@ -87,6 +87,11 @@ reimplementarla inline (a schermo, in SQL o negli export).
   (`getColors()`: blu `--primary` per le ore erogate, grigio `neutro` per le previste,
   `commessa.colore` per le fette per commessa), tela liberata prima di ridisegnare e
   ridisegno automatico al cambio di tema. Niente tavolozze scritte a mano.
+- Finestre: la X di chiusura si scrive con la macro `modal_close(on_click)` di
+  `templates/_macros.html` (`{% from '_macros.html' import modal_close %}`), mai a mano.
+  Angoli: 6px etichette, 8px pulsanti e campi, 12px riquadri e finestre (`--r-*` in
+  `refine.css`). Numeri nel carattere del testo (`--font-mono` = `--font-sans`, cifre
+  incolonnate con `tabular-nums`); `--font-code` solo per i tasti (`kbd`).
 - Ordine dei fogli (conta per la cascata): style → premium-effects → ux-enhancements →
   components → theme-premium → refine. Prima di togliere o rinominare CSS: il test
   `tests/test_css_integrita.py` segnala le classi usate dalle pagine rimaste senza stile,

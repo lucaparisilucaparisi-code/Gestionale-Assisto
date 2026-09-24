@@ -34,19 +34,17 @@
 <!-- ============ TAB ANAGRAFICA UTENTI ============ -->
 <div id="tab-anagrafica" class="import-tab-panel">
 
-<!-- Azioni rapide -->
-<div class="filters" style="justify-content: flex-end;">
-    <button id="btn-scarica-template" class="btn btn-secondary">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-        </svg>
-        Scarica Template Excel
-    </button>
-</div>
-
+{# 'Scarica Template Excel' nell'intestazione della card a cui si riferisce, come
+   'Aggiorna' in Cronologia (prima era da solo in una barra intera sopra la card) #}
 <div class="card">
-    <div class="card-header">
+    <div class="card-header flex justify-between items-center">
         <h2 class="card-title">Carica File</h2>
+        <button id="btn-scarica-template" class="btn btn-sm btn-secondary">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Scarica Template Excel
+        </button>
     </div>
     <div class="card-body">
         <div class="alert alert-info mb-4">
@@ -999,8 +997,8 @@ function renderRendPreview(data) {
                                     <tr>
                                         <td>${escapeHtml(m.utente_nome || m.nome)}</td>
                                         <td class="text-xs text-muted">${escapeHtml(m.scuola)}</td>
-                                        <td style="text-align:right; font-family:monospace;">${m.ore}</td>
-                                        <td style="text-align:right; font-family:monospace;">${m.pasti}</td>
+                                        <td style="text-align:right;">${m.ore}</td>
+                                        <td style="text-align:right;">${m.pasti}</td>
                                     </tr>`).join('')}
                                 ${f.n_match > f.anteprima_match.length ? `<tr><td colspan="4" class="text-muted text-center">… e altri ${f.n_match - f.anteprima_match.length} utenti</td></tr>` : ''}
                             </tbody>
