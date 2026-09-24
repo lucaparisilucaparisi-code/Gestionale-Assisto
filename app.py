@@ -1719,6 +1719,11 @@ def api_get_utenti():
     limit = min(limit, 200)
 
     utenti = db.get_all_utenti(commessa, scuola_id, page=page, limit=limit, attivo=attivo)
+    # Lista d'attesa: conta quest'anno? (un'etichetta di un anno passato si
+    # mostra attenuata con l'anno, es. "Marzo 25/26")
+    anno_corrente = config.anno_scolastico_corrente()
+    for u in utenti:
+        u.update(db.info_lista_attesa(u, anno_corrente))
 
     # Se paginato, restituisci anche i metadati
     if page is not None:
@@ -1799,6 +1804,19 @@ def api_create_utente():
         return jsonify({'error': 'Errore interno del server'}), 500
 
 
+def _lista_attesa_con_anno(dati):
+    """Etichetta lista d'attesa di una richiesta con il suo anno scolastico:
+    quello passato in 'lista_attesa_as' (formato AAAA-AAAA) o l'anno corrente.
+    Senza etichetta, niente anno. Ritorna (lista, anno, errore)."""
+    lista = str(dati.get('lista_attesa') or '').strip() or None
+    if not lista:
+        return None, None, None
+    anno = str(dati.get('lista_attesa_as') or '').strip() or config.anno_scolastico_corrente()
+    if _valida_anno_scolastico(anno):
+        return None, None, "lista_attesa_as deve essere un anno scolastico (formato AAAA-AAAA)"
+    return lista, anno, None
+
+
 @app.route('/api/utenti/<int:utente_id>', methods=['PUT'])
 def api_update_utente(utente_id):
     """Aggiorna un utente esistente"""
@@ -1844,8 +1862,16 @@ def api_update_utente(utente_id):
                     params.append(monte_ore)
 
             if 'lista_attesa' in data:
-                updates.append("lista_attesa = ?")
-                params.append(data['lista_attesa'] if data['lista_attesa'] else None)
+                # L'etichetta vale per un anno scolastico (quello indicato o l'attuale):
+                # nei report conta solo nei mesi di quell'anno
+                lista, anno_lista, err = _lista_attesa_con_anno(data)
+                if err:
+                    errors.append(err)
+                else:
+                    updates.append("lista_attesa = ?")
+                    params.append(lista)
+                    updates.append("lista_attesa_as = ?")
+                    params.append(anno_lista)
 
             # Gestione periodo di validità (data_inizio, data_fine)
             if 'data_inizio' in data:
@@ -1870,6 +1896,15 @@ def api_update_utente(utente_id):
             if 'attivo' in data:
                 updates.append("attivo = ?")
                 params.append(1 if data['attivo'] else 0)
+                # Mese dell'archiviazione (sql_utente_nel_mese: nei mesi prima conta
+                # come quando era attivo). Scritto solo al passaggio da attivo ad
+                # archiviato, cosi' salvare di nuovo un archiviato non lo sposta;
+                # tolto al ripristino.
+                if data['attivo']:
+                    updates.append("archiviato_dal = NULL")
+                elif utente['attivo']:
+                    updates.append("archiviato_dal = ?")
+                    params.append(db.mese_archiviazione())
 
             if errors:
                 return jsonify({'error': '; '.join(errors)}), 400
@@ -1964,8 +1999,14 @@ def api_bulk_update_utenti():
             set_parts.append('monte_ore_settimanale = ?')
             params.append(ore)
         if 'lista_attesa' in upd:
+            lista, anno_lista, err = _lista_attesa_con_anno(upd)
+            if err:
+                errori.append(f'ID {uid}: {err}')
+                continue
             set_parts.append('lista_attesa = ?')
-            params.append(upd['lista_attesa'] if upd['lista_attesa'] else None)
+            params.append(lista)
+            set_parts.append('lista_attesa_as = ?')
+            params.append(anno_lista)
         if set_parts:
             righe.append((uid, set_parts, params))
     if errori:
@@ -1977,7 +2018,8 @@ def api_bulk_update_utenti():
     with db.get_db_context() as conn:
         cursor = conn.cursor()
         for uid, set_parts, params in righe:
-            cursor.execute("SELECT id, monte_ore_settimanale, lista_attesa FROM utenti WHERE id = ?", (uid,))
+            cursor.execute("SELECT id, monte_ore_settimanale, lista_attesa, lista_attesa_as FROM utenti WHERE id = ?",
+                           (uid,))
             row = cursor.fetchone()
             if not row:
                 continue
@@ -2042,7 +2084,7 @@ def api_export_utenti_csv():
         cursor = conn.cursor()
 
         query = '''
-            SELECT u.id, u.nome, u.cognome, u.monte_ore_settimanale, u.lista_attesa,
+            SELECT u.id, u.nome, u.cognome, u.monte_ore_settimanale, u.lista_attesa, u.lista_attesa_as,
                    u.data_inizio, u.data_fine, u.attivo,
                    s.nome_completo as scuola, c.nome as commessa
             FROM utenti u
@@ -2061,13 +2103,15 @@ def api_export_utenti_csv():
 
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow(['nome', 'cognome', 'scuola', 'monte_ore', 'commessa', 'lista_attesa', 'data_inizio', 'data_fine', 'attivo'])
+    # lista_attesa_anno in fondo: le colonne di prima restano dove erano
+    writer.writerow(['nome', 'cognome', 'scuola', 'monte_ore', 'commessa', 'lista_attesa', 'data_inizio', 'data_fine',
+                     'attivo', 'lista_attesa_anno'])
 
     for u in utenti:
         writer.writerow([
             u['nome'], u['cognome'], u['scuola'], u['monte_ore_settimanale'],
             u['commessa'], u['lista_attesa'] or '', u['data_inizio'] or '', u['data_fine'] or '',
-            'si' if u['attivo'] else 'no'
+            'si' if u['attivo'] else 'no', (u['lista_attesa_as'] or '') if u['lista_attesa'] else ''
         ])
 
     response = make_response(output.getvalue())
@@ -2174,9 +2218,11 @@ def api_duplica_utente(utente_id):
         nome_puntato = db.punteggia_nome(nuovo_nome, utente['cognome'])
 
         cursor.execute('''
-            INSERT INTO utenti (nome, cognome, nome_puntato, monte_ore_settimanale, scuola_id, lista_attesa, attivo, data_inserimento)
-            VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-        ''', (nuovo_nome, utente['cognome'], nome_puntato, utente['monte_ore_settimanale'], utente['scuola_id'], utente['lista_attesa'], datetime.now().isoformat()))
+            INSERT INTO utenti (nome, cognome, nome_puntato, monte_ore_settimanale, scuola_id, lista_attesa,
+                                lista_attesa_as, attivo, data_inserimento)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+        ''', (nuovo_nome, utente['cognome'], nome_puntato, utente['monte_ore_settimanale'], utente['scuola_id'],
+              utente['lista_attesa'], utente['lista_attesa_as'], datetime.now().isoformat()))
 
         nuovo_id = cursor.lastrowid
 
@@ -2718,6 +2764,10 @@ def api_copia_mese_precedente(anno, mese):
     # Ottieni dati mese corrente per verificare quali utenti hanno già ore
     dati_corrente = db.get_rendicontazione_completa(anno, mese)
     utenti_con_ore = {d['utente_id'] for d in dati_corrente if (d.get('ore_lavorate_60') or 0) > 0}
+    # Si copia solo verso chi e' in servizio nel mese di destinazione e non e'
+    # archiviato: un archiviato presente nel mese di origine (ha ore li') non deve
+    # ricomparire nel mese nuovo, ne' chi e' uscito il mese prima
+    destinatari = {d['utente_id'] for d in dati_corrente if d.get('attivo')}
 
     updates = []
     for d in dati_prec:
@@ -2725,6 +2775,9 @@ def api_copia_mese_precedente(anno, mese):
 
         # Filtra per utente_ids se specificato
         if utente_ids and uid not in utente_ids:
+            continue
+
+        if uid not in destinatari:
             continue
 
         # Salta se utente ha già ore e solo_vuoti è True
@@ -2774,6 +2827,10 @@ def api_compila_con_media(anno, mese):
 
         # Filtra per utente_ids se specificato
         if utente_ids and uid not in utente_ids:
+            continue
+
+        # Gli archiviati restano nei mesi passati ma non si compilano
+        if not d.get('attivo'):
             continue
 
         # Solo utenti senza ore
@@ -3455,6 +3512,8 @@ def api_anno_scolastico_utenti_anteprima():
         'utenti': utenti,
         'variazioni_da_chiudere': sum(u['variazioni_aperte'] for u in utenti),
         'da_archiviare': sum(1 for u in utenti if u['proposta_archivio']),
+        # usciti prima di settembre: solo un'indicazione, nessuna spunta proposta
+        'usciti': sum(1 for u in utenti if u['uscito']),
         'gia_preparato': db.get_impostazione('anno_utenti_preparato') == anno_scolastico,
     })
 
@@ -3491,8 +3550,11 @@ def api_anno_scolastico_prepara_utenti():
 
     # Audit DOPO il commit: una riga per utente, cosi' lo storico monte ore le vede
     for m in esito['monte_ore_modificati']:
+        conservato = m.get('conservato')
+        nota = (f" (mesi passati: {m['prima']} h fino al {conservato['mese_fine']}, "
+                f"variazione dal {conservato['mese_inizio']})") if conservato else ''
         db.log_audit('modifica', 'utente', m['id'],
-                     dettagli=f'Nuovo anno {anno_scolastico}: monte ore {m["prima"]} -> {m["dopo"]}',
+                     dettagli=f'Nuovo anno {anno_scolastico}: monte ore {m["prima"]} -> {m["dopo"]}{nota}',
                      dati_precedenti={'monte_ore_settimanale': m['prima']},
                      dati_nuovi={'monte_ore': m['dopo']})
     for a in esito['archiviati']:
@@ -3501,8 +3563,9 @@ def api_anno_scolastico_prepara_utenti():
     db.log_audit('preparazione_anno_utenti', 'sistema',
                  dettagli=f'Utenti preparati per {anno_scolastico}: '
                           f"{esito['variazioni_chiuse']} variazioni chiuse, "
-                          f"{len(esito['monte_ore_modificati'])} monte ore aggiornati, "
-                          f"{len(esito['archiviati'])} archiviati")
+                          f"{len(esito['monte_ore_modificati'])} monte ore aggiornati "
+                          f"({esito['variazioni_conservate']} con il valore vecchio conservato "
+                          f"per i mesi passati), {len(esito['archiviati'])} archiviati")
     logger.info(f"Passo utenti nuovo anno {anno_scolastico}: {esito}")
 
     return jsonify({
@@ -3510,6 +3573,7 @@ def api_anno_scolastico_prepara_utenti():
         'anno_scolastico': anno_scolastico,
         'variazioni_chiuse': esito['variazioni_chiuse'],
         'monte_ore_modificati': len(esito['monte_ore_modificati']),
+        'variazioni_conservate': esito['variazioni_conservate'],
         'archiviati': len(esito['archiviati']),
         'dettaglio': esito,
     })
@@ -3528,7 +3592,9 @@ def api_utenti_da_completare(anno, mese):
         # periodo della vista mensile: chi non era in servizio nel mese non
         # deve comparire come "da completare" (anomalia non risolvibile).
         periodo = f"{anno:04d}-{mese:02d}"
-        cursor.execute('''
+        # Archiviati: stessa regola della vista mensile (sql_utente_nel_mese)
+        conta_sql, conta_params = db.sql_utente_nel_mese(anno, mese)
+        cursor.execute(f'''
             SELECT u.id, u.nome, u.cognome, u.monte_ore_settimanale,
                    s.nome_completo as scuola, c.nome as commessa
             FROM utenti u
@@ -3536,24 +3602,28 @@ def api_utenti_da_completare(anno, mese):
             JOIN commesse c ON s.commessa_id = c.id
             LEFT JOIN rendicontazione r ON u.id = r.utente_id
                 AND r.anno = ? AND r.mese = ?
-            WHERE u.attivo = 1
+            WHERE {conta_sql}
                 AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
                 AND (u.data_fine IS NULL OR u.data_fine >= ?)
                 AND (r.ore_lavorate_60 IS NULL OR r.ore_lavorate_60 = 0)
             ORDER BY c.nome, s.nome_completo, u.cognome, u.nome
-        ''', (anno, mese, periodo, periodo))
+        ''', [anno, mese] + conta_params + [periodo, periodo])
 
-        utenti = []
-        for row in cursor.fetchall():
-            utenti.append({
-                'id': row['id'],
-                'nome': row['nome'],
-                'cognome': row['cognome'],
-                'nome_completo': f"{row['nome']} {row['cognome']}",
-                'monte_ore': row['monte_ore_settimanale'],
-                'scuola': row['scuola'],
-                'commessa': row['commessa']
-            })
+        righe = cursor.fetchall()
+
+    # Monte ore del MESE (variazioni comprese), non la base di oggi
+    effettivi = db.get_monte_ore_effettivo_bulk(anno, mese)
+    utenti = []
+    for row in righe:
+        utenti.append({
+            'id': row['id'],
+            'nome': row['nome'],
+            'cognome': row['cognome'],
+            'nome_completo': f"{row['nome']} {row['cognome']}",
+            'monte_ore': effettivi.get(row['id'], row['monte_ore_settimanale']),
+            'scuola': row['scuola'],
+            'commessa': row['commessa']
+        })
 
     return jsonify(utenti)
 
@@ -3635,15 +3705,16 @@ def api_undo():
                 # Ripristina utente (inclusi i budget ore, prima omessi)
                 cursor.execute('''
                     INSERT INTO utenti (id, scuola_id, nome, cognome, nome_puntato,
-                        monte_ore_settimanale, attivo, lista_attesa, data_inserimento,
-                        data_inizio, data_fine, budget_ore_mensile, budget_ore_annuale)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        monte_ore_settimanale, attivo, lista_attesa, lista_attesa_as, data_inserimento,
+                        data_inizio, data_fine, budget_ore_mensile, budget_ore_annuale, archiviato_dal)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (u['id'], u['scuola_id'], u['nome'], u['cognome'],
                       u.get('nome_puntato', ''), u['monte_ore_settimanale'],
-                      u.get('attivo', 1), u.get('lista_attesa'),
+                      u.get('attivo', 1), u.get('lista_attesa'), u.get('lista_attesa_as'),
                       u.get('data_inserimento', datetime.now().isoformat()),
                       u.get('data_inizio'), u.get('data_fine'),
-                      u.get('budget_ore_mensile'), u.get('budget_ore_annuale')))
+                      u.get('budget_ore_mensile'), u.get('budget_ore_annuale'),
+                      None if u.get('attivo', 1) else u.get('archiviato_dal')))
 
                 # Ripristina rendicontazioni
                 for r in action['data'].get('rendicontazioni', []):
@@ -3717,6 +3788,11 @@ def api_undo():
                           asg.get('ore_settimanali', 0), asg.get('valido_da'), asg.get('valido_a'),
                           asg.get('note'), asg.get('data_inserimento', datetime.now().isoformat())))
 
+                # Snapshot di versioni senza l'anno della lista d'attesa: lo si
+                # ricava dalle ore appena ripristinate (usa questo stesso cursore,
+                # nessuna seconda connessione)
+                db.completa_anno_liste_attesa(cursor, [u['id']])
+
                 # Rimuovi l'azione NELLA STESSA transazione del ripristino.
                 # NB: niente chiamate db.* qui dentro (aprirebbero una seconda
                 # connessione in scrittura mentre questa transazione e' aperta).
@@ -3731,13 +3807,21 @@ def api_undo():
                 set_parts = []
                 params = []
                 for key in ['nome', 'cognome', 'monte_ore_settimanale', 'nome_puntato',
-                            'lista_attesa', 'data_inizio', 'data_fine', 'attivo']:
+                            'lista_attesa', 'lista_attesa_as', 'data_inizio', 'data_fine', 'attivo',
+                            'archiviato_dal']:
                     if key in old:
                         set_parts.append(f"{key} = ?")
                         params.append(old[key])
+                if 'lista_attesa' in old and 'lista_attesa_as' not in old:
+                    # azione salvata da una versione senza l'anno: si ricava
+                    set_parts.append("lista_attesa_as = NULL")
+                if old.get('attivo') and 'archiviato_dal' not in old:
+                    # azione salvata da una versione senza il mese dell'archiviazione
+                    set_parts.append("archiviato_dal = NULL")
                 if set_parts:
                     params.append(uid)
                     cursor.execute(f"UPDATE utenti SET {', '.join(set_parts)} WHERE id = ?", params)
+                    db.completa_anno_liste_attesa(cursor, [uid])
 
                 cursor.execute('DELETE FROM undo_actions WHERE id = ?', (action['id'],))
                 esito = ('utente', uid, 'Ripristinati dati precedenti',
@@ -3747,10 +3831,16 @@ def api_undo():
                 n = 0
                 for item in action['data'].get('items', []):
                     old = item.get('dati_precedenti', {})
+                    # lista_attesa_as assente (azione di una versione precedente):
+                    # NULL e poi ricavato dai dati
                     cursor.execute(
-                        "UPDATE utenti SET monte_ore_settimanale = ?, lista_attesa = ? WHERE id = ?",
-                        (old.get('monte_ore_settimanale'), old.get('lista_attesa'), item.get('id')))
+                        "UPDATE utenti SET monte_ore_settimanale = ?, lista_attesa = ?, lista_attesa_as = ? "
+                        "WHERE id = ?",
+                        (old.get('monte_ore_settimanale'), old.get('lista_attesa'), old.get('lista_attesa_as'),
+                         item.get('id')))
                     n += cursor.rowcount
+                db.completa_anno_liste_attesa(
+                    cursor, [item.get('id') for item in action['data'].get('items', []) if item.get('id')])
                 cursor.execute('DELETE FROM undo_actions WHERE id = ?', (action['id'],))
                 esito = ('utenti', None, f'Annullata modifica massiva ({n} utenti)',
                          {'success': True, 'message': f'Modifica massiva annullata ({n} utenti)'})
@@ -3840,18 +3930,25 @@ def api_stats_heatmap(anno_scolastico):
 
         with db.get_db_context() as conn:
             # Ottieni utenti con JOIN per commessa e scuola
-            query_utenti = """
+            # Archiviati: presenti se hanno righe nell'anno o se il loro periodo
+            # di servizio ne tocca i mesi passati (sql_utente_nell_anno)
+            conta_sql, conta_params = db.sql_utente_nell_anno(anno_scolastico)
+            query_utenti = f"""
                 SELECT u.id, u.nome, u.cognome, cm.nome as commessa,
                        s.nome_completo as scuola, u.monte_ore_settimanale
                 FROM utenti u
                 JOIN scuole s ON u.scuola_id = s.id
                 JOIN commesse cm ON s.commessa_id = cm.id
-                WHERE u.attivo = 1
+                WHERE {conta_sql}
             """
-            params = []
+            params = list(conta_params)
             if commessa:
                 query_utenti += " AND cm.nome = ?"
                 params.append(commessa)
+            # Totale degli utenti dell'anno scelto (archiviati compresi): la pagina lo
+            # usa per "Mostrati N su ..." e come limite di "Mostra tutti", al posto
+            # degli utenti attivi di oggi che per un anno passato sono un altro numero
+            totale = conn.execute(f"SELECT COUNT(*) FROM ({query_utenti})", params).fetchone()[0]
             query_utenti += " ORDER BY u.cognome, u.nome LIMIT ?"
             params.append(limit)
 
@@ -3931,6 +4028,7 @@ def api_stats_heatmap(anno_scolastico):
 
             return jsonify({
                 'heatmap': heatmap_data,
+                'totale': totale,
                 'mesi': [{'mese': m['mese'], 'anno': m['anno']} for m in mesi_scolastici]
             })
     except Exception as e:
@@ -3940,13 +4038,40 @@ def api_stats_heatmap(anno_scolastico):
 
 @app.route('/api/stats/scuole-dettaglio')
 def api_stats_scuole_dettaglio():
-    """Statistiche dettagliate per scuola con filtri"""
+    """Statistiche dettagliate per scuola con filtri.
+
+    Con anno e mese i numeri vengono dalla vista mensile (get_rendicontazione_completa):
+    stesso periodo di servizio, stessi archiviati (sql_utente_nel_mese) e monte ore
+    del mese (variazioni comprese) di Rendicontazione e report. Senza mese: gli
+    utenti di oggi con il loro monte ore base."""
     try:
         anno = request.args.get('anno', type=int)
         mese = request.args.get('mese', type=int)
         commessa = request.args.get('commessa')
         order_by = request.args.get('order_by', 'ore_erogate')
         order_dir = request.args.get('order_dir', 'desc')
+        discendente = order_dir.lower() == 'desc'
+
+        if anno and mese:
+            per_scuola = {}
+            for d in db.get_rendicontazione_completa(anno, mese, commessa):
+                sc = per_scuola.setdefault(d['scuola_id'], {
+                    'scuola': d['scuola'], 'commessa': d['commessa'],
+                    'num_utenti': 0, 'monte_ore_totale': 0, 'ore_erogate': 0})
+                sc['num_utenti'] += 1
+                sc['monte_ore_totale'] += d['monte_ore_effettivo'] or 0
+                sc['ore_erogate'] += d['ore_lavorate_60'] or 0
+            scuole = list(per_scuola.values())
+            colonna = order_by if order_by in ('num_utenti', 'monte_ore_totale', 'ore_erogate', 'scuola') \
+                else 'num_utenti'
+            scuole.sort(key=lambda x: (x[colonna] or '') if colonna == 'scuola' else (x[colonna] or 0),
+                        reverse=discendente)
+            # Deriva imponibile e totale IVA-inclusa dalle ore, via config
+            for sc in scuole:
+                imponibile, _iva, totale = config.calcola_fatturazione(sc['ore_erogate'])
+                sc['imponibile'] = imponibile
+                sc['totale_iva'] = totale
+            return jsonify({'scuole': scuole})
 
         with db.get_db_context() as conn:
             # NOTA: utenti.scuola e utenti.commessa non esistono, facciamo JOIN
@@ -3956,33 +4081,12 @@ def api_stats_scuole_dettaglio():
                     cm.nome as commessa,
                     COUNT(DISTINCT u.id) as num_utenti,
                     SUM(u.monte_ore_settimanale) as monte_ore_totale
-            """
-
-            if anno and mese:
-                # Solo le ore in SQL: imponibile/totale-IVA derivati in Python da
-                # config (mai costanti tariffa/IVA hardcoded nelle query).
-                query += """,
-                    COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate
-                """
-
-            query += """
                 FROM utenti u
                 JOIN scuole s ON u.scuola_id = s.id
                 JOIN commesse cm ON s.commessa_id = cm.id
+                WHERE u.attivo = 1
             """
-
-            if anno and mese:
-                query += """
-                    LEFT JOIN rendicontazione r ON u.id = r.utente_id
-                        AND r.anno = ? AND r.mese = ?
-                """
-
-            query += " WHERE u.attivo = 1"
-
             params = []
-            if anno and mese:
-                params.extend([anno, mese])
-
             if commessa:
                 query += " AND cm.nome = ?"
                 params.append(commessa)
@@ -3997,22 +4101,12 @@ def api_stats_scuole_dettaglio():
                 'monte_ore_totale': 'monte_ore_totale',
                 'scuola': 's.nome_completo'
             }
-            if anno and mese:
-                valid_orders['ore_erogate'] = 'ore_erogate'
             colonna_order = valid_orders.get(order_by, 'num_utenti')
-            direction = 'DESC' if order_dir.lower() == 'desc' else 'ASC'
+            direction = 'DESC' if discendente else 'ASC'
             query += f" ORDER BY {colonna_order} {direction}"
 
             cursor = conn.execute(query, params)
             scuole = [dict(row) for row in cursor.fetchall()]
-
-            # Deriva imponibile e totale IVA-inclusa dalle ore, via config
-            if anno and mese:
-                for s in scuole:
-                    imponibile, _iva, totale = config.calcola_fatturazione(s.get('ore_erogate', 0))
-                    s['imponibile'] = imponibile
-                    s['totale_iva'] = totale
-
             return jsonify({'scuole': scuole})
     except Exception as e:
         logger.error(f"Errore stats scuole: {e}")
@@ -4043,24 +4137,38 @@ def api_stats_validazione():
         # nel mese non sono anomalie (non risolvibili dal wizard di chiusura)
         periodo_val = f"{anno:04d}-{mese:02d}"
 
+        # Archiviati: contano come nella vista mensile (sql_utente_nel_mese)
+        conta_sql, conta_params = db.sql_utente_nel_mese(anno, mese, r=None)
+        conta_sql_r, conta_params_r = db.sql_utente_nel_mese(anno, mese)
+
+        # Monte ore del MESE (variazioni comprese), non la base di oggi: dopo il
+        # passo Utenti del nuovo anno la base puo' essere cambiata (anche a 0)
+        # mentre i mesi passati tengono il valore di allora
+        monte_ore_mese = db.get_monte_ore_effettivo_bulk(anno, mese)
+
+        def _monte_ore_del_mese(row):
+            return monte_ore_mese.get(row['id'], row['monte_ore_settimanale']) or 0
+
         with db.get_db_context() as conn:
-            # 1. Utenti senza ore nel mese
-            cursor = conn.execute("""
+            # 1. Utenti senza ore nel mese (con monte ore del mese > 0). ORDER BY
+            # esplicito: i 10 nomi di esempio restano quelli di sempre (per id)
+            cursor = conn.execute(f"""
                 SELECT u.id, u.nome, u.cognome, cm.nome as commessa,
                        s.nome_completo as scuola, u.monte_ore_settimanale
                 FROM utenti u
                 JOIN scuole s ON u.scuola_id = s.id
                 JOIN commesse cm ON s.commessa_id = cm.id
-                WHERE u.attivo = 1
-                AND u.monte_ore_settimanale > 0
+                WHERE {conta_sql}
                 AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
                 AND (u.data_fine IS NULL OR u.data_fine >= ?)
                 AND u.id NOT IN (
                     SELECT DISTINCT utente_id FROM rendicontazione
                     WHERE anno = ? AND mese = ? AND ore_lavorate_60 > 0
                 )
-            """ + filtro_cm, [periodo_val, periodo_val, anno, mese] + param_cm)
-            utenti_senza_ore = [dict(row) for row in cursor.fetchall()]
+            """ + filtro_cm + """
+                ORDER BY u.id
+            """, conta_params + [periodo_val, periodo_val, anno, mese] + param_cm)
+            utenti_senza_ore = [dict(row) for row in cursor.fetchall() if _monte_ore_del_mese(row) > 0]
 
             if utenti_senza_ore:
                 anomalie.append({
@@ -4096,18 +4204,19 @@ def api_stats_validazione():
                                 for u in ore_anomale]
                 })
 
-            # 3. Utenti con monte ore = 0 ma con ore lavorate
+            # 3. Utenti con monte ore del mese = 0 ma con ore lavorate
             cursor = conn.execute("""
-                SELECT u.id, u.nome, u.cognome, r.ore_lavorate_60
+                SELECT u.id, u.nome, u.cognome, r.ore_lavorate_60, u.monte_ore_settimanale
                 FROM rendicontazione r
                 JOIN utenti u ON r.utente_id = u.id
                 JOIN scuole s ON u.scuola_id = s.id
                 JOIN commesse cm ON s.commessa_id = cm.id
                 WHERE r.anno = ? AND r.mese = ?
-                AND u.monte_ore_settimanale = 0
                 AND r.ore_lavorate_60 > 0
-            """ + filtro_cm, [anno, mese] + param_cm)
-            monte_ore_zero = [dict(row) for row in cursor.fetchall()]
+            """ + filtro_cm + """
+                ORDER BY u.id
+            """, [anno, mese] + param_cm)
+            monte_ore_zero = [dict(row) for row in cursor.fetchall() if _monte_ore_del_mese(row) == 0]
 
             if monte_ore_zero:
                 anomalie.append({
@@ -4121,7 +4230,7 @@ def api_stats_validazione():
                 })
 
             # 4. Utenti con ore erogate molto diverse dalle previste (>50% differenza)
-            cursor = conn.execute("""
+            cursor = conn.execute(f"""
                 SELECT
                     u.id, u.nome, u.cognome, u.monte_ore_settimanale,
                     s.nome_completo as scuola,
@@ -4130,22 +4239,22 @@ def api_stats_validazione():
                 JOIN scuole s ON u.scuola_id = s.id
                 JOIN commesse cm ON s.commessa_id = cm.id
                 LEFT JOIN rendicontazione r ON u.id = r.utente_id AND r.anno = ? AND r.mese = ?
-                WHERE u.attivo = 1 AND u.monte_ore_settimanale > 0
+                WHERE {conta_sql_r}
                 AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
                 AND (u.data_fine IS NULL OR u.data_fine >= ?)
             """ + filtro_cm + """
                 GROUP BY u.id
-            """, [anno, mese, periodo_val, periodo_val] + param_cm)
+            """, [anno, mese] + conta_params_r + [periodo_val, periodo_val] + param_cm)
 
             # Giorni lavorativi con la stessa regola della vista mensile
             # (tipo scuola infanzia/altri + fallback al default)
             anno_scolastico_validazione = config.anno_scolastico_di(anno, mese)
             giorni_def_cal, giorni_altri_cal = db.get_calendario_full(anno_scolastico_validazione, mese, anno)
             differenze_anomale = []
-            variazioni_anomalie = db.get_monte_ore_effettivo_bulk(anno, mese)
 
             for row in cursor.fetchall():
-                monte_ore_eff = variazioni_anomalie.get(row['id'], row['monte_ore_settimanale'])
+                # monte ore del mese: con 0 le ore previste sono 0 e il controllo salta
+                monte_ore_eff = _monte_ore_del_mese(row)
                 if db.is_scuola_infanzia(row['scuola']):
                     giorni_cal = giorni_def_cal
                 else:

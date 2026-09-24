@@ -1,5 +1,6 @@
 """Lotto 2 "settembre": fine validita' delle variazioni monte ore, archiviazione
 degli utenti e passo "Utenti" del wizard di nuovo anno scolastico."""
+from datetime import datetime
 
 
 def _utente(db, commessa, scuola, nome, monte=10):
@@ -65,7 +66,10 @@ def test_archiviazione_utente_e_ripristino(client, db_mod):
     attivi = [u['id'] for u in client.get('/api/utenti?commessa=L2%20ARCH').get_json()]
     archiviati = [u['id'] for u in client.get('/api/utenti?commessa=L2%20ARCH&attivi=0').get_json()]
     assert uid not in attivi and uid in archiviati
-    assert not any(d['utente_id'] == uid for d in db.get_rendicontazione_completa(2026, 3, 'L2 ARCH'))
+    # sparisce dai mesi futuri senza righe (nei mesi prima dell'archiviazione resta,
+    # come quando era attivo: vedi tests/test_db_reale_storico.py)
+    anno_futuro = datetime.now().year + 1
+    assert not any(d['utente_id'] == uid for d in db.get_rendicontazione_completa(anno_futuro, 3, 'L2 ARCH'))
 
     # l'undo della modifica riporta l'utente tra gli attivi
     assert client.post('/api/undo').status_code == 200
@@ -95,8 +99,10 @@ def test_wizard_utenti_anteprima_e_applicazione(client, db_mod):
     ant = {u['id']: u for u in r.get_json()['utenti']}
     assert ant[resta]['monte_ore_base'] == 10 and ant[resta]['effettivo_giugno'] == 14
     assert ant[resta]['variazioni_aperte'] == 1
-    assert ant[esce]['proposta_archivio'] is True
-    assert ant[cambia]['proposta_archivio'] is False
+    # chi e' uscito e' solo indicato, mai proposto gia' spuntato per l'archivio
+    # (archiviare non serve: la data di fine lo esclude gia' dal nuovo anno)
+    assert ant[esce]['uscito'] is True and ant[esce]['proposta_archivio'] is False
+    assert ant[cambia]['uscito'] is False and ant[cambia]['proposta_archivio'] is False
     assert ant[futuro]['variazioni_aperte'] == 0
 
     r = client.post('/api/anno-scolastico/prepara-utenti', json={

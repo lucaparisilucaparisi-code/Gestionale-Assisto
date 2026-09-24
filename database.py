@@ -208,6 +208,23 @@ def _init_schema(conn):
     except sqlite3.OperationalError:
         pass  # Colonna già esistente
 
+    # Migrazione: anno scolastico dell'etichetta lista d'attesa ('2025-2026').
+    # Senza, "Novembre" valeva per sempre: nel Municipale di settembre 2026 i bambini
+    # entrati da lista l'anno prima diventavano "Lista Nov 2026". Le etichette gia'
+    # presenti prendono l'anno dai dati (completa_anno_liste_attesa, in fondo).
+    try:
+        cursor.execute("ALTER TABLE utenti ADD COLUMN lista_attesa_as TEXT")
+    except sqlite3.OperationalError:
+        pass  # Colonna già esistente
+
+    # Migrazione: mese dell'archiviazione ('YYYY-MM', NULL se attivo). Nei mesi
+    # precedenti l'archiviato conta come quando era attivo (sql_utente_nel_mese):
+    # senza, chi non ha data di fine spariva dai mesi passati in cui non aveva righe.
+    try:
+        cursor.execute("ALTER TABLE utenti ADD COLUMN archiviato_dal TEXT")
+    except sqlite3.OperationalError:
+        pass  # Colonna già esistente
+
     # Tabella Variazioni Monte Ore (incrementi/decrementi nel tempo)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS variazioni_monte_ore (
@@ -662,6 +679,10 @@ def _init_schema(conn):
         WHERE turno_id IS NOT NULL AND turno_id NOT IN (SELECT id FROM turni)
     ''')
 
+    # Etichette lista d'attesa senza anno scolastico (DB delle versioni precedenti):
+    # idempotente, tocca solo quelle ancora senza anno
+    completa_anno_liste_attesa(cursor)
+
 
 def punteggia_nome(nome: str, cognome: str) -> str:
     """Converte nome e cognome in formato puntato per privacy (es. Mario Rossi -> M. R.)"""
@@ -929,10 +950,12 @@ def count_utenti(commessa=None, scuola_id=None, attivo=True):
         return cursor.fetchone()[0]
 
 def delete_utente(utente_id):
-    """Elimina un utente (soft delete)"""
+    """Elimina un utente (soft delete): archiviato da questo mese
+    (utenti.archiviato_dal, vedi sql_utente_nel_mese)"""
     with get_db_context() as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE utenti SET attivo = 0 WHERE id = ?", (utente_id,))
+        cursor.execute("UPDATE utenti SET attivo = 0, archiviato_dal = ? WHERE id = ? AND attivo = 1",
+                       (mese_archiviazione(), utente_id))
 
 
 def raccogli_snapshot_utente(cursor, utente_id):
@@ -976,17 +999,19 @@ def elimina_utente_completo(cursor, utente_id):
     cursor.execute("DELETE FROM utenti WHERE id = ?", (utente_id,))
 
 
-def update_utente_lista_attesa(utente_id, lista_attesa):
+def update_utente_lista_attesa(utente_id, lista_attesa, anno_scolastico=None):
     """Aggiorna la lista attesa di un utente.
 
     Normalizza il valore con strip: un valore vuoto o di soli spazi diventa NULL,
     cosi' nei report 'non in lista' e le colonne per-mese restano coerenti (un
-    valore di soli spazi non deve contare come 'in lista' senza colonna)."""
+    valore di soli spazi non deve contare come 'in lista' senza colonna).
+    L'etichetta vale per l'anno scolastico indicato (di default quello corrente)."""
     lista_norm = (lista_attesa or '').strip() or None
+    anno = (anno_scolastico or config.anno_scolastico_corrente()) if lista_norm else None
     with get_db_context() as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE utenti SET lista_attesa = ? WHERE id = ?",
-                       (lista_norm, utente_id))
+        cursor.execute("UPDATE utenti SET lista_attesa = ?, lista_attesa_as = ? WHERE id = ?",
+                       (lista_norm, anno, utente_id))
 
 
 def update_utente_periodo(utente_id, data_inizio=None, data_fine=None):
@@ -1044,6 +1069,155 @@ def is_utente_attivo_nel_mese(utente, anno, mese):
         return False
 
     return True
+
+
+# ==================== CHI CONTA IN UN MESE (utenti archiviati) ====================
+
+def mese_oggi():
+    """Mese di oggi 'YYYY-MM': il confine tra mesi passati e futuri."""
+    return datetime.now().strftime('%Y-%m')
+
+
+def sql_utente_nel_mese(anno, mese, u='u', r='r'):
+    """Regola UNICA "chi conta in un mese" per gli utenti ARCHIVIATI: frammento SQL
+    (con i suoi parametri) da usare al posto di "u.attivo = 1" in ogni calcolo di un
+    mese (vista mensile, report, statistiche). Un utente conta nel mese se:
+    - e' attivo, oppure
+    - ha una riga di rendicontazione nel mese (r = alias della LEFT JOIN sulla
+      rendicontazione dello stesso mese; con r=None si usa una sottoquery), oppure
+    - e' stato archiviato DOPO il mese (utenti.archiviato_dal): nel mese era attivo
+      e conta come allora, anche senza riga; se il mese dell'archiviazione manca
+      (archiviato con una versione precedente) si ripiega sull'ultimo mese in cui
+      ha una riga, oppure
+    - ha una data di fine e il mese, non futuro, e' dentro il suo periodo di
+      servizio (data_inizio..data_fine).
+    Cosi' archiviare non cambia i mesi gia' rendicontati e l'archiviato non compare
+    nei mesi futuri senza righe. Il filtro di periodo degli attivi resta quello di
+    ogni query. Gli elenchi "di oggi" (pagina Utenti, utenti attivi, wizard,
+    assegnazioni) restano su attivo = 1. Ritorna (sql, params)."""
+    periodo = f"{anno:04d}-{mese:02d}"
+    parti = [f"{u}.attivo = 1"]
+    params = []
+    if r:
+        parti.append(f"{r}.id IS NOT NULL")
+    else:
+        parti.append(f"EXISTS (SELECT 1 FROM rendicontazione rx WHERE rx.utente_id = {u}.id "
+                     "AND rx.anno = ? AND rx.mese = ?)")
+        params += [anno, mese]
+    parti.append(f"{u}.archiviato_dal > ?")
+    parti.append(f"({u}.archiviato_dal IS NULL AND EXISTS (SELECT 1 FROM rendicontazione ry "
+                 f"WHERE ry.utente_id = {u}.id AND ry.anno * 100 + ry.mese >= ?))")
+    params += [periodo, anno * 100 + mese]
+    if periodo <= mese_oggi():
+        parti.append(f"({u}.data_fine IS NOT NULL AND {u}.data_fine >= ? "
+                     f"AND ({u}.data_inizio IS NULL OR {u}.data_inizio <= ?))")
+        params += [periodo, periodo]
+    return '(' + ' OR '.join(parti) + ')', params
+
+
+def sql_utente_nell_anno(anno_scolastico, u='u'):
+    """Come sql_utente_nel_mese, per gli elenchi di un anno scolastico intero (una
+    riga per utente, es. la heatmap): l'archiviato c'e' se ha righe nell'anno, se
+    e' stato archiviato dopo il primo mese dell'anno (o, senza mese
+    dell'archiviazione, ha righe da quel mese in poi) o se il suo periodo di
+    servizio (con data di fine) tocca un mese gia' passato dell'anno.
+    Ritorna (sql, params)."""
+    anno_inizio, anno_fine = (int(x) for x in anno_scolastico.split('-'))
+    primo = f"{anno_inizio:04d}-09"
+    ultimo = min(f"{anno_fine:04d}-06", mese_oggi())
+    parti = [f"{u}.attivo = 1",
+             f"EXISTS (SELECT 1 FROM rendicontazione rx WHERE rx.utente_id = {u}.id "
+             "AND ((rx.anno = ? AND rx.mese >= 9) OR (rx.anno = ? AND rx.mese <= 6)))",
+             f"{u}.archiviato_dal > ?",
+             f"({u}.archiviato_dal IS NULL AND EXISTS (SELECT 1 FROM rendicontazione ry "
+             f"WHERE ry.utente_id = {u}.id AND ry.anno * 100 + ry.mese >= ?))"]
+    params = [anno_inizio, anno_fine, primo, anno_inizio * 100 + 9]
+    if primo <= ultimo:
+        parti.append(f"({u}.data_fine IS NOT NULL AND {u}.data_fine >= ? "
+                     f"AND ({u}.data_inizio IS NULL OR {u}.data_inizio <= ?))")
+        params += [primo, ultimo]
+    return '(' + ' OR '.join(parti) + ')', params
+
+
+def mese_archiviazione(anno_scolastico=None):
+    """Mese da scrivere in utenti.archiviato_dal quando un utente viene archiviato:
+    il mese di oggi; dal passo Utenti del nuovo anno il primo mese di quell'anno
+    (settembre) se e' piu' avanti, cosi' chi viene archiviato a giugno per l'anno
+    dopo resta nei mesi dell'anno in corso."""
+    mese = mese_oggi()
+    if anno_scolastico:
+        mese = max(mese, f"{int(anno_scolastico.split('-')[0]):04d}-09")
+    return mese
+
+
+# ==================== LISTA D'ATTESA LEGATA ALL'ANNO SCOLASTICO ====================
+
+def lista_attesa_dell_anno(lista_attesa, lista_attesa_as, anno_scolastico):
+    """Etichetta lista d'attesa (normalizzata) se vale per l'anno scolastico
+    indicato, altrimenti ''. Un'etichetta vale solo nei mesi del SUO anno
+    scolastico (utenti.lista_attesa_as): "Novembre" del 2025-26 non diventa
+    "Lista Nov 2026" nel Municipale di settembre 2026. Senza anno (dato non
+    ancora completato) vale come prima, in ogni anno."""
+    etichetta = (lista_attesa or '').strip()
+    if not etichetta:
+        return ''
+    if lista_attesa_as and lista_attesa_as != anno_scolastico:
+        return ''
+    return etichetta
+
+
+def anno_scolastico_breve(anno_scolastico):
+    """'2025-2026' -> '25/26' (etichette attenuate delle liste d'attesa passate)."""
+    try:
+        a, b = anno_scolastico.split('-')
+        return f"{a[-2:]}/{b[-2:]}"
+    except (AttributeError, ValueError):
+        return anno_scolastico or ''
+
+
+def info_lista_attesa(utente, anno_scolastico=None):
+    """Campi per le pagine (Utenti, scheda): la lista d'attesa conta quest'anno?
+    e l'anno breve da mostrare accanto a un'etichetta di un anno passato."""
+    anno = anno_scolastico or config.anno_scolastico_corrente()
+    lista = (utente.get('lista_attesa') or '').strip()
+    anno_lista = utente.get('lista_attesa_as')
+    return {
+        'lista_attesa_corrente': bool(lista_attesa_dell_anno(lista, anno_lista, anno)),
+        'lista_attesa_anno_breve': anno_scolastico_breve(anno_lista) if (lista and anno_lista) else '',
+    }
+
+
+def completa_anno_liste_attesa(cursor, utente_ids=None):
+    """Da' l'anno scolastico alle etichette lista d'attesa che non ce l'hanno (DB
+    delle versioni precedenti, file di trasloco vecchi, annullamenti di modifiche
+    vecchie): l'anno dell'ULTIMO mese in cui l'utente ha una riga di
+    rendicontazione; se non ne ha, l'anno scolastico corrente. Senza etichetta,
+    niente anno. Idempotente (tocca solo cio' che manca). Ritorna quante etichette
+    ha completato."""
+    filtro, params = '', []
+    if utente_ids is not None:
+        ids = [int(i) for i in utente_ids]
+        if not ids:
+            return 0
+        filtro = f" AND id IN ({','.join('?' * len(ids))})"
+        params = ids
+    cursor.execute("UPDATE utenti SET lista_attesa_as = NULL WHERE lista_attesa_as IS NOT NULL "
+                   "AND TRIM(COALESCE(lista_attesa, '')) = ''" + filtro, params)
+    cursor.execute(f'''
+        SELECT u.id, MAX(r.anno * 100 + r.mese)
+        FROM utenti u
+        LEFT JOIN rendicontazione r ON r.utente_id = u.id
+        WHERE TRIM(COALESCE(u.lista_attesa, '')) != '' AND u.lista_attesa_as IS NULL
+        {filtro.replace(' id IN', ' u.id IN')}
+        GROUP BY u.id
+    ''', params)
+    righe = cursor.fetchall()
+    corrente = config.anno_scolastico_corrente()
+    for row in righe:
+        ultimo = row[1]
+        anno = config.anno_scolastico_di(ultimo // 100, ultimo % 100) if ultimo else corrente
+        cursor.execute("UPDATE utenti SET lista_attesa_as = ? WHERE id = ?", (anno, row[0]))
+    return len(righe)
 
 # ==================== CALENDARIO ====================
 
@@ -1258,7 +1432,11 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
     # Calcola il periodo corrente per il filtro date
     periodo_corrente = f"{anno:04d}-{mese:02d}"
 
-    query = '''
+    # Archiviati: contano nei mesi in cui hanno una riga o che stanno nel loro
+    # periodo di servizio (regola unica, sql_utente_nel_mese). Prima "u.attivo = 1"
+    # valeva per ogni mese e archiviare toglieva ore e importi dai mesi passati.
+    conta_sql, conta_params = sql_utente_nel_mese(anno, mese)
+    query = f'''
         SELECT
             u.id as utente_id,
             u.nome,
@@ -1266,8 +1444,10 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
             u.nome_puntato,
             u.monte_ore_settimanale,
             u.lista_attesa,
+            u.lista_attesa_as,
             u.data_inizio,
             u.data_fine,
+            u.attivo,
             s.id as scuola_id,
             s.nome_completo as scuola,
             c.nome as commessa,
@@ -1279,11 +1459,11 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
         JOIN scuole s ON u.scuola_id = s.id
         JOIN commesse c ON s.commessa_id = c.id
         LEFT JOIN rendicontazione r ON u.id = r.utente_id AND r.anno = ? AND r.mese = ?
-        WHERE u.attivo = 1
+        WHERE {conta_sql}
         AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
         AND (u.data_fine IS NULL OR u.data_fine >= ?)
     '''
-    params = [anno, mese, periodo_corrente, periodo_corrente]
+    params = [anno, mese] + conta_params + [periodo_corrente, periodo_corrente]
 
     if commessa:
         query += " AND c.nome = ?"
@@ -1305,6 +1485,12 @@ def get_rendicontazione_completa(anno, mese, commessa=None):
 
     for row in rows:
         row_dict = dict(row)
+
+        # Lista d'attesa: nei report conta solo nei mesi del SUO anno scolastico
+        # (l'etichetta della scheda resta in lista_attesa_scheda)
+        row_dict['lista_attesa_scheda'] = row_dict['lista_attesa']
+        row_dict['lista_attesa'] = lista_attesa_dell_anno(
+            row_dict['lista_attesa'], row_dict.get('lista_attesa_as'), anno_scolastico) or None
 
         # Giorni lavorativi: calcolati sempre dal calendario in base al tipo di scuola
         # (infanzia vs altri). Ignoriamo il valore salvato in rendicontazione, che era
@@ -1526,7 +1712,10 @@ def get_statistiche_avanzate(anno=None, mese=None, commessa=None):
             cursor.execute("SELECT SUM(monte_ore_settimanale) FROM utenti WHERE attivo = 1")
         stats['monte_ore_totale'] = cursor.fetchone()[0] or 0
 
-        # Se specificato anno/mese, calcola statistiche mensili
+        # Se specificato anno/mese, calcola statistiche mensili. Le somme partono
+        # dalle righe di rendicontazione: contano anche gli utenti archiviati dopo
+        # (le loro ore restano nei mesi passati, regola di sql_utente_nel_mese).
+        # I conteggi sopra (utenti, monte ore, per commessa) sono "di oggi".
         if anno and mese:
             if commessa:
                 cursor.execute('''
@@ -1537,7 +1726,7 @@ def get_statistiche_avanzate(anno=None, mese=None, commessa=None):
                     JOIN utenti u ON r.utente_id = u.id
                     JOIN scuole s ON u.scuola_id = s.id
                     JOIN commesse c ON s.commessa_id = c.id
-                    WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1 AND c.nome = ?
+                    WHERE r.anno = ? AND r.mese = ? AND c.nome = ?
                 ''', (anno, mese, commessa))
             else:
                 cursor.execute('''
@@ -1546,7 +1735,7 @@ def get_statistiche_avanzate(anno=None, mese=None, commessa=None):
                         COUNT(DISTINCT r.utente_id) as utenti_con_ore
                     FROM rendicontazione r
                     JOIN utenti u ON r.utente_id = u.id
-                    WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1
+                    WHERE r.anno = ? AND r.mese = ?
                 ''', (anno, mese))
             row = cursor.fetchone()
             stats['ore_mese_corrente'] = row['ore_totali'] or 0
@@ -1560,7 +1749,7 @@ def get_statistiche_avanzate(anno=None, mese=None, commessa=None):
                 JOIN utenti u ON r.utente_id = u.id
                 JOIN scuole s ON u.scuola_id = s.id
                 JOIN commesse c ON s.commessa_id = c.id
-                WHERE u.attivo = 1 AND c.nome = ?
+                WHERE c.nome = ?
                 GROUP BY r.anno, r.mese
                 ORDER BY r.anno DESC, r.mese DESC
                 LIMIT 6
@@ -1570,7 +1759,6 @@ def get_statistiche_avanzate(anno=None, mese=None, commessa=None):
                 SELECT r.anno, r.mese, SUM(r.ore_lavorate_60) as ore_totali
                 FROM rendicontazione r
                 JOIN utenti u ON r.utente_id = u.id
-                WHERE u.attivo = 1
                 GROUP BY r.anno, r.mese
                 ORDER BY r.anno DESC, r.mese DESC
                 LIMIT 6
@@ -1703,14 +1891,16 @@ def get_statistiche_mensili_anno(anno_scolastico):
                     COUNT(DISTINCT CASE WHEN r.ore_lavorate_60 > 0 THEN r.utente_id END) as utenti_attivi
                 FROM rendicontazione r
                 JOIN utenti u ON r.utente_id = u.id
-                WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1
+                WHERE r.anno = ? AND r.mese = ?
             ''', (anno, mese))
             row = cursor.fetchone()
 
             # Calcola ore previste (distinzione infanzia vs altri).
             # Coefficiente = COEFFICIENTE_GIORNALIERO * (1 - TASSO_ASSENZA), dal config.
+            # Archiviati: solo nei mesi in cui contano (sql_utente_nel_mese).
             coeff_previste = config.COEFFICIENTE_GIORNALIERO * (1 - config.TASSO_ASSENZA)
-            cursor.execute('''
+            conta_sql, conta_params = sql_utente_nel_mese(anno, mese, r=None)
+            cursor.execute(f'''
                 SELECT SUM(u.monte_ore_settimanale *
                     CASE
                         WHEN UPPER(COALESCE(s.nome_completo, '')) LIKE '%INFANZIA%' THEN c.giorni_lavorativi
@@ -1720,8 +1910,8 @@ def get_statistiche_mensili_anno(anno_scolastico):
                 FROM utenti u
                 JOIN scuole s ON u.scuola_id = s.id
                 JOIN calendario_scolastico c ON c.anno_scolastico = ? AND c.mese = ? AND c.anno = ?
-                WHERE u.attivo = 1
-            ''', (coeff_previste, anno_scolastico, mese, anno))
+                WHERE {conta_sql}
+            ''', [coeff_previste, anno_scolastico, mese, anno] + conta_params)
             ore_previste_row = cursor.fetchone()
 
             risultati.append({
@@ -1770,7 +1960,7 @@ def get_confronto_annuale(anno_scolastico_1, anno_scolastico_2):
                         SUM(r.pasti) as pasti
                     FROM rendicontazione r
                     JOIN utenti u ON r.utente_id = u.id
-                    WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1
+                    WHERE r.anno = ? AND r.mese = ?
                 ''', (anno, mese))
                 row = cursor.fetchone()
 
@@ -2439,11 +2629,24 @@ def get_classifica_utenti_ore(anno, mese=None, limit=20, order='desc'):
         params = [anno]
 
         if mese:
+            # Con il mese: chi conta come nella vista mensile (archiviati compresi,
+            # regola unica sql_utente_nel_mese)
             query += ' AND r.mese = ?'
             params.append(mese)
+            conta_sql, conta_params = sql_utente_nel_mese(anno, mese)
+            query += f' WHERE {conta_sql}'
+            params += conta_params
+        else:
+            # Anno intero: l'archiviato c'e' se ha righe nell'anno o se e' stato
+            # archiviato dopo gennaio (allora era attivo; senza mese
+            # dell'archiviazione: se ha righe da quell'anno in poi)
+            query += '''
+                WHERE (u.attivo = 1 OR r.id IS NOT NULL OR u.archiviato_dal > ?
+                       OR (u.archiviato_dal IS NULL AND EXISTS (SELECT 1 FROM rendicontazione ry
+                           WHERE ry.utente_id = u.id AND ry.anno >= ?)))'''
+            params += [f"{anno:04d}-01", anno]
 
         query += '''
-            WHERE u.attivo = 1
             GROUP BY u.id
             ORDER BY ore_totali ''' + ('DESC' if order == 'desc' else 'ASC') + '''
             LIMIT ?
@@ -2531,13 +2734,14 @@ def get_alerts(anno, mese):
                     'commessa': d.get('commessa', '')
                 })
 
-        # Alert: utente senza ore (ma con monte ore assegnato)
-        if ore_erogate == 0 and (d.get('monte_ore_settimanale', 0) or 0) > 0:
+        # Alert: utente senza ore (ma con monte ore assegnato). Monte ore del MESE
+        # (variazioni comprese), non la base di oggi
+        if ore_erogate == 0 and (d.get('monte_ore_effettivo', 0) or 0) > 0:
             alerts.append({
                 'tipo': 'warning',
                 'categoria': 'zero_ore',
                 'titolo': f'Nessuna ora registrata: {d["nome"]} {d["cognome"]}',
-                'dettaglio': f'Monte ore settimanale: {d["monte_ore_settimanale"]}h - Scuola: {d.get("scuola", "")}',
+                'dettaglio': f'Monte ore settimanale: {d["monte_ore_effettivo"]}h - Scuola: {d.get("scuola", "")}',
                 'utente_id': d['utente_id'],
                 'scuola': d.get('scuola', ''),
                 'commessa': d.get('commessa', '')
@@ -4156,8 +4360,12 @@ def _variazioni_per_utente():
 
 def anteprima_utenti_nuovo_anno(anno_scolastico):
     """Per ogni utente attivo: monte ore base, effettivo a giugno (fine anno
-    precedente), variazioni ancora aperte da chiudere al 31/8, e proposta di
-    archiviazione se il periodo di validita' e' terminato prima di settembre."""
+    precedente), variazioni ancora aperte da chiudere al 31/8, e se e' uscito
+    (periodo di validita' terminato prima di settembre).
+
+    Chi e' uscito NON viene proposto gia' spuntato per l'archiviazione
+    (proposta_archivio resta False): la data di fine lo esclude gia' dai mesi del
+    nuovo anno e il passo mostra solo l'indicazione "uscito a mm/aaaa"."""
     anno_inizio = int(anno_scolastico.split('-')[0])
     giugno = f"{anno_inizio}-06"
     agosto = f"{anno_inizio}-08"
@@ -4181,17 +4389,74 @@ def anteprima_utenti_nuovo_anno(anno_scolastico):
             'effettivo_settembre_senza_chiusura': risolvi_monte_ore(base, vs, settembre),
             'variazioni_aperte': len(aperte),
             'data_fine': data_fine,
-            'proposta_archivio': bool(data_fine) and data_fine < settembre,
+            'uscito': bool(data_fine) and data_fine < settembre,
+            'proposta_archivio': False,
         })
     return risultato
+
+
+def _mese_iso_precedente(periodo):
+    """'2026-01' -> '2025-12'."""
+    anno, mese = int(periodo[:4]), int(periodo[5:7])
+    return f"{anno - 1:04d}-12" if mese == 1 else f"{anno:04d}-{mese - 1:02d}"
+
+
+def _conserva_monte_ore_passato(cursor, uid, vecchio, anno_scolastico):
+    """Prima che il passo Utenti cambi il monte ore BASE di un utente che ha ore
+    nei mesi precedenti al nuovo anno: registra una variazione CHIUSA ad agosto con
+    il valore vecchio. Con la regola di risolvi_monte_ore i mesi passati (che
+    usavano la base) restano al vecchio valore e il nuovo vale da settembre.
+
+    Inizio: il piu' vecchio tra la prima riga dell'utente, la sua data_inizio e il
+    primo mese con dati del gestionale, e comunque PRIMA di ogni variazione gia'
+    presente, che continua a valere nei suoi mesi (vince quella iniziata piu'
+    tardi). Il primo mese del gestionale serve SEMPRE, anche con data_inizio:
+    i mesi prima dell'inizio non sono nella vista mensile ma il Municipale
+    (colonna "Di cui hanno ricevuto incremento ore") confronta il monte ore del
+    mese con quello di settembre e la heatmap mostra le ore previste di tutti i
+    mesi; partendo da data_inizio una DIMINUZIONE diventava un falso incremento.
+    Ritorna la variazione creata o None."""
+    anno_inizio = int(anno_scolastico.split('-')[0])
+    agosto = f"{anno_inizio}-08"
+    limite = anno_inizio * 100 + 9
+    cursor.execute('SELECT MIN(anno * 100 + mese) FROM rendicontazione '
+                   'WHERE utente_id = ? AND anno * 100 + mese < ?', (uid, limite))
+    primo = cursor.fetchone()[0]
+    if not primo:
+        return None   # nessun mese passato da proteggere
+    candidati = [f"{primo // 100:04d}-{primo % 100:02d}"]
+    cursor.execute('SELECT data_inizio FROM utenti WHERE id = ?', (uid,))
+    data_inizio = cursor.fetchone()[0]
+    if data_inizio:
+        candidati.append(data_inizio)
+    cursor.execute('SELECT MIN(anno * 100 + mese) FROM rendicontazione WHERE anno * 100 + mese < ?',
+                   (limite,))
+    primo_gestionale = cursor.fetchone()[0]
+    if primo_gestionale:
+        candidati.append(f"{primo_gestionale // 100:04d}-{primo_gestionale % 100:02d}")
+    inizio = min(c for c in candidati if c <= agosto)
+    cursor.execute('SELECT MIN(mese_inizio) FROM variazioni_monte_ore WHERE utente_id = ?', (uid,))
+    prima_variazione = cursor.fetchone()[0]
+    if prima_variazione and prima_variazione <= inizio:
+        inizio = _mese_iso_precedente(prima_variazione)
+    nota = (f"Monte ore fino al 31/08/{anno_inizio}, conservato dal passo Utenti del "
+            f"nuovo anno {anno_scolastico}")
+    cursor.execute('''INSERT INTO variazioni_monte_ore
+                      (utente_id, monte_ore, mese_inizio, mese_fine, nota, data_inserimento)
+                      VALUES (?, ?, ?, ?, ?, ?)''',
+                   (uid, vecchio, inizio, agosto, nota, datetime.now().isoformat()))
+    return {'mese_inizio': inizio, 'mese_fine': agosto, 'monte_ore': vecchio}
 
 
 def prepara_utenti_nuovo_anno(anno_scolastico, chiudi_variazioni=True, monte_ore=None, archivia=None):
     """Passo "Utenti" del nuovo anno scolastico, in UNA sola transazione:
     - chiude al 31 agosto le variazioni monte ore ancora aperte (da settembre
       vale il monte ore base di ogni utente: e' il "riporto al valore corretto");
-    - aggiorna il monte ore base degli utenti indicati ({id: nuovo_valore});
-    - archivia (attivo = 0) gli utenti indicati, che restano nello storico;
+    - aggiorna il monte ore base degli utenti indicati ({id: nuovo_valore}); a chi
+      ha ore nei mesi passati resta una variazione chiusa ad agosto con il valore
+      vecchio (_conserva_monte_ore_passato), cosi' i mesi passati non cambiano;
+    - archivia (attivo = 0) gli utenti indicati, che restano nello storico e nei
+      mesi passati (sql_utente_nel_mese);
     - ricorda che il passo e' stato fatto per questo anno (impostazioni).
     Ritorna il riepilogo delle modifiche REALMENTE applicate (per audit e messaggio).
     Idempotente: rieseguirlo non chiude/archivia/modifica nulla di gia' fatto."""
@@ -4199,7 +4464,8 @@ def prepara_utenti_nuovo_anno(anno_scolastico, chiudi_variazioni=True, monte_ore
     agosto = f"{anno_inizio}-08"
     monte_ore = monte_ore or {}
     archivia = archivia or []
-    esito = {'variazioni_chiuse': 0, 'monte_ore_modificati': [], 'archiviati': []}
+    esito = {'variazioni_chiuse': 0, 'monte_ore_modificati': [], 'archiviati': [],
+             'variazioni_conservate': 0}
 
     with get_db_context() as conn:
         cursor = conn.cursor()
@@ -4213,17 +4479,26 @@ def prepara_utenti_nuovo_anno(anno_scolastico, chiudi_variazioni=True, monte_ore
             row = cursor.fetchone()
             if not row or float(row['monte_ore_settimanale'] or 0) == float(nuovo):
                 continue
+            # Prima dell'UPDATE: i mesi passati tengono il valore vecchio
+            conservata = _conserva_monte_ore_passato(
+                cursor, uid, row['monte_ore_settimanale'], anno_scolastico)
+            if conservata:
+                esito['variazioni_conservate'] += 1
             cursor.execute("UPDATE utenti SET monte_ore_settimanale = ? WHERE id = ?", (nuovo, uid))
             esito['monte_ore_modificati'].append({
                 'id': uid, 'nome': f"{row['nome']} {row['cognome'] or ''}".strip(),
-                'prima': row['monte_ore_settimanale'], 'dopo': nuovo})
+                'prima': row['monte_ore_settimanale'], 'dopo': nuovo,
+                'conservato': conservata})
 
         for uid in archivia:
             cursor.execute("SELECT id, nome, cognome FROM utenti WHERE id = ? AND attivo = 1", (uid,))
             row = cursor.fetchone()
             if not row:
                 continue
-            cursor.execute("UPDATE utenti SET attivo = 0 WHERE id = ?", (uid,))
+            # Archiviato dal primo mese del nuovo anno (o da oggi, se piu' avanti):
+            # nei mesi prima conta come quando era attivo (sql_utente_nel_mese)
+            cursor.execute("UPDATE utenti SET attivo = 0, archiviato_dal = ? WHERE id = ?",
+                           (mese_archiviazione(anno_scolastico), uid))
             esito['archiviati'].append({'id': uid, 'nome': f"{row['nome']} {row['cognome'] or ''}".strip()})
 
         cursor.execute('''INSERT INTO impostazioni (chiave, valore) VALUES ('anno_utenti_preparato', ?)

@@ -39,6 +39,51 @@ reimplementarla inline (a schermo, in SQL o negli export).
   (singolo utente) e `get_monte_ore_effettivo_bulk(anno, mese)` (vista mensile): vale
   l'ultima variazione iniziata entro il mese e non terminata (`mese_fine` NULL o ≥ mese).
   Il wizard di nuovo anno chiude al 31/8 quelle aperte (`prepara_utenti_nuovo_anno`).
+  Le colonne "Monte Ore" di tutti gli export mostrano `monte_ore_effettivo` del mese
+  (l'annuale: la media dei mesi attivi), mai la base di oggi.
+- **Variazioni del wizard (monte ore nuovo anno)** → quando il passo Utenti cambia il
+  monte ore BASE di chi ha ore nei mesi passati, `_conserva_monte_ore_passato` registra
+  prima una variazione CHIUSA ad agosto con il valore vecchio: inizio = il piu' vecchio tra
+  prima riga, `data_inizio` e primo mese con dati del gestionale (questo SEMPRE, anche con
+  `data_inizio`: il Municipale confronta ogni mese con settembre per la colonna "Di cui
+  hanno ricevuto incremento ore" e partendo da `data_inizio` una diminuzione diventava un
+  falso incremento) e comunque prima di ogni variazione esistente (che continua a
+  vincere nei suoi mesi). Cosi' i mesi passati non cambiano e il nuovo valore vale da
+  settembre. Anche i controlli di validazione usano il monte ore del mese
+  (`get_monte_ore_effettivo_bulk`), non la base di oggi. Cambiare la base
+  dalla finestra "Modifica utente" vale invece per TUTTI i mesi: la pagina lo chiede
+  (con la via "Variazioni") se l'utente ha gia' mesi rendicontati.
+- **Archiviati (attivo = 0)** → regola unica `database.sql_utente_nel_mese(anno, mese)`
+  (e `sql_utente_nell_anno` per gli elenchi di un anno, es. heatmap): un archiviato conta
+  in un mese se ha una riga di rendicontazione in quel mese, OPPURE se il mese e' prima
+  del mese dell'archiviazione (`utenti.archiviato_dal` 'YYYY-MM': allora era attivo e
+  conta come tale, anche senza riga; se manca, archiviato da una versione precedente, si
+  ripiega sull'ultimo mese con una riga), OPPURE se il mese, non futuro, e' nel suo
+  periodo di servizio con `data_fine` valorizzata. `archiviato_dal` lo scrive solo il
+  passaggio da attivo ad archiviato (PUT utente e `delete_utente`: mese di oggi,
+  `mese_archiviazione()`; passo Utenti del nuovo anno: settembre di quell'anno se piu'
+  avanti di oggi), lo toglie il ripristino, lo riportano Ctrl+Z e il trasloco JSON. Va
+  usata al posto di `u.attivo = 1` in ogni calcolo mensile/annuale (vista mensile e
+  quindi tutti gli export, statistiche, "da completare", validazione, classifica del
+  mese, e `num_utenti` di `/api/stats/filtered` con anno e mese, cioe' lo "Stato del
+  mese"); le somme che partono dalle righe di rendicontazione non filtrano su `attivo`.
+  Anche i totali mostrati accanto a un elenco del passato vengono dalla stessa regola,
+  non dagli attivi di oggi: la heatmap delle Statistiche restituisce `totale` (utenti
+  dell'anno scelto, archiviati compresi) e la pagina lo usa per "Mostrati N su M" e come
+  limite di "Mostra tutti".
+  Restano su `attivo = 1` solo gli elenchi e i conteggi "di oggi" (pagina Utenti, utenti
+  attivi, wizard, assegnazioni, ricerca). "Copia Mese Prec." e "Compila con media" non
+  scrivono righe per gli archiviati.
+- **Lista d'attesa per anno scolastico** → `utenti.lista_attesa_as` ('2025-2026') e
+  `database.lista_attesa_dell_anno(lista, anno_lista, anno_scolastico)`: un'etichetta conta
+  solo nei mesi del suo anno scolastico (`get_rendicontazione_completa` la azzera negli
+  altri, quindi tutti i report la rispettano; l'etichetta della scheda resta in
+  `lista_attesa_scheda`). Ogni scrittura di `lista_attesa` imposta anche l'anno (quello
+  corrente o quello passato); quelle senza anno (DB vecchi, trasloco JSON, undo di
+  azioni vecchie) le completa `completa_anno_liste_attesa` con l'anno dell'ULTIMO mese con
+  una riga dell'utente (o l'anno corrente), anche a ogni `init_db`. Le pagine mostrano
+  un'etichetta di un anno passato attenuata e con l'anno ("Marzo 25/26",
+  `info_lista_attesa`).
 - **Mese chiuso** → `_risposta_mese_chiuso(anno, mese)` in `app.py`: ogni route che
   scrive ore (singola, batch, copia, compila, import) deve passarci e rispondere 409.
 - **Cancellazione utente** → `database.elimina_utente_completo(cursor, id)` +

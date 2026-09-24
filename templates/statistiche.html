@@ -513,6 +513,8 @@ async function loadHeatmap(annoScolastico, totaleUtenti, tutti = false) {
         html += '</tbody></table>';
         container.innerHTML = html;
 
+        // Il totale e' quello dell'anno scelto (archiviati compresi), non gli attivi di oggi
+        if (data.totale != null) totaleUtenti = data.totale;
         // Prima ne mostrava 30 su 35 senza dirlo
         if (data.heatmap.length < totaleUtenti) {
             altri.hidden = false;

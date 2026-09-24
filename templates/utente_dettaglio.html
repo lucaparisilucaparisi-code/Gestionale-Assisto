@@ -609,8 +609,15 @@ function renderAnagrafica(data) {
     document.getElementById('page-subtitle').textContent = `${u.commessa} - ${u.scuola}`;
     document.getElementById('breadcrumb-nome').textContent = nome;
 
-    const stato = u.lista_attesa ? '<span class="badge badge-warning">Lista attesa: ' + escapeHtml(u.lista_attesa) + '</span>'
-        : u.attivo ? '<span class="badge badge-success">Attivo</span>' : '<span class="badge badge-secondary">Inattivo</span>';
+    // Lista d'attesa di quest'anno in evidenza; quella di un anno passato attenuata e
+    // con l'anno ("Marzo 25/26"): nei report di quest'anno non conta
+    const statoBase = u.attivo ? '<span class="badge badge-success">Attivo</span>' : '<span class="badge badge-secondary">Archiviato</span>';
+    const stato = u.lista_attesa_corrente
+        ? '<span class="badge badge-warning">Lista attesa: ' + escapeHtml(u.lista_attesa) + '</span>'
+        : statoBase + (u.lista_attesa
+            ? ' <span class="badge badge-secondary lista-anno-passato" title="Conta solo nei report dell\'anno ' + escapeHtml(u.lista_attesa_anno_breve) + '">Lista attesa: '
+              + escapeHtml(u.lista_attesa) + ' ' + escapeHtml(u.lista_attesa_anno_breve) + '</span>'
+            : '');
     // Stesso componente della scheda dipendente: righe etichetta/valore
     document.getElementById('info-personali').innerHTML =
         rigaDati('Cognome e nome', escapeHtml(nome)) +

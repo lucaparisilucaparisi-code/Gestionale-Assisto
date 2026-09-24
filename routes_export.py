@@ -711,7 +711,8 @@ def api_export_excel(anno, mese):
             ws_detail.write(r, 1, d['scuola'], cell_fmt)
             ws_detail.write(r, 2, utente, cell_fmt)
             ws_detail.write(r, 3, d['nome_puntato'], cell_fmt)
-            ws_detail.write(r, 4, d['monte_ore_settimanale'], number_fmt)
+            # Monte ore EFFETTIVO del mese (variazioni comprese), non la base di oggi
+            ws_detail.write(r, 4, d['monte_ore_effettivo'], number_fmt)
             ws_detail.write(r, 5, d['media_mensile_60'], number_fmt)
             ws_detail.write(r, 6, d['media_con_assenza_60'], number_fmt)
             ws_detail.write(r, 7, decimal_to_sessagesimal(d['ore_lavorate_60'] or 0), cell_fmt)
@@ -884,7 +885,7 @@ def api_export_excel(anno, mese):
             for u in utenti:
                 nome_puntato = u['nome_puntato'] if privacy else f"{u['nome']} {u['cognome']}"
                 ws_scuola.write(row, 0, nome_puntato, utente_cell_fmt)
-                ws_scuola.write(row, 1, u['monte_ore_settimanale'], utente_number_fmt)
+                ws_scuola.write(row, 1, u['monte_ore_effettivo'], utente_number_fmt)
                 ws_scuola.write(row, 2, u['media_mensile_60'] or 0, utente_number_fmt)
                 ws_scuola.write(row, 3, u['media_con_assenza_60'] or 0, utente_number_fmt)
                 ws_scuola.write(row, 4, decimal_to_sessagesimal(u['ore_lavorate_60'] or 0), utente_cell_fmt)
@@ -954,13 +955,15 @@ def api_export_annuale(anno_scolastico):
                     'nome_puntato': d['nome_puntato'],
                     'scuola': d['scuola'],
                     'commessa': d['commessa'],
-                    'monte_ore_settimanale': d['monte_ore_settimanale'],
+                    'monte_ore_settimanale': 0,   # media dei mesi attivi (post-loop)
+                    'monte_ore_mesi': [],         # monte ore EFFETTIVO di ogni mese
                     'ore_erogate_totali': 0,
                     'monte_ore_previsto_totale': 0,  # Contrattuale: ore sett. x settimane -11% (post-loop)
                     'pasti_totali': 0,
                     'imponibile_totale': 0,
                     'mesi_attivi': 0
                 }
+            utenti_aggregati[utente_key]['monte_ore_mesi'].append(d['monte_ore_effettivo'] or 0)
             utenti_aggregati[utente_key]['ore_erogate_totali'] += d['ore_lavorate_60'] or 0
             utenti_aggregati[utente_key]['pasti_totali'] += d['pasti'] or 0
             utenti_aggregati[utente_key]['imponibile_totale'] += d['imponibile_100'] or 0
@@ -977,13 +980,25 @@ def api_export_annuale(anno_scolastico):
     # ai mesi effettivi, cosi' il credito/debito resta confrontabile con le ore
     # erogate nello stesso periodo. I report mensile e municipale, basati sui
     # giorni del calendario, restano invariati.
+    #
+    # Il monte ore di ogni mese e' quello EFFETTIVO di quel mese (variazioni comprese,
+    # anche quelle che il nuovo anno lascia a conservare i mesi passati), non la
+    # base di oggi: media dei mesi attivi x settimane x quota, cioe' la somma dei
+    # mesi x settimane/n_mesi. Con un monte ore costante e' lo stesso numero di prima.
     settimane = config.SETTIMANE_ANNO_SCOLASTICO
     n_mesi = len(MESI_SCOLASTICI)
     for u in utenti_aggregati.values():
         u['imponibile_totale'] = round(u['imponibile_totale'], 2)
+        valori = u.pop('monte_ore_mesi')
+        if len(set(valori)) <= 1:
+            media_monte_ore = valori[0] if valori else 0   # costante: il valore esatto
+            u['monte_ore_settimanale'] = media_monte_ore
+        else:
+            media_monte_ore = sum(valori) / len(valori)
+            u['monte_ore_settimanale'] = round(media_monte_ore, 2)   # colonna "Monte Ore"
         quota_anno = (u['mesi_attivi'] / n_mesi) if n_mesi else 0
         u['monte_ore_previsto_totale'] = (
-            (u['monte_ore_settimanale'] or 0) * settimane * quota_anno * (1 - TASSO_ASSENZA)
+            media_monte_ore * settimane * quota_anno * (1 - TASSO_ASSENZA)
         )
 
     # Calcola totali annuali
@@ -1315,7 +1330,7 @@ def api_export_annuale(anno_scolastico):
             # l'11%. La somma sui mesi coincide col totale previsto del Riepilogo
             # Utenti, quindi tutto il report annuale usa lo stesso "previsto".
             ore_previste_mese = sum(
-                (d['monte_ore_settimanale'] or 0) for d in dati
+                (d['monte_ore_effettivo'] or 0) for d in dati
             ) * (settimane / n_mesi) * (1 - TASSO_ASSENZA)
             # Somma degli imponibili di riga (stessi importi del foglio del mese):
             # cosi' l'andamento mensile quadra con i fogli di dettaglio e col totale.
@@ -1481,7 +1496,7 @@ def api_export_annuale(anno_scolastico):
                 ws_mese.write(r, 0, d['commessa'], cf)
                 ws_mese.write(r, 1, d['scuola'], cf)
                 ws_mese.write(r, 2, utente, cf)
-                ws_mese.write(r, 3, d['monte_ore_settimanale'], nf)
+                ws_mese.write(r, 3, d['monte_ore_effettivo'], nf)
                 ws_mese.write(r, 4, round(d['media_mensile_60'] or 0, 2), nf)
                 ws_mese.write(r, 5, round(d['media_con_assenza_60'] or 0, 2), nf)
                 ws_mese.write(r, 6, decimal_to_sessagesimal(d['ore_lavorate_60'] or 0), cf)
@@ -1869,7 +1884,7 @@ def api_export_municipale(anno, mese):
 
             ws_utenti.write(row_u, 0, d['scuola'], cell_f)
             ws_utenti.write(row_u, 1, d['nome_puntato'] if privacy else f"{d['nome']} {d['cognome']}", cell_f)
-            ws_utenti.write(row_u, 2, d['monte_ore_settimanale'], num_f)
+            ws_utenti.write(row_u, 2, d['monte_ore_effettivo'], num_f)
             ws_utenti.write(row_u, 3, decimal_to_sessagesimal(d['ore_lavorate_60'] or 0), cell_c_f)
             ws_utenti.write(row_u, 4, d['ore_lavorate_100'] or 0, num_f)
             ws_utenti.write(row_u, 5, d['totale_100'] or 0, money_f)

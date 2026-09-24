@@ -49,8 +49,25 @@ def api_stats_filtered():
 
         stats = {}
 
-        # Conteggio utenti (filtrato per commessa)
-        if commessa:
+        # Conteggio utenti (filtrato per commessa). Senza periodo: gli utenti di
+        # oggi. Con anno e mese: gli utenti della vista mensile di quel mese
+        # (archiviati secondo sql_utente_nel_mese e stesso filtro di periodo), cosi'
+        # lo "Stato del mese" di un mese passato non cambia archiviando e chi non
+        # era in servizio non finisce tra i rendicontati.
+        filtro_c = ' AND c.nome = ?' if commessa else ''
+        param_c = [commessa] if commessa else []
+        if anno and mese:
+            periodo = f"{anno:04d}-{mese:02d}"
+            conta_sql, conta_params = db.sql_utente_nel_mese(anno, mese, r=None)
+            cursor.execute(f'''
+                SELECT COUNT(*) FROM utenti u
+                JOIN scuole s ON u.scuola_id = s.id
+                JOIN commesse c ON s.commessa_id = c.id
+                WHERE {conta_sql}
+                AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
+                AND (u.data_fine IS NULL OR u.data_fine >= ?)
+            ''' + filtro_c, conta_params + [periodo, periodo] + param_c)
+        elif commessa:
             cursor.execute('''
                 SELECT COUNT(*) FROM utenti u
                 JOIN scuole s ON u.scuola_id = s.id
@@ -72,7 +89,9 @@ def api_stats_filtered():
             cursor.execute("SELECT COUNT(*) FROM scuole")
         stats['num_scuole'] = cursor.fetchone()[0]
 
-        # Ore mensili (se specificato periodo)
+        # Ore mensili (se specificato periodo). Si parte dalle righe del mese: le
+        # ore di chi e' stato archiviato dopo restano nei mesi passati (regola di
+        # database.sql_utente_nel_mese).
         if anno and mese:
             query_ore = '''
                 SELECT
@@ -88,11 +107,11 @@ def api_stats_filtered():
                 query_ore += '''
                     JOIN scuole s ON u.scuola_id = s.id
                     JOIN commesse c ON s.commessa_id = c.id
-                    WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1 AND c.nome = ?
+                    WHERE r.anno = ? AND r.mese = ? AND c.nome = ?
                 '''
                 params.append(commessa)
             else:
-                query_ore += " WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1"
+                query_ore += " WHERE r.anno = ? AND r.mese = ?"
 
             cursor.execute(query_ore, params)
             row = cursor.fetchone()
@@ -138,11 +157,11 @@ def api_stats_trend():
                 query += '''
                     JOIN scuole s ON u.scuola_id = s.id
                     JOIN commesse c ON s.commessa_id = c.id
-                    WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1 AND c.nome = ?
+                    WHERE r.anno = ? AND r.mese = ? AND c.nome = ?
                 '''
                 params.append(commessa)
             else:
-                query += " WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1"
+                query += " WHERE r.anno = ? AND r.mese = ?"
 
             cursor.execute(query, params)
             row = cursor.fetchone()
@@ -202,11 +221,11 @@ def api_stats_confronto_mese():
                 query += '''
                     JOIN scuole s ON u.scuola_id = s.id
                     JOIN commesse c ON s.commessa_id = c.id
-                    WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1 AND c.nome = ?
+                    WHERE r.anno = ? AND r.mese = ? AND c.nome = ?
                 '''
                 params.append(commessa)
             else:
-                query += ' WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1'
+                query += ' WHERE r.anno = ? AND r.mese = ?'
             cursor.execute(query, params)
             return cursor.fetchone()
 
@@ -289,7 +308,7 @@ def api_stats_top_scuole():
             JOIN utenti u ON r.utente_id = u.id
             JOIN scuole s ON u.scuola_id = s.id
             JOIN commesse c ON s.commessa_id = c.id
-            WHERE r.anno = ? AND r.mese = ? AND u.attivo = 1
+            WHERE r.anno = ? AND r.mese = ?
         '''
         params = [anno, mese]
 

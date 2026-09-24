@@ -429,12 +429,16 @@ function escapeHtml(str) {
 // ==================== CONFIRM DIALOG ====================
 
 function showConfirmDialog(title, message, onConfirm, options = {}) {
+    // extraText/onExtra: terzo pulsante facoltativo (es. "Apri le Variazioni"),
+    // che chiude la conferma senza confermare e fa un'altra cosa
     const {
         confirmText = 'Conferma',
         cancelText = 'Annulla',
         type = 'warning',
         requireInput = false,
-        inputPlaceholder = ''
+        inputPlaceholder = '',
+        extraText = '',
+        onExtra = null
     } = options;
 
     // Rimuovi dialog precedente se presente
@@ -469,6 +473,7 @@ function showConfirmDialog(title, message, onConfirm, options = {}) {
             <p class="confirm-dialog-message">${escapeHtml(message)}</p>
             ${requireInput ? `<input type="text" class="confirm-dialog-input" id="confirm-dialog-input" placeholder="${escapeHtml(inputPlaceholder)}" autocomplete="off">` : ''}
             <div class="confirm-dialog-actions">
+                ${extraText ? `<button class="btn btn-secondary" id="confirm-dialog-extra">${escapeHtml(extraText)}</button>` : ''}
                 <button class="btn btn-secondary" id="confirm-dialog-cancel">${escapeHtml(cancelText)}</button>
                 <button class="btn btn-${type === 'danger' ? 'danger' : 'primary'}" id="confirm-dialog-confirm">${escapeHtml(confirmText)}</button>
             </div>
@@ -493,6 +498,10 @@ function showConfirmDialog(title, message, onConfirm, options = {}) {
     };
 
     document.getElementById('confirm-dialog-cancel').addEventListener('click', closeDialog);
+    document.getElementById('confirm-dialog-extra')?.addEventListener('click', () => {
+        closeDialog();
+        if (typeof onExtra === 'function') onExtra();
+    });
 
     document.getElementById('confirm-dialog-confirm').addEventListener('click', () => {
         if (requireInput) {

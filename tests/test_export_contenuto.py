@@ -234,7 +234,8 @@ def test_municipale_riepilogo_incremento_e_quadratura(client, db_mod):
     def mk(nome, ore, monte=10, lista=None):
         uid = db.get_or_create_utente(sid, nome, 'R', monte)
         if lista is not None:
-            db.update_utente_lista_attesa(uid, lista)
+            # etichetta dell'anno del report: conta solo nei mesi del suo anno
+            db.update_utente_lista_attesa(uid, lista, '2025-2026')
         _set_ore(db, uid, 2025, 11, ore)
         return uid
 
@@ -261,6 +262,7 @@ def test_municipale_riepilogo_incremento_e_quadratura(client, db_mod):
     assert header[3] == 'Di cui hanno ricevuto incremento ore'
     labels_lista = [h for h in header[4:] if h]
     n_liste = len(labels_lista)
+    assert labels_lista == ['Lista Nov 2025', 'Lista Mar 2026']
 
     # quadratura: col1 (totale) == col2 (non in lista) + somma colonne-lista, ogni riga
     for row in rows:

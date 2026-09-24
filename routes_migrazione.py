@@ -141,7 +141,8 @@ def api_migrazione_esporta():
                     'id': r['id'], 'scuola_id': r['scuola_id'], 'scuola_nome': r['scuola_nome'],
                     'commessa_nome': r['commessa_nome'], 'nome': r['nome'], 'cognome': r['cognome'],
                     'nome_puntato': r['nome_puntato'], 'monte_ore_settimanale': r['monte_ore_settimanale'],
-                    'lista_attesa': r.get('lista_attesa'), 'attivo': r['attivo'],
+                    'lista_attesa': r.get('lista_attesa'), 'lista_attesa_as': r.get('lista_attesa_as'),
+                    'attivo': r['attivo'], 'archiviato_dal': r.get('archiviato_dal'),
                     'data_inizio': r.get('data_inizio'), 'data_fine': r.get('data_fine'),
                     'budget_ore_mensile': r.get('budget_ore_mensile'),
                     'budget_ore_annuale': r.get('budget_ore_annuale'),
@@ -224,6 +225,8 @@ def _importa_replace(tabelle):
                     [riga[c] for c in cols])
                 n += 1
             stats[tabella] = n
+        # File di versioni senza l'anno delle liste d'attesa: lo si ricava dai dati
+        db.completa_anno_liste_attesa(cursor)
     return stats
 
 
@@ -344,6 +347,9 @@ def _importa_merge(data, mode):
                 scuole_map[s['id']] = cursor.lastrowid
                 stats['scuole']['importate'] += 1
 
+        # Etichette lista d'attesa prima dell'import (vedi 4b)
+        liste_prima = {r[0]: r[1] for r in cursor.execute('SELECT id, lista_attesa FROM utenti').fetchall()}
+
         # 3. Utenti
         for u in data.get('utenti', []):
             new_scuola_id = scuole_map.get(u['scuola_id'])
@@ -362,21 +368,27 @@ def _importa_merge(data, mode):
             if existing:
                 utenti_map[u['id']] = existing['id']
                 if aggiorna:
+                    # archiviato_dal: NULL se attivo; da un file senza il mese
+                    # dell'archiviazione (versione vecchia) resta quello gia' presente
                     cursor.execute('''UPDATE utenti SET monte_ore_settimanale = ?, lista_attesa = ?, attivo = ?,
+                                      archiviato_dal = CASE WHEN ? THEN NULL ELSE COALESCE(?, archiviato_dal) END,
                                       data_inizio = ?, data_fine = ?, budget_ore_mensile = ?, budget_ore_annuale = ?
                                       WHERE id = ?''',
                                    (u['monte_ore_settimanale'], u.get('lista_attesa'), u.get('attivo', 1),
+                                    1 if u.get('attivo', 1) else 0, u.get('archiviato_dal'),
                                     u.get('data_inizio'), u.get('data_fine'), u.get('budget_ore_mensile'),
                                     u.get('budget_ore_annuale'), existing['id']))
                     stats['utenti']['aggiornati'] += 1
             else:
                 nome_puntato = u.get('nome_puntato') or db.punteggia_nome(u['nome'], u.get('cognome') or '')
                 cursor.execute('''INSERT INTO utenti (scuola_id, nome, cognome, nome_puntato,
-                                      monte_ore_settimanale, lista_attesa, attivo, data_inizio, data_fine,
+                                      monte_ore_settimanale, lista_attesa, attivo, archiviato_dal,
+                                      data_inizio, data_fine,
                                       budget_ore_mensile, budget_ore_annuale, data_inserimento)
-                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                                (new_scuola_id, u['nome'], u.get('cognome') or '', nome_puntato,
                                 u['monte_ore_settimanale'], u.get('lista_attesa'), u.get('attivo', 1),
+                                None if u.get('attivo', 1) else u.get('archiviato_dal'),
                                 u.get('data_inizio'), u.get('data_fine'), u.get('budget_ore_mensile'),
                                 u.get('budget_ore_annuale'), u.get('data_inserimento', datetime.now().isoformat())))
                 utenti_map[u['id']] = cursor.lastrowid
@@ -412,6 +424,21 @@ def _importa_merge(data, mode):
                                 r.get('pasti', 0), r['giorni_lavorativi'], r.get('note'),
                                 r.get('data_inserimento', datetime.now().isoformat())))
                 stats['rendicontazione']['importate'] += 1
+
+        # 4b. Anno scolastico delle liste d'attesa degli utenti del file: quello del
+        # file se c'e' (versioni nuove), altrimenti ricavato dalle ore appena
+        # importate (ultimo mese con una riga), come per i DB delle versioni vecchie
+        for u in data.get('utenti', []):
+            nuovo_id = utenti_map.get(u['id'])
+            if not nuovo_id:
+                continue
+            attuale = cursor.execute('SELECT lista_attesa FROM utenti WHERE id = ?', (nuovo_id,)).fetchone()[0]
+            if u.get('lista_attesa_as') and (attuale or '').strip() and attuale == u.get('lista_attesa'):
+                cursor.execute('UPDATE utenti SET lista_attesa_as = ? WHERE id = ?', (u['lista_attesa_as'], nuovo_id))
+            elif attuale != liste_prima.get(nuovo_id):
+                # etichetta nuova o cambiata dal file, senza anno: si ricava dai dati
+                cursor.execute('UPDATE utenti SET lista_attesa_as = NULL WHERE id = ?', (nuovo_id,))
+        db.completa_anno_liste_attesa(cursor, utenti_map.values())
 
         # 5. Calendario
         for cal in data.get('calendario', []):

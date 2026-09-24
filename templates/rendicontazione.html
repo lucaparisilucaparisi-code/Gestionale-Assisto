@@ -984,7 +984,7 @@ function renderTable(data) {
                     <td>
                         <a href="#" onclick="showStoricoUtente(${row.utente_id}); return false;" class="utente-link" title="Clicca per vedere lo storico">
                             <strong>${row.nome} ${row.cognome}</strong>
-                        </a>
+                        </a>${row.attivo === 0 ? '<span class="badge-var badge-archiviato" title="Utente archiviato: resta nei mesi in cui ha ore o era in servizio, non in quelli futuri">archiviato</span>' : ''}
                     </td>
                     <td class="text-muted cella-ac">${row.nome_puntato}</td>
                     <td class="numeric font-mono">${row.monte_ore_variato

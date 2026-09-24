@@ -505,6 +505,13 @@ async function loadBannerNuovoAnno() {
     try {
         const stato = await apiCall('/api/anno-scolastico/prossimo');
         if (!stato.mostra_banner) {
+            // Ultimo passo appena fatto: il riquadro resta con l'esito ("2 di 2 fatti")
+            // finche' non si cambia pagina (prima spariva subito, esito compreso, sia
+            // dopo il passo 1 sia dopo il passo 2); al prossimo caricamento non c'e' piu'
+            if (stato.prossimo && document.getElementById('nuovo-anno-esito')?.innerHTML.trim()) {
+                renderPassiNuovoAnno(stato);
+                return;
+            }
             card.style.display = 'none';
             return;
         }
@@ -584,10 +591,12 @@ function preparaNuovoAnno(annoScolastico) {
                     `<tr><td>${MESI_BREVI[m.mese]} ${m.anno}</td>` +
                     `<td class="text-right">${m.giorni}${m.giorni_altri != null ? ` (non-infanzia: ${m.giorni_altri})` : ''}</td></tr>`
                 ).join('');
+                // Passo 2 gia' fatto: il nuovo anno e' pronto (l'esito resta visibile)
+                const utentiFatti = document.getElementById('passo-utenti')?.classList.contains('fatto');
                 document.getElementById('nuovo-anno-esito').innerHTML = `
                     <div class="alert alert-success">
                         <div><strong>Calendario ${escapeHtml(data.anno_scolastico)} creato</strong> per ${data.mesi.length} mesi.
-                        Ora puoi passare al punto 2 (utenti e monte ore).</div>
+                        ${utentiFatti ? 'Il nuovo anno è pronto.' : 'Ora puoi passare al punto 2 (utenti e monte ore).'}</div>
                     </div>
                     <div class="table-responsive mt-2" style="max-width:420px;">
                         <table class="table">
@@ -639,8 +648,14 @@ function renderWizardUtenti() {
     tbody.innerHTML = righe.map(u => {
         const st = _wizardStato[u.id] || {};
         const nuovo = st.nuovo !== undefined ? st.nuovo : u.monte_ore_base;
-        const archivia = st.archivia !== undefined ? st.archivia : u.proposta_archivio;
+        // Mai spuntato in partenza: chi e' uscito ha gia' la data di fine, che lo
+        // esclude dal nuovo anno; qui c'e' solo l'indicazione "uscito a mm/aaaa"
+        const archivia = st.archivia !== undefined ? st.archivia : false;
         const diverso = Number(u.effettivo_giugno) !== Number(u.monte_ore_base);
+        const [aFine, mFine] = String(u.data_fine || '').split('-');
+        const fine = u.data_fine
+            ? `<span class="text-muted" style="font-size:0.75rem;">${u.uscito ? 'uscito a' : 'fine'} ${escapeHtml(mFine && aFine ? `${mFine}/${aFine}` : u.data_fine)}</span>`
+            : '';
         return `<tr class="${archivia ? 'wizard-riga-archivia' : ''}">
             <td><strong>${escapeHtml(u.nome)} ${escapeHtml(u.cognome || '')}</strong>
                 <div class="text-muted" style="font-size:0.8rem;">${escapeHtml(u.scuola || '')}</div></td>
@@ -649,7 +664,7 @@ function renderWizardUtenti() {
             <td><input type="number" class="form-control wizard-nuovo-mo" data-id="${u.id}" value="${nuovo}" step="0.5" min="0" max="40" style="width:100px;" aria-label="Nuovo monte ore"></td>
             <td class="text-center wizard-cella-archivia"><label class="wizard-archivia-label">
                 <input type="checkbox" class="wizard-archivia" data-id="${u.id}" ${archivia ? 'checked' : ''} aria-label="Archivia ${escapeHtml(u.nome)} ${escapeHtml(u.cognome || '')}">
-                ${u.data_fine ? `<span class="text-muted" style="font-size:0.75rem;">fine ${escapeHtml(formatDataIT(u.data_fine))}</span>` : ''}</label></td>
+                ${fine}</label></td>
         </tr>`;
     }).join('');
     aggiornaRiepilogoWizard();
@@ -662,8 +677,7 @@ function _modificheWizard() {
         const st = _wizardStato[u.id] || {};
         const nuovo = (st.nuovo !== undefined && st.nuovo !== '') ? Number(st.nuovo) : Number(u.monte_ore_base);
         if (nuovo !== Number(u.monte_ore_base)) monte_ore[u.id] = nuovo;
-        const arch = st.archivia !== undefined ? st.archivia : u.proposta_archivio;
-        if (arch) archivia.push(u.id);
+        if (st.archivia) archivia.push(u.id);
     });
     return { monte_ore, archivia };
 }
@@ -685,10 +699,19 @@ function applicaWizardUtenti() {
     if (chiudi) righe.push(`${nVar} variazioni monte ore chiuse al 31 agosto`);
     righe.push(`${Object.keys(monte_ore).length} monte ore di partenza aggiornati`);
     righe.push(`${archivia.length} utenti archiviati`);
+    // Testo vero: niente cambia nei mesi gia' rendicontati (monte ore e archiviati)
+    let spiegazione = '.';
+    if (Object.keys(monte_ore).length) {
+        spiegazione += ' Il nuovo monte ore vale da settembre: i mesi passati tengono quello di prima ' +
+            '(resta come variazione chiusa ad agosto) e ogni cambio resta nello storico dell\'utente.';
+    }
+    if (archivia.length) {
+        spiegazione += ' Gli archiviati non compariranno nei mesi futuri; i mesi già rendicontati restano ' +
+            'invariati. Si ritrovano nel filtro "Archiviati" della pagina Utenti.';
+    }
     showConfirmDialog(
         `Applicare le modifiche per il ${_annoWizard}?`,
-        righe.join(' · ') + '. Ogni monte ore cambiato resta nello storico dell\'utente; ' +
-        'gli archiviati si ritrovano nel filtro "Archiviati" della pagina Utenti.',
+        righe.join(' · ') + spiegazione,
         async () => {
             const btn = document.getElementById('btn-wizard-utenti-applica');
             btn.disabled = true;
@@ -701,8 +724,9 @@ function applicaWizardUtenti() {
                 document.getElementById('nuovo-anno-esito').innerHTML = `
                     <div class="alert alert-success">
                         <div><strong>Utenti pronti per il ${escapeHtml(_annoWizard)}.</strong>
-                        ${res.variazioni_chiuse} variazioni chiuse, ${res.monte_ore_modificati} monte ore aggiornati,
-                        ${res.archiviati} utenti archiviati.</div>
+                        ${res.variazioni_chiuse} variazioni chiuse, ${res.monte_ore_modificati} monte ore aggiornati
+                        (per ${res.variazioni_conservate || 0} i mesi passati tengono il valore di prima),
+                        ${res.archiviati} utenti archiviati. I mesi già rendicontati non cambiano.</div>
                     </div>`;
                 showToast('Utenti preparati per il nuovo anno', 'success');
                 loadBannerNuovoAnno();

@@ -189,6 +189,7 @@
                     <option value="Maggio">Maggio</option>
                     <option value="Giugno">Giugno</option>
                 </select>
+                <p class="form-help" id="edit-lista-attesa-help" style="display:none;"></p>
             </div>
             <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 <div class="form-group">
@@ -480,10 +481,12 @@ function loadUtenti() {
             var oggiStr = oggi.toISOString().slice(0, 7); // YYYY-MM
 
             utenti = utenti.filter(function(u) {
+                // Lista d'attesa: conta solo quella di quest'anno scolastico (una
+                // etichetta di un anno passato non tiene l'utente fuori dagli attivi)
                 if (stato === 'attivo') {
-                    return u.attivo && !u.lista_attesa && (!u.data_fine || u.data_fine >= oggiStr);
+                    return u.attivo && !u.lista_attesa_corrente && (!u.data_fine || u.data_fine >= oggiStr);
                 } else if (stato === 'lista_attesa') {
-                    return u.lista_attesa;
+                    return u.lista_attesa_corrente;
                 } else if (stato === 'scaduto') {
                     return u.data_fine && u.data_fine < oggiStr;
                 }
@@ -495,6 +498,16 @@ function loadUtenti() {
     }).catch(function(err) {
         showToast('Errore caricamento utenti', 'error');
     });
+}
+
+// Lista d'attesa: quella di quest'anno in evidenza; quella di un anno passato
+// attenuata e con l'anno ("Marzo 25/26"), perche' nei report di quest'anno non conta
+function badgeListaAttesa(u) {
+    if (!u.lista_attesa) return '';
+    if (u.lista_attesa_corrente) return '<span class="badge badge-warning">' + esc(u.lista_attesa) + '</span>';
+    return '<span class="badge badge-secondary lista-anno-passato" title="Lista d\'attesa dell\'anno '
+        + esc(u.lista_attesa_anno_breve) + ': conta solo nei report di quell\'anno">'
+        + esc(u.lista_attesa) + ' ' + esc(u.lista_attesa_anno_breve) + '</span>';
 }
 
 // === Render tabella ===
@@ -534,7 +547,7 @@ function renderTable(utenti) {
         if (u.data_inizio || u.data_fine) {
             periodo = '<span class="badge badge-info">' + fmtPeriodo(u.data_inizio) + ' &rarr; ' + fmtPeriodo(u.data_fine) + '</span>';
         }
-        var lista = u.lista_attesa ? '<span class="badge badge-warning">' + esc(u.lista_attesa) + '</span>' : '-';
+        var lista = badgeListaAttesa(u) || '-';
         var nome = ((u.cognome || '') + ' ' + (u.nome || '')).trim();
 
         rows += '<tr>'
@@ -607,7 +620,7 @@ function apriModifica(id) {
     document.getElementById('edit-cognome').value = u.cognome || '';
     document.getElementById('edit-monte-ore').value = u.monte_ore_settimanale;
     document.getElementById('edit-scuola').value = u.scuola || '';
-    document.getElementById('edit-lista-attesa').value = u.lista_attesa || '';
+    impostaListaAttesaModifica(u);
     document.getElementById('edit-data-inizio').value = u.data_inizio || '';
     document.getElementById('edit-data-fine').value = u.data_fine || '';
 
@@ -625,6 +638,32 @@ function apriModifica(id) {
     openModal('modal-edit');
 }
 
+// Etichetta di un anno passato nella tendina: una voce a parte ("Marzo 25/26
+// (anno passato)") che, lasciata cosi', non cambia nulla. Scegliere un mese vuol
+// dire una lista d'attesa di quest'anno.
+var LISTA_ANNO_PASSATO = '__anno_passato__';
+
+function impostaListaAttesaModifica(u) {
+    var sel = document.getElementById('edit-lista-attesa');
+    var help = document.getElementById('edit-lista-attesa-help');
+    var vecchia = sel.querySelector('option[value="' + LISTA_ANNO_PASSATO + '"]');
+    if (vecchia) vecchia.remove();
+    help.style.display = 'none';
+    if (u.lista_attesa && !u.lista_attesa_corrente) {
+        var opt = document.createElement('option');
+        opt.value = LISTA_ANNO_PASSATO;
+        opt.textContent = u.lista_attesa + ' ' + u.lista_attesa_anno_breve + ' (anno passato)';
+        sel.insertBefore(opt, sel.options[1] || null);
+        sel.value = LISTA_ANNO_PASSATO;
+        help.textContent = "Lista d'attesa dell'anno " + u.lista_attesa_anno_breve
+            + ": conta solo nei report di quell'anno. Lasciala così per non cambiare i report passati; "
+            + "scegli un mese solo per una lista d'attesa di quest'anno.";
+        help.style.display = 'block';
+    } else {
+        sel.value = u.lista_attesa || '';
+    }
+}
+
 function saveEditUtente() {
     if (!editUtenteId) return;
     var nome = document.getElementById('edit-nome').value.trim();
@@ -639,16 +678,32 @@ function saveEditUtente() {
         showToast('Monte ore deve essere tra 0 e 40', 'error'); return;
     }
 
-    apiCall('/api/utenti/' + editUtenteId, {
+    var dati = {
+        nome: nome,
+        cognome: cognome,
+        monte_ore: parseFloat(monteOre),
+        data_inizio: dataInizio || null,
+        data_fine: dataFine || null
+    };
+    // la lista d'attesa di un anno passato, lasciata com'era, non si tocca
+    if (listaAttesa !== LISTA_ANNO_PASSATO) dati.lista_attesa = listaAttesa || null;
+
+    var id = editUtenteId;
+    var u = utentiMap[id];
+    var prima = u ? Number(u.monte_ore_settimanale) : NaN;
+    if (u && Number(dati.monte_ore) !== prima) {
+        // Cambio del monte ore BASE: vale per tutti i mesi, anche quelli gia'
+        // rendicontati. Se ce ne sono, prima si chiede (con la via delle Variazioni)
+        confermaMonteOreTuttiIMesi(u, dati.monte_ore, function() { inviaModificaUtente(id, dati); });
+        return;
+    }
+    inviaModificaUtente(id, dati);
+}
+
+function inviaModificaUtente(id, dati) {
+    apiCall('/api/utenti/' + id, {
         method: 'PUT',
-        body: JSON.stringify({
-            nome: nome,
-            cognome: cognome,
-            monte_ore: parseFloat(monteOre),
-            lista_attesa: listaAttesa || null,
-            data_inizio: dataInizio || null,
-            data_fine: dataFine || null
-        })
+        body: JSON.stringify(dati)
     }).then(function() {
         showToast('Utente modificato con successo', 'success');
         closeModal('modal-edit');
@@ -656,6 +711,52 @@ function saveEditUtente() {
     }).catch(function(err) {
         showToast('Errore: ' + err.message, 'error');
     });
+}
+
+// Mesi gia' rendicontati (con ore, prima del mese di oggi): se ci sono, il cambio
+// del monte ore base chiede conferma, perche' ricalcola ore previste e
+// credito/debito anche di quei mesi. Senza mesi rendicontati si salva come prima.
+function confermaMonteOreTuttiIMesi(u, nuovo, salva) {
+    var oggi = new Date();
+    var meseOggi = oggi.getFullYear() * 100 + (oggi.getMonth() + 1);
+    apiCall('/api/utente/' + u.id + '/storico-ore').then(function(data) {
+        var passati = (data.storico || []).filter(function(r) {
+            return (r.anno * 100 + r.mese) < meseOggi && (r.ore_lavorate_60 || 0) > 0;
+        });
+        if (!passati.length) { salva(); return; }
+        var ultimo = passati.reduce(function(a, r) { return (r.anno * 100 + r.mese) > (a.anno * 100 + a.mese) ? r : a; });
+        var nome = ((u.nome || '') + ' ' + (u.cognome || '')).trim();
+        showConfirmDialog(
+            'Cambiare il monte ore anche nei mesi passati?',
+            nome + ' ha già ore rendicontate (fino a ' + formatMeseIT(ultimo.anno + '-' + String(ultimo.mese).padStart(2, '0')) + '). '
+            + 'Il monte ore base (' + formatNumero(u.monte_ore_settimanale) + ' → ' + formatNumero(nuovo) + ' h) vale per TUTTI i mesi, '
+            + 'anche quelli già rendicontati: cambiano le loro ore previste e il credito/debito. '
+            + 'Per un aumento da un certo mese in poi usa «Variazioni»: solo così la colonna '
+            + '«Di cui hanno ricevuto incremento ore» del Municipale lo conta.',
+            salva,
+            {
+                type: 'warning', confirmText: 'Cambia per tutti i mesi', cancelText: 'Annulla',
+                extraText: 'Apri le Variazioni',
+                onExtra: function() { apriVariazioniConNuovoMonteOre(u, nuovo); }
+            }
+        );
+    }).catch(function() {
+        // controllo non riuscito: meglio chiedere comunque che cambiare in silenzio
+        showConfirmDialog('Cambiare il monte ore in tutti i mesi?',
+            'Il monte ore base vale per TUTTI i mesi, anche quelli già rendicontati. '
+            + 'Per un aumento da un certo mese in poi usa «Variazioni».',
+            salva, { type: 'warning', confirmText: 'Cambia per tutti i mesi', cancelText: 'Annulla' });
+    });
+}
+
+// "Apri le Variazioni": il monte ore base torna quello di prima e il nuovo valore
+// si propone come variazione dal mese di oggi (mese modificabile prima di aggiungerla)
+function apriVariazioniConNuovoMonteOre(u, nuovo) {
+    document.getElementById('edit-monte-ore').value = u.monte_ore_settimanale;
+    openVariazioniMonteOre();
+    var oggi = new Date();
+    document.getElementById('var-monte-ore').value = nuovo;
+    document.getElementById('var-mese-inizio').value = oggi.getFullYear() + '-' + String(oggi.getMonth() + 1).padStart(2, '0');
 }
 
 // === Elimina utente ===
@@ -910,7 +1011,7 @@ function archiviaUtente(id) {
     var u = utentiMap[id];
     var nome = u ? (u.nome + ' ' + (u.cognome || '')).trim() : 'questo utente';
     showConfirmDialog('Archivia utente',
-        'Archiviare ' + nome + '? Non comparirà più in rendicontazione e negli elenchi, ma tutto lo storico resta: potrai ripristinarlo dal filtro "Archiviati".',
+        'Archiviare ' + nome + '? Non comparirà nei mesi futuri né negli elenchi di oggi; i mesi già rendicontati restano invariati (ore, importi e report). Potrai ripristinarlo dal filtro "Archiviati".',
         function() {
             apiCall('/api/utenti/' + id, { method: 'PUT', body: JSON.stringify({ attivo: false }) }).then(function() {
                 showToast('Utente archiviato', 'success');

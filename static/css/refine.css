@@ -859,6 +859,9 @@ details.section[open] > summary::before { transform: rotate(90deg); }
 [data-theme="light"] .modal-overlay,
 [data-theme="light"] .confirm-dialog-overlay,
 [data-theme="light"] .command-palette-overlay { background: rgba(0, 0, 0, 0.5); }
+/* Conferme con tre pulsanti ("Apri le Variazioni · Annulla · Cambia per tutti i
+   mesi"): vanno a capo interi invece di uscire dalla finestra larga 420px */
+.confirm-dialog-actions { flex-wrap: wrap; }
 /* Guida alle scorciatoie (tasto ?): finestra normale, righe nome / tasti */
 .scorciatoia-riga { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); padding: 7px 0; border-bottom: 1px solid var(--border-color); }
 .scorciatoie-sezione { margin: var(--sp-4) 0 2px; font-weight: 600; color: var(--text-secondary); }
@@ -896,6 +899,9 @@ details.section[open] > summary::before { transform: rotate(90deg); }
 .alert strong { display: inline; margin: 0; }
 
 /* ---------- 17. Rendicontazione ---------- */
+/* Utente archiviato in un mese passato: piccola etichetta "archiviato" dopo il nome
+   (stesso aspetto di "var."), il suo mese resta com'era */
+.badge-var.badge-archiviato { margin: 0 0 0 6px; }
 /* Fasce delle scuole: grigio neutro con barretta blu. Erano una sfumatura blu-viola
    accesa con testo bianco (3,5:1), la cosa piu' vistosa della pagina; nel tema
    chiaro, al passaggio del mouse, il nome diventava bianco su azzurro chiarissimo. */
@@ -1375,6 +1381,9 @@ button.report-card {
 }
 
 /* ---------- 25. Anagrafiche: Utenti, Dipendenti, Turni, schede ---------- */
+/* Lista d'attesa di un anno scolastico passato (elenco Utenti e scheda): grigia,
+   attenuata e con l'anno ("Marzo 25/26"), perche' nei report di quest'anno non conta */
+.lista-anno-passato { opacity: .8; font-weight: 500; }
 /* Elenco Utenti: resta ferma a sinistra la colonna 'Cognome e nome' quando la
    tabella scorre di lato (prima restava ferma 'Commessa', presa in prestito dalle
    regole della Rendicontazione, e al passaggio del mouse restava bianca). */
