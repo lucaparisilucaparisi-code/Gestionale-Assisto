@@ -57,7 +57,9 @@ def test_etichette_colorate_leggibili_nel_tema_chiaro():
 
 def test_numeri_mostrati_all_italiana():
     # Un solo formato: formatNumber/formatOre di app.js ('61,94', '5.963,00').
-    # toFixed() resta ammesso solo per il valore di un campo da modificare.
+    # toFixed() resta ammesso solo per il valore di un campo da modificare, o per un
+    # calcolo che torna subito numero (Number(x.toFixed(2)): arrotonda2 della
+    # Rendicontazione, lo stesso arrotondamento di round() del server), mai per il testo.
     app = _leggi('static/js/app.js')
     corpo = re.search(r'function formatNumber\([^)]*\)\s*\{(.*?)\n\}', app, re.S)
     assert corpo and "toLocaleString('it-IT'" in corpo.group(1), 'formatNumber deve usare il formato italiano'
@@ -71,7 +73,7 @@ def test_numeri_mostrati_all_italiana():
             righe = fh.read().splitlines()
         for n, riga in enumerate(righe, 1):
             if '.toFixed(' in riga and not riga.lstrip().startswith('//'):
-                assert re.search(r'\.value\s*=', riga), \
+                assert re.search(r'\.value\s*=|Number\(\w+\.toFixed\(\d\)\)', riga), \
                     f'{os.path.basename(f)}:{n}: toFixed() nel testo mostrato, usa formatNumber/formatOre'
 
 

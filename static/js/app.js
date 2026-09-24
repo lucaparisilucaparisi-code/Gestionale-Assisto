@@ -1313,6 +1313,36 @@ const ChartManager = {
 
 window.addEventListener('themechange', () => ChartManager.aggiornaTema());
 
+// Tavolozza di Impostazioni > Commesse (stessi campioni della pagina Commesse)
+const TAVOLOZZA_COMMESSE = ['#3B82F6', '#BF5AF2', '#30D158', '#FF9F0A', '#FF453A', '#64D2FF'];
+
+/**
+ * Un colore DIVERSO per ogni commessa, per grafici e Dashboard. Chi ha un colore
+ * suo, non usato da altre commesse prima di lei, lo tiene; le altre (colore
+ * ripetuto o mancante) prendono il primo libero della tavolozza. Non cambia i dati
+ * salvati: nel database di una versione precedente tutte le commesse avevano lo
+ * stesso indaco e la torta "Utenti per commessa" era di un colore solo.
+ * voci: elenco di oggetti con `colore`; ritorna i colori nello stesso ordine.
+ */
+function coloriCommesseDistinti(voci) {
+    const norm = c => (c || '').trim().toLowerCase();
+    const scelti = new Array(voci.length).fill(null);
+    const usati = new Set();
+    // prima i colori propri non ripetuti: una scelta voluta non si sposta
+    voci.forEach((v, i) => {
+        const c = norm(v && v.colore);
+        if (c && !usati.has(c)) { usati.add(c); scelti[i] = v.colore.trim(); }
+    });
+    const riserva = [...TAVOLOZZA_COMMESSE, ...ChartManager.getColors().serie];
+    voci.forEach((v, i) => {
+        if (scelti[i]) return;
+        const libero = riserva.find(c => !usati.has(norm(c))) || riserva[i % riserva.length];
+        usati.add(norm(libero));
+        scelti[i] = libero;
+    });
+    return scelti;
+}
+
 function animateCounter(element, targetValue, duration = 1000) {
     if (!element) return;
 
@@ -1558,18 +1588,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ==================== UNDO ====================
 
+// Ctrl+Z: prima si chiede, mostrando cosa verra' annullato e quando era stato fatto
+// (prima annullava subito, anche modifiche di mesi prima ereditate dalla versione
+// precedente). Le azioni piu' vecchie di config.UNDO_VALIDITA_ORE non si annullano.
 async function undoLastAction() {
+    if (document.getElementById('confirm-dialog-overlay')) return;   // conferma gia' aperta
+    let info;
     try {
-        const result = await apiCall('/api/undo', { method: 'POST' });
-        if (result.success) {
-            showToast(result.message || 'Azione annullata', 'info');
-            // Ricarica la pagina corrente per aggiornare i dati
-            if (typeof loadUtenti === 'function') loadUtenti();
-            if (typeof loadDashboardData === 'function') loadDashboardData();
-        }
+        info = await apiCall('/api/undo/ultima');
     } catch (e) {
-        showToast(e.message || 'Nessuna azione da annullare', 'warning');
+        showToast(e.message || 'Annulla non disponibile', 'warning');
+        return;
     }
+    const azione = info.azione;
+    if (!azione) {
+        showToast(info.scadute
+            ? `Niente da annullare: le modifiche di più di ${info.ore_validita} ore fa non si possono più annullare`
+            : 'Nessuna azione da annullare', 'info');
+        return;
+    }
+    showConfirmDialog(
+        'Annullare questa modifica?',
+        `${azione.descrizione}. Modifica fatta il ${azione.quando}.`,
+        async () => {
+            try {
+                const result = await apiCall('/api/undo', { method: 'POST', body: JSON.stringify({ id: azione.id }) });
+                showToast(result.message || 'Azione annullata', 'success');
+                ricaricaVistaDopoAnnulla();
+            } catch (e) {
+                showToast(e.message || 'Annullamento non riuscito', 'error');
+            }
+        },
+        { confirmText: 'Annulla la modifica', cancelText: 'Lascia com\'è', type: 'warning' }
+    );
+}
+
+// Dopo un annullamento si ricarica la vista aperta: la pagina puo' dire come
+// (window.ricaricaDopoAnnulla, es. Rendicontazione), altrimenti si ricarica tutto
+function ricaricaVistaDopoAnnulla() {
+    if (typeof window.ricaricaDopoAnnulla === 'function') window.ricaricaDopoAnnulla();
+    else if (typeof window.loadUtenti === 'function') window.loadUtenti();
+    else if (typeof window.loadDashboardData === 'function') window.loadDashboardData();
+    else window.location.reload();
 }
 
 // ==================== GLOBAL EXPORTS ====================
@@ -1607,6 +1667,7 @@ window.populateCommesseSelect = populateCommesseSelect;
 window.initFileUpload = initFileUpload;
 window.animateCounter = animateCounter;
 window.ChartManager = ChartManager;
+window.coloriCommesseDistinti = coloriCommesseDistinti;
 window.CommandPalette = CommandPalette;
 window.triggerConfetti = triggerConfetti;
 window.undoLastAction = undoLastAction;

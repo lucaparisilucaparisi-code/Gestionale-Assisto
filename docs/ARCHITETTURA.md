@@ -86,6 +86,34 @@ reimplementarla inline (a schermo, in SQL o negli export).
   `info_lista_attesa`).
 - **Mese chiuso** → `_risposta_mese_chiuso(anno, mese)` in `app.py`: ogni route che
   scrive ore (singola, batch, copia, compila, import) deve passarci e rispondere 409.
+  Il trasloco JSON "Unisci"/"Solo nuovi" salta le righe dei mesi chiusi che le
+  cambierebbero e le riporta nell'esito (`saltate_mese_chiuso`, `avvisi`).
+- **Limiti di ore e pasti** → `config.MAX_ORE_MENSILI` (200) e `MAX_PASTI_MENSILI` (62,
+  due pasti al giorno per 31 giorni), letti da `_valida_riga_rendicontazione` (che dice
+  anche il campo sbagliato: il batch risponde con utente, `utente_id` e `campo`),
+  dall'import Excel (`import_rendicontazione.motivo_fuori_limite`: righe fuori limite non
+  scritte e riportate) e dalla pagina (`APP_CONFIG`). In Rendicontazione ogni casella si
+  controlla PRIMA di inviarla (`controllaCasella`): una non valida resta in rosso con il
+  motivo e non entra nel pacchetto, cosi' non blocca le altre ("o tutto o niente" del
+  server). Piu' pasti dei giorni di scuola e' solo un avviso (`pasti_oltre_giorni` in
+  `/api/stats/validazione`, quindi in Da fare e Chiusura Mese).
+- **Totali per plesso** → sempre per `scuola_id`, mai per nome: piu' plessi possono avere lo
+  stesso nome in commesse diverse (vista "Tutte"). `get_totali_per_scuola` restituisce
+  `scuola_id`; la pagina (renderTable, `calculateTotaliScuola`, filtro Scuola) e il foglio
+  "Dettaglio per Scuola" dell'Excel raggruppano per id (`scuola_id` anche come filtro
+  degli export).
+- **Giorni di scuola per tipo** → infanzia / altri ordini con `get_calendario_full` +
+  `is_scuola_infanzia` + `risolvi_giorni_lavorativi`, come la vista mensile: anche la
+  heatmap delle Statistiche e l'anteprima di "Copia Mese Prec." (`GET .../copia-precedente`:
+  oltre `config.SOGLIA_GIORNI_COPIA_PERCENTUALE` di differenza la pagina avvisa e
+  propone "Compila con media").
+- **Annulla (Ctrl+Z)** → si annullano solo le azioni piu' recenti di
+  `config.UNDO_VALIDITA_ORE` (limite calcolato in Python, `database.limite_undo`, in ora
+  locale come i timestamp). Le piu' vecchie restano in memoria ma non sono annullabili
+  (`DELETE /api/undo/scadute` le toglie). La pagina chiede sempre conferma con
+  `GET /api/undo/ultima` (descrizione e data) e manda l'`id` mostrato: se nel frattempo
+  l'ultima azione e' un'altra, 409. Dopo l'annullamento si ricarica la vista
+  (`window.ricaricaDopoAnnulla` se la pagina lo definisce).
 - **Cancellazione utente** → `database.elimina_utente_completo(cursor, id)` +
   `raccogli_snapshot_utente` per l'undo: mai DELETE diretti (le FK sono applicate).
 - **Match nominativi** → sempre `COLLATE NOCASE` su nome/cognome (evita duplicati
@@ -113,7 +141,21 @@ reimplementarla inline (a schermo, in SQL o negli export).
 - Migrazioni: attualmente `ALTER TABLE` idempotenti in `init_db`, con
   `PRAGMA user_version` come baseline. Le nuove migrazioni vanno numerate a partire da lì.
 - Backup/restore usano l'API `sqlite3.backup()` (consistente con WAL). Il ripristino
-  valida il nome del file (no path traversal).
+  (`restore_backup`): valida il nome del file (no path traversal) e il contenuto
+  (`verifica_file_database`: non vuoto, tabelle `utenti` e `auth_config`, `quick_check`)
+  PRIMA di toccare il DB attivo; fa il backup di sicurezza e senza quello non ripristina;
+  la pulizia dei vecchi backup non cancella mai il file scelto (`escludi`); legge il file
+  in sola lettura (`_SolaLettura`, URI costruito con pathlib); poi esegue `init_db()` in
+  un try a parte, cosi' un backup di una versione precedente si aggiorna senza riavvio.
+- All'avvio il backup automatico si fa PRIMA di `init_db()` (copia "com'era prima
+  dell'aggiornamento"), solo se il DB esiste gia'.
+- Un solo Assisto per porta: nel blocco `__main__` di `app.py` `assisto_gia_aperto()`
+  controlla 127.0.0.1:5000 prima di `app.run` ed esce con un messaggio (su Windows il
+  server partirebbe lo stesso sulla porta occupata e due versioni si mescolerebbero).
+- Trasloco JSON "Unisci": di un utente gia' presente si aggiornano solo i campi presenti
+  nel file (`CAMPI_UTENTE_DAL_FILE`): un file 2.0 non azzera date di servizio e budget.
+  L'anteprima di un file senza `tabelle` elenca cosa manca (`mancanti`) e consiglia la
+  copia di `gestionale.db`.
 
 ## Front-end
 
@@ -132,6 +174,31 @@ reimplementarla inline (a schermo, in SQL o negli export).
   (`getColors()`: blu `--primary` per le ore erogate, grigio `neutro` per le previste,
   `commessa.colore` per le fette per commessa), tela liberata prima di ridisegnare e
   ridisegno automatico al cambio di tema. Niente tavolozze scritte a mano.
+  I colori delle commesse in grafici e Dashboard passano da `coloriCommesseDistinti(voci)`
+  (app.js): chi ha un colore suo non ripetuto lo tiene, le altre prendono il primo libero
+  della tavolozza di Impostazioni > Commesse (nel DB di una versione precedente erano
+  tutte dello stesso indaco). I dati salvati non cambiano.
+- Rendicontazione: il salvataggio automatico parte 2 s dopo l'ultimo tasto; uscendo
+  prima (menu, Ctrl+K, F5, chiusura, scheda nascosta) `inviaModificheInUscita` manda le
+  caselle modificate con `fetch keepalive` al batch del mese mostrato (`periodoCaricato`).
+  Lo stesso pacchetto non parte due volte (firma `ultimoInvioUscita`: scheda nascosta e
+  poi chiusa), ma `markChanged` azzera la firma a ogni nuova modifica: un valore uguale a
+  quello già inviato torna a partire se nel frattempo il salvataggio automatico ne ha
+  scritto un altro. `loadData` scarta le risposte superate (`seqCaricamento`). Il Riepilogo somma il numero
+  della casella (`data-ore`), non il testo HH:MM, con gli arrotondamenti del server
+  (`calcolaFatturazione`, come `config.calcola_fatturazione`). Tutto cio' che la pagina
+  ricalcola dopo una modifica deve coincidere al centesimo con la pagina ricaricata:
+  `arrotonda2` = `round(x, 2)` di Python (toFixed sul valore binario, pareggi esatti al
+  centesimo pari; mai `Math.round(v * 100) / 100`); importi della riga da
+  `calcolaFatturazione(ore60)` con le ore NON arrotondate (come
+  `get_rendicontazione_completa`), le ore in 100' arrotondate solo per la colonna e le
+  somme; Riepilogo con `sommaComePython` nell'ordine del server (`ordine_server`,
+  `data-ordine`): `sum()` di Python e' compensata dalla 3.12 e semplice prima, e il
+  server lo dice in `APP_CONFIG.somma_compensata` (`config.SOMMA_COMPENSATA`); totali
+  per plesso con `+=` come `get_totali_per_scuola`. Un valore che parte col salvataggio
+  prima dell'evento `change` (stesso testo riscritto) passa da `handleOreChange`, e la
+  riga in memoria (`allData`) segue le caselle, cosi' il filtro Scuola non ridisegna i
+  valori del caricamento.
 - Finestre: la X di chiusura si scrive con la macro `modal_close(on_click)` di
   `templates/_macros.html` (`{% from '_macros.html' import modal_close %}`), mai a mano.
   Angoli: 6px etichette, 8px pulsanti e campi, 12px riquadri e finestre (`--r-*` in

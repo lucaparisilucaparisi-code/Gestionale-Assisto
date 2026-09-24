@@ -446,11 +446,13 @@ function restoreBackup(nome) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ backup: nome, confirm: parola })
                 });
-                if (!res.ok) throw new Error();
+                const esito = await res.json().catch(() => ({}));
+                // il server spiega il motivo (file vuoto o estraneo, backup di sicurezza non riuscito...)
+                if (!res.ok) throw new Error(esito.error || '');
                 showToast('Backup ripristinato. Ricarico la pagina…', 'success');
                 setTimeout(() => location.reload(), 1500);
             } catch (e) {
-                showToast('Errore nel ripristino', 'error');
+                showToast(e.message || 'Errore nel ripristino', 'error');
             }
         },
         { type: 'danger', confirmText: 'Ripristina', requireInput: true, inputPlaceholder: 'Digita CONFERMA' }

@@ -8,7 +8,7 @@
 ## Come Creare l'Eseguibile
 
 ### Metodo 1: Script Automatico (Consigliato)
-1. Apri la cartella `gestionale-oepac` in Esplora File
+1. Apri la cartella del gestionale (`Gestionale-Assisto-` seguito dal numero di versione) in Esplora File
 2. Fai doppio click su `build_exe.bat`
 3. Attendi il completamento (circa 2-3 minuti)
 4. L'eseguibile sarà in `dist/GestionaleOEPAC.exe`
@@ -17,7 +17,7 @@
 1. Apri il Prompt dei comandi (cmd)
 2. Naviga nella cartella del progetto:
    ```
-   cd percorso/alla/cartella/gestionale-oepac
+   cd percorso\alla\cartella\Gestionale-Assisto-<versione>
    ```
 3. Installa le dipendenze:
    ```

@@ -111,11 +111,15 @@ def get_liste_attesa_ordinate(dati, anno_report, mese_report):
 def _filtra_dati_richiesta(dati):
     """Applica ai dati mensili i filtri avanzati della pagina Report (e di
     "Esporta filtrati" in Rendicontazione) passati in query string:
-    scuola (nome esatto), search (nome, cognome o scuola) e ore
+    scuola (nome esatto) o scuola_id, search (nome, cognome o scuola) e ore
     ('zero' = senza ore, 'sotto' / 'sopra' rispetto alle previste)."""
     scuola = (request.args.get('scuola') or '').strip()
+    scuola_id = request.args.get('scuola_id', type=int)
     search = (request.args.get('search') or '').strip().lower()
     ore = (request.args.get('ore') or '').strip()
+    if scuola_id:
+        # un plesso preciso (Rendicontazione): due plessi possono avere lo stesso nome
+        dati = [d for d in dati if d.get('scuola_id') == scuola_id]
     if scuola:
         dati = [d for d in dati if (d.get('scuola') or '') == scuola]
     if search:
@@ -858,22 +862,25 @@ def api_export_excel(anno, mese):
         ws_scuola.set_row(0, 30)
         ws_scuola.write('A1', f'Dettaglio per Scuola - {MESI_NOME[mese]} {anno}', title_fmt)
 
-        # Raggruppa dati per scuola
+        # Raggruppa dati per plesso (id): due plessi con lo stesso nome in commesse
+        # diverse restano due blocchi, e l'intestazione dice la commessa
         scuole_dict = {}
         for d in dati:
-            scuola = d['scuola']
-            if scuola not in scuole_dict:
-                scuole_dict[scuola] = []
-            scuole_dict[scuola].append(d)
+            chiave = (d['scuola'] or '', d.get('commessa') or '', d['scuola_id'])
+            scuole_dict.setdefault(chiave, []).append(d)
+        commesse_per_nome = {}
+        for nome_scuola, commessa_scuola, _ in scuole_dict:
+            commesse_per_nome.setdefault(nome_scuola, set()).add(commessa_scuola)
 
         # Headers colonne dati utente
         detail_headers = ['Nome Puntato', 'Monte Ore', 'Media Mens.', 'Media -11%', 'Ore Lav. (60\')',
                           'Ore (100\')', 'Imponibile', 'IVA 5%', 'Totale', 'Pasti', 'Cred/Deb', 'Lista Attesa']
 
         row = 3
-        for scuola, utenti in sorted(scuole_dict.items()):
-            # Riga header scuola (espandibile)
-            ws_scuola.merge_range(row, 0, row, len(detail_headers), f'⊟ {scuola}', scuola_header_fmt)
+        for (scuola, commessa_scuola, _), utenti in sorted(scuole_dict.items()):
+            # Riga header scuola (espandibile); la commessa solo se il nome si ripete
+            titolo = f'{commessa_scuola} - {scuola}' if len(commesse_per_nome[scuola]) > 1 else scuola
+            ws_scuola.merge_range(row, 0, row, len(detail_headers), f'⊟ {titolo}', scuola_header_fmt)
             row += 1
 
             # Header colonne per questa scuola

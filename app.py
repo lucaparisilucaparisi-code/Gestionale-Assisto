@@ -79,6 +79,8 @@ def _parametri_calcolo():
         'max_ore_settimanali': config.MAX_ORE_SETTIMANALI,
         'max_pasti_mensili': config.MAX_PASTI_MENSILI,
         'max_ore_mensili': config.MAX_ORE_MENSILI,
+        # come somma sum() su questo Python: la pagina ricalcola il Riepilogo allo stesso modo
+        'somma_compensata': config.SOMMA_COMPENSATA,
     }
 
 
@@ -149,7 +151,14 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('OEPAC_HTTPS', '0') == '1'
 app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 8  # 8 ore
 
-# Inizializza database
+# Backup all'avvio PRIMA delle migrazioni di init_db: se il database esiste gia'
+# (per esempio copiato da una versione precedente) resta una copia com'era prima
+# dell'aggiornamento. Al primo avvio assoluto non c'e' niente da salvare.
+if config.BACKUP_ON_STARTUP and os.path.exists(config.DATABASE_PATH):
+    if db.create_backup():
+        logger.info("Backup automatico all'avvio completato")
+
+# Inizializza database (schema e migrazioni)
 db.init_db()
 
 
@@ -601,11 +610,6 @@ def profilo_page():
 
 
 
-# Backup all'avvio
-if config.BACKUP_ON_STARTUP:
-    db.create_backup()
-    logger.info("Backup automatico all'avvio completato")
-
 # Costanti da config
 MESI_NOME = config.MESI_NOME
 MESI_SCOLASTICI = config.MESI_SCOLASTICI
@@ -660,29 +664,36 @@ def _risposta_mese_chiuso(anno, mese):
     }), 409
 
 
-def _valida_valori_rendicontazione(riga):
+def _valida_riga_rendicontazione(riga):
     """Valida ore/pasti/note di una riga di rendicontazione con i limiti di config.
 
-    Ritorna (valori, errore): valori contiene le sole chiavi presenti nella
-    richiesta (assente = 'non toccare'), pronte per db.update_rendicontazione."""
+    Ritorna (valori, errore, campo): valori contiene le sole chiavi presenti nella
+    richiesta (assente = 'non toccare'), pronte per db.update_rendicontazione;
+    campo e' la chiave della richiesta sbagliata ('ore_lavorate_60', 'pasti', 'note')."""
     valori = {}
     if riga.get('ore_lavorate_60') is not None:
         ore, err = validate_number(riga.get('ore_lavorate_60'), 'Ore lavorate',
                                    0, config.MAX_ORE_MENSILI)
         if err:
-            return None, err
+            return None, err, 'ore_lavorate_60'
         valori['ore_lavorate'] = ore
     if riga.get('pasti') is not None:
         pasti, err = validate_integer(riga.get('pasti'), 'Pasti', 0, config.MAX_PASTI_MENSILI)
         if err:
-            return None, err
+            return None, err, 'pasti'
         valori['pasti'] = pasti
     if riga.get('note') is not None:
         note, err = validate_string(riga.get('note'), 'Note', config.MAX_NOTE_LENGTH, required=False)
         if err:
-            return None, err
+            return None, err, 'note'
         valori['note'] = note
-    return valori, None
+    return valori, None, None
+
+
+def _valida_valori_rendicontazione(riga):
+    """Come _valida_riga_rendicontazione, senza il campo: ritorna (valori, errore)."""
+    valori, err, _ = _valida_riga_rendicontazione(riga)
+    return valori, err
 
 
 def _valida_mese_fine(valore, mese_inizio=None):
@@ -1245,6 +1256,8 @@ def _riepilogo_foglio(f, max_esempi=15):
         'n_non_trovati': len(f['non_trovati']),
         'n_ambigui': len(f['ambigui']),
         'n_senza_ore': len(f['senza_ore']),
+        'n_fuori_limite': len(f.get('fuori_limite', [])),
+        'esempi_fuori_limite': [dict(slim(v), motivo=v.get('motivo')) for v in f.get('fuori_limite', [])[:max_esempi]],
         'anteprima_match': [slim(v) for v in f['match'][:max_esempi]],
         'esempi_non_trovati': [slim(v) for v in f['non_trovati'][:max_esempi]],
         'esempi_ambigui': [slim(v) for v in f['ambigui'][:max_esempi]],
@@ -1270,6 +1283,7 @@ def api_preview_rendicontazione():
             'totale_match': sum(f['n_match'] for f in fogli),
             'totale_non_trovati': sum(f['n_non_trovati'] for f in fogli),
             'totale_ambigui': sum(f['n_ambigui'] for f in fogli),
+            'totale_fuori_limite': sum(f['n_fuori_limite'] for f in fogli),
         })
     except Exception as e:
         logger.error(f"Errore anteprima rendicontazione: {e}", exc_info=True)
@@ -1301,7 +1315,7 @@ def api_import_rendicontazione():
         logger.info(f"Backup pre-import rendicontazione creato: {backup_pre_import}")
 
     dettaglio = []
-    tot_scritti = tot_saltati_pieni = tot_non_trovati = tot_ambigui = 0
+    tot_scritti = tot_saltati_pieni = tot_non_trovati = tot_ambigui = tot_fuori_limite = 0
 
     for f in analisi:
         if not (f['mese'] and f['anno']):
@@ -1347,6 +1361,7 @@ def api_import_rendicontazione():
         tot_saltati_pieni += saltati_pieni
         tot_non_trovati += len(f['non_trovati'])
         tot_ambigui += len(f['ambigui'])
+        tot_fuori_limite += len(f['fuori_limite'])
         dettaglio.append({
             'foglio': f['foglio'], 'mese': mese, 'anno': anno,
             'mese_nome': MESI_NOME.get(mese, ''),
@@ -1354,6 +1369,8 @@ def api_import_rendicontazione():
             'saltati_gia_pieni': saltati_pieni,
             'non_trovati': len(f['non_trovati']),
             'ambigui': len(f['ambigui']),
+            # ore o pasti oltre i limiti: non scritte, con nome e motivo
+            'fuori_limite': [{'nome': v['nome_completo'], 'motivo': v['motivo']} for v in f['fuori_limite']],
         })
 
     db.log_audit('import_rendicontazione', 'rendicontazione',
@@ -1381,6 +1398,7 @@ def api_import_rendicontazione():
         'totale_saltati_gia_pieni': tot_saltati_pieni,
         'totale_non_trovati': tot_non_trovati,
         'totale_ambigui': tot_ambigui,
+        'totale_fuori_limite': tot_fuori_limite,
         'dettaglio': dettaglio,
         'backup_pre_import': backup_pre_import,
     })
@@ -2712,14 +2730,20 @@ def api_batch_update_rendicontazione(anno, mese):
     if bloccato:
         return bloccato
 
-    # Valida TUTTE le righe prima di scrivere: o passa tutto o niente
+    # Valida TUTTE le righe prima di scrivere: o passa tutto o niente. Il messaggio
+    # dice di quale utente e di quale casella si tratta (prima solo "Riga 12"), e la
+    # risposta porta utente_id e campo per segnare la casella nella pagina.
     righe = []
     for i, u in enumerate(updates, start=1):
         if not isinstance(u, dict) or not u.get('utente_id'):
             return jsonify({'error': f'Riga {i}: utente_id mancante'}), 400
-        valori, err = _valida_valori_rendicontazione(u)
+        valori, err, campo = _valida_riga_rendicontazione(u)
         if err:
-            return jsonify({'error': f'Riga {i}: {err}'}), 400
+            utente = db.get_utente_by_id(u['utente_id'])
+            chi = (f"{utente['nome']} {utente['cognome']}".strip() if utente
+                   else f"utente {u['utente_id']}")
+            return jsonify({'error': f'{chi}: {err}. Nessuna modifica salvata.', 'motivo': err,
+                            'utente_id': u['utente_id'], 'campo': campo, 'riga': i}), 400
         righe.append({'utente_id': u['utente_id'], **valori})
 
     try:
@@ -2739,6 +2763,46 @@ def api_batch_update_rendicontazione(anno, mese):
 def _mese_scolastico_precedente(anno, mese):
     """Mese precedente nell'anno scolastico (regola unica in config)."""
     return config.mese_scolastico_precedente(anno, mese)
+
+
+def _giorni_scuola_per_tipo(anno, mese):
+    """Giorni di scuola effettivi di un mese per tipo di scuola, con le regole della
+    vista mensile (calendario infanzia / altri ordini, poi il valore predefinito)."""
+    g_def, g_altri = db.get_calendario_full(config.anno_scolastico_di(anno, mese), mese, anno)
+    return {'infanzia': db.risolvi_giorni_lavorativi(g_def),
+            'altri': db.risolvi_giorni_lavorativi(g_altri if g_altri is not None else g_def)}
+
+
+@app.route('/api/rendicontazione/<int:anno>/<int:mese>/copia-precedente', methods=['GET'])
+def api_copia_mese_precedente_anteprima(anno, mese):
+    """Prima di "Copia Mese Prec.": giorni di scuola del mese di origine e di quello
+    di destinazione, per i tipi di scuola degli utenti del mese. Se differiscono
+    oltre config.SOGLIA_GIORNI_COPIA_PERCENTUALE (settembre da giugno, giugno da
+    maggio, ottobre da settembre) le ore copiate non sono adatte e la pagina lo dice."""
+    err = _errore_periodo(anno, mese)
+    if err:
+        return jsonify({'error': err}), 400
+    commessa = request.args.get('commessa')
+    anno_prec, mese_prec = _mese_scolastico_precedente(anno, mese)
+    dati = db.get_rendicontazione_completa(anno, mese, commessa)
+    tipi = {'infanzia' if db.is_scuola_infanzia(d['scuola']) else 'altri' for d in dati} or {'altri'}
+    origine, destinazione = _giorni_scuola_per_tipo(anno_prec, mese_prec), _giorni_scuola_per_tipo(anno, mese)
+    soglia = config.SOGLIA_GIORNI_COPIA_PERCENTUALE
+    giorni = []
+    for tipo, etichetta in (('altri', 'altri ordini'), ('infanzia', 'infanzia')):
+        if tipo not in tipi:
+            continue
+        o, d = origine[tipo], destinazione[tipo]
+        differenza = round(abs(d - o) / o * 100) if o else (100 if d else 0)
+        giorni.append({'tipo': tipo, 'etichetta': etichetta, 'origine': o, 'destinazione': d,
+                       'differenza_perc': differenza})
+    return jsonify({
+        'mese_origine': f"{MESI_NOME.get(mese_prec, '')} {anno_prec}",
+        'mese_destinazione': f"{MESI_NOME.get(mese, '')} {anno}",
+        'giorni': giorni,
+        'giorni_diversi': any(g['differenza_perc'] > soglia for g in giorni),
+        'soglia_perc': soglia,
+    })
 
 
 @app.route('/api/rendicontazione/<int:anno>/<int:mese>/copia-precedente', methods=['POST'])
@@ -3661,27 +3725,90 @@ def api_stats():
 
 # ==================== UNDO ====================
 
+# Campi che l'annullamento di una "Modifica utente" rimette com'erano, con il nome
+# da mostrare nella conferma di Ctrl+Z
+CAMPI_UNDO_UTENTE = [('nome', 'nome'), ('cognome', 'cognome'), ('monte_ore_settimanale', 'monte ore'),
+                     ('lista_attesa', "lista d'attesa"), ('data_inizio', 'inizio servizio'),
+                     ('data_fine', 'fine servizio'), ('attivo', 'stato')]
+
+
+def _valore_undo(campo, valore):
+    if campo == 'attivo':
+        return 'attivo' if valore in (1, True, '1', None) else 'archiviato'
+    if valore is None or valore == '':
+        return 'vuoto'
+    if isinstance(valore, float):
+        return f'{valore:g}'.replace('.', ',')
+    if campo in ('data_inizio', 'data_fine') and re.match(r'^\d{4}-\d{2}$', str(valore)):
+        return f'{str(valore)[5:7]}/{str(valore)[:4]}'
+    return str(valore)
+
+
+def _quando_undo(timestamp):
+    try:
+        return datetime.fromisoformat(timestamp).strftime('%d/%m/%Y alle %H:%M')
+    except (TypeError, ValueError):
+        return ''
+
+
+def _descrivi_azione_undo(action):
+    """Frase per la conferma di Ctrl+Z: chi, cosa cambia (valore di adesso ->
+    valore che torna) e, a parte, quando e' stata fatta la modifica."""
+    tipo, dati = action['type'], action['data']
+    if tipo == 'delete_utente':
+        u = dati.get('utente', {})
+        return f"Eliminazione di {u.get('nome', '')} {u.get('cognome', '')}".strip() + \
+            ": l'utente torna con le sue ore, note e variazioni"
+    if tipo == 'bulk_update_utenti':
+        return f"Modifica di {len(dati.get('items', []))} utenti insieme (monte ore e lista d'attesa)"
+    if tipo == 'update_utente':
+        old = dati.get('dati_precedenti', {})
+        attuale = db.get_utente_by_id(dati.get('id')) or {}
+        chi = f"{attuale.get('nome', '')} {attuale.get('cognome', '')}".strip() or f"utente {dati.get('id')}"
+        cambi = [f'{etichetta} {_valore_undo(campo, attuale.get(campo))} → {_valore_undo(campo, old[campo])}'
+                 for campo, etichetta in CAMPI_UNDO_UTENTE
+                 if campo in old and _valore_undo(campo, old[campo]) != _valore_undo(campo, attuale.get(campo))]
+        return f"Modifica di {chi}: " + ('; '.join(cambi) if cambi else 'nessun dato da cambiare')
+    return f'Azione {tipo}'
+
+
+def _voce_undo(action, i=0):
+    return {
+        'index': i,
+        'id': action.get('id'),
+        'tipo': action['type'],
+        'descrizione': _descrivi_azione_undo(action),
+        'timestamp': action.get('timestamp', ''),
+        'quando': _quando_undo(action.get('timestamp')),
+    }
+
+
 @app.route('/api/undo', methods=['GET'])
 def api_get_undo_stack():
-    """Mostra le azioni annullabili (ora persistenti)"""
-    undo_stack = db.get_undo_stack()
-    actions = []
-    for i, action in enumerate(undo_stack):
-        desc = ''
-        if action['type'] == 'delete_utente':
-            u = action['data'].get('utente', {})
-            desc = f'Eliminazione utente: {u.get("nome", "")} {u.get("cognome", "")}'
-        elif action['type'] == 'update_utente':
-            desc = f'Modifica utente ID {action["data"].get("id", "?")}'
-        elif action['type'] == 'bulk_update_utenti':
-            desc = f'Modifica massiva di {len(action["data"].get("items", []))} utenti'
-        actions.append({
-            'index': i,
-            'tipo': action['type'],
-            'descrizione': desc,
-            'timestamp': action.get('timestamp', '')
-        })
-    return jsonify(actions[:10])
+    """Le azioni ancora annullabili (piu' recenti di config.UNDO_VALIDITA_ORE)"""
+    return jsonify([_voce_undo(a, i) for i, a in enumerate(db.get_undo_stack()[:10])])
+
+
+@app.route('/api/undo/ultima', methods=['GET'])
+def api_undo_ultima():
+    """Cosa annullerebbe Ctrl+Z (descrizione e data), per chiederlo prima; None se
+    non c'e' niente di annullabile. 'scadute': azioni troppo vecchie ancora in memoria."""
+    azione = db.peek_undo_action()
+    return jsonify({
+        'azione': _voce_undo(azione) if azione else None,
+        'scadute': db.conta_undo_scaduti(),
+        'ore_validita': config.UNDO_VALIDITA_ORE,
+    })
+
+
+@app.route('/api/undo/scadute', methods=['DELETE'])
+def api_undo_pulisci_scadute():
+    """Toglie dalla memoria di Ctrl+Z le azioni non piu' annullabili."""
+    rimosse = db.pulisci_undo_scaduti()
+    if rimosse:
+        db.log_audit('pulizia', 'undo', dettagli=(f'Tolta {rimosse} azione non più annullabile' if rimosse == 1
+                                                  else f'Tolte {rimosse} azioni non più annullabili'))
+    return jsonify({'success': True, 'rimosse': rimosse})
 
 
 @app.route('/api/undo', methods=['POST'])
@@ -3694,7 +3821,15 @@ def api_undo():
     action = db.peek_undo_action()
 
     if not action:
+        if db.conta_undo_scaduti():
+            return jsonify({'error': 'Nessuna modifica recente da annullare: quelle di più di '
+                                     f'{config.UNDO_VALIDITA_ORE} ore fa non si possono più annullare'}), 400
         return jsonify({'error': 'Nessuna azione da annullare'}), 400
+    # La pagina manda l'id dell'azione che ha mostrato nella conferma: se nel
+    # frattempo ne e' arrivata un'altra non si annulla quella sbagliata
+    atteso = (request.get_json(silent=True) or {}).get('id')
+    if atteso is not None and atteso != action['id']:
+        return jsonify({'error': "L'ultima modifica è cambiata nel frattempo: premi di nuovo Ctrl+Z"}), 409
 
     try:
         with db.get_db_context() as conn:
@@ -3804,6 +3939,8 @@ def api_undo():
             elif action['type'] == 'update_utente':
                 old = action['data'].get('dati_precedenti', {})
                 uid = action['data'].get('id')
+                attuale = cursor.execute('SELECT * FROM utenti WHERE id = ?', (uid,)).fetchone()
+                attuale = dict(attuale) if attuale else {}
                 set_parts = []
                 params = []
                 for key in ['nome', 'cognome', 'monte_ore_settimanale', 'nome_puntato',
@@ -3824,8 +3961,12 @@ def api_undo():
                     db.completa_anno_liste_attesa(cursor, [uid])
 
                 cursor.execute('DELETE FROM undo_actions WHERE id = ?', (action['id'],))
-                esito = ('utente', uid, 'Ripristinati dati precedenti',
-                         {'success': True, 'message': 'Modifica annullata'})
+                # Nel registro i valori prima e dopo l'annullamento: cosi' lo si vede
+                # anche nello Storico monte ore (prima i dati erano vuoti)
+                ripristinati = {k: old[k] for k, _ in CAMPI_UNDO_UTENTE if k in old}
+                esito = ('utente', uid, 'Annullata una modifica (Ctrl+Z): ripristinati i dati precedenti',
+                         {'success': True, 'message': 'Modifica annullata'},
+                         {k: attuale.get(k) for k in ripristinati}, ripristinati)
 
             elif action['type'] == 'bulk_update_utenti':
                 n = 0
@@ -3853,8 +3994,9 @@ def api_undo():
         # Fuori dalla transazione: audit (apre una propria connessione) e risposta
         if esito is None:
             return jsonify({'error': 'Tipo azione non supportato per undo'}), 400
-        entita, entita_id, dettagli, risposta = esito
-        db.log_audit('undo', entita, entita_id, dettagli)
+        entita, entita_id, dettagli, risposta = esito[:4]
+        prima, dopo = (esito[4], esito[5]) if len(esito) > 4 else (None, None)
+        db.log_audit('undo', entita, entita_id, dettagli, dati_precedenti=prima, dati_nuovi=dopo)
         return jsonify(risposta)
 
     except Exception as e:
@@ -3976,7 +4118,9 @@ def api_stats_heatmap(anno_scolastico):
             giorni_per_mese = {}
             for m in mesi_scolastici:
                 variazioni_per_mese[(m['mese'], m['anno'])] = db.get_monte_ore_effettivo_bulk(m['anno'], m['mese'])
-                giorni_per_mese[(m['mese'], m['anno'])] = db.get_calendario(anno_scolastico, m['mese'], m['anno'])
+                # (infanzia, altri ordini): a giugno sono molto diversi, e con i soli giorni
+                # dell'infanzia la colonna era rossa per tutti gli altri
+                giorni_per_mese[(m['mese'], m['anno'])] = db.get_calendario_full(anno_scolastico, m['mese'], m['anno'])
 
             ore_map = {}
             utente_ids = [u['id'] for u in utenti]
@@ -4010,8 +4154,14 @@ def api_stats_heatmap(anno_scolastico):
                     var_mese = variazioni_per_mese.get((m['mese'], m['anno']), {})
                     monte_ore_eff = var_mese.get(utente['id'], utente['monte_ore_settimanale'] or 0)
 
-                    # Ore previste per il mese (formula centralizzata)
-                    giorni_lav = giorni_per_mese[(m['mese'], m['anno'])]
+                    # Ore previste per il mese (formula centralizzata), con i giorni del suo
+                    # tipo di scuola e le stesse regole della Rendicontazione
+                    giorni_def_cal, giorni_altri_cal = giorni_per_mese[(m['mese'], m['anno'])]
+                    if db.is_scuola_infanzia(utente['scuola']):
+                        giorni_cal = giorni_def_cal
+                    else:
+                        giorni_cal = giorni_altri_cal if giorni_altri_cal is not None else giorni_def_cal
+                    giorni_lav = db.risolvi_giorni_lavorativi(giorni_cal)
                     _, ore_previste_ridotte = db.calcola_media_prevista(monte_ore_eff, giorni_lav)
 
                     percentuale = (ore / ore_previste_ridotte * 100) if ore_previste_ridotte > 0 else 0
@@ -4284,6 +4434,43 @@ def api_stats_validazione():
                     'dettagli': differenze_anomale[:10]
                 })
 
+            # 4b. Pasti piu' dei giorni di scuola del mese (per tipo di scuola, come
+            # la vista mensile). Non blocca nulla: spesso sono le ore finite per
+            # sbaglio nella casella dei pasti (es. 44 pasti con 44 ore).
+            cursor = conn.execute("""
+                SELECT u.id, u.nome, u.cognome, s.nome_completo as scuola,
+                       r.pasti, r.ore_lavorate_60
+                FROM rendicontazione r
+                JOIN utenti u ON r.utente_id = u.id
+                JOIN scuole s ON u.scuola_id = s.id
+                JOIN commesse cm ON s.commessa_id = cm.id
+                WHERE r.anno = ? AND r.mese = ? AND r.pasti > 0
+            """ + filtro_cm + """
+                ORDER BY u.id
+            """, [anno, mese] + param_cm)
+            pasti_troppi = []
+            for row in cursor.fetchall():
+                if db.is_scuola_infanzia(row['scuola']):
+                    giorni_cal = giorni_def_cal
+                else:
+                    giorni_cal = giorni_altri_cal if giorni_altri_cal is not None else giorni_def_cal
+                giorni_scuola = db.risolvi_giorni_lavorativi(giorni_cal)
+                if row['pasti'] > giorni_scuola:
+                    pasti_troppi.append({'id': row['id'], 'nome': f"{row['nome']} {row['cognome']}",
+                                         'pasti': row['pasti'], 'giorni': giorni_scuola,
+                                         'ore': row['ore_lavorate_60']})
+            if pasti_troppi:
+                n = len(pasti_troppi)
+                anomalie.append({
+                    'tipo': 'warning',
+                    'categoria': 'pasti_oltre_giorni',
+                    'titolo': 'Pasti più dei giorni di scuola',
+                    'messaggio': (f"{n} utent{'e ha' if n == 1 else 'i hanno'} più pasti dei giorni di "
+                                  "scuola del mese: controlla che non ci siano finite le ore"),
+                    'conteggio': n,
+                    'dettagli': pasti_troppi[:10]
+                })
+
             # 5. Commesse senza dati nel mese
             cursor = conn.execute("""
                 SELECT c.nome, COUNT(u.id) as num_utenti
@@ -4377,14 +4564,26 @@ def api_stats_confronto_annuale_dettaglio():
                     'imponibile': config.calcola_fatturazione(dati['ore_erogate'])[0]
                 })
 
-            # Calcola variazioni percentuali
-            for i in range(len(risultati) - 1):
-                if risultati[i + 1]['ore_erogate'] > 0:
-                    variazione = ((risultati[i]['ore_erogate'] - risultati[i + 1]['ore_erogate'])
-                                 / risultati[i + 1]['ore_erogate'] * 100)
-                    risultati[i]['variazione'] = round(variazione, 1)
+            # Variazioni percentuali di ogni anno rispetto al precedente. Nessuna
+            # variazione (None, a schermo "-") se l'anno piu' recente della coppia non
+            # ha dati in quel mese o se il mese non e' ancora concluso: prima un mese
+            # futuro o in corso ancora vuoto compariva come un calo del -100%
+            oggi = datetime.now()
+            for r in risultati:
+                if r['num_utenti'] == 0:
+                    r['nota'] = 'dati non ancora inseriti'
+                elif (r['anno'], r['mese']) >= (oggi.year, oggi.month):
+                    r['nota'] = 'mese non ancora concluso'
                 else:
-                    risultati[i]['variazione'] = None
+                    r['nota'] = None
+            for i in range(len(risultati) - 1):
+                corrente, precedente = risultati[i], risultati[i + 1]
+                if corrente['nota'] is None and precedente['ore_erogate'] > 0:
+                    variazione = ((corrente['ore_erogate'] - precedente['ore_erogate'])
+                                  / precedente['ore_erogate'] * 100)
+                    corrente['variazione'] = round(variazione, 1)
+                else:
+                    corrente['variazione'] = None
 
             if risultati:
                 risultati[-1]['variazione'] = None
@@ -4488,9 +4687,45 @@ def open_browser():
     webbrowser.open('http://localhost:5000')
 
 
+PORTA_APP = 5000
+
+MESSAGGIO_GIA_APERTO = (
+    "Assisto è già aperto in un'altra finestra (http://localhost:5000). "
+    "Chiudi quella finestra nera (anche se è ridotta a icona nella barra in basso) "
+    "e poi riavvia. Se stai passando a una nuova versione, chiudi prima la vecchia: "
+    "due versioni aperte insieme sulla stessa porta si mescolano."
+)
+
+
+def assisto_gia_aperto(porta=PORTA_APP, host='127.0.0.1'):
+    """True se sulla porta risponde gia' un programma (di solito un altro Assisto).
+
+    Su Windows il server accetta di partire anche se la porta e' occupata
+    (SO_REUSEADDR): due versioni aperte insieme risponderebbero a turno e le ore
+    potrebbero finire nel database della cartella sbagliata."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, porta)) == 0
+
+
 if __name__ == '__main__':
     import sys
     import threading
+
+    # Prima di tutto: un'altra istanza (magari la versione vecchia) e' gia' aperta?
+    # (non nel processo figlio del ricaricamento automatico di FLASK_DEBUG=1, che
+    # trova la porta gia' aperta dal processo padre)
+    if os.environ.get('WERKZEUG_RUN_MAIN') != 'true' and assisto_gia_aperto():
+        logger.error(MESSAGGIO_GIA_APERTO)
+        if getattr(sys, 'frozen', False) and os.name == 'nt':
+            # eseguibile senza finestra nera: il messaggio in una finestra di Windows
+            try:
+                import ctypes
+                ctypes.windll.user32.MessageBoxW(0, MESSAGGIO_GIA_APERTO, 'Assisto', 0x30)
+            except Exception:
+                pass
+        sys.exit(1)
 
     logger.info("=" * 50)
     logger.info("  GESTIONALE OEPAC - Sistema di Rendicontazione")
@@ -4500,7 +4735,7 @@ if __name__ == '__main__':
     if getattr(sys, 'frozen', False):
         logger.info("  Apertura browser in corso...")
         threading.Thread(target=open_browser, daemon=True).start()
-        app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
+        app.run(host='127.0.0.1', port=PORTA_APP, debug=False, use_reloader=False)
     else:
         logger.info("  Premi Ctrl+C per terminare")
         # Default SICURI anche in esecuzione da sorgente: nessuna esposizione di
@@ -4510,4 +4745,4 @@ if __name__ == '__main__':
         # d'ambiente: FLASK_DEBUG=1 abilita debugger+reloader, OEPAC_HOST cambia il bind.
         host = os.environ.get('OEPAC_HOST', '127.0.0.1')
         debug = os.environ.get('FLASK_DEBUG', '0') == '1'
-        app.run(host=host, port=5000, debug=debug, use_reloader=debug)
+        app.run(host=host, port=PORTA_APP, debug=debug, use_reloader=debug)

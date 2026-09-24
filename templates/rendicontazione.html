@@ -285,6 +285,10 @@ let cercaIniziale = '';
 let totaliServer = null;
 let totaliModificati = false;
 let primoCaricamento = true;   // il primo caricamento rispetta ?senza_ore=1
+// Numero dell'ultima richiesta di loadData: una risposta arrivata dopo una piu'
+// recente (menu cambiati velocemente) si scarta, cosi' la tabella mostra sempre
+// il periodo scelto nei menu
+let seqCaricamento = 0;
 
 function periodoMostrato() {
     if (!periodoCaricato) {
@@ -306,6 +310,11 @@ async function cambiaPeriodo() {
             showToast('Modifiche non salvate: resto sul mese mostrato. Riprova il salvataggio.', 'error');
             return;
         }
+    }
+    // Le caselle fuori limite non sono mai partite: lo si dice prima di lasciarle
+    const nonValide = document.querySelectorAll('#table-container .table-input.input-error').length;
+    if (nonValide) {
+        showToast(`${nonValide} ${nonValide === 1 ? 'casella non valida non è stata salvata' : 'caselle non valide non sono state salvate'}`, 'warning', 8000);
     }
     loadData();
 }
@@ -350,6 +359,62 @@ function avvisaMeseNonApribile(anno, mese) {
         `(${futuro ? 'preparalo dalla Dashboard o da Calendario' : 'crealo da Calendario'}).${ancheAperto}`, 'warning', 12000);
 }
 
+// Uscita dalla pagina (voce del menu, Ctrl+K, F5, chiusura della scheda) o scheda
+// nascosta entro i 2 secondi del salvataggio automatico: le modifiche in sospeso
+// partono subito con fetch keepalive, che il browser porta a termine anche a pagina
+// chiusa, sullo stesso salvataggio a pacchetto del mese MOSTRATO. Solo se c'e' una
+// casella modificata: cosi' non si rimandano valori gia' salvati (righe doppie nel
+// registro), e lo stesso pacchetto non parte due volte (scheda nascosta e poi chiusa).
+// La firma dell'ultimo invio si azzera a ogni nuova modifica (markChanged).
+let ultimoInvioUscita = null;
+const MAX_KEEPALIVE = 60000;   // il browser accetta fino a 64 KB per le richieste keepalive
+
+function inviaModificheInUscita() {
+    if (autoSaveTimeout) { clearTimeout(autoSaveTimeout); autoSaveTimeout = null; }
+    if (!periodoCaricato) return;
+    if (!document.querySelector('#table-container .table-input.changed')) return;
+    collectPendingChangesFromInputs();
+    const updates = Object.values(pendingChanges).map(u => ({ ...u }));
+    if (!updates.length) return;
+    const { anno, mese } = periodoCaricato;
+    const url = `/api/rendicontazione/${anno}/${mese}/batch`;
+    const firma = url + JSON.stringify(updates);
+    if (ultimoInvioUscita === firma) return;
+    ultimoInvioUscita = firma;
+    const inviate = [...document.querySelectorAll('#table-container .table-input.changed')].map(i => [i, i.value]);
+
+    // pacchetti sotto il limite keepalive (705 righe stanno in circa 37 KB)
+    const pacchetti = [[]];
+    updates.forEach(u => {
+        const ultimo = pacchetti[pacchetti.length - 1];
+        if (ultimo.length && JSON.stringify({ updates: [...ultimo, u] }).length > MAX_KEEPALIVE) pacchetti.push([u]);
+        else ultimo.push(u);
+    });
+    Promise.all(pacchetti.map(p => fetch(url, {
+        method: 'POST', keepalive: true, credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: p })
+    }).then(r => r.ok))).then(esiti => {
+        // pagina ancora aperta (scheda solo nascosta): lo stato torna "Salvato"
+        if (esiti.every(Boolean)) {
+            segnaInviate(updates, inviate);
+            if (!document.querySelector('#table-container .table-input.changed') && !Object.keys(pendingChanges).length) {
+                mostraStatoSalvato();
+            }
+        } else {
+            ultimoInvioUscita = null;
+            scheduleAutoSave();
+        }
+    }).catch(() => { ultimoInvioUscita = null; });
+}
+window.addEventListener('pagehide', inviaModificheInUscita);
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') inviaModificheInUscita();
+});
+// Dopo Ctrl+Z (monte ore, date di servizio...) la tabella si rilegge, salvando
+// prima le modifiche in sospeso
+window.ricaricaDopoAnnulla = () => cambiaPeriodo();
+
 document.addEventListener('DOMContentLoaded', async () => {
     await populateAnniScolastici('filter-anno');
     await loadCommesse();
@@ -387,7 +452,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         cercaIniziale = (qs.get('cerca') || '').trim();
     }
 
-    document.getElementById('btn-load').addEventListener('click', loadData);
+    // "Aggiorna" rilegge i dati, ma prima salva le modifiche in sospeso (prima si perdevano)
+    document.getElementById('btn-load').addEventListener('click', cambiaPeriodo);
     document.getElementById('btn-save').addEventListener('click', saveChanges);
     document.getElementById('btn-copia-precedente').addEventListener('click', copiaDaMesePrecedente);
     document.getElementById('btn-compila-media').addEventListener('click', compilaConMedia);
@@ -433,6 +499,59 @@ async function loadCommesse() {
 // niente numeri scritti a mano che restano vecchi al primo cambio di tariffa
 const CFG = window.APP_CONFIG || {};
 const PCT = v => Math.round((v || 0) * 100) + '%';
+// Limiti del server (config.py): una casella oltre il limite resta segnata in rosso
+// con il motivo e NON entra nel pacchetto del salvataggio, cosi' non blocca le altre
+// (il server rifiuta tutto il pacchetto se una sola riga e' fuori limite)
+const MAX_ORE_MESE = CFG.max_ore_mensili || 200;
+const MAX_PASTI_MESE = CFG.max_pasti_mensili || 62;
+
+// Arrotondamento a 2 decimali IDENTICO a round(x, 2) di Python (config.py), cosi'
+// importi e totali ricalcolati qui coincidono al centesimo con la pagina ricaricata:
+// - sul valore binario esatto (toFixed), non con Math.round sui centesimi, che
+//   sbaglia quando v * 100 si arrotonda verso l'alto (30119.405 * 100 = 3011940.5:
+//   30119,41 contro 30119,40 del server);
+// - nei pareggi esatti (x,125 x,375 x,625 x,875, gli unici rappresentabili in
+//   binario) al centesimo pari come Python (toFixed andrebbe sempre verso l'alto).
+function arrotonda2(v) {
+    v = v || 0;
+    if (Number.isInteger(v * 8) && !Number.isInteger(v * 4)) {
+        const centesimi = Math.floor(v * 100);   // v * 100 = centesimi + 0,5 esatto
+        return (centesimi % 2 === 0 ? centesimi : centesimi + 1) / 100;
+    }
+    return Number(v.toFixed(2));
+}
+
+// Somma delle ore come sum() di Python nel server (Riepilogo di app.py, report):
+// dalla 3.12 e' una somma compensata (Neumaier), prima semplice, e quando le ore
+// finiscono in ,50 il totale in euro cambia di un centesimo. Il server dice quale
+// usa (APP_CONFIG.somma_compensata); i valori vanno passati nell'ordine del server.
+function sommaComePython(valori) {
+    let somma = 0, compenso = 0;
+    for (const x of valori) {
+        const t = somma + x;
+        if (CFG.somma_compensata) {
+            compenso += Math.abs(somma) >= Math.abs(x) ? (somma - t) + x : (x - t) + somma;
+        }
+        somma = t;
+    }
+    return compenso ? somma + compenso : somma;
+}
+
+// Righe nell'ordine della risposta del server (la tabella le mostra per plesso e
+// nome): i totali ricalcolati qui sommano le ore nello stesso ordine
+function inOrdineServer(righe) {
+    return [...righe].sort((a, b) => (a.ordine_server || 0) - (b.ordine_server || 0));
+}
+
+// Imponibile, IVA e totale come config.calcola_fatturazione, con lo stesso
+// arrotondamento. Per una riga si passano le ore NON arrotondate (come
+// database.get_rendicontazione_completa), per un totale la somma delle ore in 100'
+// gia' arrotondate riga per riga: si arrotonda UNA volta, mai sommando importi.
+function calcolaFatturazione(ore) {
+    const imponibile = arrotonda2((ore || 0) * CFG.tariffa_oraria);
+    const iva = arrotonda2(imponibile * CFG.iva_percentuale);
+    return { imponibile, iva, totale: arrotonda2(imponibile + iva) };
+}
 
 async function loadData() {
     const annoSelect = document.getElementById('filter-anno');
@@ -446,6 +565,7 @@ async function loadData() {
 
     const [mese, anno] = meseSelect.value.split('-').map(Number);
     const commessa = commessaSelect.value;
+    const mio = ++seqCaricamento;
 
     showLoading('table-container', 'Caricamento rendicontazione...');
 
@@ -456,6 +576,12 @@ async function loadData() {
         }
 
         const data = await apiCall(url);
+        // Nel frattempo e' partita una richiesta piu' recente: questa risposta e' vecchia
+        if (mio !== seqCaricamento) return;
+
+        // Posizione di ogni riga nella risposta, prima di riordinarle per nome: i totali
+        // ricalcolati nella pagina sommano nell'ordine del server (inOrdineServer)
+        data.dati.forEach((d, i) => { d.ordine_server = i; });
 
         // Ordina per nome (che contiene il cognome), poi per cognome (che contiene il nome)
         data.dati.sort((a, b) => {
@@ -558,20 +684,32 @@ async function loadData() {
         if (soloSenzaOre || filtroNome) applyExcelFilter(filtroNome);
 
         // Carica differenze rispetto al mese precedente
-        await loadDifferenzeMesePrecedente(anno, mese);
+        await loadDifferenzeMesePrecedente(anno, mese, mio);
 
     } catch (error) {
+        if (mio !== seqCaricamento) return;
         showToast('Errore nel caricamento dati: ' + error.message, 'error');
         console.error(error);
     }
 }
 
+// Una voce per plesso (id): due plessi con lo stesso nome in commesse diverse (vista
+// "Tutte") restano distinti e nel menu si legge anche la commessa
 function populateScuoleFilter(dati) {
-    const scuole = [...new Set(dati.map(d => d.scuola))].sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
-    scuoleList = scuole;
+    const perId = new Map();
+    dati.forEach(d => { if (!perId.has(d.scuola_id)) perId.set(d.scuola_id, { id: d.scuola_id, nome: d.scuola || '', commessa: d.commessa || '' }); });
+    const scuole = [...perId.values()].sort((a, b) =>
+        a.nome.localeCompare(b.nome, 'it', { sensitivity: 'base' }) || a.commessa.localeCompare(b.commessa, 'it'));
+    const conteggioNomi = {};
+    scuole.forEach(s => { conteggioNomi[s.nome] = (conteggioNomi[s.nome] || 0) + 1; });
+    scuoleList = scuole.map(s => s.nome);
     const select = document.getElementById('filter-scuola');
     select.innerHTML = '<option value="">Tutte le scuole</option>' +
-        scuole.map(s => `<option value="${s}">${s.length > 40 ? s.substring(0, 40) + '...' : s}</option>`).join('');
+        scuole.map(s => {
+            const breve = s.nome.length > 40 ? s.nome.substring(0, 40) + '...' : s.nome;
+            const etichetta = conteggioNomi[s.nome] > 1 ? `${s.commessa} - ${breve}` : breve;
+            return `<option value="${s.id}" title="${escapeHtml(s.nome).replace(/"/g, '&quot;')}">${escapeHtml(etichetta)}</option>`;
+        }).join('');
 }
 
 async function copiaDaMesePrecedente() {
@@ -579,43 +717,70 @@ async function copiaDaMesePrecedente() {
     if (!periodo) return;
     const { mese, anno } = periodo;
 
-    // Calcola nome mese precedente per il messaggio di conferma
-    // (coerente col server: per settembre il precedente e' Giugno)
-    let mesePrecNome;
-    if (mese === 9) {
-        mesePrecNome = `Giugno ${anno}`;
-    } else if (mese === 1) {
-        mesePrecNome = `Dicembre ${anno - 1}`;
-    } else {
-        mesePrecNome = `${MESI[mese - 1]} ${anno}`;
+    // Mese di origine (per settembre e' giugno) e giorni di scuola dei due mesi,
+    // per tipo di scuola, dal server: stesse regole della copia vera
+    let info;
+    try {
+        let url = `/api/rendicontazione/${anno}/${mese}/copia-precedente`;
+        if (periodo.commessa) url += `?commessa=${encodeURIComponent(periodo.commessa)}`;
+        info = await apiCall(url);
+    } catch (error) {
+        showToast('Errore: ' + error.message, 'error');
+        return;
+    }
+    const mesePrecNome = info.mese_origine;
+
+    const copia = async () => {
+        const btn = document.getElementById('btn-copia-precedente');
+        setButtonLoading(btn, true);
+
+        try {
+            const response = await apiCall(`/api/rendicontazione/${anno}/${mese}/copia-precedente`, {
+                method: 'POST',
+                body: JSON.stringify({ solo_vuoti: true })
+            });
+
+            if (response.copiati > 0) {
+                showToast(`Copiate le ore di ${response.copiati === 1 ? '1 utente' : `${response.copiati} utenti`} da ${response.mese_origine}`, 'success');
+                // Ricarica i dati
+                await loadData();
+            } else {
+                showToast('Nessun utente da aggiornare (tutti hanno già ore o mese precedente vuoto)', 'info');
+            }
+        } catch (error) {
+            showToast('Errore: ' + error.message, 'error');
+        } finally {
+            setButtonLoading(btn, false);
+        }
+    };
+
+    if (info.giorni_diversi) {
+        // Giorni molto diversi (settembre da giugno, giugno da maggio, ottobre da
+        // settembre): le ore copiate non sono adatte, lo si dice con i due numeri
+        const altri = info.giorni.find(g => g.tipo === 'altri');
+        const infanzia = info.giorni.find(g => g.tipo === 'infanzia');
+        // "5 giorni di scuola (infanzia 21)": altri ordini e, se ci sono, infanzia
+        const giorni = (campo, parola) => {
+            const numero = altri ? altri[campo] : infanzia[campo];
+            const nota = altri && infanzia ? ` (infanzia ${infanzia[campo]})` : (altri ? '' : ' (infanzia)');
+            return `${numero}${parola ? ' giorni di scuola' : ''}${nota}`;
+        };
+        showConfirmDialog(
+            'Giorni di scuola molto diversi',
+            `${info.mese_origine} ha ${giorni('origine', true)}, ${info.mese_destinazione} ne ha ${giorni('destinazione', false)}: ` +
+            `le ore copiate da ${info.mese_origine} non sarebbero adatte. ` +
+            'Per una base di partenza usa "Compila con media", che tiene conto dei giorni del mese.',
+            copia,
+            { confirmText: 'Copia comunque', cancelText: 'Annulla', type: 'warning',
+              extraText: 'Compila con media', onExtra: () => compilaConMedia() }
+        );
+        return;
     }
 
     showConfirmDialog(
         'Copia ore da mese precedente',
         `Vuoi copiare le ore da ${mesePrecNome} per tutti gli utenti che non hanno ancora ore registrate in ${MESI[mese]} ${anno}?`,
-        async () => {
-            const btn = document.getElementById('btn-copia-precedente');
-            setButtonLoading(btn, true);
-
-            try {
-                const response = await apiCall(`/api/rendicontazione/${anno}/${mese}/copia-precedente`, {
-                    method: 'POST',
-                    body: JSON.stringify({ solo_vuoti: true })
-                });
-
-                if (response.copiati > 0) {
-                    showToast(`Copiate le ore di ${response.copiati} utenti da ${response.mese_origine}`, 'success');
-                    // Ricarica i dati
-                    await loadData();
-                } else {
-                    showToast('Nessun utente da aggiornare (tutti hanno già ore o mese precedente vuoto)', 'info');
-                }
-            } catch (error) {
-                showToast('Errore: ' + error.message, 'error');
-            } finally {
-                setButtonLoading(btn, false);
-            }
-        },
+        copia,
         {
             confirmText: 'Copia Ore',
             cancelText: 'Annulla',
@@ -672,7 +837,7 @@ async function esportaFiltrati() {
     let url = `/api/export/excel/${anno}/${mese}`;
     const params = [];
     if (periodo.commessa) params.push(`commessa=${encodeURIComponent(periodo.commessa)}`);
-    if (scuolaSelect.value) params.push(`scuola=${encodeURIComponent(scuolaSelect.value)}`);
+    if (scuolaSelect.value) params.push(`scuola_id=${encodeURIComponent(scuolaSelect.value)}`);
     // Anche il testo cercato: il file contiene esattamente le righe a schermo
     const search = (document.getElementById('search-input')?.value || '').trim();
     if (search) params.push(`search=${encodeURIComponent(search)}`);
@@ -688,7 +853,7 @@ async function esportaFiltrati() {
     showToast('Download avviato', 'success');
 }
 
-async function loadDifferenzeMesePrecedente(anno, mese) {
+async function loadDifferenzeMesePrecedente(anno, mese, mio = seqCaricamento) {
     try {
         // stessa commessa della tabella mostrata (non quella scelta nel menu)
         const commessa = periodoCaricato ? periodoCaricato.commessa : '';
@@ -696,6 +861,7 @@ async function loadDifferenzeMesePrecedente(anno, mese) {
         if (commessa) url += `?commessa=${encodeURIComponent(commessa)}`;
 
         const data = await apiCall(url);
+        if (mio !== seqCaricamento) return;   // tabella gia' di un altro periodo
         differenzeMesePrecedente = data.differenze || {};
         mesePrecedenteConfronto = data.mese_precedente || null;
 
@@ -816,7 +982,7 @@ function filterByScuola() {
     if (!scuolaFilter) {
         currentData = allData;
     } else {
-        currentData = allData.filter(d => d.scuola === scuolaFilter);
+        currentData = allData.filter(d => String(d.scuola_id) === scuolaFilter);
     }
 
     // Re-render con i dati filtrati (periodo della tabella mostrata)
@@ -850,41 +1016,46 @@ function filterByScuola() {
     updateDifferenzeIndicators();
 }
 
+// Totali per plesso come database.get_totali_per_scuola: per id del plesso (i nomi
+// possono ripetersi in commesse diverse) e importi dalla somma delle ore, sommate
+// una per una (+=, come il server) nell'ordine del server
 function calculateTotaliScuola(dati) {
     const grouped = {};
-    dati.forEach(d => {
-        if (!grouped[d.scuola]) {
-            grouped[d.scuola] = {
+    inOrdineServer(dati).forEach(d => {
+        if (!grouped[d.scuola_id]) {
+            grouped[d.scuola_id] = {
+                scuola_id: d.scuola_id,
                 scuola: d.scuola,
                 commessa: d.commessa,
                 ore_lavorate_60: 0,
                 ore_lavorate_100: 0,
-                imponibile_100: 0,
-                iva_100: 0,
-                totale_100: 0,
                 pasti: 0,
                 num_utenti: 0
             };
         }
-        grouped[d.scuola].ore_lavorate_60 += d.ore_lavorate_60 || 0;
-        grouped[d.scuola].ore_lavorate_100 += d.ore_lavorate_100 || 0;
-        grouped[d.scuola].imponibile_100 += d.imponibile_100 || 0;
-        grouped[d.scuola].iva_100 += d.iva_100 || 0;
-        grouped[d.scuola].totale_100 += d.totale_100 || 0;
-        grouped[d.scuola].pasti += d.pasti || 0;
-        grouped[d.scuola].num_utenti += 1;
+        grouped[d.scuola_id].ore_lavorate_60 += d.ore_lavorate_60 || 0;
+        grouped[d.scuola_id].ore_lavorate_100 += d.ore_lavorate_100 || 0;
+        grouped[d.scuola_id].pasti += d.pasti || 0;
+        grouped[d.scuola_id].num_utenti += 1;
     });
-    return Object.values(grouped);
+    return Object.values(grouped).map(t => {
+        const f = calcolaFatturazione(t.ore_lavorate_100);
+        return { ...t, imponibile_100: f.imponibile, iva_100: f.iva, totale_100: f.totale };
+    });
 }
 
+// Riepilogo come il totale_generale di app.py: sum() delle ore in 100' nell'ordine
+// del server, poi un solo calcolo degli importi
 function calculateTotaleGenerale(dati) {
+    const ore100 = sommaComePython(inOrdineServer(dati).map(d => d.ore_lavorate_100 || 0));
+    const f = calcolaFatturazione(ore100);
     return {
         num_utenti: dati.length,
         ore_lavorate_60: dati.reduce((sum, d) => sum + (d.ore_lavorate_60 || 0), 0),
-        ore_lavorate_100: dati.reduce((sum, d) => sum + (d.ore_lavorate_100 || 0), 0),
-        imponibile_100: dati.reduce((sum, d) => sum + (d.imponibile_100 || 0), 0),
-        iva_100: dati.reduce((sum, d) => sum + (d.iva_100 || 0), 0),
-        totale_100: dati.reduce((sum, d) => sum + (d.totale_100 || 0), 0),
+        ore_lavorate_100: ore100,
+        imponibile_100: f.imponibile,
+        iva_100: f.iva,
+        totale_100: f.totale,
         pasti: dati.reduce((sum, d) => sum + (d.pasti || 0), 0),
         credito_debito: dati.reduce((sum, d) => sum + (d.credito_debito || 0), 0)
     };
@@ -916,6 +1087,7 @@ function renderTable(data) {
     data.dati.forEach(row => {
         if (!grouped[row.scuola_id]) {
             grouped[row.scuola_id] = {
+                scuola_id: row.scuola_id,
                 scuola: row.scuola,
                 commessa: row.commessa,
                 utenti: []
@@ -978,9 +1150,11 @@ function renderTable(data) {
             const oreAnomale = row.ore_lavorate_60 > oreMaxPossibili;
             const oreInputClass = oreAnomale ? 'ore-anomale' : '';
             const warningAttr = oreAnomale ? `data-warning="Ore superiori al massimo possibile (${oreMaxPossibili}h)"` : '';
+            const avvisoPasti = avvisoPastiGiorni(row.pasti, row.giorni_lavorativi);
+            const pastiInputClass = avvisoPasti ? 'ore-anomale' : '';
 
             html += `
-                <tr data-utente-id="${row.utente_id}" class="${senzaOreClass}">
+                <tr data-utente-id="${row.utente_id}" data-ordine="${row.ordine_server || 0}" class="${senzaOreClass}">
                     <td>
                         <a href="#" onclick="showStoricoUtente(${row.utente_id}); return false;" class="utente-link" title="Clicca per vedere lo storico">
                             <strong>${row.nome} ${row.cognome}</strong>
@@ -996,6 +1170,7 @@ function renderTable(data) {
                         <input type="text" class="table-input ore-input ${oreInputClass}"
                                data-utente-id="${row.utente_id}"
                                data-max-ore="${oreMaxPossibili}"
+                               data-ore="${row.ore_lavorate_60 || 0}"
                                value="${row.ore_lavorate_60 ? decimalToSessagesimal(row.ore_lavorate_60) : ''}"
                                placeholder="0:00">
                     </td>
@@ -1004,8 +1179,10 @@ function renderTable(data) {
                     <td class="currency iva">${formatCurrency(row.iva_100)}</td>
                     <td class="currency totale">${formatCurrency(row.totale_100)}</td>
                     <td>
-                        <input type="number" class="table-input pasti-input"
+                        <input type="number" class="table-input pasti-input ${pastiInputClass}"
                                data-utente-id="${row.utente_id}"
+                               data-giorni="${row.giorni_lavorativi || 0}"
+                               ${avvisoPasti ? `title="${avvisoPasti}"` : ''}
                                value="${row.pasti || ''}"
                                placeholder="0" min="0">
                     </td>
@@ -1016,7 +1193,8 @@ function renderTable(data) {
 
         // Totale scuola: una cella per colonna, sotto la sua intestazione (il nome del
         // plesso e' gia' nella fascia sopra; prima era tagliato a 30 caratteri)
-        const totaleScuola = data.totali_scuola.find(t => t.scuola === group.scuola);
+        // per id: plessi con lo stesso nome in commesse diverse hanno ognuno il suo totale
+        const totaleScuola = data.totali_scuola.find(t => t.scuola_id === group.scuola_id);
         if (totaleScuola) {
             const n = totaleScuola.num_utenti || group.utenti.length;
             html += `
@@ -1161,6 +1339,7 @@ function scheduleAutoSave() {
 
     // Schedula il salvataggio
     autoSaveTimeout = setTimeout(async () => {
+        autoSaveTimeout = null;
         // Raccogli TUTTE le modifiche pendenti dagli input PRIMA di salvare
         // Questo risolve la race condition: l'evento 'change' potrebbe non essere
         // ancora stato triggerato se l'utente non è uscito dal campo
@@ -1168,8 +1347,102 @@ function scheduleAutoSave() {
 
         if (Object.keys(pendingChanges).length > 0) {
             await autoSave();
+        } else {
+            mostraStatoSalvato();   // niente da inviare (al piu' caselle da correggere)
         }
     }, AUTO_SAVE_DELAY);
+}
+
+// ==================== CASELLE: CONTROLLO PRIMA DI INVIARE ====================
+
+// "1230" scritto al posto di "12:30": suggerimento per il messaggio d'errore
+function suggerimentoOre(raw) {
+    const cifre = (raw || '').trim();
+    if (!/^\d{3,4}$/.test(cifre)) return null;
+    const ore = parseInt(cifre.slice(0, -2), 10);
+    const minuti = parseInt(cifre.slice(-2), 10);
+    return minuti < 60 && ore <= MAX_ORE_MESE ? `${ore}:${cifre.slice(-2)}` : null;
+}
+
+// Controllo di una casella ore o pasti: { valore } se va bene, { errore } se no
+function controllaCasella(input) {
+    const raw = input.value.trim();
+    if (input.classList.contains('ore-input')) {
+        if (raw && !isValidTimeFormat(raw)) {
+            return { errore: 'formato non valido: usa HH:MM (es. 8:30) o un numero decimale (es. 8.5)' };
+        }
+        const ore = parseTimeInput(raw);
+        if (!(ore >= 0)) return { errore: 'le ore non possono essere negative' };
+        if (ore > MAX_ORE_MESE) {
+            const suggerito = suggerimentoOre(raw);
+            return { errore: `massimo ${formatNumero(MAX_ORE_MESE)} ore${suggerito ? `: forse volevi scrivere ${suggerito}?` : ''}` };
+        }
+        return { valore: ore };
+    }
+    if (raw === '') return { valore: 0 };
+    const n = Number(raw.replace(',', '.'));
+    if (!Number.isFinite(n) || !Number.isInteger(n)) return { errore: 'i pasti devono essere un numero intero' };
+    if (n < 0) return { errore: 'i pasti non possono essere negativi' };
+    if (n > MAX_PASTI_MESE) return { errore: `massimo ${MAX_PASTI_MESE} pasti` };
+    return { valore: n };
+}
+
+function campoCasella(input) {
+    return input.classList.contains('ore-input') ? 'ore_lavorate_60' : 'pasti';
+}
+
+function nomeRiga(input) {
+    return (input.closest('tr')?.querySelector('.utente-link strong')?.textContent || '').trim();
+}
+
+// Casella non valida: resta in rosso con il motivo, esce dal pacchetto da salvare
+// (non blocca le altre) e perde 'changed' finche' non la si corregge
+function segnaCasellaNonValida(input, messaggio) {
+    const gia = input.classList.contains('input-error') && input.dataset.errore === messaggio;
+    input.classList.add('input-error');
+    input.classList.remove('changed');
+    input.dataset.errore = messaggio;
+    input.title = messaggio;
+    input.setAttribute('aria-invalid', 'true');
+    const td = input.closest('td');
+    if (td) { td.setAttribute('data-warning', messaggio); td.dataset.warningErrore = '1'; }
+    const uid = parseInt(input.dataset.utenteId);
+    const voce = pendingChanges[uid];
+    if (voce) {
+        delete voce[campoCasella(input)];
+        if (Object.keys(voce).length <= 1) delete pendingChanges[uid];
+    }
+    if (!gia) {
+        const nome = nomeRiga(input);
+        const punto = /[.?!]$/.test(messaggio) ? '' : '.';
+        showToast(`${nome ? nome + ': ' : ''}${messaggio}${punto} La casella non viene salvata finché non la correggi.`, 'error', 8000);
+    }
+}
+
+function pulisciErroreCasella(input) {
+    if (!input.classList.contains('input-error')) return;
+    input.classList.remove('input-error');
+    delete input.dataset.errore;
+    input.removeAttribute('title');
+    input.removeAttribute('aria-invalid');
+    const td = input.closest('td');
+    if (td && td.dataset.warningErrore) { td.removeAttribute('data-warning'); delete td.dataset.warningErrore; }
+}
+
+// Pasti piu' dei giorni di scuola del mese: solo un avviso (possono essere due al
+// giorno), spesso sono le ore finite nella casella dei pasti
+function avvisoPastiGiorni(pasti, giorni) {
+    return giorni > 0 && pasti > giorni
+        ? `Più pasti (${pasti}) dei giorni di scuola del mese (${giorni}): controlla che non ci siano finite le ore`
+        : '';
+}
+
+function aggiornaAvvisoPasti(input, pasti) {
+    const avviso = avvisoPastiGiorni(pasti, parseInt(input.dataset.giorni) || 0);
+    input.classList.toggle('ore-anomale', !!avviso);
+    if (avviso) input.title = avviso;
+    else if (!input.classList.contains('input-error')) input.removeAttribute('title');
+    return avviso;
 }
 
 /**
@@ -1178,34 +1451,29 @@ function scheduleAutoSave() {
  * non è ancora stato triggerato
  */
 function collectPendingChangesFromInputs() {
-    // Raccogli ore
-    document.querySelectorAll('.ore-input.changed').forEach(input => {
+    // Ore e pasti modificati, con lo stesso controllo dei limiti del server: una
+    // casella non valida viene segnata e resta fuori dal pacchetto
+    document.querySelectorAll('#table-container .ore-input.changed, #table-container .pasti-input.changed').forEach(input => {
         const utenteId = parseInt(input.dataset.utenteId);
-        const rawValue = input.value.trim();
-
-        // Valida e converti
-        if (isValidTimeFormat(rawValue) || rawValue === '') {
-            const ore60 = parseTimeInput(rawValue);
-            if (ore60 >= 0) {
-                if (!pendingChanges[utenteId]) {
-                    pendingChanges[utenteId] = { utente_id: utenteId };
-                }
-                pendingChanges[utenteId].ore_lavorate_60 = ore60;
-            }
+        const esito = controllaCasella(input);
+        if (esito.errore) {
+            segnaCasellaNonValida(input, esito.errore);
+            return;
         }
-    });
-
-    // Raccogli pasti
-    document.querySelectorAll('.pasti-input.changed').forEach(input => {
-        const utenteId = parseInt(input.dataset.utenteId);
-        const pasti = parseInt(input.value) || 0;
-
-        if (pasti >= 0) {
-            if (!pendingChanges[utenteId]) {
-                pendingChanges[utenteId] = { utente_id: utenteId };
-            }
-            pendingChanges[utenteId].pasti = pasti;
+        // Ore non ancora ricalcolate nella riga: l'evento 'change' arriva solo uscendo
+        // dalla casella, e non arriva mai se si riscrive lo stesso testo ("47:40" sopra
+        // un 47,66 salvato parte come 47,67). Si ricalcola come all'uscita, cosi' riga e
+        // Riepilogo mostrano il valore che parte (prima restavano quelli di prima fino
+        // al ricaricamento: 25 centesimi di differenza nel Riepilogo).
+        if (input.classList.contains('ore-input') && esito.valore !== parseFloat(input.dataset.ore)) {
+            handleOreChange(input);
+            return;
         }
+        pulisciErroreCasella(input);
+        if (!pendingChanges[utenteId]) {
+            pendingChanges[utenteId] = { utente_id: utenteId };
+        }
+        pendingChanges[utenteId][campoCasella(input)] = esito.valore;
     });
 }
 
@@ -1225,25 +1493,28 @@ async function autoSave() {
         if (!periodoCaricato) throw new Error('Nessun mese caricato');
         const { mese, anno } = periodoCaricato;
 
-        const updates = Object.values(pendingChanges);
+        // Copia di cio' che parte: una casella cambiata mentre la richiesta e' in
+        // viaggio resta da salvare (prima veniva segnata come salvata e si perdeva)
+        const updates = Object.values(pendingChanges).map(u => ({ ...u }));
+        const inviate = [...document.querySelectorAll('#table-container .table-input.changed')].map(i => [i, i.value]);
 
         await apiCall(`/api/rendicontazione/${anno}/${mese}/batch`, {
             method: 'POST',
             body: JSON.stringify({ updates })
         });
 
-        // Successo: resta scritto "Salvato alle hh:mm" fino alla modifica successiva
-        pendingChanges = {};
-        mostraStatoSalvato();
-
-        // Reset stile input
-        document.querySelectorAll('.table-input.changed').forEach(input => {
-            input.classList.remove('changed');
-        });
+        segnaInviate(updates, inviate);
 
         const btnSave = document.getElementById('btn-save');
         btnSave.disabled = true;
         btnSave.style.display = 'none';
+
+        // Successo: resta scritto "Salvato alle hh:mm" fino alla modifica successiva
+        if (document.querySelector('#table-container .table-input.changed') || Object.keys(pendingChanges).length) {
+            scheduleAutoSave();   // modifiche arrivate durante il salvataggio
+        } else {
+            mostraStatoSalvato();
+        }
 
     } catch (error) {
         // Errore: compare il pulsante per riprovare subito
@@ -1257,13 +1528,46 @@ async function autoSave() {
         const btnSave = document.getElementById('btn-save');
         btnSave.disabled = false;
         btnSave.style.display = '';
-        showToast('Errore nel salvataggio automatico', 'error');
+        showToast('Modifiche non salvate: ' + error.message, 'error', 10000);
+        // Il server indica utente e casella: la si segna e si riprova con le altre
+        const d = error.data || {};
+        if (d.utente_id && d.campo) {
+            const classe = d.campo === 'pasti' ? 'pasti-input' : 'ore-input';
+            const input = document.querySelector(`#table-container .${classe}[data-utente-id="${d.utente_id}"]`);
+            const voce = pendingChanges[d.utente_id];
+            if (input && voce && d.campo in voce) {
+                segnaCasellaNonValida(input, d.motivo || 'valore non valido');
+                if (Object.keys(pendingChanges).length) scheduleAutoSave();
+            }
+        }
     }
+}
+
+// Dopo un salvataggio riuscito: 'changed' si toglie solo dalle caselle non cambiate
+// nel frattempo, e da pendingChanges solo le voci partite cosi' com'erano
+function segnaInviate(updates, inviate) {
+    inviate.forEach(([input, valore]) => { if (input.value === valore) input.classList.remove('changed'); });
+    updates.forEach(u => {
+        const attuale = pendingChanges[u.utente_id];
+        if (attuale && JSON.stringify(attuale) === JSON.stringify(u)) delete pendingChanges[u.utente_id];
+    });
 }
 
 function mostraStatoSalvato() {
     const indicator = document.getElementById('auto-save-indicator');
     const ora = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    // Caselle fuori limite ancora da correggere: il resto e' salvato, loro no
+    const daCorreggere = document.querySelectorAll('#table-container .table-input.input-error').length;
+    if (daCorreggere) {
+        indicator.className = 'auto-save-indicator errore';
+        indicator.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span id="auto-save-text">Salvato alle ${ora}, tranne ${daCorreggere} ${daCorreggere === 1 ? 'casella da correggere' : 'caselle da correggere'}</span>
+    `;
+        return;
+    }
     indicator.className = 'auto-save-indicator saved';
     indicator.innerHTML = `
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
@@ -1281,37 +1585,28 @@ function handleOreChange(input) {
     const row = input.closest('tr');
     const parentTd = input.closest('td');
 
-    // Validazione input
-    const rawValue = input.value.trim();
-
-    // Verifica formato valido
-    if (rawValue && !isValidTimeFormat(rawValue)) {
-        input.classList.add('input-error');
-        parentTd.setAttribute('data-warning', 'Formato non valido. Usa HH:MM o numero decimale');
-        showToast('Formato ore non valido. Usa formato HH:MM (es: 8:30) o decimale (es: 8.5)', 'error');
+    // Formato, negativi e limite del server (MAX_ORE_MESE): la casella non valida
+    // resta in rosso con il motivo e non viene inviata
+    const esito = controllaCasella(input);
+    if (esito.errore) {
+        segnaCasellaNonValida(input, esito.errore);
         return;
     }
+    pulisciErroreCasella(input);
 
-    const ore60 = parseTimeInput(rawValue);
+    const ore60 = esito.valore;
     const maxOre = parseFloat(input.dataset.maxOre) || 176;
-
-    // Reset errori
-    input.classList.remove('input-error');
-
-    // Validazione valore negativo
-    if (ore60 < 0) {
-        input.classList.add('input-error');
-        parentTd.setAttribute('data-warning', 'Le ore non possono essere negative');
-        showToast('Errore: le ore non possono essere negative', 'error');
-        input.value = '0';
-        return;
-    }
+    // gia' ricalcolata con questo valore dal salvataggio automatico (vedi
+    // collectPendingChangesFromInputs): l'avviso non si ripete all'uscita dalla casella
+    const nuovo = ore60 !== parseFloat(input.dataset.ore);
+    // Valore numerico della casella per il Riepilogo (il testo HH:MM arrotonda ai minuti)
+    input.dataset.ore = ore60;
 
     // Verifica ore anomale (warning, non errore)
     if (ore60 > maxOre) {
         input.classList.add('ore-anomale');
         parentTd.setAttribute('data-warning', `Ore superiori al massimo possibile (${maxOre}h)`);
-        showToast(`Attenzione: ore inserite (${formatNumber(ore60)}) superiori al massimo possibile (${maxOre}h)`, 'warning');
+        if (nuovo) showToast(`Attenzione: ore inserite (${formatNumber(ore60)}) superiori al massimo possibile (${maxOre}h)`, 'warning');
     } else {
         input.classList.remove('ore-anomale');
         parentTd.removeAttribute('data-warning');
@@ -1321,12 +1616,19 @@ function handleOreChange(input) {
     const utente = currentData.find(d => d.utente_id === utenteId);
     if (!utente) return;
 
-    // Ricalcola
-    const ore100 = ore60;
-    const imponibile = ore100 * CFG.tariffa_oraria;
-    const iva = imponibile * CFG.iva_percentuale;
-    const totale = imponibile + iva;
+    // Ricalcola come il server (database.get_rendicontazione_completa): importi della
+    // riga dalle ore NON arrotondate, calcola_fatturazione(ore_lavorate_60); le ore in
+    // 100' arrotondate servono solo alla colonna Ore (100') e al Riepilogo. Dalle ore
+    // arrotondate, con 10:40 la riga mostrava 256,83 invece di 256,75 fino al ricaricamento.
+    const ore100 = arrotonda2(ore60);
+    const { imponibile, iva, totale } = calcolaFatturazione(ore60);
     const creditoDebito = utente.media_con_assenza_60 - ore60;
+    // La riga in memoria segue la casella: ridisegnando la tabella (filtro Scuola)
+    // tornavano le ore e i totali del caricamento, anche se quelle nuove erano salvate
+    Object.assign(utente, {
+        ore_lavorate_60: ore60, ore_lavorate_100: ore100, imponibile_100: imponibile,
+        iva_100: iva, totale_100: totale, credito_debito: arrotonda2(creditoDebito)
+    });
 
     // Aggiorna celle
     row.querySelector('.ore-100').textContent = formatNumber(ore100);
@@ -1363,31 +1665,22 @@ function updateSenzaOreBadgeFromDOM() {
 
 function handlePastiChange(input) {
     const utenteId = parseInt(input.dataset.utenteId);
-    let pasti = parseInt(input.value) || 0;
 
-    // Validazione: deve essere un numero intero >= 0
-    if (pasti < 0) {
-        input.classList.add('input-error');
-        showToast('Errore: il numero di pasti non può essere negativo', 'error');
-        pasti = 0;
-        input.value = '0';
-    } else if (!Number.isInteger(parseFloat(input.value)) && input.value.trim() !== '') {
-        input.classList.add('input-error');
-        showToast('Attenzione: i pasti devono essere un numero intero', 'warning');
-        pasti = Math.floor(parseFloat(input.value) || 0);
-        input.value = pasti.toString();
-    } else {
-        input.classList.remove('input-error');
+    // Intero tra 0 e il limite del server (MAX_PASTI_MESE, due pasti al giorno per
+    // 31 giorni): fuori limite la casella resta in rosso e non viene inviata
+    const esito = controllaCasella(input);
+    if (esito.errore) {
+        segnaCasellaNonValida(input, esito.errore);
+        return;
     }
-
-    // Validazione: limite ragionevole (max 2 pasti al giorno × 31 giorni)
-    const maxPasti = 62;
-    if (pasti > maxPasti) {
-        input.classList.add('ore-anomale');
-        showToast(`Attenzione: numero pasti (${pasti}) superiore al limite mensile (${maxPasti})`, 'warning');
-    } else {
-        input.classList.remove('ore-anomale');
-    }
+    pulisciErroreCasella(input);
+    const pasti = esito.valore;
+    // piu' pasti dei giorni di scuola: solo un avviso
+    const avviso = aggiornaAvvisoPasti(input, pasti);
+    if (avviso) showToast(`${nomeRiga(input)}: ${avviso}`, 'warning', 8000);
+    // come per le ore: ridisegnando la tabella si vede il valore scritto
+    const utente = currentData.find(d => d.utente_id === utenteId);
+    if (utente) utente.pasti = pasti;
 
     if (!pendingChanges[utenteId]) {
         pendingChanges[utenteId] = { utente_id: utenteId };
@@ -1401,34 +1694,43 @@ function handlePastiChange(input) {
 
 function markChanged(input) {
     input.classList.add('changed');
+    // Ogni nuova modifica azzera la firma dell'ultimo invio in uscita: un pacchetto
+    // uguale a quello partito con la scheda nascosta deve ripartire se nel frattempo
+    // un salvataggio automatico ha scritto un altro valore (7:15, poi 10:00, poi di
+    // nuovo 7:15 e uscita: prima restava 10:00 senza avviso). Senza nuove modifiche
+    // la firma resta, e "scheda nascosta e poi chiusa" non manda il pacchetto due volte.
+    ultimoInvioUscita = null;
 }
 
 // Totali dalle caselle delle righe VISIBILI: con un filtro attivo il Riepilogo
 // somma solo gli utenti filtrati (prima sommava sempre tutti e 35).
+// Si legge il NUMERO della casella (data-ore: salvato, o l'ultimo valore valido
+// scritto), non il testo HH:MM: i valori salvati in centesimi (es. 10,66) non sono
+// minuti interi e rileggendo "10:40" il totale in euro si spostava di centesimi.
+// Poi lo stesso calcolo del server (totale_generale di app.py): ore in 100'
+// arrotondate riga per riga come round(x, 2), sommate come sum() nell'ordine del
+// server, importi una volta sola sulla somma (calcola_fatturazione).
 function recalculateTotals() {
-    let totOre60 = 0;
-    let totOre100 = 0;
-    let totImponibile = 0;
-    let numUtenti = 0;
-
+    const righe = [];
     document.querySelectorAll('#table-container tr[data-utente-id]').forEach(row => {
         if (row.style.display === 'none') return;
-        numUtenti++;
         const input = row.querySelector('.ore-input');
-        const ore60 = input ? parseTimeInput(input.value) : 0;
-        const ore100 = ore60;
-        totOre60 += ore60;
-        totOre100 += ore100;
-        totImponibile += ore100 * CFG.tariffa_oraria;
+        righe.push({
+            ordine_server: parseInt(row.dataset.ordine) || 0,
+            ore60: input ? (parseFloat(input.dataset.ore) || 0) : 0
+        });
     });
+    const inOrdine = inOrdineServer(righe);
+    const numUtenti = righe.length;
+    const totOre60 = sommaComePython(inOrdine.map(r => r.ore60));
+    const totOre100 = sommaComePython(inOrdine.map(r => arrotonda2(r.ore60)));
     document.getElementById('tot-utenti').textContent = numUtenti;
 
     // Ore 60' in formato sessagesimale (HH:MM)
     document.getElementById('tot-ore-60').textContent = formatOreSessionali(totOre60);
     document.getElementById('tot-ore-100').textContent = formatNumber(totOre100);
-    // Totale con IVA (percentuale da config)
-    const totaleConIva = totImponibile * (1 + CFG.iva_percentuale);
-    document.getElementById('tot-totale').textContent = formatCurrency(totaleConIva);
+    // Totale con IVA (tariffa e percentuale da config)
+    document.getElementById('tot-totale').textContent = formatCurrency(calcolaFatturazione(totOre100).totale);
 }
 
 function updateTotals(totale) {
@@ -1661,42 +1963,22 @@ function resetExcelFilter() {
 async function saveChanges() {
     const periodo = periodoMostrato();
     if (!periodo) return;
-    const { mese, anno } = periodo;
-
-    const updates = Object.values(pendingChanges);
-    if (updates.length === 0) {
+    if (autoSaveTimeout) { clearTimeout(autoSaveTimeout); autoSaveTimeout = null; }
+    collectPendingChangesFromInputs();
+    if (Object.keys(pendingChanges).length === 0) {
         showToast('Nessuna modifica da salvare', 'warning');
+        mostraStatoSalvato();
         return;
     }
 
     const btn = document.getElementById('btn-save');
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;"></div> Salvataggio…';
-
-    try {
-        await apiCall(`/api/rendicontazione/${anno}/${mese}/batch`, {
-            method: 'POST',
-            body: JSON.stringify({ updates })
-        });
-
-        showToast('Modifiche salvate con successo!', 'success');
-        pendingChanges = {};
-
-        // Reset stile input
-        document.querySelectorAll('.table-input').forEach(input => {
-            input.classList.remove('changed');
-        });
-
-        btn.innerHTML = TESTO_RIPROVA_SALVA;
-        btn.style.display = 'none';
-        mostraStatoSalvato();
-
-    } catch (error) {
-        showToast('Errore nel salvataggio: ' + error.message, 'error');
-        btn.disabled = false;
-        btn.style.display = '';
-        btn.innerHTML = TESTO_RIPROVA_SALVA;
-    }
+    // Stessa strada del salvataggio automatico (copia di cio' che parte, messaggio
+    // del server con utente e casella)
+    await autoSave();
+    btn.innerHTML = TESTO_RIPROVA_SALVA;
+    if (!Object.keys(pendingChanges).length) showToast('Modifiche salvate con successo!', 'success');
 }
 
 const TESTO_RIPROVA_SALVA = `

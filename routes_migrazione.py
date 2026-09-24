@@ -291,6 +291,41 @@ def _merge_tabella(cursor, tabella, fks, chiave, righe, mappe, mode):
     return {'importati': importati, 'aggiornati': aggiornati, 'saltati': saltati}
 
 
+# Campi dell'utente che "Unisci" copia dal file SOLO se il file li contiene: un
+# file della versione precedente (formato 2.0) non ha date di servizio, budget ne'
+# anno della lista d'attesa, e prima li azzerava su tutti gli utenti.
+CAMPI_UTENTE_DAL_FILE = ('monte_ore_settimanale', 'lista_attesa', 'data_inizio', 'data_fine',
+                         'budget_ore_mensile', 'budget_ore_annuale')
+
+
+def _aggiorna_utente_da_file(cursor, utente_id, u):
+    """Aggiorna un utente gia' presente con i soli campi presenti nel file."""
+    assegnazioni, valori = [], []
+    for campo in CAMPI_UTENTE_DAL_FILE:
+        if campo in u:
+            assegnazioni.append(f'{campo} = ?')
+            valori.append(u[campo])
+    if 'attivo' in u:
+        attivo = 0 if u['attivo'] in (0, False, '0') else 1
+        # archiviato_dal: NULL se attivo; da un file senza il mese
+        # dell'archiviazione (versione vecchia) resta quello gia' presente
+        assegnazioni.append('attivo = ?')
+        assegnazioni.append('archiviato_dal = CASE WHEN ? THEN NULL ELSE COALESCE(?, archiviato_dal) END')
+        valori += [attivo, attivo, u.get('archiviato_dal')]
+    if assegnazioni:
+        cursor.execute(f"UPDATE utenti SET {', '.join(assegnazioni)} WHERE id = ?", valori + [utente_id])
+
+
+def _riga_ore_diversa(esistente, r):
+    """True se la riga del file cambierebbe ore, pasti, giorni o note di quella salvata."""
+    def num(v):
+        return round(float(v or 0), 4)
+    return (num(esistente['ore_lavorate_60']) != num(r.get('ore_lavorate_60'))
+            or num(esistente['pasti']) != num(r.get('pasti', 0))
+            or num(esistente['giorni_lavorativi']) != num(r.get('giorni_lavorativi'))
+            or (esistente['note'] or '') != (r.get('note') or ''))
+
+
 def _importa_merge(data, mode):
     """Unisce (merge) o aggiunge solo i nuovi (skip): le 5 sezioni storiche con
     abbinamento per nome, poi le tabelle aggiuntive del formato completo."""
@@ -303,6 +338,7 @@ def _importa_merge(data, mode):
         'calendario': {'importati': 0, 'aggiornati': 0},
     }
     commesse_map, scuole_map, utenti_map = {}, {}, {}
+    mesi_saltati = set()
 
     with db.get_db_context() as conn:
         cursor = conn.cursor()
@@ -368,16 +404,7 @@ def _importa_merge(data, mode):
             if existing:
                 utenti_map[u['id']] = existing['id']
                 if aggiorna:
-                    # archiviato_dal: NULL se attivo; da un file senza il mese
-                    # dell'archiviazione (versione vecchia) resta quello gia' presente
-                    cursor.execute('''UPDATE utenti SET monte_ore_settimanale = ?, lista_attesa = ?, attivo = ?,
-                                      archiviato_dal = CASE WHEN ? THEN NULL ELSE COALESCE(?, archiviato_dal) END,
-                                      data_inizio = ?, data_fine = ?, budget_ore_mensile = ?, budget_ore_annuale = ?
-                                      WHERE id = ?''',
-                                   (u['monte_ore_settimanale'], u.get('lista_attesa'), u.get('attivo', 1),
-                                    1 if u.get('attivo', 1) else 0, u.get('archiviato_dal'),
-                                    u.get('data_inizio'), u.get('data_fine'), u.get('budget_ore_mensile'),
-                                    u.get('budget_ore_annuale'), existing['id']))
+                    _aggiorna_utente_da_file(cursor, existing['id'], u)
                     stats['utenti']['aggiornati'] += 1
             else:
                 nome_puntato = u.get('nome_puntato') or db.punteggia_nome(u['nome'], u.get('cognome') or '')
@@ -394,7 +421,11 @@ def _importa_merge(data, mode):
                 utenti_map[u['id']] = cursor.lastrowid
                 stats['utenti']['importati'] += 1
 
-        # 4. Rendicontazione
+        # 4. Rendicontazione. Un mese chiuso non accetta ore nemmeno da qui (come
+        # da import Excel e a mano): le righe che lo cambierebbero sono saltate e
+        # riportate nell'esito; quelle uguali a quanto gia' salvato non contano.
+        mesi_chiusi = {(m[0], m[1]) for m in cursor.execute('SELECT anno, mese FROM mesi_chiusi').fetchall()}
+        stats['rendicontazione']['saltate_mese_chiuso'] = 0
         for r in data.get('rendicontazione', []):
             new_utente_id = utenti_map.get(r['utente_id'])
             if not new_utente_id:
@@ -404,9 +435,15 @@ def _importa_merge(data, mode):
                 new_utente_id = row['id'] if row else None
             if not new_utente_id:
                 continue
-            cursor.execute('SELECT id FROM rendicontazione WHERE utente_id = ? AND anno = ? AND mese = ?',
+            cursor.execute('''SELECT id, ore_lavorate_60, pasti, giorni_lavorativi, note FROM rendicontazione
+                              WHERE utente_id = ? AND anno = ? AND mese = ?''',
                            (new_utente_id, r['anno'], r['mese']))
             existing = cursor.fetchone()
+            if (r['anno'], r['mese']) in mesi_chiusi:
+                if not existing or (aggiorna and _riga_ore_diversa(existing, r)):
+                    stats['rendicontazione']['saltate_mese_chiuso'] += 1
+                    mesi_saltati.add((r['anno'], r['mese']))
+                continue
             if existing:
                 if aggiorna:
                     cursor.execute('''UPDATE rendicontazione
@@ -469,7 +506,7 @@ def _importa_merge(data, mode):
                 if righe:
                     stats[tabella] = _merge_tabella(cursor, tabella, fks, chiave, righe, mappe, mode)
 
-    return stats
+    return stats, sorted(mesi_saltati)
 
 
 def _totali(stats):
@@ -509,15 +546,53 @@ def api_migrazione_importa():
                         'totale_importati': totale, 'totale_aggiornati': 0})
 
     try:
-        stats = _importa_merge(data, mode)
+        stats, mesi_saltati = _importa_merge(data, mode)
     except Exception as e:
         logger.error(f"Errore importazione: {e}", exc_info=True)
         return jsonify({'error': 'Importazione annullata: nessuna modifica applicata'}), 500
 
-    db.log_audit('migrazione', 'sistema', dettagli=f'Importati dati da {nome_file} ({mode})')
+    avvisi = []
+    saltate = stats['rendicontazione']['saltate_mese_chiuso']
+    if mesi_saltati:
+        elenco = ', '.join(f"{config.MESI_NOME[m]} {a}" for a, m in mesi_saltati)
+        if saltate == 1:
+            righe, cambiarle = '1 riga di ore NON è stata scritta', 'cambiarla'
+        else:
+            righe, cambiarle = f'{saltate} righe di ore NON sono state scritte', 'cambiarle'
+        if len(mesi_saltati) == 1:
+            chiusi, riapri = 'il mese è chiuso', 'riapri il mese'
+        else:
+            chiusi, riapri = 'i mesi sono chiusi', 'riapri i mesi'
+        avvisi.append(f"{righe} perché {chiusi} ({elenco}). Per {cambiarle} {riapri} da Chiusura Mese "
+                      "e ripeti l'importazione.")
+    db.log_audit('migrazione', 'sistema', dettagli=f'Importati dati da {nome_file} ({mode})'
+                 + (f"; saltat{'a 1 riga' if saltate == 1 else f'e {saltate} righe'} di mesi chiusi"
+                    if mesi_saltati else ''))
     importati, aggiornati = _totali(stats)
-    return jsonify({'success': True, 'mode': mode, 'stats': stats,
+    return jsonify({'success': True, 'mode': mode, 'stats': stats, 'avvisi': avvisi,
+                    'mesi_chiusi_saltati': [{'anno': a, 'mese': m} for a, m in mesi_saltati],
                     'totale_importati': importati, 'totale_aggiornati': aggiornati})
+
+
+CONSIGLIO_AGGIORNAMENTO = (
+    "Per passare a questa versione da una versione precedente NON usare questo file: chiudi il "
+    "programma e copia il file gestionale.db della cartella vecchia nella cartella nuova, prima "
+    "di avviarla (vedi il README, \"Aggiornare a una nuova versione\"). Così passano tutti i dati."
+)
+
+
+def _dati_mancanti_nel_file(data):
+    """Elenco (in italiano) dei dati che un file di formato precedente (2.0, senza
+    'tabelle') non contiene e che quindi non arriverebbero con l'importazione."""
+    if data.get('tabelle'):
+        return []
+    mancanti = ['determine dirigenziali (DD)', 'recuperi ore', 'correzioni fatte a mano nei report']
+    utenti = data.get('utenti') or []
+    if utenti and not any('data_inizio' in u or 'data_fine' in u for u in utenti):
+        mancanti.append('date di inizio e fine servizio degli utenti')
+    mancanti += ['variazioni del monte ore', 'personale, assegnazioni e turni', 'note e documenti degli utenti',
+                 'mesi chiusi', 'storico delle modifiche (registro attività)']
+    return mancanti
 
 
 @migrazione_bp.route('/api/migrazione/anteprima', methods=['POST'])
@@ -528,12 +603,16 @@ def api_migrazione_anteprima():
         return jsonify({'error': errore}), status
 
     tabelle = data.get('tabelle') or {}
+    mancanti = _dati_mancanti_nel_file(data)
     return jsonify({
         'success': True,
         'versione': data.get('versione'),
         'versione_app': data.get('versione_app'),
         'data_esportazione': data.get('data_esportazione'),
         'completo': bool(tabelle),
+        # file della versione precedente: cosa NON contiene e come aggiornare davvero
+        'mancanti': mancanti,
+        'consiglio': CONSIGLIO_AGGIORNAMENTO if mancanti else None,
         'riepilogo': {
             'commesse': len(data.get('commesse', [])),
             'scuole': len(data.get('scuole', [])),

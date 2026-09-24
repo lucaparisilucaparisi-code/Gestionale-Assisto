@@ -72,6 +72,15 @@ def calcola_fatturazione(ore) -> tuple:
     totale = round(imponibile + iva, 2)
     return imponibile, iva, totale
 
+
+# sum() di Python, con cui si sommano le ore dei totali (Riepilogo, report): dalla
+# 3.12 e' una somma compensata (Neumaier), prima semplice. Con le ore che finiscono
+# in ,50 il totale in euro puo' cambiare di un centesimo tra i due modi, percio' la
+# Rendicontazione, che ricalcola il Riepilogo nel browser dopo ogni modifica, usa lo
+# stesso modo del Python che la serve (APP_CONFIG.somma_compensata). Si prova il
+# comportamento invece di leggere la versione.
+SOMMA_COMPENSATA = sum([1e100, 1.0, -1e100]) == 1.0
+
 # ==================== PARAMETRI CALCOLO / REPORT ====================
 # Giorni lavorativi di fallback se il calendario non ha dati per il mese
 GIORNI_LAVORATIVI_DEFAULT = 22
@@ -79,6 +88,10 @@ GIORNI_LAVORATIVI_DEFAULT = 22
 STORICO_MESI_DEFAULT = 6
 # Soglia percentuale per segnalare differenze anomale ore erogate vs previste
 SOGLIA_ANOMALIA_PERCENTUALE = 50
+# "Copia Mese Prec.": oltre questa differenza di giorni di scuola tra il mese di
+# origine e quello di destinazione (settembre da giugno, giugno da maggio...) la
+# conferma avvisa che le ore copiate non sono adatte
+SOGLIA_GIORNI_COPIA_PERCENTUALE = 20
 
 # ==================== LIMITI UPLOAD ====================
 MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
@@ -92,13 +105,18 @@ MAX_DESCRIZIONE_LENGTH = 500
 MAX_NOTE_LENGTH = 1000
 MAX_ORE_SETTIMANALI = 40.0
 MAX_ORE_MENSILI = 200.0
-MAX_PASTI_MENSILI = 31
+MAX_PASTI_MENSILI = 62  # fino a due pasti al giorno per 31 giorni (44 in un mese e' plausibile)
 MIN_GIORNI_LAVORATIVI = 0
 MAX_GIORNI_LAVORATIVI = 23
 
 # ==================== BACKUP ====================
 MAX_BACKUPS = 30  # Numero massimo di backup da conservare
 BACKUP_ON_STARTUP = True
+
+# ==================== ANNULLA (Ctrl+Z) ====================
+# Le azioni piu' vecchie non si annullano piu' (restano nel registro attivita'):
+# prima Ctrl+Z annullava senza chiedere anche modifiche di mesi prima
+UNDO_VALIDITA_ORE = 24
 
 # ==================== MESI ====================
 MESI_NOME = {

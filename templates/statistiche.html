@@ -415,10 +415,11 @@ async function loadStatistiche() {
         animateCounter(document.getElementById('kpi-monte-ore'), Math.round(stats.monte_ore_totale || 0));
         animateCounter(document.getElementById('kpi-commesse'), stats.num_commesse || 0);
 
-        // Utenti per commessa: col colore scelto in Impostazioni > Commesse e il totale al centro
+        // Utenti per commessa: col colore scelto in Impostazioni > Commesse (uno diverso
+        // per commessa, anche se due hanno lo stesso) e il totale al centro
         if (stats.utenti_per_commessa?.length) {
             const voci = stats.utenti_per_commessa;
-            const colori = voci.map(c => c.colore || null);
+            const colori = coloriCommesseDistinti(voci);
             ChartManager.createPieChart('chart-distribuzione', voci.map(c => c.count), voci.map(c => c.nome), colori, 'utenti');
             const usati = ChartManager.charts['chart-distribuzione']?.data.datasets[0].backgroundColor || [];
             document.getElementById('legend-distribuzione').innerHTML = voci.map((c, i) => `
@@ -580,6 +581,7 @@ async function loadConfrontoAnnualeDettaglio() {
                     <td class="text-right">${formatCurrency(c.imponibile)}</td>
                     <td class="text-right" style="${varColor}">
                         ${c.variazione !== null ? `${varIcon} ${c.variazione > 0 ? '+' : ''}${formatNumero(c.variazione, 1)}%` : '-'}
+                        ${c.nota ? `<br><span class="text-muted text-xs">${escapeHtml(c.nota)}</span>` : ''}
                     </td>
                 </tr>
             `;

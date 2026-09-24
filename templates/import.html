@@ -901,6 +901,8 @@ async function uploadFile() {
 // ==================== IMPORT RENDICONTAZIONE MENSILE ====================
 
 let rendFile = null;
+// Limiti di ore e pasti (config.py), gli stessi dell'inserimento a mano
+const CFG_IMPORT = window.APP_CONFIG || {};
 
 function handleRendFileSelect(file) {
     if (!file.name.match(/\.(xlsx|xls)$/i)) {
@@ -957,6 +959,7 @@ function renderRendPreview(data) {
                 <strong>${data.totale_match}</strong> rendicontazioni pronte da importare.
                 ${data.totale_non_trovati > 0 ? `<span class="text-warning">${data.totale_non_trovati} righe non abbinate</span> (utenti non in anagrafica, saltate).` : ''}
                 ${data.totale_ambigui > 0 ? ` <span class="text-warning">${data.totale_ambigui} ambigue</span> (omonimi non risolti).` : ''}
+                ${data.totale_fuori_limite > 0 ? ` <span class="text-danger">${data.totale_fuori_limite} fuori limite</span> (ore oltre ${CFG_IMPORT.max_ore_mensili} o pasti oltre ${CFG_IMPORT.max_pasti_mensili}: non verranno importate).` : ''}
             </div>
         </div>
     `;
@@ -978,6 +981,9 @@ function renderRendPreview(data) {
         const ambiguiEsempi = f.n_ambigui
             ? `<div class="text-xs text-warning" style="margin-top:6px;">Omonimi non risolti: ${f.esempi_ambigui.map(v => escapeHtml(v.nome)).join(', ')}</div>`
             : '';
+        const fuoriLimiteEsempi = f.n_fuori_limite
+            ? `<div class="text-xs text-danger" style="margin-top:6px;">Non verranno importati (fuori limite): ${f.esempi_fuori_limite.map(v => `${escapeHtml(v.nome)} (${escapeHtml(v.motivo)})`).join(', ')}</div>`
+            : '';
         return `
             <div class="card mb-3">
                 <div class="card-header flex justify-between items-center flex-wrap gap-2">
@@ -986,6 +992,7 @@ function renderRendPreview(data) {
                         <span class="badge badge-success">${f.n_match} da importare</span>
                         ${f.n_non_trovati ? `<span class="badge badge-warning">${f.n_non_trovati} non abbinati</span>` : ''}
                         ${f.n_ambigui ? `<span class="badge badge-danger">${f.n_ambigui} ambigui</span>` : ''}
+                        ${f.n_fuori_limite ? `<span class="badge badge-danger">${f.n_fuori_limite} fuori limite</span>` : ''}
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -1004,7 +1011,7 @@ function renderRendPreview(data) {
                             </tbody>
                         </table>
                     </div>
-                    <div style="padding: 10px 16px;">${nonTrovatiEsempi}${ambiguiEsempi}</div>
+                    <div style="padding: 10px 16px;">${nonTrovatiEsempi}${ambiguiEsempi}${fuoriLimiteEsempi}</div>
                 </div>
             </div>
         `;
@@ -1041,6 +1048,8 @@ async function importRendicontazione() {
                     <strong>Import completato:</strong> ${data.totale_scritti} rendicontazioni salvate.
                     ${data.totale_saltati_gia_pieni > 0 ? `<br>${data.totale_saltati_gia_pieni} saltate (mese già compilato).` : ''}
                     ${data.totale_non_trovati > 0 ? `<br>${data.totale_non_trovati} righe non abbinate (utenti non in anagrafica).` : ''}
+                    ${data.totale_fuori_limite > 0 ? `<br><span class="text-danger">${data.totale_fuori_limite === 1 ? '1 riga NON importata' : `${data.totale_fuori_limite} righe NON importate`} perché fuori limite:</span> ` +
+                        data.dettaglio.flatMap(d => d.fuori_limite || []).map(v => `${escapeHtml(v.nome)} (${escapeHtml(v.motivo)})`).join(', ') : ''}
                 </div>
             </div>
             <div class="table-responsive mt-3">
@@ -1104,11 +1113,13 @@ function annullaImport(backupName) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ backup: backupName, confirm: parola })
                 });
-                if (!res.ok) throw new Error();
+                const esito = await res.json().catch(() => ({}));
+                // il server spiega il motivo (file vuoto o estraneo, backup di sicurezza non riuscito...)
+                if (!res.ok) throw new Error(esito.error || '');
                 showToast('Import annullato: dati ripristinati. Ricarico la pagina…', 'success');
                 setTimeout(() => location.reload(), 1500);
             } catch (e) {
-                showToast('Errore nell\'annullamento dell\'import', 'error');
+                showToast(e.message || 'Errore nell\'annullamento dell\'import', 'error');
             }
         },
         { type: 'danger', confirmText: 'Ripristina', requireInput: true, inputPlaceholder: 'Digita CONFERMA' }
@@ -1118,6 +1129,7 @@ function annullaImport(backupName) {
 // ==================== MIGRAZIONE DATI ====================
 
 let migrazioneFile = null;
+let migrazioneMancanti = [];   // dati che un file di versione precedente non contiene
 
 document.addEventListener('DOMContentLoaded', () => {
     // Event listeners per migrazione
@@ -1182,6 +1194,7 @@ async function handleMigrazioneFile(e) {
     }
 
     migrazioneFile = file;
+    migrazioneMancanti = [];
 
     // Mostra anteprima
     const formData = new FormData();
@@ -1205,6 +1218,14 @@ async function handleMigrazioneFile(e) {
                 <strong>Contenuto:</strong> ${data.completo
                     ? `completo (${Object.keys(data.tabelle || {}).length} tabelle: anche variazioni monte ore, personale, turni, note, DD…)`
                     : 'formato precedente: solo anagrafica, ore e calendario (la modalità "Sostituisci tutto" non è disponibile)'}<br>
+                ${(data.mancanti || []).length ? `
+                    <div class="alert alert-danger mt-3" id="migrazione-mancanti">
+                        <div>
+                            <strong>Questo file NON contiene:</strong>
+                            <ul style="margin: 4px 0; padding-left: 20px;">${data.mancanti.map(m => `<li>${escapeHtml(m)}</li>`).join('')}</ul>
+                            ${escapeHtml(data.consiglio || '')}
+                        </div>
+                    </div>` : ''}
                 <div class="mt-3 flex gap-4 flex-wrap">
                     <span class="badge badge-primary">${data.riepilogo.commesse} Commesse</span>
                     <span class="badge badge-primary">${data.riepilogo.scuole} Scuole</span>
@@ -1220,6 +1241,7 @@ async function handleMigrazioneFile(e) {
             </div>
         `;
 
+        migrazioneMancanti = data.mancanti || [];
         document.getElementById('migrazione-preview').classList.remove('hidden');
         document.getElementById('migrazione-result').classList.add('hidden');
 
@@ -1254,6 +1276,17 @@ function confermaMigrazione() {
         );
         return;
     }
+    if (migrazioneMancanti.length) {
+        // File della versione precedente: non e' un aggiornamento completo, lo si dice prima
+        showConfirmDialog(
+            'File incompleto',
+            'Questo file non contiene: ' + migrazioneMancanti.join(', ') + '. Questi dati non arriveranno. ' +
+            'Per aggiornare da una versione precedente copia invece il file gestionale.db. Vuoi importarlo comunque?',
+            () => eseguiMigrazione(mode, ''),
+            { type: 'warning', confirmText: 'Importa comunque' }
+        );
+        return;
+    }
     eseguiMigrazione(mode, '');
 }
 
@@ -1263,7 +1296,9 @@ function _righeEsitoMigrazione(stats) {
         const imp = s.importati ?? s.importate ?? 0;
         const agg = s.aggiornati ?? s.aggiornate ?? 0;
         const salt = s.saltati ?? 0;
-        return `${tabella}: ${imp} nuovi, ${agg} aggiornati${salt ? `, ${salt} saltati` : ''}`;
+        const chiusi = s.saltate_mese_chiuso ?? 0;
+        return `${tabella}: ${imp} nuovi, ${agg} aggiornati${salt ? `, ${salt} saltati` : ''}` +
+            (chiusi ? `, ${chiusi} non scritte (mese chiuso)` : '');
     });
 }
 
@@ -1297,6 +1332,7 @@ async function eseguiMigrazione(mode, conferma) {
                     <strong>${titolo}</strong> ${data.totale_importati} importati, ${data.totale_aggiornati} aggiornati.
                     ${data.backup ? `<br>Backup dei dati precedenti: <code>${escapeHtml(data.backup)}</code>` : ''}
                     <div class="mt-2" style="font-size: 0.85rem;">${_righeEsitoMigrazione(data.stats).map(escapeHtml).join('<br>')}</div>
+                    ${(data.avvisi || []).map(a => `<div class="mt-2"><strong>Attenzione:</strong> ${escapeHtml(a)}</div>`).join('')}
                     ${data.mode === 'replace' ? '<div class="mt-2">Ricarico la pagina…</div>' : ''}
                 </div>
             </div>
@@ -1304,7 +1340,8 @@ async function eseguiMigrazione(mode, conferma) {
         resultDiv.classList.remove('hidden');
 
         document.getElementById('migrazione-preview').classList.add('hidden');
-        showToast(`${titolo} ${data.totale_importati} importati, ${data.totale_aggiornati} aggiornati`, 'success');
+        showToast(`${titolo} ${data.totale_importati} importati, ${data.totale_aggiornati} aggiornati`,
+                  (data.avvisi || []).length ? 'warning' : 'success');
 
         // Reset
         migrazioneFile = null;

@@ -15,7 +15,8 @@ Sistema web locale per la gestione e rendicontazione del servizio OEPAC
 ### Windows
 
 1. **Scarica** il pacchetto ZIP da GitHub ed estrailo in una cartella.
-2. Entra nella cartella `gestionale-oepac`.
+2. Entra nella cartella creata dallo ZIP: si chiama `Gestionale-Assisto-` seguito dal
+   numero di versione (per esempio `Gestionale-Assisto-1.20.0`).
 3. **Fai doppio click su `avvia.bat`**.
 4. La prima volta attendi qualche minuto: il sistema installa automaticamente
    tutto il necessario, **incluso Python** se non è già presente sul computer
@@ -30,7 +31,7 @@ Sistema web locale per la gestione e rendicontazione del servizio OEPAC
 
 ### macOS / Linux
 
-1. Apri il Terminale nella cartella `gestionale-oepac`.
+1. Apri il Terminale nella cartella `Gestionale-Assisto-…` estratta dallo ZIP.
 2. Esegui:
    ```bash
    ./run.sh
@@ -39,6 +40,52 @@ Sistema web locale per la gestione e rendicontazione del servizio OEPAC
 
 > Su macOS/Linux Python di solito è già presente; se manca, lo script ti dice
 > il comando esatto per installarlo. Le dipendenze vengono comunque gestite da solo.
+
+---
+
+## Aggiornare a una nuova versione
+
+I tuoi dati sono tutti nel file **`gestionale.db`**, nella cartella del programma.
+Aggiornare vuol dire: mettere la versione nuova in una cartella nuova e copiarci
+dentro quel file **prima** di avviarla. Segui i passi nell'ordine.
+
+1. **Chiudi il programma.** Chiudi la finestra nera di Assisto e controlla che non
+   ce ne sia un'altra aperta, nemmeno ridotta a icona nella barra in basso.
+   (Se due versioni restano aperte insieme, la nuova non parte e lo dice.)
+2. **Controlla il file `gestionale.db-wal`.** Nella cartella vecchia guarda accanto a
+   `gestionale.db` (con le estensioni nascoste può comparire come `gestionale`).
+   Se c'è un file `gestionale.db-wal` **più grande di 0 KB**, riapri la versione
+   vecchia, aspetta che si apra il browser e richiudila: il file sparisce o diventa
+   di 0 KB. In alternativa, al passo 5 copia insieme tutti e tre i file
+   `gestionale.db`, `gestionale.db-wal` e `gestionale.db-shm`.
+3. **Per sicurezza**, copia `gestionale.db` anche su una chiavetta o in un'altra
+   cartella, e non toccare quella copia.
+4. **Scarica la nuova versione** (Source code zip dalla pagina Releases) ed
+   estraila **in una cartella nuova**, accanto a quella vecchia (non dentro la
+   cartella Download, che a volte si svuota). Si crea una cartella
+   `Gestionale-Assisto-` con il numero della versione.
+5. **Prima del primo avvio** copia nella cartella nuova, accanto ad `avvia.bat`:
+   - il file `gestionale.db`;
+   - le cartelle `backups` e `uploads`, se ci sono.
+
+   Non copiare la cartella `.venv`: `avvia.bat` la ricrea con i componenti giusti.
+   Se hai già avviato la nuova versione per sbaglio, chiudila e nella cartella nuova
+   cancella `gestionale.db`, `gestionale.db-wal` e `gestionale.db-shm` prima di copiare.
+6. **Avvia** con doppio click su `avvia.bat` nella cartella nuova. La prima volta
+   serve internet e ci vogliono alcuni minuti. All'avvio viene fatto da solo un
+   backup del database com'era prima dell'aggiornamento (cartella `backups`).
+7. **Controlla**: entra con lo stesso nome utente e la stessa password di prima e
+   verifica che ci siano tutti gli utenti, le ore dell'ultimo mese, le determine
+   nella Reportistica DD e l'ultima cosa che avevi fatto.
+8. **Tieni la cartella vecchia** per qualche settimana, senza cancellarla: se
+   qualcosa non ti convince, chiudi la nuova e riapri la vecchia, il suo file non è
+   stato toccato.
+
+> **Non usare il "Trasloco" con file JSON per aggiornare** (Esporta dalla vecchia,
+> Importa nella nuova): un file esportato da una versione precedente alla 1.10.0 non
+> contiene determine, recuperi, correzioni dei report, date di inizio e fine servizio
+> e storico. Il trasloco JSON serve per spostarsi su un altro PC con la **stessa**
+> versione. Non usare nemmeno "Ripristina backup" come metodo di aggiornamento.
 
 ---
 
@@ -66,7 +113,9 @@ ambiente isolato dentro la cartella (`.venv`) da `avvia.bat` / `run.sh` al primo
   ogni modifica registrata nel registro attività
 - **Report con filtri avanzati** (scuola, ricerca, ore erogate) validi per tutti i download e l'anteprima
 - **Trasloco su un altro PC**: esporta/importa un file JSON con *tutti* i dati (anche variazioni, personale,
-  turni, note) in modalità Unisci, Solo nuovi o Sostituisci tutto (con backup automatico)
+  turni, note) in modalità Unisci, Solo nuovi o Sostituisci tutto (con backup automatico). È completo solo
+  con file esportati dalla versione 1.10.0 in poi (il registro attività non viene trasferito); per aggiornare il programma vedi
+  [Aggiornare a una nuova versione](#aggiornare-a-una-nuova-versione)
 - **Chiusura mese guidata**: procedura in 4 passi (completezza → anomalie → riepilogo → export);
   un mese chiuso **non accetta più modifiche alle ore** (né a mano, né da import) finché non viene riaperto
 - **Variazioni monte ore** con mese di inizio e, se serve, di fine: aumenti temporanei che non si trascinano
@@ -121,7 +170,7 @@ Il file Excel deve contenere le seguenti colonne:
 ## Struttura progetto
 
 ```
-gestionale-oepac/
+Gestionale-Assisto-<versione>/
 ├── avvia.bat           # Avvio per Windows (doppio click)
 ├── run.sh              # Avvio per macOS/Linux
 ├── app.py              # Applicazione Flask principale
@@ -156,7 +205,9 @@ gestionale-oepac/
 
 **Dove sono salvati i miei dati?**
 Tutto è salvato localmente nel file `gestionale.db` dentro la cartella del
-gestionale. Fai una copia di quel file per avere un backup.
+gestionale. Fai una copia di quel file (a programma chiuso) per avere un backup.
+Per passare a una nuova versione vedi
+[Aggiornare a una nuova versione](#aggiornare-a-una-nuova-versione).
 
 **Come reimposto la password?**
 Se sei loggato, cambiala dalla pagina **Profilo** dal menu.

@@ -117,13 +117,15 @@ async function loadNumeri(filters, n = _caricamento) {
         if (labelCommesse) labelCommesse.textContent = attive.length === 1 ? 'commessa attiva' : 'commesse attive';
 
         // Utenti per commessa, col colore scelto in Impostazioni > Commesse
-        // (sostituisce la ciambella, identica a quella di Statistiche)
+        // (sostituisce la ciambella, identica a quella di Statistiche): un colore
+        // diverso per commessa, anche se due ne hanno salvato lo stesso
         const dettaglio = document.getElementById('stat-utenti-commesse');
         if (dettaglio) {
             const perCommessa = base.utenti_per_commessa || {};
-            const voci = filters.commessa ? [] : commesse
-                .filter(c => (perCommessa[c.nome] || 0) > 0)
-                .map(c => `<span class="dash-numero-commessa"><span class="legend-dot" style="background:${escapeHtml(c.colore || 'var(--primary)')}"></span>${escapeHtml(c.nome)} ${perCommessa[c.nome]}</span>`);
+            const conUtenti = filters.commessa ? [] : commesse.filter(c => (perCommessa[c.nome] || 0) > 0);
+            const colori = coloriCommesseDistinti(conUtenti);
+            const voci = conUtenti
+                .map((c, i) => `<span class="dash-numero-commessa"><span class="legend-dot" style="background:${escapeHtml(colori[i])}"></span>${escapeHtml(c.nome)} ${perCommessa[c.nome]}</span>`);
             dettaglio.innerHTML = voci.length > 1 ? voci.join('') : '';
         }
 

@@ -7,6 +7,8 @@ from datetime import date
 
 from openpyxl import load_workbook
 
+import config
+
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -190,7 +192,7 @@ def test_validazione_ore_pasti_mese_e_utente(client, db_mod):
 
     assert client.post(base, json={'utente_id': uid, 'ore_lavorate_60': -5}).status_code == 400
     assert client.post(base, json={'utente_id': uid, 'ore_lavorate_60': 99999}).status_code == 400
-    assert client.post(base, json={'utente_id': uid, 'pasti': 40}).status_code == 400
+    assert client.post(base, json={'utente_id': uid, 'pasti': config.MAX_PASTI_MENSILI + 1}).status_code == 400
     assert client.post(base, json={'utente_id': uid, 'ore_lavorate_60': 'abc'}).status_code == 400
     assert client.post('/api/rendicontazione/2025/13',
                        json={'utente_id': uid, 'ore_lavorate_60': 1}).status_code == 400
@@ -201,7 +203,7 @@ def test_validazione_ore_pasti_mese_e_utente(client, db_mod):
         {'utente_id': uid, 'ore_lavorate_60': 5},
         {'utente_id': uid, 'ore_lavorate_60': -1},
     ]})
-    assert r.status_code == 400 and 'Riga 2' in r.get_json()['error']
+    assert r.status_code == 400 and 'Valid Utente' in r.get_json()['error']
     assert not any((d['ore_lavorate_60'] or 0) for d in db.get_rendicontazione_completa(2025, 11, 'L1 VALID'))
 
     # valori corretti passano

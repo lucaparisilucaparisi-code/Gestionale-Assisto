@@ -19,6 +19,8 @@ import unicodedata
 
 import openpyxl
 
+import config
+
 # Nomi mese italiani -> numero
 MESI_NOMI = {
     'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4,
@@ -217,20 +219,36 @@ def match_riga(riga, index):
     return None, 'ambiguo'
 
 
+def motivo_fuori_limite(riga):
+    """Stessi limiti dell'inserimento a mano (config.MAX_ORE_MENSILI e
+    MAX_PASTI_MENSILI): ritorna il motivo se ore o pasti sono fuori limite, o None."""
+    ore, pasti = riga.get('ore'), riga.get('pasti')
+    if ore is not None and not 0 <= ore <= config.MAX_ORE_MENSILI:
+        return f"ore {ore:g}: il massimo è {config.MAX_ORE_MENSILI:g}"
+    if pasti is not None and not 0 <= pasti <= config.MAX_PASTI_MENSILI:
+        return f"pasti {pasti}: il massimo è {config.MAX_PASTI_MENSILI}"
+    return None
+
+
 def analizza(fogli, utenti):
     """Abbina tutte le righe di tutti i fogli agli utenti.
 
     Ritorna una lista di fogli arricchiti con, per ogni riga, l'esito del
     match (utente_id, stato). Le righe senza valore ore valido sono marcate
-    'senza_ore' e ignorate in scrittura.
+    'senza_ore' e ignorate in scrittura; quelle con ore o pasti fuori limite
+    finiscono in 'fuori_limite' (con il motivo) e non vengono scritte.
     """
     index = build_index(utenti)
     risultati = []
     for foglio in fogli:
-        match, non_trovati, ambigui, senza_ore = [], [], [], []
+        match, non_trovati, ambigui, senza_ore, fuori_limite = [], [], [], [], []
         for riga in foglio['righe']:
             if riga['ore'] is None:
                 senza_ore.append(riga)
+                continue
+            motivo = motivo_fuori_limite(riga)
+            if motivo:
+                fuori_limite.append(dict(riga, motivo=motivo))
                 continue
             utente, stato = match_riga(riga, index)
             voce = dict(riga)
@@ -252,5 +270,6 @@ def analizza(fogli, utenti):
             'non_trovati': non_trovati,
             'ambigui': ambigui,
             'senza_ore': senza_ore,
+            'fuori_limite': fuori_limite,
         })
     return risultati

@@ -2,7 +2,7 @@ import sqlite3
 import os
 import re
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import config
 
@@ -1561,6 +1561,9 @@ def get_totali_per_scuola(anno, mese, commessa=None, dati=None):
         scuola_id = row['scuola_id']
         if scuola_id not in totali:
             totali[scuola_id] = {
+                # la pagina abbina il totale al plesso per id: plessi con lo stesso
+                # nome in commesse diverse (vista "Tutte") hanno ognuno il suo
+                'scuola_id': scuola_id,
                 'scuola': row['scuola'],
                 'commessa': row['commessa'],
                 'num_utenti': 0,
@@ -3516,13 +3519,24 @@ def set_mese_chiuso(anno, mese, chiuso=True):
 
 # ==================== BACKUP ====================
 
-def create_backup():
-    """Crea un backup del database"""
+def create_backup(escludi=None):
+    """Crea un backup del database. Ritorna il nome del file, o None se non riesce.
+
+    escludi: nome di un backup da non cancellare nella pulizia dei vecchi (quello
+    che si sta per ripristinare: con la cartella piena era proprio il piu' vecchio
+    a essere cancellato, e il ripristino svuotava il gestionale)."""
     os.makedirs(config.BACKUP_FOLDER, exist_ok=True)
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     backup_name = f"gestionale_backup_{timestamp}.db"
     backup_path = os.path.join(config.BACKUP_FOLDER, backup_name)
+    # Due backup nello stesso secondo (es. ripristino subito dopo un backup
+    # manuale): mai sovrascrivere un file esistente, magari quello da ripristinare
+    n = 1
+    while os.path.exists(backup_path):
+        backup_name = f"gestionale_backup_{timestamp}_{n}.db"
+        backup_path = os.path.join(config.BACKUP_FOLDER, backup_name)
+        n += 1
 
     try:
         # API di backup online di SQLite: produce una copia consistente anche
@@ -3548,7 +3562,7 @@ def create_backup():
         _copia_backup_esterno(backup_path, backup_name)
 
         # Pulizia backup vecchi
-        cleanup_old_backups()
+        cleanup_old_backups(escludi=escludi)
 
         return backup_name
     except Exception as e:
@@ -3558,7 +3572,12 @@ def create_backup():
 
 def _copia_backup_esterno(backup_path, backup_name):
     """Copia il backup appena creato nella cartella esterna configurata (se c'e')."""
-    cartella = get_impostazione('cartella_backup_esterna')
+    try:
+        # anche all'avvio, prima delle migrazioni: un DB molto vecchio potrebbe
+        # non avere ancora la tabella delle impostazioni
+        cartella = get_impostazione('cartella_backup_esterna')
+    except sqlite3.Error:
+        return
     if not cartella:
         return
     try:
@@ -3572,18 +3591,22 @@ def _copia_backup_esterno(backup_path, backup_name):
         logger.warning(f"Copia backup esterno fallita ({cartella}): {e}")
 
 
-def cleanup_old_backups():
-    """Rimuove i backup piu' vecchi oltre il limite"""
+def cleanup_old_backups(escludi=None):
+    """Rimuove i backup piu' vecchi oltre il limite (MAX_BACKUPS), senza mai
+    cancellare 'escludi' (il backup che si sta ripristinando), che conta nel limite."""
     backup_dir = config.BACKUP_FOLDER
     if not os.path.exists(backup_dir):
         return
 
     backups = sorted([
         f for f in os.listdir(backup_dir)
-        if f.startswith('gestionale_backup_') and f.endswith('.db')
+        if f.startswith('gestionale_backup_') and f.endswith('.db') and f != escludi
     ])
+    limite = config.MAX_BACKUPS
+    if escludi and os.path.exists(os.path.join(backup_dir, escludi)):
+        limite -= 1
 
-    while len(backups) > config.MAX_BACKUPS:
+    while len(backups) > max(limite, 0):
         old_backup = backups.pop(0)
         os.remove(os.path.join(backup_dir, old_backup))
         logger.info(f"Backup rimosso (pulizia): {old_backup}")
@@ -3624,37 +3647,115 @@ def percorso_backup_valido(backup_name):
     return path if os.path.exists(path) else None
 
 
-def restore_backup(backup_name):
-    """Ripristina un backup.
+def _uri_sola_lettura(percorso):
+    """URI SQLite per aprire un file in sola lettura. Costruita con pathlib: un
+    f'file:{percorso}' si rompe su Windows con '?', '#' o '%' nel percorso."""
+    import pathlib
+    return pathlib.Path(percorso).resolve().as_uri() + '?mode=ro'
 
-    Valida il nome (vedi percorso_backup_valido) per non poter caricare come DB
-    un file arbitrario."""
+
+class _SolaLettura:
+    """Apre un file SQLite in sola lettura (il file non viene mai modificato).
+
+    I backup sono in modalita' WAL: per leggerli SQLite crea accanto i file -wal e
+    -shm; alla chiusura si tolgono quelli creati qui se il -wal e' rimasto vuoto,
+    cosi' nella cartella dei backup non restano file in piu'."""
+
+    def __init__(self, percorso):
+        self.percorso = percorso
+        self.conn = None
+        self.creati = []
+
+    def __enter__(self):
+        self.creati = [s for s in ('-wal', '-shm') if not os.path.exists(self.percorso + s)]
+        self.conn = sqlite3.connect(_uri_sola_lettura(self.percorso), uri=True)
+        return self.conn
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn is not None:
+            self.conn.close()
+        wal = self.percorso + '-wal'
+        if '-wal' in self.creati and os.path.exists(wal) and os.path.getsize(wal) == 0:
+            for suffisso in self.creati:
+                try:
+                    os.remove(self.percorso + suffisso)
+                except OSError:
+                    pass
+        return False
+
+
+def verifica_file_database(percorso):
+    """Controlla che un file sia un database del gestionale integro, aprendolo in
+    sola lettura. Ritorna None se va bene, altrimenti il motivo (in italiano)."""
+    try:
+        if os.path.getsize(percorso) == 0:
+            return 'il file è vuoto'
+    except OSError:
+        return 'file non trovato'
+    try:
+        with _SolaLettura(percorso) as conn:
+            tabelle = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            mancanti = [t for t in ('utenti', 'auth_config') if t not in tabelle]
+            if mancanti:
+                return 'non è un database del gestionale (mancano le tabelle ' + ', '.join(mancanti) + ')'
+            esito = conn.execute('PRAGMA quick_check').fetchone()
+            if not esito or esito[0] != 'ok':
+                return 'il database è danneggiato'
+    except sqlite3.Error as e:
+        return f'il file non è un database valido ({e})'
+    return None
+
+
+def restore_backup(backup_name):
+    """Ripristina un backup. Ritorna True se il database e' stato sostituito.
+
+    - valida il nome (vedi percorso_backup_valido) per non poter caricare come DB
+      un file arbitrario, e il contenuto (verifica_file_database) PRIMA di toccare
+      il database attivo: un file vuoto o estraneo viene rifiutato;
+    - fa un backup di sicurezza del database attuale e, se non riesce, NON
+      ripristina; la pulizia dei vecchi backup non cancella mai quello scelto;
+    - legge il backup in sola lettura (il file resta com'era);
+    - dopo il ripristino esegue init_db(): un backup di una versione precedente
+      (per esempio senza le colonne nuove) si aggiorna subito, senza riavviare."""
     backup_path = percorso_backup_valido(backup_name)
     if not backup_path:
         return False
+    motivo = verifica_file_database(backup_path)
+    if motivo:
+        logger.error(f"Ripristino rifiutato ({backup_name}): {motivo}")
+        return False
+
+    if os.path.exists(DATABASE_PATH) and not create_backup(escludi=backup_name):
+        logger.error("Ripristino annullato: non e' stato possibile fare il backup di sicurezza "
+                     "del database attuale")
+        return False
 
     try:
-        # Crea backup del db corrente prima di ripristinare
-        create_backup()
         # Ripristino via API di backup: copia il contenuto del backup nel DB
         # attivo in modo consistente con WAL (evita di lasciare un -wal orfano).
-        src = sqlite3.connect(backup_path)
-        try:
+        with _SolaLettura(backup_path) as src:
             dst = sqlite3.connect(DATABASE_PATH)
             try:
                 with dst:
                     src.backup(dst)
             finally:
                 dst.close()
-        finally:
-            src.close()
-        # Il DB e' stato sostituito: lo stato di configurazione auth va riletto
-        invalida_cache_auth()
-        logger.info(f"Backup ripristinato: {backup_name}")
-        return True
     except Exception as e:
         logger.error(f"Errore ripristino backup: {e}")
         return False
+
+    # Il DB e' stato sostituito: lo stato di configurazione auth va riletto
+    invalida_cache_auth()
+    logger.info(f"Backup ripristinato: {backup_name}")
+    # Aggiorna subito lo schema (colonne e tabelle nuove) come all'avvio. Un errore
+    # qui NON rende fallito il ripristino, che e' gia' avvenuto: va nel registro e
+    # il riavvio del programma riprova le migrazioni.
+    try:
+        init_db()
+    except Exception as e:
+        logger.error(f"Backup ripristinato, ma l'aggiornamento del database non e' riuscito ({e}): "
+                     "chiudere e riaprire il programma")
+    return True
 
 
 # ==================== UNDO STACK PERSISTENTE ====================
@@ -3706,8 +3807,23 @@ def pop_undo_action():
         return None
 
 
+def limite_undo():
+    """Istante prima del quale un'azione non e' piu' annullabile: adesso meno
+    config.UNDO_VALIDITA_ORE. Calcolato in Python, in ora locale come i timestamp
+    salvati (in SQL datetime('now') e' UTC e scritto in un altro formato)."""
+    return datetime.now() - timedelta(hours=config.UNDO_VALIDITA_ORE)
+
+
+def _undo_annullabile(timestamp, limite=None):
+    try:
+        return datetime.fromisoformat(timestamp) >= (limite or limite_undo())
+    except (TypeError, ValueError):
+        return False
+
+
 def peek_undo_action():
-    """Restituisce l'ultima azione dello stack SENZA rimuoverla.
+    """Restituisce l'ultima azione dello stack SENZA rimuoverla, solo se ancora
+    annullabile (piu' recente di config.UNDO_VALIDITA_ORE), altrimenti None.
 
     Usata dall'undo: l'azione (che per una cancellazione e' l'unica copia dei
     dati) va eliminata solo DOPO che il ripristino e' andato a buon fine."""
@@ -3715,18 +3831,38 @@ def peek_undo_action():
     with get_db_context() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, action_type, data FROM undo_actions
+            SELECT id, action_type, data, timestamp FROM undo_actions
             ORDER BY id DESC
             LIMIT 1
         ''')
         row = cursor.fetchone()
-        if row:
+        if row and _undo_annullabile(row['timestamp']):
             return {
                 'id': row['id'],
                 'type': row['action_type'],
-                'data': json.loads(row['data'])
+                'data': json.loads(row['data']),
+                'timestamp': row['timestamp']
             }
         return None
+
+
+def conta_undo_scaduti():
+    """Azioni ancora in memoria ma non piu' annullabili (troppo vecchie)."""
+    limite = limite_undo()
+    with get_db_context() as conn:
+        righe = conn.execute('SELECT timestamp FROM undo_actions').fetchall()
+    return sum(1 for r in righe if not _undo_annullabile(r['timestamp'], limite))
+
+
+def pulisci_undo_scaduti():
+    """Toglie dalla memoria di Ctrl+Z le azioni non piu' annullabili. Ritorna
+    quante. Le modifiche restano nel registro attivita' (audit_log)."""
+    limite = limite_undo()
+    with get_db_context() as conn:
+        righe = conn.execute('SELECT id, timestamp FROM undo_actions').fetchall()
+        scadute = [r['id'] for r in righe if not _undo_annullabile(r['timestamp'], limite)]
+        conn.executemany('DELETE FROM undo_actions WHERE id = ?', [(i,) for i in scadute])
+    return len(scadute)
 
 
 def delete_undo_action(action_id):
@@ -3736,19 +3872,27 @@ def delete_undo_action(action_id):
 
 
 def get_undo_stack():
-    """Ottiene lo stack undo completo"""
+    """Le azioni ancora annullabili (piu' recenti di config.UNDO_VALIDITA_ORE),
+    dalla piu' recente. Si fermano alla prima scaduta: Ctrl+Z va in ordine."""
     import json
+    limite = limite_undo()
     with get_db_context() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT action_type, data, timestamp FROM undo_actions
+            SELECT id, action_type, data, timestamp FROM undo_actions
             ORDER BY id DESC
         ''')
-        return [{
-            'type': row['action_type'],
-            'data': json.loads(row['data']),
-            'timestamp': row['timestamp']
-        } for row in cursor.fetchall()]
+        azioni = []
+        for row in cursor.fetchall():
+            if not _undo_annullabile(row['timestamp'], limite):
+                break
+            azioni.append({
+                'id': row['id'],
+                'type': row['action_type'],
+                'data': json.loads(row['data']),
+                'timestamp': row['timestamp']
+            })
+        return azioni
 
 
 def clear_undo_stack():
