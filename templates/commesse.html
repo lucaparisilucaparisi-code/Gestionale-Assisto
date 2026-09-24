@@ -1,23 +1,10 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block title %}Gestione Commesse - Gestionale OEPAC{% endblock %}
 
 {% block content %}
 {% include '_impostazioni_tabs.html' %}
-<div class="page-header" style="margin-top: -4px;">
-    <div class="page-header-row">
-        <div></div>
-        <div class="header-actions">
-            <button class="btn btn-primary" onclick="openModal('modal-nuova-commessa')">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                Nuova Commessa
-            </button>
-        </div>
-    </div>
-</div>
-
 <!-- Lista Commesse -->
 <div class="card">
     <div class="card-header">
@@ -27,7 +14,17 @@
             </svg>
             Commesse Attive
         </h2>
-        <span class="badge badge-primary" id="count-badge">0 commesse</span>
+        {# 'Nuova Commessa' nell'intestazione dell'elenco: prima galleggiava da solo
+           tra le schede e la card #}
+        <div class="flex items-center gap-3">
+            <span class="badge badge-secondary" id="count-badge">0 commesse</span>
+            <button class="btn btn-primary btn-sm" onclick="openModal('modal-nuova-commessa')">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Nuova Commessa
+            </button>
+        </div>
     </div>
     <div class="card-body" id="commesse-container">
         <div class="loading">
@@ -41,11 +38,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Nuova Commessa</h3>
-            <button class="modal-close" onclick="closeModal('modal-nuova-commessa')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
+            {{ modal_close("closeModal('modal-nuova-commessa')") }}
         </div>
         <div class="modal-body">
             <div class="form-group">
@@ -55,20 +48,20 @@
 
             <div class="form-group">
                 <label class="form-label">Descrizione</label>
-                <input type="text" id="new-descrizione" class="form-control" placeholder="es. Commessa OEPAC VI Municipio">
+                <input type="text" id="new-descrizione" class="form-control" placeholder="es. OEPAC VI Municipio">
             </div>
 
             <div class="form-group">
                 <label class="form-label">Colore</label>
                 <div class="flex gap-2 flex-wrap">
-                    <button class="color-btn active" data-color="#0A84FF" style="background: #0A84FF;"></button>
+                    <button class="color-btn active" data-color="#3B82F6" style="background: #3B82F6;" aria-label="Blu"></button>
                     <button class="color-btn" data-color="#BF5AF2" style="background: #BF5AF2;"></button>
                     <button class="color-btn" data-color="#30D158" style="background: #30D158;"></button>
                     <button class="color-btn" data-color="#FF9F0A" style="background: #FF9F0A;"></button>
                     <button class="color-btn" data-color="#FF453A" style="background: #FF453A;"></button>
                     <button class="color-btn" data-color="#64D2FF" style="background: #64D2FF;"></button>
                 </div>
-                <input type="hidden" id="new-colore" value="#0A84FF">
+                <input type="hidden" id="new-colore" value="#3B82F6">
             </div>
         </div>
         <div class="modal-footer">
@@ -83,11 +76,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Modifica Commessa</h3>
-            <button class="modal-close" onclick="closeModal('modal-modifica-commessa')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
+            {{ modal_close("closeModal('modal-modifica-commessa')") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="edit-id">
@@ -105,7 +94,7 @@
             <div class="form-group">
                 <label class="form-label">Colore</label>
                 <div class="flex gap-2 edit-colors flex-wrap">
-                    <button class="color-btn" data-color="#0A84FF" style="background: #0A84FF;"></button>
+                    <button class="color-btn" data-color="#3B82F6" style="background: #3B82F6;" aria-label="Blu"></button>
                     <button class="color-btn" data-color="#BF5AF2" style="background: #BF5AF2;"></button>
                     <button class="color-btn" data-color="#30D158" style="background: #30D158;"></button>
                     <button class="color-btn" data-color="#FF9F0A" style="background: #FF9F0A;"></button>
@@ -196,32 +185,50 @@
 }
 .commessa-actions {
     display: flex;
+    align-items: center;
     gap: 8px;
+}
+/* telefono: nome e descrizione su tutta la riga, i pulsanti sotto (prima il nome
+   andava a capo parola per parola accanto ai pulsanti) */
+@media (max-width: 480px) {
+    .commessa-item { flex-wrap: wrap; padding: 16px 4px; }
+    .commessa-info { flex-basis: calc(100% - 64px); }
+    .commessa-actions { margin-left: 64px; }
 }
 </style>
 {% endblock %}
 
 {% block scripts %}
 <script>
-let selectedColor = '#0A84FF';
+// Blu dell'app: primo campione della tavolozza e colore di chi non ne ha uno
+const COLORE_PREDEFINITO = '#3B82F6';
 let commesseMap = new Map(); // Mappa per memorizzare i dati delle commesse
 
 document.addEventListener('DOMContentLoaded', () => {
     loadCommesse();
 
-    // Color buttons
-    document.querySelectorAll('.color-btn').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            const container = this.closest('.modal-body');
-            container.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
+    // Campioni di colore (delega: vale anche per il campione aggiunto in modifica)
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.color-btn');
+        if (!btn) return;
+        e.preventDefault();
+        const container = btn.closest('.modal-body');
+        container.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
 
-            const input = container.querySelector('input[type="hidden"]');
-            if (input) input.value = this.dataset.color;
-        });
+        const input = container.querySelector('input[type="hidden"]:not(#edit-id)');
+        if (input) input.value = btn.dataset.color;
     });
 });
+
+// Sigla nel quadratino: la parte che distingue la commessa ('OEPAC IV' -> 'IV',
+// 'OEPAC V' -> 'V'). Prima erano le prime due lettere, 'OE' per tutte.
+function siglaCommessa(nome) {
+    const parole = (nome || '').trim().split(/\s+/).filter(Boolean);
+    if (!parole.length) return '?';
+    const sigla = parole.length > 1 ? parole[parole.length - 1] : parole[0];
+    return sigla.substring(0, 3).toUpperCase();
+}
 
 async function loadCommesse() {
     try {
@@ -251,21 +258,21 @@ function renderCommesse(commesse) {
 
     container.innerHTML = commesse.map(c => `
         <div class="commessa-item">
-            <div class="commessa-color" style="background: ${escapeHtml(c.colore) || '#6366f1'}">
-                ${escapeHtml(c.nome.substring(0, 2).toUpperCase())}
+            <div class="commessa-color" style="background: ${escapeHtml(c.colore) || COLORE_PREDEFINITO}" aria-hidden="true">
+                ${escapeHtml(siglaCommessa(c.nome))}
             </div>
             <div class="commessa-info">
                 <div class="commessa-nome">${escapeHtml(c.nome)}</div>
                 <div class="commessa-desc">${escapeHtml(c.descrizione) || 'Nessuna descrizione'}</div>
             </div>
             <div class="commessa-actions">
-                <button class="btn btn-sm btn-secondary" onclick="openEditModal(${c.id})">
+                <button class="btn btn-sm btn-secondary" onclick="openEditModal(${c.id})" aria-label="Modifica ${escapeHtml(c.nome)}">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                     Modifica
                 </button>
-                <button class="btn btn-sm btn-danger" onclick="deleteCommessa(${c.id})">
+                <button class="btn btn-sm btn-icon-danger btn-solo-icona" onclick="deleteCommessa(${c.id})" title="Elimina" aria-label="Elimina ${escapeHtml(c.nome)}">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
@@ -318,12 +325,29 @@ function openEditModal(id) {
     document.getElementById('edit-id').value = commessa.id;
     document.getElementById('edit-nome').value = commessa.nome;
     document.getElementById('edit-descrizione').value = commessa.descrizione || '';
-    document.getElementById('edit-colore').value = commessa.colore || '#6366f1';
+    const colore = (commessa.colore || COLORE_PREDEFINITO).toUpperCase();
+    document.getElementById('edit-colore').value = colore;
 
-    // Set active color
-    document.querySelectorAll('.edit-colors .color-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.color === commessa.colore);
+    // Colore attuale gia' scelto; se non e' tra i campioni (commesse create con un
+    // colore di prima) compare come settimo campione, invece di nessuno selezionato
+    const tavolozza = document.querySelector('.edit-colors');
+    tavolozza.querySelector('[data-attuale]')?.remove();
+    let trovato = false;
+    tavolozza.querySelectorAll('.color-btn').forEach(btn => {
+        const uguale = btn.dataset.color.toUpperCase() === colore;
+        btn.classList.toggle('active', uguale);
+        trovato = trovato || uguale;
     });
+    if (!trovato && /^#[0-9A-F]{6}$/.test(colore)) {
+        const extra = document.createElement('button');
+        extra.className = 'color-btn active';
+        extra.dataset.attuale = '1';
+        extra.dataset.color = colore;
+        extra.style.background = colore;
+        extra.title = 'Colore attuale';
+        extra.setAttribute('aria-label', 'Colore attuale');
+        tavolozza.appendChild(extra);
+    }
 
     openModal('modal-modifica-commessa');
 }
@@ -362,7 +386,7 @@ async function deleteCommessa(id) {
 
     showConfirmDialog(
         'Eliminare commessa?',
-        `Stai per eliminare la commessa "${commessa.nome}". Questa azione disattivera' la commessa.`,
+        `Stai per eliminare la commessa "${commessa.nome}". Questa azione disattiverà la commessa.`,
         async () => {
             try {
                 await apiCall(`/api/commesse/${id}`, { method: 'DELETE' });

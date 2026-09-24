@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block title %}Turni - Gestionale OEPAC{% endblock %}
 
@@ -20,7 +21,7 @@
     <div class="filters">
         <div class="filter-group">
             <label class="filter-label">Operatore</label>
-            <select id="sel-operatore" class="form-control" style="min-width: 280px;"></select>
+            <select id="sel-operatore" class="form-control w-lg"></select>
         </div>
         <div class="filter-group" style="margin-left:auto; align-self:flex-end;">
             <button class="btn btn-primary" id="btn-nuovo-turno" disabled>
@@ -40,7 +41,18 @@
         </div>
     </div>
 
-    <div id="settimana"></div>
+    {# Segnaposto finche' non si sceglie un operatore (prima: area nera fino in fondo) #}
+    <div id="settimana">
+        <div class="empty-state">
+            <div class="empty-state-icon-wrapper">
+                <svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <h3 class="empty-state-title">Scegli un operatore</h3>
+            <p class="empty-state-text">Qui vedrai il suo orario settimanale e potrai aggiungere turni.</p>
+        </div>
+    </div>
 </div>
 
 <!-- VISTA GIORNALIERA -->
@@ -48,16 +60,16 @@
     <div class="filters">
         <div class="filter-group">
             <label class="filter-label">Giorno</label>
-            <select id="sel-giorno" class="form-control" style="width:180px;"></select>
+            <select id="sel-giorno" class="form-control w-md"></select>
         </div>
         <div class="filter-group">
             <label class="filter-label">Scuola (opzionale)</label>
-            <select id="sel-scuola-giorno" class="form-control" style="min-width:240px;"><option value="">Tutte</option></select>
+            <select id="sel-scuola-giorno" class="form-control w-lg"><option value="">Tutte</option></select>
         </div>
     </div>
     <div class="card">
         <div class="card-header"><h2 class="card-title">Turni del giorno</h2><span class="badge badge-secondary" id="giorno-count">0</span></div>
-        <div class="card-body p-0" id="giorno-lista"><div class="empty-state"><p class="empty-state-text">Seleziona un giorno</p></div></div>
+        <div class="card-body p-0" id="giorno-lista"><div class="loading"><div class="spinner"></div></div></div>
     </div>
 </div>
 
@@ -66,7 +78,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title" id="turno-titolo">Nuovo turno</h3>
-            <button class="modal-close" onclick="closeModal('modal-turno')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            {{ modal_close("closeModal('modal-turno')") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="turno-id">
@@ -107,6 +119,8 @@ let opCorrente = null;       // dipendente selezionato
 let opInfo = null;           // dettaglio (per ore contrattuali e assistiti)
 let scuole = [];
 let turniCorrente = [];      // turni dell'operatore già caricati (per la modifica senza re-fetch)
+let segnapostoSettimana = '';
+let giornoCaricato = false;  // la vista giornaliera carica i turni alla prima apertura
 
 document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('[data-vista]').forEach(b => b.addEventListener('click', () => switchVista(b.dataset.vista)));
@@ -115,10 +129,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('sel-giorno').addEventListener('change', caricaGiorno);
     document.getElementById('sel-scuola-giorno').addEventListener('change', caricaGiorno);
 
-    // popola select giorno
+    segnapostoSettimana = document.getElementById('settimana').innerHTML;
+
+    // popola select giorno; la vista giornaliera parte da oggi (lunedi' = 0)
     const gopts = GIORNI.map((g,i) => `<option value="${i}">${g}</option>`).join('');
     document.getElementById('turno-giorno').innerHTML = gopts;
     document.getElementById('sel-giorno').innerHTML = gopts;
+    document.getElementById('sel-giorno').value = String((new Date().getDay() + 6) % 7);
 
     scuole = await apiCall('/api/scuole').catch(() => []);
     const sopts = '<option value="">—</option>' + scuole.map(s => `<option value="${s.id}">${escapeHtml(s.nome_completo)}</option>`).join('');
@@ -134,13 +151,15 @@ function switchVista(v) {
     document.querySelectorAll('[data-vista]').forEach(b => b.classList.toggle('active', b.dataset.vista === v));
     document.getElementById('vista-operatore').style.display = v === 'operatore' ? '' : 'none';
     document.getElementById('vista-giorno').style.display = v === 'giorno' ? '' : 'none';
+    // prima il riquadro diceva 'Seleziona un giorno' anche con il giorno gia' scelto
+    if (v === 'giorno' && !giornoCaricato) caricaGiorno();
 }
 
 async function onSelOperatore() {
     const id = document.getElementById('sel-operatore').value;
     opCorrente = id || null;
     document.getElementById('btn-nuovo-turno').disabled = !id;
-    if (!id) { document.getElementById('settimana').innerHTML = ''; document.getElementById('riepilogo-op').style.display = 'none'; return; }
+    if (!id) { document.getElementById('settimana').innerHTML = segnapostoSettimana; document.getElementById('riepilogo-op').style.display = 'none'; return; }
     opInfo = await apiCall(`/api/dipendenti/${id}`).catch(() => null);
     // opzioni assistiti per il form turno
     const uopts = '<option value="">—</option>' + (opInfo && opInfo.assistiti ? opInfo.assistiti.map(a => `<option value="${a.utente_id}">${escapeHtml(a.ut_cognome)} ${escapeHtml(a.ut_nome)}</option>`).join('') : '');
@@ -165,23 +184,27 @@ async function caricaSettimana() {
 
     const perGiorno = {};
     data.turni.forEach(t => { (perGiorno[t.giorno] = perGiorno[t.giorno] || []).push(t); });
-    let html = '<div class="grid-settimana">';
-    for (let g = 0; g < 7; g++) {
+    // sabato e domenica solo se hanno turni; tutti i giorni mostrati su una riga (PC)
+    const giorni = [0, 1, 2, 3, 4, 5, 6].filter(g => g < 5 || (perGiorno[g] || []).length);
+    let html = `<div class="grid-settimana" style="--giorni:${giorni.length}">`;
+    for (const g of giorni) {
         const turni = perGiorno[g] || [];
-        if (g >= 5 && turni.length === 0) continue; // nascondi weekend vuoto
         html += `<div class="card giorno-col"><div class="card-header"><h3 class="card-title">${GIORNI[g]}</h3></div><div class="card-body p-0">`;
         if (!turni.length) {
-            html += '<div class="empty-state" style="padding:16px"><p class="empty-state-text text-sm">Nessun turno</p></div>';
+            // giorno vuoto compatto, con il modo di aggiungere il primo turno
+            html += `<div class="giorno-vuoto"><span>Nessun turno</span>
+                <button type="button" class="turno-aggiungi" onclick="apriTurno(null, ${g})" aria-label="Aggiungi un turno il ${GIORNI[g].toLowerCase()}">+ aggiungi</button></div>`;
         } else {
             html += turni.map(t => {
-                const periodo = (t.valido_da || t.valido_a) ? `<div class="text-xs text-warning">${t.valido_da || '…'} → ${t.valido_a || 'sempre'}</div>` : '';
+                const orario = `${t.ora_inizio}–${t.ora_fine}`;
+                const periodo = (t.valido_da || t.valido_a) ? `<div class="text-xs text-warning">${t.valido_da ? formatPeriodoIT(t.valido_da, t.valido_a) : `… → ${formatDataIT(t.valido_a)}`}</div>` : '';
                 const dove = [t.scuola, (t.ut_cognome ? t.ut_cognome + ' ' + t.ut_nome : null)].filter(Boolean).map(escapeHtml).join(' · ');
                 return `<div class="turno-item">
-                    <div class="flex justify-between items-center gap-2">
-                        <strong class="font-mono">${t.ora_inizio}–${t.ora_fine}</strong>
-                        <span>
-                            <button class="btn btn-sm btn-secondary" onclick='apriTurno(${t.id})'>✎</button>
-                            <button class="btn btn-sm btn-danger" onclick='eliminaTurno(${t.id})'>×</button>
+                    <div class="turno-riga">
+                        <strong class="turno-orario">${orario}</strong>
+                        <span class="azioni-riga">
+                            <button type="button" class="btn btn-sm btn-secondary btn-solo-icona" onclick='apriTurno(${t.id})' title="Modifica turno" aria-label="Modifica turno ${GIORNI[g].toLowerCase()} ${orario}">${icona('matita')}</button>
+                            <button type="button" class="btn btn-sm btn-icon-danger btn-solo-icona" onclick='eliminaTurno(${t.id})' title="Elimina turno" aria-label="Elimina turno ${GIORNI[g].toLowerCase()} ${orario}">${icona('cestino')}</button>
                         </span>
                     </div>
                     ${dove ? `<div class="text-sm text-muted">${dove}</div>` : ''}
@@ -195,12 +218,13 @@ async function caricaSettimana() {
     document.getElementById('settimana').innerHTML = html;
 }
 
-function apriTurno(id) {
+function apriTurno(id, giorno) {
     // il turno (se in modifica) è già in memoria: niente fetch asincrono
     const t = id ? turniCorrente.find(x => x.id === id) : null;
     document.getElementById('turno-titolo').textContent = id ? 'Modifica turno' : 'Nuovo turno';
     document.getElementById('turno-id').value = id || '';
-    document.getElementById('turno-giorno').value = t ? t.giorno : '0';
+    // '+ aggiungi' di un giorno vuoto: la finestra si apre con quel giorno gia' scelto
+    document.getElementById('turno-giorno').value = t ? t.giorno : String(giorno ?? 0);
     document.getElementById('turno-da').value = t ? t.ora_inizio : '';
     document.getElementById('turno-a').value = t ? t.ora_fine : '';
     document.getElementById('turno-scuola').value = (t && t.scuola_id) || '';
@@ -230,13 +254,20 @@ async function salvaTurno() {
     } catch (e) { showToast('Errore: ' + (e.message || ''), 'error'); }
 }
 
-async function eliminaTurno(id) {
-    if (!confirm('Eliminare questo turno?')) return;
-    await apiCall(`/api/turni/${id}`, { method: 'DELETE' });
-    caricaSettimana();
+function eliminaTurno(id) {
+    showConfirmDialog('Elimina turno', 'Eliminare questo turno ricorrente? Le sostituzioni collegate verranno rimosse.', async () => {
+        try {
+            await apiCall(`/api/turni/${id}`, { method: 'DELETE' });
+            showToast('Turno eliminato', 'success');
+            caricaSettimana();
+        } catch (e) {
+            showToast('Errore: ' + (e.message || 'eliminazione non riuscita'), 'error');
+        }
+    }, { type: 'danger', confirmText: 'Elimina' });
 }
 
 async function caricaGiorno() {
+    giornoCaricato = true;
     const g = document.getElementById('sel-giorno').value;
     const sc = document.getElementById('sel-scuola-giorno').value;
     const qs = new URLSearchParams({ giorno: g }); if (sc) qs.set('scuola_id', sc);
@@ -244,19 +275,36 @@ async function caricaGiorno() {
     document.getElementById('giorno-count').textContent = turni.length;
     const c = document.getElementById('giorno-lista');
     if (!turni.length) { c.innerHTML = '<div class="empty-state"><p class="empty-state-text">Nessun turno in questo giorno</p></div>'; return; }
-    c.innerHTML = `<table class="table"><thead><tr><th>Orario</th><th>Operatore</th><th>Scuola</th><th>Assistito</th></tr></thead><tbody>
+    c.innerHTML = `<div class="table-responsive"><table class="table"><thead><tr><th>Orario</th><th>Operatore</th><th>Scuola</th><th>Assistito</th></tr></thead><tbody>
         ${turni.map(t => `<tr>
-            <td class="font-mono">${t.ora_inizio}–${t.ora_fine}</td>
-            <td>${escapeHtml(t.dip_cognome)} ${escapeHtml(t.dip_nome)}</td>
-            <td class="text-muted text-sm">${escapeHtml((t.scuola||'—').substring(0,40))}</td>
-            <td class="text-sm">${t.ut_cognome ? escapeHtml(t.ut_cognome+' '+t.ut_nome) : '—'}</td></tr>`).join('')}
-        </tbody></table>`;
+            <td class="turno-orario">${t.ora_inizio}–${t.ora_fine}</td>
+            <td class="cella-nome">${escapeHtml(t.dip_cognome)} ${escapeHtml(t.dip_nome)}</td>
+            <td class="text-muted text-sm cella-scuola" title="${escapeHtml(t.scuola || '')}">${escapeHtml(t.scuola || '—')}</td>
+            <td class="text-sm cella-nome">${t.ut_cognome ? escapeHtml(t.ut_cognome+' '+t.ut_nome) : '—'}</td></tr>`).join('')}
+        </tbody></table></div>`;
 }
 </script>
 <style>
-.grid-settimana { display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:16px; }
+/* Settimana: i giorni su una riga sul PC (a 1440 il venerdi' andava a capo da
+   solo), due per riga sul tablet, uno sul telefono. Ogni giorno e' alto quanto i
+   suoi turni: i giorni vuoti non si allungano fino al piu' pieno. */
+.grid-settimana { display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:16px; align-items:start; }
+@media (min-width: 1100px) {
+    .grid-settimana { grid-template-columns: repeat(var(--giorni, 5), minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+    .grid-settimana { grid-template-columns: minmax(0, 1fr); }
+}
 .giorno-col .card-title { font-size:0.95rem; }
-.turno-item { padding:10px 14px; border-bottom:1px solid var(--border-color); }
+.turno-item { padding:10px 12px; border-bottom:1px solid var(--border-color); }
 .turno-item:last-child { border-bottom:none; }
+.turno-riga { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:4px 8px; }
+.turno-orario { font-weight:650; font-size:0.95rem; white-space:nowrap; }
+.turno-riga .azioni-riga { margin-left:auto; gap:4px; }   /* se va a capo, resta a destra */
+.turno-riga .btn.btn-sm.btn-solo-icona { padding:6px; }   /* orario e icone su una riga anche a 1366px */
+.giorno-vuoto { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 14px; color:var(--text-tertiary); font-size:0.85rem; }
+.turno-aggiungi { background:none; border:0; padding:4px 0; font:inherit; font-weight:600; color:var(--accent-text); cursor:pointer; }
+.turno-aggiungi:hover { text-decoration:underline; }
+.turno-aggiungi:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:2px; }
 </style>
 {% endblock %}

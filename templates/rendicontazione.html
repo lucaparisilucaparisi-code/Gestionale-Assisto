@@ -1,17 +1,48 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block title %}Rendicontazione - Gestionale OEPAC{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div class="page-header-content">
-        <h1 class="page-title">Rendicontazione Mensile</h1>
-        <p class="page-subtitle">Inserisci le ore lavorate per ogni utente</p>
+{# Il mese mostrato sta nel titolo e giorni/coefficiente nella riga sotto; le azioni
+   sul mese a destra del titolo. Prima erano un pannello "Periodo" a parte e una riga
+   di pulsanti sopra la tabella: all'apertura, a 1366x768, si vedevano 3 utenti. #}
+<div class="page-header rend-header">
+    <div class="page-header-row">
+        <div class="rend-header-testo">
+            <h1 class="page-title">Rendicontazione Mensile<span class="rend-titolo-periodo" id="info-periodo"></span></h1>
+            <p class="page-subtitle" id="rend-sottotitolo">Inserisci le ore lavorate per ogni utente</p>
+            <p class="page-subtitle rend-periodo" id="info-mese" hidden>
+                <span>Giorni lavorativi <strong id="info-giorni">-</strong></span>
+                <span>Coefficiente <strong id="info-coefficiente">-</strong></span>
+                <span>Tasso assenza <strong>{{ (app_config.tasso_assenza * 100) | round | int }}%</strong></span>
+            </p>
+        </div>
+        <div class="header-actions rend-azioni">
+            <button id="btn-compila-media" class="btn btn-secondary btn-sm" style="display: none;" title="Compila tutti gli utenti senza ore con la media prevista">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                Compila con Media
+            </button>
+            <button id="btn-copia-precedente" class="btn btn-secondary btn-sm" style="display: none;" title="Copia ore dal mese precedente per utenti senza ore">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Copia Mese Prec.
+            </button>
+            <button id="btn-esporta-filtrati" class="btn btn-secondary btn-sm" style="display: none;" title="Esporta solo i dati visualizzati">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Esporta Filtrati
+            </button>
+        </div>
     </div>
 </div>
 
 <!-- Filtri -->
-<div class="filters">
+<div class="filters rend-filtri">
     <div class="filter-group">
         <label class="filter-label">Anno Scolastico</label>
         <select id="filter-anno" class="form-control" style="width: 150px;">
@@ -40,123 +71,94 @@
 
     <div class="filter-group ml-auto">
         <label class="filter-label">&nbsp;</label>
-        <button id="btn-load" class="btn btn-primary">
+        {# La tabella si ricarica da sola al cambio di anno, mese o commessa:
+           il pulsante serve solo a rileggere i dati (es. dopo un import) #}
+        <button id="btn-load" class="btn btn-secondary" title="Rileggi i dati del mese mostrato">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Carica Dati
+            Aggiorna
         </button>
-    </div>
-</div>
-
-<!-- Info Mese Panel Premium -->
-<div class="info-panel" id="info-mese" style="display: none;">
-    <div class="info-grid">
-        <div class="info-item">
-            <span class="info-label">Periodo</span>
-            <span class="info-value highlight" id="info-periodo">-</span>
-        </div>
-        <div class="info-item">
-            <span class="info-label">Giorni Lavorativi</span>
-            <span class="info-value" id="info-giorni">-</span>
-        </div>
-        <div class="info-item">
-            <span class="info-label">Coefficiente</span>
-            <span class="info-value" id="info-coefficiente">-</span>
-        </div>
-        <div class="info-item">
-            <span class="info-label">Tasso Assenza</span>
-            <span class="info-value">11%</span>
-        </div>
-    </div>
-    <div class="info-item" style="margin-left: auto;">
-        <span class="auto-save-indicator" id="auto-save-indicator">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg>
-            <span id="auto-save-text">Salvataggio automatico attivo</span>
-        </span>
-    </div>
-</div>
-
-<!-- Barra di ricerca Excel-like -->
-<div class="excel-filter-bar" id="search-container" style="display: none;">
-    <div class="excel-filter-input-group">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-        </svg>
-        <input type="text" id="search-input" class="excel-filter-input" placeholder="Filtra per nome, cognome o scuola..." autocomplete="off">
-        <button id="search-clear" class="excel-filter-clear" style="display: none;" title="Cancella filtro (Esc)">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-        </button>
-    </div>
-    <div class="excel-filter-results" id="search-results-count"></div>
-</div>
-
-<!-- Alert formato ore -->
-<div class="alert alert-info mb-4" id="format-help" style="display: none;">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-    <div>
-        <strong>Formato ore:</strong> Puoi inserire <code>1:30</code> o <code>1.30</code> per 1 ora e 30 minuti. Le modifiche vengono salvate automaticamente.
-        <br><span class="text-warning">Le righe in giallo indicano utenti senza ore registrate.</span>
     </div>
 </div>
 
 <!-- Tabella Rendicontazione -->
 <div class="card">
-    <div class="card-header">
-        <h2 class="card-title">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Dettaglio Utenti
-            <span class="badge badge-secondary ml-2" id="utenti-count" style="display: none;">0</span>
-        </h2>
-        <div class="flex gap-2 items-center flex-wrap">
-            <span class="badge badge-warning" id="badge-senza-ore" style="display: none;" title="Utenti senza ore">
+    {# Titolo, stato del salvataggio e barra dei filtri nella stessa intestazione
+       (prima: intestazione da 73px + barra da 57px sopra la tabella) #}
+    <div class="card-header rend-card-header">
+        <div class="rend-card-titolo">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Dettaglio Utenti
+                <span class="badge badge-secondary" id="utenti-count" style="display: none;">0</span>
+            </h2>
+            <!-- Stato del salvataggio automatico, accanto al titolo (niente pulsante "Salva") -->
+            <span class="auto-save-indicator" id="auto-save-indicator" role="status" aria-live="polite">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span id="auto-save-text">Salvataggio automatico</span>
+            </span>
+            {# Salvataggio automatico: il pulsante compare solo se il salvataggio non riesce
+               (per riprovare). Resta nella pagina per Ctrl+S (salva subito). #}
+            <button id="btn-save" class="btn btn-primary btn-sm" style="display: none;" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Riprova a salvare
+            </button>
+        </div>
+        <!-- Filtro per nome, solo righe senza ore, aiuto sul formato delle ore -->
+        <div class="rend-toolbar" id="search-container" style="display: none;">
+            <div class="excel-filter-bar">
+                <div class="excel-filter-input-group">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input type="text" id="search-input" class="excel-filter-input" placeholder="Filtra per nome, cognome o scuola" aria-label="Filtra per nome, cognome o scuola" autocomplete="off">
+                    <button type="button" id="search-clear" class="excel-filter-clear" style="display: none;" title="Cancella filtro (Esc)" aria-label="Cancella filtro">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <button type="button" class="badge badge-warning badge-toggle" id="badge-senza-ore" style="display: none;"
+                    aria-pressed="false" title="Mostra solo gli utenti senza ore (le righe con la barra arancione)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 <span id="senza-ore-count">0</span> senza ore
-            </span>
-            <button id="btn-compila-media" class="btn btn-secondary btn-sm" style="display: none;" title="Compila tutti gli utenti senza ore con la media prevista">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-                Compila con Media
             </button>
-            <button id="btn-copia-precedente" class="btn btn-secondary btn-sm" style="display: none;" title="Copia ore dal mese precedente per utenti senza ore">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                Copia Mese Prec.
-            </button>
-            <button id="btn-esporta-filtrati" class="btn btn-secondary btn-sm" style="display: none;" title="Esporta solo i dati visualizzati">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Esporta Filtrati
-            </button>
-            <button id="btn-save" class="btn btn-success" disabled>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                Salva Modifiche
+            <div class="excel-filter-results" id="search-results-count"></div>
+            <button type="button" class="btn-aiuto" id="btn-aiuto-ore" aria-expanded="false" aria-controls="format-help" title="Come si scrivono le ore">
+                <span class="btn-aiuto-icona" aria-hidden="true">?</span> Formato ore
             </button>
         </div>
     </div>
+
+    <!-- Aiuto sul formato delle ore (si apre con il pulsante "Formato ore") -->
+    <div class="alert alert-info rend-aiuto" id="format-help" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+            <strong>Formato ore:</strong> puoi scrivere <code>1:30</code> o <code>1.30</code> per 1 ora e 30 minuti. Le modifiche vengono salvate automaticamente.
+            <br><span class="text-warning">Le righe con la barra arancione non hanno ancora ore registrate.</span>
+        </div>
+    </div>
+
     <div class="card-body p-0">
-        <div class="table-container" id="table-container">
+        <div class="table-container rend-scroll" id="table-container">
             <div class="empty-state">
                 <svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <h3 class="empty-state-title">Seleziona un periodo</h3>
-                <p class="empty-state-text">Seleziona anno scolastico e mese, poi clicca "Carica Dati"</p>
+                <p class="empty-state-text">Scegli anno scolastico e mese: la tabella si carica da sola</p>
             </div>
         </div>
     </div>
@@ -170,12 +172,13 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
             Riepilogo Totali
+            <span class="totali-nota" id="totali-nota"></span>
         </h2>
     </div>
     <div class="card-body">
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-icon blue">
+                <div class="stat-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
@@ -186,7 +189,7 @@
                 </div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon purple">
+                <div class="stat-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
@@ -197,7 +200,7 @@
                 </div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon cyan">
+                <div class="stat-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                     </svg>
@@ -208,14 +211,14 @@
                 </div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon green">
+                <div class="stat-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 </div>
                 <div class="stat-content">
                     <div class="stat-value text-success" id="tot-totale">€ 0,00</div>
-                    <div class="stat-label">Totale con IVA 5%</div>
+                    <div class="stat-label">Totale con IVA {{ (app_config.iva_percentuale * 100) | round | int }}%</div>
                 </div>
             </div>
         </div>
@@ -232,11 +235,7 @@
                 </svg>
                 Storico Utente
             </h3>
-            <button class="modal-close" onclick="closeModal('modal-storico')">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
+            {{ modal_close("closeModal('modal-storico')") }}
         </div>
         <div class="modal-body" id="storico-content">
             <div class="text-center text-muted py-4">Caricamento...</div>
@@ -246,6 +245,25 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+/* Stampa (Ctrl+P) della Rendicontazione: foglio A4 orizzontale (12 colonne) e colori
+   chiari anche dal tema scuro, dove intestazioni, caselle e riquadri restavano scuri
+   o bianchi su bianco. Vale solo per questa pagina. */
+@page { size: A4 landscape; margin: 10mm; }
+@media print {
+    :root, :root[data-theme] {
+        --bg-card-solid: #fff; --bg-card: #fff; --bg-secondary: #fff; --bg-tertiary: #f2f2f2;
+        --bg-input: #fff; --glass-bg: #fff; --glass-border: #ccc;
+        --text-primary: #000; --text-secondary: #222; --text-tertiary: #444; --text-quaternary: #555;
+        --border-color: #bbb; --accent-text: #000;
+        --success: #15803D; --warning: #B45309; --danger: #B91C1C;
+    }
+    .rend-toolbar, .rend-aiuto, .auto-save-indicator, .diff-indicator { display: none !important; }
+    .tabella-rend { font-size: 8pt; }
+    .tabella-rend th, .tabella-rend td { padding: 3px 5px !important; }
+    .tabella-rend input.table-input { border-color: transparent !important; background: none !important; color: #000 !important; }
+}
+</style>
 <script>
 let currentData = [];
 let allData = []; // Dati non filtrati per scuola
@@ -254,14 +272,161 @@ let autoSaveTimeout = null;
 let scuoleList = [];
 let differenzeMesePrecedente = {}; // Memorizza le differenze rispetto al mese precedente
 const AUTO_SAVE_DELAY = 2000; // 2 secondi di debounce
+// Periodo della tabella MOSTRATA (impostato da loadData). Salvataggi e azioni usano
+// questo, non i menu: prima, cambiando mese senza ricaricare, le ore della tabella
+// visibile venivano salvate nel mese scelto nel menu (cioe' nel mese sbagliato).
+let periodoCaricato = null;   // { anno, mese, commessa }
+// Filtro "solo senza ore" (pulsante 'N senza ore' sopra la tabella)
+let soloSenzaOre = false;
+// Nome arrivato con ?cerca= : si applica al primo caricamento (poi il filtro si azzera come sempre)
+let cercaIniziale = '';
+// Totali del server per il Riepilogo: si rimettono togliendo il filtro, se nel
+// frattempo non e' stata modificata nessuna ora (altrimenti si ricalcolano).
+let totaliServer = null;
+let totaliModificati = false;
+let primoCaricamento = true;   // il primo caricamento rispetta ?senza_ore=1
+// Numero dell'ultima richiesta di loadData: una risposta arrivata dopo una piu'
+// recente (menu cambiati velocemente) si scarta, cosi' la tabella mostra sempre
+// il periodo scelto nei menu
+let seqCaricamento = 0;
+
+function periodoMostrato() {
+    if (!periodoCaricato) {
+        showToast('Carica prima un mese', 'error');
+        return null;
+    }
+    return periodoCaricato;
+}
+
+// Cambio di anno, mese o commessa: salva le modifiche in sospeso sul mese mostrato,
+// poi ricarica la tabella. Se il salvataggio non riesce, i menu tornano al mese mostrato.
+async function cambiaPeriodo() {
+    if (autoSaveTimeout) { clearTimeout(autoSaveTimeout); autoSaveTimeout = null; }
+    collectPendingChangesFromInputs();
+    if (periodoCaricato && Object.keys(pendingChanges).length > 0) {
+        await autoSave();
+        if (Object.keys(pendingChanges).length > 0) {
+            ripristinaMenuPeriodo();
+            showToast('Modifiche non salvate: resto sul mese mostrato. Riprova il salvataggio.', 'error');
+            return;
+        }
+    }
+    // Le caselle fuori limite non sono mai partite: lo si dice prima di lasciarle
+    const nonValide = document.querySelectorAll('#table-container .table-input.input-error').length;
+    if (nonValide) {
+        showToast(`${nonValide} ${nonValide === 1 ? 'casella non valida non è stata salvata' : 'caselle non valide non sono state salvate'}`, 'warning', 8000);
+    }
+    loadData();
+}
+
+function ripristinaMenuPeriodo() {
+    if (!periodoCaricato) return;
+    const { anno, mese, commessa } = periodoCaricato;
+    impostaMenuPeriodo(anno, mese);
+    document.getElementById('filter-commessa').value = commessa || '';
+}
+
+// Porta i menu Anno scolastico e Mese su mese/anno. Ritorna false (e non tocca i
+// menu) se quel mese non c'e' nell'elenco: anno scolastico senza calendario, oppure
+// luglio e agosto.
+function impostaMenuPeriodo(anno, mese) {
+    const annoScol = mese >= 9 ? `${anno}-${anno + 1}` : `${anno - 1}-${anno}`;
+    const annoSel = document.getElementById('filter-anno');
+    if (!MESI_SCOLASTICI.includes(mese)) return false;
+    if (!annoSel.querySelector(`option[value="${annoScol}"]`)) return false;
+    if (annoSel.value !== annoScol) {
+        annoSel.value = annoScol;
+        populateMesiScolastici('filter-mese', annoScol);
+    }
+    document.getElementById('filter-mese').value = `${mese}-${anno}`;
+    return true;
+}
+
+// Link a un mese che qui non si puo' aprire (es. dalla Dashboard a settembre, prima
+// di preparare il calendario): la pagina resta sul mese proposto e lo dice.
+function avvisaMeseNonApribile(anno, mese) {
+    const meseSel = document.getElementById('filter-mese');
+    const aperto = meseSel.selectedOptions[0]?.textContent;
+    const ancheAperto = aperto ? ` È aperto ${aperto}.` : '';
+    if (!MESI_SCOLASTICI.includes(mese)) {
+        showToast(`${MESI[mese]} non è un mese di scuola: le ore si registrano da settembre a giugno.${ancheAperto}`, 'warning', 10000);
+        return;
+    }
+    const annoScol = mese >= 9 ? `${anno}-${anno + 1}` : `${anno - 1}-${anno}`;
+    // Anno in corso o prossimo: il calendario si prepara dalla Dashboard; gli altri da Calendario
+    const futuro = annoScol >= getCurrentAnnoScolastico();
+    showToast(`${MESI[mese]} ${anno} non si può ${futuro ? 'ancora ' : ''}aprire: manca il calendario del ${annoScol} ` +
+        `(${futuro ? 'preparalo dalla Dashboard o da Calendario' : 'crealo da Calendario'}).${ancheAperto}`, 'warning', 12000);
+}
+
+// Uscita dalla pagina (voce del menu, Ctrl+K, F5, chiusura della scheda) o scheda
+// nascosta entro i 2 secondi del salvataggio automatico: le modifiche in sospeso
+// partono subito con fetch keepalive, che il browser porta a termine anche a pagina
+// chiusa, sullo stesso salvataggio a pacchetto del mese MOSTRATO. Solo se c'e' una
+// casella modificata: cosi' non si rimandano valori gia' salvati (righe doppie nel
+// registro), e lo stesso pacchetto non parte due volte (scheda nascosta e poi chiusa).
+// La firma dell'ultimo invio si azzera a ogni nuova modifica (markChanged).
+let ultimoInvioUscita = null;
+const MAX_KEEPALIVE = 60000;   // il browser accetta fino a 64 KB per le richieste keepalive
+
+function inviaModificheInUscita() {
+    if (autoSaveTimeout) { clearTimeout(autoSaveTimeout); autoSaveTimeout = null; }
+    if (!periodoCaricato) return;
+    if (!document.querySelector('#table-container .table-input.changed')) return;
+    collectPendingChangesFromInputs();
+    const updates = Object.values(pendingChanges).map(u => ({ ...u }));
+    if (!updates.length) return;
+    const { anno, mese } = periodoCaricato;
+    const url = `/api/rendicontazione/${anno}/${mese}/batch`;
+    const firma = url + JSON.stringify(updates);
+    if (ultimoInvioUscita === firma) return;
+    ultimoInvioUscita = firma;
+    const inviate = [...document.querySelectorAll('#table-container .table-input.changed')].map(i => [i, i.value]);
+
+    // pacchetti sotto il limite keepalive (705 righe stanno in circa 37 KB)
+    const pacchetti = [[]];
+    updates.forEach(u => {
+        const ultimo = pacchetti[pacchetti.length - 1];
+        if (ultimo.length && JSON.stringify({ updates: [...ultimo, u] }).length > MAX_KEEPALIVE) pacchetti.push([u]);
+        else ultimo.push(u);
+    });
+    Promise.all(pacchetti.map(p => fetch(url, {
+        method: 'POST', keepalive: true, credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: p })
+    }).then(r => r.ok))).then(esiti => {
+        // pagina ancora aperta (scheda solo nascosta): lo stato torna "Salvato"
+        if (esiti.every(Boolean)) {
+            segnaInviate(updates, inviate);
+            if (!document.querySelector('#table-container .table-input.changed') && !Object.keys(pendingChanges).length) {
+                mostraStatoSalvato();
+            }
+        } else {
+            ultimoInvioUscita = null;
+            scheduleAutoSave();
+        }
+    }).catch(() => { ultimoInvioUscita = null; });
+}
+window.addEventListener('pagehide', inviaModificheInUscita);
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') inviaModificheInUscita();
+});
+// Dopo Ctrl+Z (monte ore, date di servizio...) la tabella si rilegge, salvando
+// prima le modifiche in sospeso
+window.ricaricaDopoAnnulla = () => cambiaPeriodo();
 
 document.addEventListener('DOMContentLoaded', async () => {
     await populateAnniScolastici('filter-anno');
     await loadCommesse();
 
+    // La tabella si ricarica da sola a ogni cambio (anche se il primo caricamento
+    // non era riuscito): il pulsante "Aggiorna" serve solo a rileggere i dati.
     document.getElementById('filter-anno').addEventListener('change', (e) => {
         populateMesiScolastici('filter-mese', e.target.value);
+        cambiaPeriodo();
     });
+    document.getElementById('filter-mese').addEventListener('change', cambiaPeriodo);
+    document.getElementById('filter-commessa').addEventListener('change', cambiaPeriodo);
 
     // Trigger initial population
     const annoSelect = document.getElementById('filter-anno');
@@ -269,7 +434,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         populateMesiScolastici('filter-mese', annoSelect.value);
     }
 
-    document.getElementById('btn-load').addEventListener('click', loadData);
+    // Arrivo da un altro punto dell'app (es. Chiusura Mese, "Vedi tutti"):
+    // ?anno=2026&mese=6 apre quel mese, &senza_ore=1 mostra solo chi non ha ore
+    const qs = new URLSearchParams(window.location.search);
+    const qAnno = parseInt(qs.get('anno'), 10);
+    const qMese = parseInt(qs.get('mese'), 10);
+    let meseChiestoAperto = true;
+    if (qAnno && qMese >= 1 && qMese <= 12) {
+        meseChiestoAperto = impostaMenuPeriodo(qAnno, qMese);
+        if (!meseChiestoAperto) avvisaMeseNonApribile(qAnno, qMese);
+    }
+    // &senza_ore=1 e &cerca=Nome Cognome (righe dello Stato del mese in Dashboard):
+    // il mese si apre gia' filtrato. Solo se si e' aperto proprio quel mese: su un
+    // altro mese nomi e "senza ore" sarebbero di un periodo diverso da quello letto.
+    if (meseChiestoAperto) {
+        soloSenzaOre = qs.get('senza_ore') === '1';
+        cercaIniziale = (qs.get('cerca') || '').trim();
+    }
+
+    // "Aggiorna" rilegge i dati, ma prima salva le modifiche in sospeso (prima si perdevano)
+    document.getElementById('btn-load').addEventListener('click', cambiaPeriodo);
     document.getElementById('btn-save').addEventListener('click', saveChanges);
     document.getElementById('btn-copia-precedente').addEventListener('click', copiaDaMesePrecedente);
     document.getElementById('btn-compila-media').addEventListener('click', compilaConMedia);
@@ -280,6 +464,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Filtro Excel-like semplice e funzionante
     initExcelFilter();
+
+    // "N senza ore": interruttore che mostra solo le righe ancora vuote
+    document.getElementById('badge-senza-ore').addEventListener('click', () => {
+        soloSenzaOre = !soloSenzaOre;
+        applyExcelFilter(document.getElementById('search-input').value.trim());
+    });
+
+    // "Formato ore": apre/chiude l'aiuto (prima era un riquadro sempre aperto di 100px)
+    document.getElementById('btn-aiuto-ore').addEventListener('click', (e) => {
+        const aiuto = document.getElementById('format-help');
+        aiuto.hidden = !aiuto.hidden;
+        e.currentTarget.setAttribute('aria-expanded', String(!aiuto.hidden));
+    });
 
     // Carica automaticamente il mese corrente (preselezionato nei filtri)
     if (document.getElementById('filter-mese').value) {
@@ -298,6 +495,64 @@ async function loadCommesse() {
     }
 }
 
+// Parametri di calcolo da config.py (tariffa, IVA, tasso assenza, coefficiente):
+// niente numeri scritti a mano che restano vecchi al primo cambio di tariffa
+const CFG = window.APP_CONFIG || {};
+const PCT = v => Math.round((v || 0) * 100) + '%';
+// Limiti del server (config.py): una casella oltre il limite resta segnata in rosso
+// con il motivo e NON entra nel pacchetto del salvataggio, cosi' non blocca le altre
+// (il server rifiuta tutto il pacchetto se una sola riga e' fuori limite)
+const MAX_ORE_MESE = CFG.max_ore_mensili || 200;
+const MAX_PASTI_MESE = CFG.max_pasti_mensili || 62;
+
+// Arrotondamento a 2 decimali IDENTICO a round(x, 2) di Python (config.py), cosi'
+// importi e totali ricalcolati qui coincidono al centesimo con la pagina ricaricata:
+// - sul valore binario esatto (toFixed), non con Math.round sui centesimi, che
+//   sbaglia quando v * 100 si arrotonda verso l'alto (30119.405 * 100 = 3011940.5:
+//   30119,41 contro 30119,40 del server);
+// - nei pareggi esatti (x,125 x,375 x,625 x,875, gli unici rappresentabili in
+//   binario) al centesimo pari come Python (toFixed andrebbe sempre verso l'alto).
+function arrotonda2(v) {
+    v = v || 0;
+    if (Number.isInteger(v * 8) && !Number.isInteger(v * 4)) {
+        const centesimi = Math.floor(v * 100);   // v * 100 = centesimi + 0,5 esatto
+        return (centesimi % 2 === 0 ? centesimi : centesimi + 1) / 100;
+    }
+    return Number(v.toFixed(2));
+}
+
+// Somma delle ore come sum() di Python nel server (Riepilogo di app.py, report):
+// dalla 3.12 e' una somma compensata (Neumaier), prima semplice, e quando le ore
+// finiscono in ,50 il totale in euro cambia di un centesimo. Il server dice quale
+// usa (APP_CONFIG.somma_compensata); i valori vanno passati nell'ordine del server.
+function sommaComePython(valori) {
+    let somma = 0, compenso = 0;
+    for (const x of valori) {
+        const t = somma + x;
+        if (CFG.somma_compensata) {
+            compenso += Math.abs(somma) >= Math.abs(x) ? (somma - t) + x : (x - t) + somma;
+        }
+        somma = t;
+    }
+    return compenso ? somma + compenso : somma;
+}
+
+// Righe nell'ordine della risposta del server (la tabella le mostra per plesso e
+// nome): i totali ricalcolati qui sommano le ore nello stesso ordine
+function inOrdineServer(righe) {
+    return [...righe].sort((a, b) => (a.ordine_server || 0) - (b.ordine_server || 0));
+}
+
+// Imponibile, IVA e totale come config.calcola_fatturazione, con lo stesso
+// arrotondamento. Per una riga si passano le ore NON arrotondate (come
+// database.get_rendicontazione_completa), per un totale la somma delle ore in 100'
+// gia' arrotondate riga per riga: si arrotonda UNA volta, mai sommando importi.
+function calcolaFatturazione(ore) {
+    const imponibile = arrotonda2((ore || 0) * CFG.tariffa_oraria);
+    const iva = arrotonda2(imponibile * CFG.iva_percentuale);
+    return { imponibile, iva, totale: arrotonda2(imponibile + iva) };
+}
+
 async function loadData() {
     const annoSelect = document.getElementById('filter-anno');
     const meseSelect = document.getElementById('filter-mese');
@@ -310,6 +565,7 @@ async function loadData() {
 
     const [mese, anno] = meseSelect.value.split('-').map(Number);
     const commessa = commessaSelect.value;
+    const mio = ++seqCaricamento;
 
     showLoading('table-container', 'Caricamento rendicontazione...');
 
@@ -320,6 +576,12 @@ async function loadData() {
         }
 
         const data = await apiCall(url);
+        // Nel frattempo e' partita una richiesta piu' recente: questa risposta e' vecchia
+        if (mio !== seqCaricamento) return;
+
+        // Posizione di ogni riga nella risposta, prima di riordinarle per nome: i totali
+        // ricalcolati nella pagina sommano nell'ordine del server (inOrdineServer)
+        data.dati.forEach((d, i) => { d.ordine_server = i; });
 
         // Ordina per nome (che contiene il cognome), poi per cognome (che contiene il nome)
         data.dati.sort((a, b) => {
@@ -335,6 +597,11 @@ async function loadData() {
         allData = data.dati; // Salva tutti i dati
         currentData = data.dati;
         pendingChanges = {};
+        const stessoPeriodo = periodoCaricato && periodoCaricato.anno === anno && periodoCaricato.mese === mese;
+        periodoCaricato = { anno, mese, commessa };
+        // cambiando mese il filtro "solo senza ore" si toglie (resta con "Aggiorna")
+        if (!stessoPeriodo && !primoCaricamento) soloSenzaOre = false;
+        primoCaricamento = false;
 
         // Popola filtro scuole
         populateScuoleFilter(data.dati);
@@ -343,16 +610,27 @@ async function loadData() {
         document.getElementById('filter-scuola').value = '';
 
         renderTable(data);
+        totaliServer = data.totale_generale;
+        totaliModificati = false;
         updateTotals(data.totale_generale);
         updateSenzaOreBadge(data.dati);
 
-        document.getElementById('info-mese').style.display = 'flex';
-        document.getElementById('format-help').style.display = 'flex';
+        // mese mostrato nel titolo, giorni e coefficiente al posto del sottotitolo
+        document.getElementById('rend-sottotitolo').hidden = true;
+        document.getElementById('info-mese').hidden = false;
         document.getElementById('search-container').style.display = 'flex';
         document.getElementById('info-periodo').textContent = `${data.mese_nome} ${data.anno}`;
 
-        // Reset filtro quando si caricano nuovi dati
+        // Mese chiuso: banner + input e azioni di scrittura disabilitati
+        applicaStatoMeseChiuso(data.mese_chiuso);
+
+        // Reset filtro quando si caricano nuovi dati (resta solo "senza ore", se attivo)
         resetExcelFilter();
+        if (cercaIniziale) {
+            document.getElementById('search-input').value = cercaIniziale;
+            document.getElementById('search-clear').style.display = 'flex';
+            cercaIniziale = '';
+        }
 
         if (data.dati.length > 0) {
             // Distinguo infanzia/altri (il plesso contiene "INFANZIA" per l'infanzia)
@@ -369,11 +647,11 @@ async function loadData() {
             if (gInf !== undefined && gAltri !== undefined && gInf !== gAltri) {
                 // Mese con valori distinti (tipicamente giugno)
                 labelGiorni = `${gAltri} / ${gInf}`;
-                labelCoeff = `${(gAltri * 0.2).toFixed(1)} / ${(gInf * 0.2).toFixed(1)}`;
+                labelCoeff = `${formatNumber(gAltri * CFG.coefficiente_giornaliero, 1)} / ${formatNumber(gInf * CFG.coefficiente_giornaliero, 1)}`;
             } else {
                 const g = gInf !== undefined ? gInf : gAltri;
                 labelGiorni = g;
-                labelCoeff = (g * 0.2).toFixed(1);
+                labelCoeff = formatNumber(g * CFG.coefficiente_giornaliero, 1);
             }
             document.getElementById('info-giorni').textContent = labelGiorni;
             document.getElementById('info-coefficiente').textContent = labelCoeff;
@@ -381,6 +659,16 @@ async function loadData() {
 
         document.getElementById('totali-card').style.display = 'block';
         document.getElementById('btn-save').disabled = true;
+        document.getElementById('btn-save').style.display = 'none';
+        // mese appena caricato: niente "Salvato alle..." rimasto dal mese precedente
+        const indicatore = document.getElementById('auto-save-indicator');
+        indicatore.className = 'auto-save-indicator';
+        indicatore.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span id="auto-save-text">Salvataggio automatico</span>
+        `;
 
         // Mostra conteggio utenti
         document.getElementById('utenti-count').textContent = data.dati.length;
@@ -391,70 +679,108 @@ async function loadData() {
         document.getElementById('btn-copia-precedente').style.display = senzaOre > 0 ? 'inline-flex' : 'none';
         document.getElementById('btn-compila-media').style.display = senzaOre > 0 ? 'inline-flex' : 'none';
         document.getElementById('btn-esporta-filtrati').style.display = data.dati.length > 0 ? 'inline-flex' : 'none';
+        // filtro "solo senza ore" o nome arrivato con ?cerca=
+        const filtroNome = document.getElementById('search-input').value.trim();
+        if (soloSenzaOre || filtroNome) applyExcelFilter(filtroNome);
 
         // Carica differenze rispetto al mese precedente
-        await loadDifferenzeMesePrecedente(anno, mese);
+        await loadDifferenzeMesePrecedente(anno, mese, mio);
 
     } catch (error) {
+        if (mio !== seqCaricamento) return;
         showToast('Errore nel caricamento dati: ' + error.message, 'error');
         console.error(error);
     }
 }
 
+// Una voce per plesso (id): due plessi con lo stesso nome in commesse diverse (vista
+// "Tutte") restano distinti e nel menu si legge anche la commessa
 function populateScuoleFilter(dati) {
-    const scuole = [...new Set(dati.map(d => d.scuola))].sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
-    scuoleList = scuole;
+    const perId = new Map();
+    dati.forEach(d => { if (!perId.has(d.scuola_id)) perId.set(d.scuola_id, { id: d.scuola_id, nome: d.scuola || '', commessa: d.commessa || '' }); });
+    const scuole = [...perId.values()].sort((a, b) =>
+        a.nome.localeCompare(b.nome, 'it', { sensitivity: 'base' }) || a.commessa.localeCompare(b.commessa, 'it'));
+    const conteggioNomi = {};
+    scuole.forEach(s => { conteggioNomi[s.nome] = (conteggioNomi[s.nome] || 0) + 1; });
+    scuoleList = scuole.map(s => s.nome);
     const select = document.getElementById('filter-scuola');
     select.innerHTML = '<option value="">Tutte le scuole</option>' +
-        scuole.map(s => `<option value="${s}">${s.length > 40 ? s.substring(0, 40) + '...' : s}</option>`).join('');
+        scuole.map(s => {
+            const breve = s.nome.length > 40 ? s.nome.substring(0, 40) + '...' : s.nome;
+            const etichetta = conteggioNomi[s.nome] > 1 ? `${s.commessa} - ${breve}` : breve;
+            return `<option value="${s.id}" title="${escapeHtml(s.nome).replace(/"/g, '&quot;')}">${escapeHtml(etichetta)}</option>`;
+        }).join('');
 }
 
 async function copiaDaMesePrecedente() {
-    const meseSelect = document.getElementById('filter-mese');
-    if (!meseSelect.value) {
-        showToast('Seleziona prima un mese', 'error');
+    const periodo = periodoMostrato();
+    if (!periodo) return;
+    const { mese, anno } = periodo;
+
+    // Mese di origine (per settembre e' giugno) e giorni di scuola dei due mesi,
+    // per tipo di scuola, dal server: stesse regole della copia vera
+    let info;
+    try {
+        let url = `/api/rendicontazione/${anno}/${mese}/copia-precedente`;
+        if (periodo.commessa) url += `?commessa=${encodeURIComponent(periodo.commessa)}`;
+        info = await apiCall(url);
+    } catch (error) {
+        showToast('Errore: ' + error.message, 'error');
         return;
     }
+    const mesePrecNome = info.mese_origine;
 
-    const [mese, anno] = meseSelect.value.split('-').map(Number);
+    const copia = async () => {
+        const btn = document.getElementById('btn-copia-precedente');
+        setButtonLoading(btn, true);
 
-    // Calcola nome mese precedente per il messaggio di conferma
-    // (coerente col server: per settembre il precedente e' Giugno)
-    let mesePrecNome;
-    if (mese === 9) {
-        mesePrecNome = `Giugno ${anno}`;
-    } else if (mese === 1) {
-        mesePrecNome = `Dicembre ${anno - 1}`;
-    } else {
-        mesePrecNome = `${MESI[mese - 1]} ${anno}`;
+        try {
+            const response = await apiCall(`/api/rendicontazione/${anno}/${mese}/copia-precedente`, {
+                method: 'POST',
+                body: JSON.stringify({ solo_vuoti: true })
+            });
+
+            if (response.copiati > 0) {
+                showToast(`Copiate le ore di ${response.copiati === 1 ? '1 utente' : `${response.copiati} utenti`} da ${response.mese_origine}`, 'success');
+                // Ricarica i dati
+                await loadData();
+            } else {
+                showToast('Nessun utente da aggiornare (tutti hanno già ore o mese precedente vuoto)', 'info');
+            }
+        } catch (error) {
+            showToast('Errore: ' + error.message, 'error');
+        } finally {
+            setButtonLoading(btn, false);
+        }
+    };
+
+    if (info.giorni_diversi) {
+        // Giorni molto diversi (settembre da giugno, giugno da maggio, ottobre da
+        // settembre): le ore copiate non sono adatte, lo si dice con i due numeri
+        const altri = info.giorni.find(g => g.tipo === 'altri');
+        const infanzia = info.giorni.find(g => g.tipo === 'infanzia');
+        // "5 giorni di scuola (infanzia 21)": altri ordini e, se ci sono, infanzia
+        const giorni = (campo, parola) => {
+            const numero = altri ? altri[campo] : infanzia[campo];
+            const nota = altri && infanzia ? ` (infanzia ${infanzia[campo]})` : (altri ? '' : ' (infanzia)');
+            return `${numero}${parola ? ' giorni di scuola' : ''}${nota}`;
+        };
+        showConfirmDialog(
+            'Giorni di scuola molto diversi',
+            `${info.mese_origine} ha ${giorni('origine', true)}, ${info.mese_destinazione} ne ha ${giorni('destinazione', false)}: ` +
+            `le ore copiate da ${info.mese_origine} non sarebbero adatte. ` +
+            'Per una base di partenza usa "Compila con media", che tiene conto dei giorni del mese.',
+            copia,
+            { confirmText: 'Copia comunque', cancelText: 'Annulla', type: 'warning',
+              extraText: 'Compila con media', onExtra: () => compilaConMedia() }
+        );
+        return;
     }
 
     showConfirmDialog(
         'Copia ore da mese precedente',
         `Vuoi copiare le ore da ${mesePrecNome} per tutti gli utenti che non hanno ancora ore registrate in ${MESI[mese]} ${anno}?`,
-        async () => {
-            const btn = document.getElementById('btn-copia-precedente');
-            setButtonLoading(btn, true);
-
-            try {
-                const response = await apiCall(`/api/rendicontazione/${anno}/${mese}/copia-precedente`, {
-                    method: 'POST',
-                    body: JSON.stringify({ solo_vuoti: true })
-                });
-
-                if (response.copiati > 0) {
-                    showToast(`Copiate le ore di ${response.copiati} utenti da ${response.mese_origine}`, 'success');
-                    // Ricarica i dati
-                    await loadData();
-                } else {
-                    showToast('Nessun utente da aggiornare (tutti hanno già ore o mese precedente vuoto)', 'info');
-                }
-            } catch (error) {
-                showToast('Errore: ' + error.message, 'error');
-            } finally {
-                setButtonLoading(btn, false);
-            }
-        },
+        copia,
         {
             confirmText: 'Copia Ore',
             cancelText: 'Annulla',
@@ -464,18 +790,14 @@ async function copiaDaMesePrecedente() {
 }
 
 async function compilaConMedia() {
-    const meseSelect = document.getElementById('filter-mese');
-    if (!meseSelect.value) {
-        showToast('Seleziona prima un mese', 'error');
-        return;
-    }
-
-    const [mese, anno] = meseSelect.value.split('-').map(Number);
+    const periodo = periodoMostrato();
+    if (!periodo) return;
+    const { mese, anno } = periodo;
     const senzaOre = currentData.filter(d => !d.ore_lavorate_60 || d.ore_lavorate_60 === 0).length;
 
     showConfirmDialog(
         'Compila con Media',
-        `Vuoi compilare le ore di ${senzaOre} utenti senza ore con la loro media prevista (con assenza 11%)?`,
+        `Vuoi compilare le ore di ${senzaOre} utenti senza ore con la loro media prevista (con assenza ${PCT(CFG.tasso_assenza)})?`,
         async () => {
             const btn = document.getElementById('btn-compila-media');
             setButtonLoading(btn, true);
@@ -507,20 +829,18 @@ async function compilaConMedia() {
 }
 
 async function esportaFiltrati() {
-    const meseSelect = document.getElementById('filter-mese');
-    if (!meseSelect.value) {
-        showToast('Seleziona prima un mese', 'error');
-        return;
-    }
-
-    const [mese, anno] = meseSelect.value.split('-').map(Number);
-    const commessaSelect = document.getElementById('filter-commessa');
+    const periodo = periodoMostrato();
+    if (!periodo) return;
+    const { mese, anno } = periodo;
     const scuolaSelect = document.getElementById('filter-scuola');
 
     let url = `/api/export/excel/${anno}/${mese}`;
     const params = [];
-    if (commessaSelect.value) params.push(`commessa=${encodeURIComponent(commessaSelect.value)}`);
-    if (scuolaSelect.value) params.push(`scuola=${encodeURIComponent(scuolaSelect.value)}`);
+    if (periodo.commessa) params.push(`commessa=${encodeURIComponent(periodo.commessa)}`);
+    if (scuolaSelect.value) params.push(`scuola_id=${encodeURIComponent(scuolaSelect.value)}`);
+    // Anche il testo cercato: il file contiene esattamente le righe a schermo
+    const search = (document.getElementById('search-input')?.value || '').trim();
+    if (search) params.push(`search=${encodeURIComponent(search)}`);
     if (params.length > 0) url += '?' + params.join('&');
 
     const link = document.createElement('a');
@@ -533,15 +853,17 @@ async function esportaFiltrati() {
     showToast('Download avviato', 'success');
 }
 
-async function loadDifferenzeMesePrecedente(anno, mese) {
+async function loadDifferenzeMesePrecedente(anno, mese, mio = seqCaricamento) {
     try {
-        const commessaSelect = document.getElementById('filter-commessa');
-        const commessa = commessaSelect.value;
+        // stessa commessa della tabella mostrata (non quella scelta nel menu)
+        const commessa = periodoCaricato ? periodoCaricato.commessa : '';
         let url = `/api/rendicontazione/${anno}/${mese}/confronto-precedente`;
         if (commessa) url += `?commessa=${encodeURIComponent(commessa)}`;
 
         const data = await apiCall(url);
+        if (mio !== seqCaricamento) return;   // tabella gia' di un altro periodo
         differenzeMesePrecedente = data.differenze || {};
+        mesePrecedenteConfronto = data.mese_precedente || null;
 
         // Aggiorna indicatori nella tabella
         updateDifferenzeIndicators();
@@ -551,39 +873,34 @@ async function loadDifferenzeMesePrecedente(anno, mese) {
     }
 }
 
+// Scostamento dal mese precedente, calcolato dal server sulle ore PER GIORNO
+// LAVORATIVO (giugno ha 8 giorni contro i ~20 di maggio: con le ore grezze tutte
+// le righe erano rosse). Si mostra solo se forte e mai sulle righe ancora vuote.
+const SCOSTAMENTO_DA_SEGNALARE = 25;   // % oltre cui compare l'indicatore
+const SCOSTAMENTO_FORTE = 40;          // % oltre cui diventa rosso
+let mesePrecedenteConfronto = null;
+
 function updateDifferenzeIndicators() {
-    document.querySelectorAll('tr[data-utente-id]').forEach(row => {
-        const utenteId = parseInt(row.dataset.utenteId);
-        const diff = differenzeMesePrecedente[utenteId];
+    const nomePrec = mesePrecedenteConfronto
+        ? `${mesePrecedenteConfronto.mese_nome} ${mesePrecedenteConfronto.anno}` : 'mese precedente';
+    document.querySelectorAll('#table-container tr[data-utente-id]').forEach(row => {
+        const vecchio = row.querySelector('.diff-indicator');
+        if (vecchio) vecchio.remove();
 
-        if (diff && diff.ore_precedente > 0) {
-            const oreInput = row.querySelector('.ore-input');
-            if (oreInput) {
-                const diffValue = diff.differenza;
-                const diffPerc = diff.differenza_perc;
+        const diff = differenzeMesePrecedente[parseInt(row.dataset.utenteId)];
+        const perc = diff ? diff.scostamento_giornaliero_perc : null;
+        if (perc === null || perc === undefined || !(diff.ore_corrente > 0)) return;
+        if (Math.abs(perc) < SCOSTAMENTO_DA_SEGNALARE) return;
+        const oreInput = row.querySelector('.ore-input');
+        if (!oreInput) return;
 
-                // Rimuovi indicatore precedente
-                const oldIndicator = row.querySelector('.diff-indicator');
-                if (oldIndicator) oldIndicator.remove();
-
-                // Aggiungi nuovo indicatore
-                if (Math.abs(diffPerc) > 10) {  // Solo se differenza > 10%
-                    const indicator = document.createElement('span');
-                    indicator.className = 'diff-indicator';
-                    indicator.style.cssText = `
-                        font-size: 0.65rem;
-                        margin-left: 4px;
-                        padding: 1px 4px;
-                        border-radius: 3px;
-                        color: ${diffValue >= 0 ? 'var(--success)' : 'var(--danger)'};
-                        background: ${diffValue >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'};
-                    `;
-                    indicator.textContent = `${diffValue >= 0 ? '+' : ''}${diffPerc}%`;
-                    indicator.title = `Mese prec: ${diff.ore_precedente}h`;
-                    oreInput.parentElement.appendChild(indicator);
-                }
-            }
-        }
+        const indicator = document.createElement('span');
+        indicator.className = 'diff-indicator' + (Math.abs(perc) > SCOSTAMENTO_FORTE ? ' forte' : '');
+        indicator.textContent = `${perc > 0 ? '▲' : '▼'} ${formatNumero(Math.abs(perc), 0)}%`;
+        indicator.title = `${perc > 0 ? 'In aumento' : 'In calo'} rispetto a ${nomePrec}: `
+            + `${formatNumber(diff.ore_giorno_corrente)} ore per giorno lavorativo contro ${formatNumber(diff.ore_giorno_precedente)} `
+            + `(${nomePrec}: ${formatNumber(diff.ore_precedente)} ore in ${diff.giorni_precedente} giorni)`;
+        oreInput.parentElement.appendChild(indicator);
     });
 }
 
@@ -619,9 +936,9 @@ async function showStoricoUtente(utenteId) {
                 html += `
                     <tr>
                         <td><strong>${s.mese_nome} ${s.anno}</strong></td>
-                        <td style="text-align:right; font-family: monospace;">${s.ore_lavorate_60.toFixed(2)}</td>
-                        <td style="text-align:right; font-family: monospace; color: var(--text-tertiary);">${s.media_prevista.toFixed(2)}</td>
-                        <td style="text-align:right; font-family: monospace;" class="${cdClass}">${s.credito_debito >= 0 ? '+' : ''}${s.credito_debito.toFixed(2)}</td>
+                        <td style="text-align:right;">${formatNumber(s.ore_lavorate_60)}</td>
+                        <td style="text-align:right; color: var(--text-tertiary);">${formatNumber(s.media_prevista)}</td>
+                        <td style="text-align:right;" class="${cdClass}">${formatOre(s.credito_debito, true)}</td>
                         <td class="text-right">${s.pasti}</td>
                     </tr>
                 `;
@@ -637,17 +954,17 @@ async function showStoricoUtente(utenteId) {
                 <div style="display: flex; gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
                     <div style="flex: 1; text-align: center;">
                         <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Tot. Ore</div>
-                        <div style="font-size: 1.2rem; font-weight: 600;">${totOre.toFixed(2)}h</div>
+                        <div style="font-size: 1.2rem; font-weight: 600;">${formatNumber(totOre)}h</div>
                     </div>
                     <div style="flex: 1; text-align: center;">
                         <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Saldo C/D</div>
                         <div style="font-size: 1.2rem; font-weight: 600; color: ${totCD >= 0 ? 'var(--success)' : 'var(--danger)'};">
-                            ${totCD >= 0 ? '+' : ''}${totCD.toFixed(2)}h
+                            ${formatOre(totCD, true)}h
                         </div>
                     </div>
                     <div style="flex: 1; text-align: center;">
                         <div style="font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase;">Media/Mese</div>
-                        <div style="font-size: 1.2rem; font-weight: 600;">${(totOre / data.storico.length).toFixed(2)}h</div>
+                        <div style="font-size: 1.2rem; font-weight: 600;">${formatNumber(totOre / data.storico.length)}h</div>
                     </div>
                 </div>
             `;
@@ -665,12 +982,11 @@ function filterByScuola() {
     if (!scuolaFilter) {
         currentData = allData;
     } else {
-        currentData = allData.filter(d => d.scuola === scuolaFilter);
+        currentData = allData.filter(d => String(d.scuola_id) === scuolaFilter);
     }
 
-    // Re-render con i dati filtrati
-    const meseSelect = document.getElementById('filter-mese');
-    const [mese, anno] = meseSelect.value.split('-').map(Number);
+    // Re-render con i dati filtrati (periodo della tabella mostrata)
+    const anno = periodoCaricato ? periodoCaricato.anno : null;
 
     const totali_scuola = calculateTotaliScuola(currentData);
     const totale_generale = calculateTotaleGenerale(currentData);
@@ -682,48 +998,64 @@ function filterByScuola() {
         mese_nome: document.getElementById('info-periodo').textContent.split(' ')[0],
         anno: anno
     });
+    totaliServer = totale_generale;
+    totaliModificati = false;
     updateTotals(totale_generale);
     updateSenzaOreBadge(currentData);
 
     // Aggiorna conteggio
     document.getElementById('utenti-count').textContent = currentData.length;
+
+    // La tabella e' nuova: riapplica il filtro per nome e "solo senza ore", se attivi
+    const query = document.getElementById('search-input').value.trim();
+    if (query || soloSenzaOre) applyExcelFilter(query);
+    // Mese chiuso: anche le righe ridisegnate restano bloccate
+    if (periodoCaricato && document.getElementById('mese-chiuso-banner')?.style.display === 'flex') {
+        document.querySelectorAll('.ore-input, .pasti-input').forEach(i => { i.disabled = true; });
+    }
+    updateDifferenzeIndicators();
 }
 
+// Totali per plesso come database.get_totali_per_scuola: per id del plesso (i nomi
+// possono ripetersi in commesse diverse) e importi dalla somma delle ore, sommate
+// una per una (+=, come il server) nell'ordine del server
 function calculateTotaliScuola(dati) {
     const grouped = {};
-    dati.forEach(d => {
-        if (!grouped[d.scuola]) {
-            grouped[d.scuola] = {
+    inOrdineServer(dati).forEach(d => {
+        if (!grouped[d.scuola_id]) {
+            grouped[d.scuola_id] = {
+                scuola_id: d.scuola_id,
                 scuola: d.scuola,
                 commessa: d.commessa,
                 ore_lavorate_60: 0,
                 ore_lavorate_100: 0,
-                imponibile_100: 0,
-                iva_100: 0,
-                totale_100: 0,
                 pasti: 0,
                 num_utenti: 0
             };
         }
-        grouped[d.scuola].ore_lavorate_60 += d.ore_lavorate_60 || 0;
-        grouped[d.scuola].ore_lavorate_100 += d.ore_lavorate_100 || 0;
-        grouped[d.scuola].imponibile_100 += d.imponibile_100 || 0;
-        grouped[d.scuola].iva_100 += d.iva_100 || 0;
-        grouped[d.scuola].totale_100 += d.totale_100 || 0;
-        grouped[d.scuola].pasti += d.pasti || 0;
-        grouped[d.scuola].num_utenti += 1;
+        grouped[d.scuola_id].ore_lavorate_60 += d.ore_lavorate_60 || 0;
+        grouped[d.scuola_id].ore_lavorate_100 += d.ore_lavorate_100 || 0;
+        grouped[d.scuola_id].pasti += d.pasti || 0;
+        grouped[d.scuola_id].num_utenti += 1;
     });
-    return Object.values(grouped);
+    return Object.values(grouped).map(t => {
+        const f = calcolaFatturazione(t.ore_lavorate_100);
+        return { ...t, imponibile_100: f.imponibile, iva_100: f.iva, totale_100: f.totale };
+    });
 }
 
+// Riepilogo come il totale_generale di app.py: sum() delle ore in 100' nell'ordine
+// del server, poi un solo calcolo degli importi
 function calculateTotaleGenerale(dati) {
+    const ore100 = sommaComePython(inOrdineServer(dati).map(d => d.ore_lavorate_100 || 0));
+    const f = calcolaFatturazione(ore100);
     return {
         num_utenti: dati.length,
         ore_lavorate_60: dati.reduce((sum, d) => sum + (d.ore_lavorate_60 || 0), 0),
-        ore_lavorate_100: dati.reduce((sum, d) => sum + (d.ore_lavorate_100 || 0), 0),
-        imponibile_100: dati.reduce((sum, d) => sum + (d.imponibile_100 || 0), 0),
-        iva_100: dati.reduce((sum, d) => sum + (d.iva_100 || 0), 0),
-        totale_100: dati.reduce((sum, d) => sum + (d.totale_100 || 0), 0),
+        ore_lavorate_100: ore100,
+        imponibile_100: f.imponibile,
+        iva_100: f.iva,
+        totale_100: f.totale,
         pasti: dati.reduce((sum, d) => sum + (d.pasti || 0), 0),
         credito_debito: dati.reduce((sum, d) => sum + (d.credito_debito || 0), 0)
     };
@@ -731,15 +1063,15 @@ function calculateTotaleGenerale(dati) {
 
 function updateSenzaOreBadge(dati) {
     const senzaOre = dati.filter(d => !d.ore_lavorate_60 || d.ore_lavorate_60 === 0).length;
-    const badge = document.getElementById('badge-senza-ore');
-    const count = document.getElementById('senza-ore-count');
+    mostraContaSenzaOre(senzaOre);
+}
 
-    if (senzaOre > 0) {
-        count.textContent = senzaOre;
-        badge.style.display = 'inline-flex';
-    } else {
-        badge.style.display = 'none';
-    }
+function mostraContaSenzaOre(senzaOre) {
+    const badge = document.getElementById('badge-senza-ore');
+    document.getElementById('senza-ore-count').textContent = senzaOre;
+    // resta visibile se il filtro e' acceso, per poterlo spegnere
+    badge.style.display = (senzaOre > 0 || soloSenzaOre) ? 'inline-flex' : 'none';
+    badge.setAttribute('aria-pressed', String(soloSenzaOre));
 }
 
 function renderTable(data) {
@@ -755,6 +1087,7 @@ function renderTable(data) {
     data.dati.forEach(row => {
         if (!grouped[row.scuola_id]) {
             grouped[row.scuola_id] = {
+                scuola_id: row.scuola_id,
                 scuola: row.scuola,
                 commessa: row.commessa,
                 utenti: []
@@ -776,22 +1109,24 @@ function renderTable(data) {
         });
     });
 
+    // Colonne con larghezza decisa dal contenuto (niente larghezze scritte qui):
+    // le righe restano su una riga sola (tabella-rend in components.css)
     let html = `
-        <table class="table">
+        <table class="table tabella-rend">
             <thead>
                 <tr>
                     <th>Utente</th>
                     <th>A.C.</th>
-                    <th>Monte Ore</th>
-                    <th>Media Mens.</th>
-                    <th>Media -11%</th>
-                    <th style="width:100px">Ore (60')</th>
-                    <th style="width:90px">Ore (100')</th>
-                    <th>Imponibile</th>
-                    <th>IVA 5%</th>
-                    <th>Totale</th>
-                    <th style="width:70px">Pasti</th>
-                    <th style="width:120px; min-width:120px">Cred/Deb</th>
+                    <th class="text-right">Monte Ore</th>
+                    <th class="text-right">Media Mens.</th>
+                    <th class="text-right">Media -${PCT(CFG.tasso_assenza)}</th>
+                    <th>Ore (60')</th>
+                    <th class="text-right">Ore (100')</th>
+                    <th class="text-right">Imponibile</th>
+                    <th class="text-right">IVA ${PCT(CFG.iva_percentuale)}</th>
+                    <th class="text-right">Totale</th>
+                    <th>Pasti</th>
+                    <th class="text-right">Cred/Deb</th>
                 </tr>
             </thead>
             <tbody>
@@ -801,7 +1136,7 @@ function renderTable(data) {
         // Header scuola
         html += `
             <tr class="scuola-header">
-                <td colspan="12">${group.commessa} - ${group.scuola}</td>
+                <td colspan="12">${escapeHtml(group.commessa)} - ${escapeHtml(group.scuola)}</td>
             </tr>
         `;
 
@@ -815,22 +1150,27 @@ function renderTable(data) {
             const oreAnomale = row.ore_lavorate_60 > oreMaxPossibili;
             const oreInputClass = oreAnomale ? 'ore-anomale' : '';
             const warningAttr = oreAnomale ? `data-warning="Ore superiori al massimo possibile (${oreMaxPossibili}h)"` : '';
+            const avvisoPasti = avvisoPastiGiorni(row.pasti, row.giorni_lavorativi);
+            const pastiInputClass = avvisoPasti ? 'ore-anomale' : '';
 
             html += `
-                <tr data-utente-id="${row.utente_id}" class="${senzaOreClass}">
+                <tr data-utente-id="${row.utente_id}" data-ordine="${row.ordine_server || 0}" class="${senzaOreClass}">
                     <td>
                         <a href="#" onclick="showStoricoUtente(${row.utente_id}); return false;" class="utente-link" title="Clicca per vedere lo storico">
                             <strong>${row.nome} ${row.cognome}</strong>
-                        </a>
+                        </a>${row.attivo === 0 ? '<span class="badge-var badge-archiviato" title="Utente archiviato: resta nei mesi in cui ha ore o era in servizio, non in quelli futuri">archiviato</span>' : ''}
                     </td>
-                    <td class="text-muted">${row.nome_puntato}</td>
-                    <td class="numeric font-mono">${row.monte_ore_variato ? '<span title="Variazione attiva (base: ' + row.monte_ore_settimanale + 'h)" style="color:var(--warning);cursor:help;">' + row.monte_ore_effettivo + '</span>' : row.monte_ore_settimanale}</td>
+                    <td class="text-muted cella-ac">${row.nome_puntato}</td>
+                    <td class="numeric font-mono">${row.monte_ore_variato
+                        ? `<span class="badge-var" title="Monte ore con una variazione attiva (base: ${formatNumero(row.monte_ore_settimanale)} h)">var.</span> ${formatNumero(row.monte_ore_effettivo)}`
+                        : formatNumero(row.monte_ore_settimanale)}</td>
                     <td class="numeric font-mono">${formatNumber(row.media_mensile_60)}</td>
                     <td class="numeric font-mono">${formatNumber(row.media_con_assenza_60)}</td>
-                    <td ${warningAttr}>
+                    <td class="cella-ore" ${warningAttr}>
                         <input type="text" class="table-input ore-input ${oreInputClass}"
                                data-utente-id="${row.utente_id}"
                                data-max-ore="${oreMaxPossibili}"
+                               data-ore="${row.ore_lavorate_60 || 0}"
                                value="${row.ore_lavorate_60 ? decimalToSessagesimal(row.ore_lavorate_60) : ''}"
                                placeholder="0:00">
                     </td>
@@ -839,8 +1179,10 @@ function renderTable(data) {
                     <td class="currency iva">${formatCurrency(row.iva_100)}</td>
                     <td class="currency totale">${formatCurrency(row.totale_100)}</td>
                     <td>
-                        <input type="number" class="table-input pasti-input"
+                        <input type="number" class="table-input pasti-input ${pastiInputClass}"
                                data-utente-id="${row.utente_id}"
+                               data-giorni="${row.giorni_lavorativi || 0}"
+                               ${avvisoPasti ? `title="${avvisoPasti}"` : ''}
                                value="${row.pasti || ''}"
                                placeholder="0" min="0">
                     </td>
@@ -849,12 +1191,16 @@ function renderTable(data) {
             `;
         });
 
-        // Totale scuola
-        const totaleScuola = data.totali_scuola.find(t => t.scuola === group.scuola);
+        // Totale scuola: una cella per colonna, sotto la sua intestazione (il nome del
+        // plesso e' gia' nella fascia sopra; prima era tagliato a 30 caratteri)
+        // per id: plessi con lo stesso nome in commesse diverse hanno ognuno il suo totale
+        const totaleScuola = data.totali_scuola.find(t => t.scuola_id === group.scuola_id);
         if (totaleScuola) {
+            const n = totaleScuola.num_utenti || group.utenti.length;
             html += `
                 <tr class="scuola-totale">
-                    <td class="text-right" colspan="6"><strong>Totale ${group.scuola.substring(0, 30)}${group.scuola.length > 30 ? '...' : ''}</strong></td>
+                    <td class="text-right" colspan="5"><strong>Totale plesso · ${n} ${n === 1 ? 'utente' : 'utenti'}</strong></td>
+                    <td><strong class="totale-ore-60">${decimalToSessagesimal(totaleScuola.ore_lavorate_60) || '0:00'}</strong></td>
                     <td class="numeric font-mono"><strong>${formatNumber(totaleScuola.ore_lavorate_100)}</strong></td>
                     <td class="currency"><strong>${formatCurrency(totaleScuola.imponibile_100)}</strong></td>
                     <td class="currency"><strong>${formatCurrency(totaleScuola.iva_100)}</strong></td>
@@ -889,6 +1235,94 @@ function renderTable(data) {
             scheduleAutoSave();
         });
     });
+
+    // Navigazione da tastiera tipo foglio di calcolo (Invio / frecce = stessa
+    // colonna riga sotto/sopra, Tab passa da ore a pasti) e incolla di piu' righe
+    container.querySelectorAll('.table-input').forEach(input => {
+        input.addEventListener('keydown', gestisciTastiTabella);
+        input.addEventListener('paste', gestisciIncollaTabella);
+    });
+}
+
+function _inputAdiacente(input, delta) {
+    const selettore = input.classList.contains('ore-input') ? '.ore-input' : '.pasti-input';
+    const colonna = Array.from(document.querySelectorAll(`#table-container ${selettore}`))
+        .filter(i => !i.disabled && i.offsetParent !== null);   // solo righe visibili
+    const idx = colonna.indexOf(input);
+    return idx < 0 ? null : (colonna[idx + delta] || null);
+}
+
+function gestisciTastiTabella(e) {
+    let delta = 0;
+    if (e.key === 'Enter' || e.key === 'ArrowDown') delta = 1;
+    else if (e.key === 'ArrowUp') delta = -1;
+    else return;
+    e.preventDefault();
+    const prossimo = _inputAdiacente(e.target, delta);
+    if (prossimo) {
+        prossimo.focus();
+        prossimo.select();
+    } else if (e.key === 'Enter') {
+        e.target.blur();   // ultima riga: chiude la modifica (scatta il salvataggio)
+    }
+}
+
+function gestisciIncollaTabella(e) {
+    const testo = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+    const valori = testo.split(/\r?\n/).map(r => r.split('\t')[0].trim());
+    while (valori.length && valori[valori.length - 1] === '') valori.pop();
+    if (valori.length <= 1) return;   // un solo valore: incolla normale
+    e.preventDefault();
+    let input = e.target;
+    let n = 0;
+    for (const valore of valori) {
+        if (!input) break;
+        input.value = valore;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input = _inputAdiacente(input, 1);
+        n++;
+    }
+    showToast(`Incollati ${n} valori in colonna`, 'info');
+}
+
+/**
+ * Mese chiuso (Chiusura Mese): mostra un avviso e blocca input e azioni di
+ * scrittura. Il server rifiuta comunque ogni salvataggio (409), qui si evita
+ * di far digitare valori che non verrebbero mai salvati.
+ */
+function applicaStatoMeseChiuso(dataChiusura) {
+    const chiuso = !!dataChiusura;
+    let banner = document.getElementById('mese-chiuso-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'mese-chiuso-banner';
+        banner.className = 'alert alert-warning';
+        banner.setAttribute('role', 'status');
+        const tc = document.getElementById('table-container');
+        tc.parentNode.insertBefore(banner, tc);
+    }
+    if (chiuso) {
+        const quando = new Date(dataChiusura);
+        const quandoTxt = isNaN(quando.getTime()) ? '' : ` il ${quando.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+        // lucchetto: le caselle qui sotto sono di sola lettura
+        banner.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">`
+            + `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>`
+            + `<div><strong>Mese chiuso${quandoTxt}.</strong> Le ore non si possono modificare: `
+            + `per correggerle riapri il mese dalla <a href="/chiusura-mese">Chiusura Mese</a>.</div>`;
+        banner.style.display = 'flex';
+    } else {
+        banner.style.display = 'none';
+    }
+    document.querySelectorAll('.ore-input, .pasti-input').forEach(i => { i.disabled = chiuso; });
+    ['btn-save', 'btn-copia-precedente', 'btn-compila-media'].forEach(id => {
+        const b = document.getElementById(id);
+        if (b) b.disabled = chiuso;
+    });
+    // "Riprova a salvare" non ha senso su un mese chiuso
+    if (chiuso) document.getElementById('btn-save').style.display = 'none';
+    const indicatore = document.getElementById('auto-save-indicator');
+    if (indicatore) indicatore.style.display = chiuso ? 'none' : '';
 }
 
 function scheduleAutoSave() {
@@ -900,11 +1334,12 @@ function scheduleAutoSave() {
     // Mostra indicatore "in attesa"
     const indicator = document.getElementById('auto-save-indicator');
     const text = document.getElementById('auto-save-text');
-    indicator.className = 'auto-save-indicator';
-    text.textContent = 'Modifiche in sospeso...';
+    indicator.className = 'auto-save-indicator pending';
+    text.textContent = 'Modifiche in sospeso…';
 
     // Schedula il salvataggio
     autoSaveTimeout = setTimeout(async () => {
+        autoSaveTimeout = null;
         // Raccogli TUTTE le modifiche pendenti dagli input PRIMA di salvare
         // Questo risolve la race condition: l'evento 'change' potrebbe non essere
         // ancora stato triggerato se l'utente non è uscito dal campo
@@ -912,8 +1347,102 @@ function scheduleAutoSave() {
 
         if (Object.keys(pendingChanges).length > 0) {
             await autoSave();
+        } else {
+            mostraStatoSalvato();   // niente da inviare (al piu' caselle da correggere)
         }
     }, AUTO_SAVE_DELAY);
+}
+
+// ==================== CASELLE: CONTROLLO PRIMA DI INVIARE ====================
+
+// "1230" scritto al posto di "12:30": suggerimento per il messaggio d'errore
+function suggerimentoOre(raw) {
+    const cifre = (raw || '').trim();
+    if (!/^\d{3,4}$/.test(cifre)) return null;
+    const ore = parseInt(cifre.slice(0, -2), 10);
+    const minuti = parseInt(cifre.slice(-2), 10);
+    return minuti < 60 && ore <= MAX_ORE_MESE ? `${ore}:${cifre.slice(-2)}` : null;
+}
+
+// Controllo di una casella ore o pasti: { valore } se va bene, { errore } se no
+function controllaCasella(input) {
+    const raw = input.value.trim();
+    if (input.classList.contains('ore-input')) {
+        if (raw && !isValidTimeFormat(raw)) {
+            return { errore: 'formato non valido: usa HH:MM (es. 8:30) o un numero decimale (es. 8.5)' };
+        }
+        const ore = parseTimeInput(raw);
+        if (!(ore >= 0)) return { errore: 'le ore non possono essere negative' };
+        if (ore > MAX_ORE_MESE) {
+            const suggerito = suggerimentoOre(raw);
+            return { errore: `massimo ${formatNumero(MAX_ORE_MESE)} ore${suggerito ? `: forse volevi scrivere ${suggerito}?` : ''}` };
+        }
+        return { valore: ore };
+    }
+    if (raw === '') return { valore: 0 };
+    const n = Number(raw.replace(',', '.'));
+    if (!Number.isFinite(n) || !Number.isInteger(n)) return { errore: 'i pasti devono essere un numero intero' };
+    if (n < 0) return { errore: 'i pasti non possono essere negativi' };
+    if (n > MAX_PASTI_MESE) return { errore: `massimo ${MAX_PASTI_MESE} pasti` };
+    return { valore: n };
+}
+
+function campoCasella(input) {
+    return input.classList.contains('ore-input') ? 'ore_lavorate_60' : 'pasti';
+}
+
+function nomeRiga(input) {
+    return (input.closest('tr')?.querySelector('.utente-link strong')?.textContent || '').trim();
+}
+
+// Casella non valida: resta in rosso con il motivo, esce dal pacchetto da salvare
+// (non blocca le altre) e perde 'changed' finche' non la si corregge
+function segnaCasellaNonValida(input, messaggio) {
+    const gia = input.classList.contains('input-error') && input.dataset.errore === messaggio;
+    input.classList.add('input-error');
+    input.classList.remove('changed');
+    input.dataset.errore = messaggio;
+    input.title = messaggio;
+    input.setAttribute('aria-invalid', 'true');
+    const td = input.closest('td');
+    if (td) { td.setAttribute('data-warning', messaggio); td.dataset.warningErrore = '1'; }
+    const uid = parseInt(input.dataset.utenteId);
+    const voce = pendingChanges[uid];
+    if (voce) {
+        delete voce[campoCasella(input)];
+        if (Object.keys(voce).length <= 1) delete pendingChanges[uid];
+    }
+    if (!gia) {
+        const nome = nomeRiga(input);
+        const punto = /[.?!]$/.test(messaggio) ? '' : '.';
+        showToast(`${nome ? nome + ': ' : ''}${messaggio}${punto} La casella non viene salvata finché non la correggi.`, 'error', 8000);
+    }
+}
+
+function pulisciErroreCasella(input) {
+    if (!input.classList.contains('input-error')) return;
+    input.classList.remove('input-error');
+    delete input.dataset.errore;
+    input.removeAttribute('title');
+    input.removeAttribute('aria-invalid');
+    const td = input.closest('td');
+    if (td && td.dataset.warningErrore) { td.removeAttribute('data-warning'); delete td.dataset.warningErrore; }
+}
+
+// Pasti piu' dei giorni di scuola del mese: solo un avviso (possono essere due al
+// giorno), spesso sono le ore finite nella casella dei pasti
+function avvisoPastiGiorni(pasti, giorni) {
+    return giorni > 0 && pasti > giorni
+        ? `Più pasti (${pasti}) dei giorni di scuola del mese (${giorni}): controlla che non ci siano finite le ore`
+        : '';
+}
+
+function aggiornaAvvisoPasti(input, pasti) {
+    const avviso = avvisoPastiGiorni(pasti, parseInt(input.dataset.giorni) || 0);
+    input.classList.toggle('ore-anomale', !!avviso);
+    if (avviso) input.title = avviso;
+    else if (!input.classList.contains('input-error')) input.removeAttribute('title');
+    return avviso;
 }
 
 /**
@@ -922,34 +1451,29 @@ function scheduleAutoSave() {
  * non è ancora stato triggerato
  */
 function collectPendingChangesFromInputs() {
-    // Raccogli ore
-    document.querySelectorAll('.ore-input.changed').forEach(input => {
+    // Ore e pasti modificati, con lo stesso controllo dei limiti del server: una
+    // casella non valida viene segnata e resta fuori dal pacchetto
+    document.querySelectorAll('#table-container .ore-input.changed, #table-container .pasti-input.changed').forEach(input => {
         const utenteId = parseInt(input.dataset.utenteId);
-        const rawValue = input.value.trim();
-
-        // Valida e converti
-        if (isValidTimeFormat(rawValue) || rawValue === '') {
-            const ore60 = parseTimeInput(rawValue);
-            if (ore60 >= 0) {
-                if (!pendingChanges[utenteId]) {
-                    pendingChanges[utenteId] = { utente_id: utenteId };
-                }
-                pendingChanges[utenteId].ore_lavorate_60 = ore60;
-            }
+        const esito = controllaCasella(input);
+        if (esito.errore) {
+            segnaCasellaNonValida(input, esito.errore);
+            return;
         }
-    });
-
-    // Raccogli pasti
-    document.querySelectorAll('.pasti-input.changed').forEach(input => {
-        const utenteId = parseInt(input.dataset.utenteId);
-        const pasti = parseInt(input.value) || 0;
-
-        if (pasti >= 0) {
-            if (!pendingChanges[utenteId]) {
-                pendingChanges[utenteId] = { utente_id: utenteId };
-            }
-            pendingChanges[utenteId].pasti = pasti;
+        // Ore non ancora ricalcolate nella riga: l'evento 'change' arriva solo uscendo
+        // dalla casella, e non arriva mai se si riscrive lo stesso testo ("47:40" sopra
+        // un 47,66 salvato parte come 47,67). Si ricalcola come all'uscita, cosi' riga e
+        // Riepilogo mostrano il valore che parte (prima restavano quelli di prima fino
+        // al ricaricamento: 25 centesimi di differenza nel Riepilogo).
+        if (input.classList.contains('ore-input') && esito.valore !== parseFloat(input.dataset.ore)) {
+            handleOreChange(input);
+            return;
         }
+        pulisciErroreCasella(input);
+        if (!pendingChanges[utenteId]) {
+            pendingChanges[utenteId] = { utente_id: utenteId };
+        }
+        pendingChanges[utenteId][campoCasella(input)] = esito.valore;
     });
 }
 
@@ -957,63 +1481,100 @@ async function autoSave() {
     const indicator = document.getElementById('auto-save-indicator');
     const text = document.getElementById('auto-save-text');
 
-    // Mostra "Salvataggio..."
+    // Mostra "Salvataggio…"
     indicator.className = 'auto-save-indicator saving';
     indicator.innerHTML = `
         <div class="spinner-small"></div>
-        <span id="auto-save-text">Salvataggio...</span>
+        <span id="auto-save-text">Salvataggio…</span>
     `;
 
     try {
-        const meseSelect = document.getElementById('filter-mese');
-        const [mese, anno] = meseSelect.value.split('-').map(Number);
+        // Sempre il mese MOSTRATO in tabella, non quello selezionato nel menu
+        if (!periodoCaricato) throw new Error('Nessun mese caricato');
+        const { mese, anno } = periodoCaricato;
 
-        const updates = Object.values(pendingChanges);
+        // Copia di cio' che parte: una casella cambiata mentre la richiesta e' in
+        // viaggio resta da salvare (prima veniva segnata come salvata e si perdeva)
+        const updates = Object.values(pendingChanges).map(u => ({ ...u }));
+        const inviate = [...document.querySelectorAll('#table-container .table-input.changed')].map(i => [i, i.value]);
 
         await apiCall(`/api/rendicontazione/${anno}/${mese}/batch`, {
             method: 'POST',
             body: JSON.stringify({ updates })
         });
 
-        // Successo
-        pendingChanges = {};
-        indicator.className = 'auto-save-indicator saved';
-        indicator.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg>
-            <span id="auto-save-text">Salvato</span>
-        `;
+        segnaInviate(updates, inviate);
 
-        // Reset stile input
-        document.querySelectorAll('.table-input.changed').forEach(input => {
-            input.classList.remove('changed');
-        });
+        const btnSave = document.getElementById('btn-save');
+        btnSave.disabled = true;
+        btnSave.style.display = 'none';
 
-        document.getElementById('btn-save').disabled = true;
-
-        // Torna a stato normale dopo 3 secondi
-        setTimeout(() => {
-            indicator.className = 'auto-save-indicator';
-            indicator.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                <span id="auto-save-text">Salvataggio automatico attivo</span>
-            `;
-        }, 3000);
+        // Successo: resta scritto "Salvato alle hh:mm" fino alla modifica successiva
+        if (document.querySelector('#table-container .table-input.changed') || Object.keys(pendingChanges).length) {
+            scheduleAutoSave();   // modifiche arrivate durante il salvataggio
+        } else {
+            mostraStatoSalvato();
+        }
 
     } catch (error) {
-        // Errore
-        indicator.className = 'auto-save-indicator';
+        // Errore: compare il pulsante per riprovare subito
+        indicator.className = 'auto-save-indicator errore';
         indicator.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14" style="color: var(--danger)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span id="auto-save-text" style="color: var(--danger)">Errore salvataggio</span>
+            <span id="auto-save-text">Modifiche non salvate</span>
         `;
-        showToast('Errore nel salvataggio automatico', 'error');
+        const btnSave = document.getElementById('btn-save');
+        btnSave.disabled = false;
+        btnSave.style.display = '';
+        showToast('Modifiche non salvate: ' + error.message, 'error', 10000);
+        // Il server indica utente e casella: la si segna e si riprova con le altre
+        const d = error.data || {};
+        if (d.utente_id && d.campo) {
+            const classe = d.campo === 'pasti' ? 'pasti-input' : 'ore-input';
+            const input = document.querySelector(`#table-container .${classe}[data-utente-id="${d.utente_id}"]`);
+            const voce = pendingChanges[d.utente_id];
+            if (input && voce && d.campo in voce) {
+                segnaCasellaNonValida(input, d.motivo || 'valore non valido');
+                if (Object.keys(pendingChanges).length) scheduleAutoSave();
+            }
+        }
     }
+}
+
+// Dopo un salvataggio riuscito: 'changed' si toglie solo dalle caselle non cambiate
+// nel frattempo, e da pendingChanges solo le voci partite cosi' com'erano
+function segnaInviate(updates, inviate) {
+    inviate.forEach(([input, valore]) => { if (input.value === valore) input.classList.remove('changed'); });
+    updates.forEach(u => {
+        const attuale = pendingChanges[u.utente_id];
+        if (attuale && JSON.stringify(attuale) === JSON.stringify(u)) delete pendingChanges[u.utente_id];
+    });
+}
+
+function mostraStatoSalvato() {
+    const indicator = document.getElementById('auto-save-indicator');
+    const ora = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    // Caselle fuori limite ancora da correggere: il resto e' salvato, loro no
+    const daCorreggere = document.querySelectorAll('#table-container .table-input.input-error').length;
+    if (daCorreggere) {
+        indicator.className = 'auto-save-indicator errore';
+        indicator.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span id="auto-save-text">Salvato alle ${ora}, tranne ${daCorreggere} ${daCorreggere === 1 ? 'casella da correggere' : 'caselle da correggere'}</span>
+    `;
+        return;
+    }
+    indicator.className = 'auto-save-indicator saved';
+    indicator.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+        </svg>
+        <span id="auto-save-text">Salvato alle ${ora}</span>
+    `;
 }
 
 /**
@@ -1024,37 +1585,28 @@ function handleOreChange(input) {
     const row = input.closest('tr');
     const parentTd = input.closest('td');
 
-    // Validazione input
-    const rawValue = input.value.trim();
-
-    // Verifica formato valido
-    if (rawValue && !isValidTimeFormat(rawValue)) {
-        input.classList.add('input-error');
-        parentTd.setAttribute('data-warning', 'Formato non valido. Usa HH:MM o numero decimale');
-        showToast('Formato ore non valido. Usa formato HH:MM (es: 8:30) o decimale (es: 8.5)', 'error');
+    // Formato, negativi e limite del server (MAX_ORE_MESE): la casella non valida
+    // resta in rosso con il motivo e non viene inviata
+    const esito = controllaCasella(input);
+    if (esito.errore) {
+        segnaCasellaNonValida(input, esito.errore);
         return;
     }
+    pulisciErroreCasella(input);
 
-    const ore60 = parseTimeInput(rawValue);
+    const ore60 = esito.valore;
     const maxOre = parseFloat(input.dataset.maxOre) || 176;
-
-    // Reset errori
-    input.classList.remove('input-error');
-
-    // Validazione valore negativo
-    if (ore60 < 0) {
-        input.classList.add('input-error');
-        parentTd.setAttribute('data-warning', 'Le ore non possono essere negative');
-        showToast('Errore: le ore non possono essere negative', 'error');
-        input.value = '0';
-        return;
-    }
+    // gia' ricalcolata con questo valore dal salvataggio automatico (vedi
+    // collectPendingChangesFromInputs): l'avviso non si ripete all'uscita dalla casella
+    const nuovo = ore60 !== parseFloat(input.dataset.ore);
+    // Valore numerico della casella per il Riepilogo (il testo HH:MM arrotonda ai minuti)
+    input.dataset.ore = ore60;
 
     // Verifica ore anomale (warning, non errore)
     if (ore60 > maxOre) {
         input.classList.add('ore-anomale');
         parentTd.setAttribute('data-warning', `Ore superiori al massimo possibile (${maxOre}h)`);
-        showToast(`Attenzione: ore inserite (${ore60.toFixed(2)}) superiori al massimo possibile (${maxOre}h)`, 'warning');
+        if (nuovo) showToast(`Attenzione: ore inserite (${formatNumber(ore60)}) superiori al massimo possibile (${maxOre}h)`, 'warning');
     } else {
         input.classList.remove('ore-anomale');
         parentTd.removeAttribute('data-warning');
@@ -1064,12 +1616,19 @@ function handleOreChange(input) {
     const utente = currentData.find(d => d.utente_id === utenteId);
     if (!utente) return;
 
-    // Ricalcola
-    const ore100 = ore60;
-    const imponibile = ore100 * 24.07;
-    const iva = imponibile * 0.05;
-    const totale = imponibile + iva;
+    // Ricalcola come il server (database.get_rendicontazione_completa): importi della
+    // riga dalle ore NON arrotondate, calcola_fatturazione(ore_lavorate_60); le ore in
+    // 100' arrotondate servono solo alla colonna Ore (100') e al Riepilogo. Dalle ore
+    // arrotondate, con 10:40 la riga mostrava 256,83 invece di 256,75 fino al ricaricamento.
+    const ore100 = arrotonda2(ore60);
+    const { imponibile, iva, totale } = calcolaFatturazione(ore60);
     const creditoDebito = utente.media_con_assenza_60 - ore60;
+    // La riga in memoria segue la casella: ridisegnando la tabella (filtro Scuola)
+    // tornavano le ore e i totali del caricamento, anche se quelle nuove erano salvate
+    Object.assign(utente, {
+        ore_lavorate_60: ore60, ore_lavorate_100: ore100, imponibile_100: imponibile,
+        iva_100: iva, totale_100: totale, credito_debito: arrotonda2(creditoDebito)
+    });
 
     // Aggiorna celle
     row.querySelector('.ore-100').textContent = formatNumber(ore100);
@@ -1095,50 +1654,33 @@ function handleOreChange(input) {
     pendingChanges[utenteId].ore_lavorate_60 = ore60;
 
     document.getElementById('btn-save').disabled = false;
+    totaliModificati = true;
     recalculateTotals();
     updateSenzaOreBadgeFromDOM();
 }
 
 function updateSenzaOreBadgeFromDOM() {
-    const senzaOre = document.querySelectorAll('tr.utente-senza-ore').length;
-    const badge = document.getElementById('badge-senza-ore');
-    const count = document.getElementById('senza-ore-count');
-
-    if (senzaOre > 0) {
-        count.textContent = senzaOre;
-        badge.style.display = 'inline-flex';
-    } else {
-        badge.style.display = 'none';
-    }
+    mostraContaSenzaOre(document.querySelectorAll('#table-container tr.utente-senza-ore').length);
 }
 
 function handlePastiChange(input) {
     const utenteId = parseInt(input.dataset.utenteId);
-    let pasti = parseInt(input.value) || 0;
 
-    // Validazione: deve essere un numero intero >= 0
-    if (pasti < 0) {
-        input.classList.add('input-error');
-        showToast('Errore: il numero di pasti non può essere negativo', 'error');
-        pasti = 0;
-        input.value = '0';
-    } else if (!Number.isInteger(parseFloat(input.value)) && input.value.trim() !== '') {
-        input.classList.add('input-error');
-        showToast('Attenzione: i pasti devono essere un numero intero', 'warning');
-        pasti = Math.floor(parseFloat(input.value) || 0);
-        input.value = pasti.toString();
-    } else {
-        input.classList.remove('input-error');
+    // Intero tra 0 e il limite del server (MAX_PASTI_MESE, due pasti al giorno per
+    // 31 giorni): fuori limite la casella resta in rosso e non viene inviata
+    const esito = controllaCasella(input);
+    if (esito.errore) {
+        segnaCasellaNonValida(input, esito.errore);
+        return;
     }
-
-    // Validazione: limite ragionevole (max 2 pasti al giorno × 31 giorni)
-    const maxPasti = 62;
-    if (pasti > maxPasti) {
-        input.classList.add('ore-anomale');
-        showToast(`Attenzione: numero pasti (${pasti}) superiore al limite mensile (${maxPasti})`, 'warning');
-    } else {
-        input.classList.remove('ore-anomale');
-    }
+    pulisciErroreCasella(input);
+    const pasti = esito.valore;
+    // piu' pasti dei giorni di scuola: solo un avviso
+    const avviso = aggiornaAvvisoPasti(input, pasti);
+    if (avviso) showToast(`${nomeRiga(input)}: ${avviso}`, 'warning', 8000);
+    // come per le ore: ridisegnando la tabella si vede il valore scritto
+    const utente = currentData.find(d => d.utente_id === utenteId);
+    if (utente) utente.pasti = pasti;
 
     if (!pendingChanges[utenteId]) {
         pendingChanges[utenteId] = { utente_id: utenteId };
@@ -1146,37 +1688,49 @@ function handlePastiChange(input) {
     pendingChanges[utenteId].pasti = pasti;
 
     document.getElementById('btn-save').disabled = false;
+    totaliModificati = true;
     recalculateTotals();
 }
 
 function markChanged(input) {
     input.classList.add('changed');
+    // Ogni nuova modifica azzera la firma dell'ultimo invio in uscita: un pacchetto
+    // uguale a quello partito con la scheda nascosta deve ripartire se nel frattempo
+    // un salvataggio automatico ha scritto un altro valore (7:15, poi 10:00, poi di
+    // nuovo 7:15 e uscita: prima restava 10:00 senza avviso). Senza nuove modifiche
+    // la firma resta, e "scheda nascosta e poi chiusa" non manda il pacchetto due volte.
+    ultimoInvioUscita = null;
 }
 
+// Totali dalle caselle delle righe VISIBILI: con un filtro attivo il Riepilogo
+// somma solo gli utenti filtrati (prima sommava sempre tutti e 35).
+// Si legge il NUMERO della casella (data-ore: salvato, o l'ultimo valore valido
+// scritto), non il testo HH:MM: i valori salvati in centesimi (es. 10,66) non sono
+// minuti interi e rileggendo "10:40" il totale in euro si spostava di centesimi.
+// Poi lo stesso calcolo del server (totale_generale di app.py): ore in 100'
+// arrotondate riga per riga come round(x, 2), sommate come sum() nell'ordine del
+// server, importi una volta sola sulla somma (calcola_fatturazione).
 function recalculateTotals() {
-    let totOre60 = 0;
-    let totOre100 = 0;
-    let totImponibile = 0;
-    let totPasti = 0;
-
-    document.querySelectorAll('.ore-input').forEach(input => {
-        const ore60 = parseTimeInput(input.value);
-        const ore100 = ore60;
-        totOre60 += ore60;
-        totOre100 += ore100;
-        totImponibile += ore100 * 24.07;
+    const righe = [];
+    document.querySelectorAll('#table-container tr[data-utente-id]').forEach(row => {
+        if (row.style.display === 'none') return;
+        const input = row.querySelector('.ore-input');
+        righe.push({
+            ordine_server: parseInt(row.dataset.ordine) || 0,
+            ore60: input ? (parseFloat(input.dataset.ore) || 0) : 0
+        });
     });
-
-    document.querySelectorAll('.pasti-input').forEach(input => {
-        totPasti += parseInt(input.value) || 0;
-    });
+    const inOrdine = inOrdineServer(righe);
+    const numUtenti = righe.length;
+    const totOre60 = sommaComePython(inOrdine.map(r => r.ore60));
+    const totOre100 = sommaComePython(inOrdine.map(r => arrotonda2(r.ore60)));
+    document.getElementById('tot-utenti').textContent = numUtenti;
 
     // Ore 60' in formato sessagesimale (HH:MM)
     document.getElementById('tot-ore-60').textContent = formatOreSessionali(totOre60);
     document.getElementById('tot-ore-100').textContent = formatNumber(totOre100);
-    // Totale con IVA 5%
-    const totaleConIva = totImponibile * 1.05;
-    document.getElementById('tot-totale').textContent = formatCurrency(totaleConIva);
+    // Totale con IVA (tariffa e percentuale da config)
+    document.getElementById('tot-totale').textContent = formatCurrency(calcolaFatturazione(totOre100).totale);
 }
 
 function updateTotals(totale) {
@@ -1273,9 +1827,11 @@ function applyExcelFilter(query) {
     // Seleziona header scuole e totali
     const scuolaHeaders = document.querySelectorAll('#table-container tbody tr.scuola-header');
     const scuolaTotali = document.querySelectorAll('#table-container tbody tr.scuola-totale');
+    const badge = document.getElementById('badge-senza-ore');
+    badge.setAttribute('aria-pressed', String(soloSenzaOre));
 
-    // Se query vuota, mostra tutto
-    if (!normalizedQuery) {
+    // Nessun filtro: mostra tutto
+    if (!normalizedQuery && !soloSenzaOre) {
         userRows.forEach(row => {
             row.style.display = '';
             row.classList.remove('excel-filter-match');
@@ -1286,8 +1842,14 @@ function applyExcelFilter(query) {
         resultsCount.innerHTML = '';
         resultsCount.className = 'excel-filter-results';
 
-        // Ripristina contatore badge
+        // Ripristina contatore badge e Riepilogo di tutti gli utenti
         document.getElementById('utenti-count').textContent = currentData.length;
+        document.getElementById('totali-nota').textContent = '';
+        if (totaliModificati || !totaliServer) recalculateTotals();
+        else updateTotals(totaliServer);
+        if (badge.style.display !== 'none' && !document.querySelector('#table-container tr.utente-senza-ore')) {
+            badge.style.display = 'none';
+        }
         return;
     }
 
@@ -1312,8 +1874,9 @@ function applyExcelFilter(query) {
         }
         const scuolaName = scuolaHeader ? normalizeText(scuolaHeader.textContent) : '';
 
-        // Verifica match
-        const isMatch = userName.includes(normalizedQuery) || scuolaName.includes(normalizedQuery);
+        // Verifica match: testo (se scritto) e, se acceso, solo le righe senza ore
+        const matchTesto = !normalizedQuery || userName.includes(normalizedQuery) || scuolaName.includes(normalizedQuery);
+        const isMatch = matchTesto && (!soloSenzaOre || row.classList.contains('utente-senza-ore'));
 
         if (isMatch) {
             row.style.display = '';
@@ -1339,26 +1902,27 @@ function applyExcelFilter(query) {
     });
 
     // Aggiorna contatore risultati
+    // Testi brevi: stanno nell'intestazione "Dettaglio Utenti" accanto alla casella,
+    // senza mandarla a capo (la parola cercata si legge gia' nella casella)
     if (matchCount === 0) {
         resultsCount.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Nessun risultato per "<strong>${escapeHtml(query)}</strong>"
+            Nessun utente ${normalizedQuery ? 'trovato' : 'senza ore'}
         `;
         resultsCount.className = 'excel-filter-results no-results';
     } else {
         resultsCount.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            <strong>${matchCount}</strong> utent${matchCount === 1 ? 'e' : 'i'} filtrat${matchCount === 1 ? 'o' : 'i'}
+            <strong>${matchCount}</strong>&nbsp;utent${matchCount === 1 ? 'e' : 'i'} su ${userRows.length}
         `;
         resultsCount.className = 'excel-filter-results has-results';
     }
 
-    // Aggiorna badge nella card header
-    document.getElementById('utenti-count').textContent = matchCount + ' filtrati';
+    // Riepilogo sulle sole righe filtrate. Il numero accanto al titolo resta il totale:
+    // "N utenti su 35" accanto alla casella dice gia' quanti ne restano.
+    document.getElementById('totali-nota').textContent = `· solo ${matchCount === 1 ? "l'utente filtrato" : `i ${matchCount} utenti filtrati`}`;
+    recalculateTotals();
 }
 
 function normalizeText(text) {
@@ -1392,63 +1956,36 @@ function resetExcelFilter() {
         resultsCount.innerHTML = '';
         resultsCount.className = 'excel-filter-results';
     }
+    const nota = document.getElementById('totali-nota');
+    if (nota) nota.textContent = '';
 }
 
 async function saveChanges() {
-    const meseSelect = document.getElementById('filter-mese');
-    const [mese, anno] = meseSelect.value.split('-').map(Number);
-
-    const updates = Object.values(pendingChanges);
-    if (updates.length === 0) {
+    const periodo = periodoMostrato();
+    if (!periodo) return;
+    if (autoSaveTimeout) { clearTimeout(autoSaveTimeout); autoSaveTimeout = null; }
+    collectPendingChangesFromInputs();
+    if (Object.keys(pendingChanges).length === 0) {
         showToast('Nessuna modifica da salvare', 'warning');
+        mostraStatoSalvato();
         return;
     }
 
     const btn = document.getElementById('btn-save');
     btn.disabled = true;
-    btn.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px;"></div> Salvataggio...';
-
-    try {
-        await apiCall(`/api/rendicontazione/${anno}/${mese}/batch`, {
-            method: 'POST',
-            body: JSON.stringify({ updates })
-        });
-
-        showToast('Modifiche salvate con successo!', 'success');
-        pendingChanges = {};
-
-        // Reset stile input
-        document.querySelectorAll('.table-input').forEach(input => {
-            input.classList.remove('changed');
-        });
-
-        btn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg>
-            Salva Modifiche
-        `;
-
-        // Aggiorna indicatore auto-save
-        const indicator = document.getElementById('auto-save-indicator');
-        indicator.className = 'auto-save-indicator saved';
-        indicator.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg>
-            <span>Salvato</span>
-        `;
-
-    } catch (error) {
-        showToast('Errore nel salvataggio: ' + error.message, 'error');
-        btn.disabled = false;
-        btn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg>
-            Salva Modifiche
-        `;
-    }
+    btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;"></div> Salvataggio…';
+    // Stessa strada del salvataggio automatico (copia di cio' che parte, messaggio
+    // del server con utente e casella)
+    await autoSave();
+    btn.innerHTML = TESTO_RIPROVA_SALVA;
+    if (!Object.keys(pendingChanges).length) showToast('Modifiche salvate con successo!', 'success');
 }
+
+const TESTO_RIPROVA_SALVA = `
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+    Riprova a salvare
+`;
 </script>
 {% endblock %}

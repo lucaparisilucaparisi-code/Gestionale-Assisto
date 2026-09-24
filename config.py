@@ -19,6 +19,11 @@ TASSO_ASSENZA = 0.11
 IVA_PERCENTUALE = 0.05
 COEFFICIENTE_GIORNALIERO = 0.2
 
+# Settimane di scuola in un anno scolastico. Base per il MONTE ORE PREVISTO del
+# solo report ANNUALE (ore settimanali x settimane, meno l'11% di assenze).
+# I report mensile e municipale restano basati sui giorni effettivi del calendario.
+SETTIMANE_ANNO_SCOLASTICO = 35
+
 
 def anno_scolastico_di(anno: int, mese: int, sep: str = '-') -> str:
     """Anno scolastico (Set-Giu) a cui appartiene un (anno, mese).
@@ -29,6 +34,26 @@ def anno_scolastico_di(anno: int, mese: int, sep: str = '-') -> str:
     if mese >= 9:
         return f"{anno}{sep}{anno + 1}"
     return f"{anno - 1}{sep}{anno}"
+
+
+def mese_scolastico_precedente(anno: int, mese: int) -> tuple:
+    """Mese precedente NELL'ANNO SCOLASTICO: per settembre e' giugno (luglio e
+    agosto non sono mesi scolastici e sono sempre vuoti), per gennaio e' dicembre
+    dell'anno prima. Ritorna (anno, mese). Regola unica per "Copia Mese Prec.",
+    lo scostamento in Rendicontazione e il "Confronto Mese" di Statistiche."""
+    if mese == 9:
+        return anno, 6
+    if mese == 1:
+        return anno - 1, 12
+    return anno, mese - 1
+
+
+def anno_scolastico_corrente(sep: str = '-') -> str:
+    """Anno scolastico di oggi: default unico per filtri e API (niente anni
+    scritti a mano nel codice, che invecchiano ad ogni settembre)."""
+    from datetime import date
+    oggi = date.today()
+    return anno_scolastico_di(oggi.year, oggi.month, sep)
 
 
 def calcola_fatturazione(ore) -> tuple:
@@ -47,6 +72,15 @@ def calcola_fatturazione(ore) -> tuple:
     totale = round(imponibile + iva, 2)
     return imponibile, iva, totale
 
+
+# sum() di Python, con cui si sommano le ore dei totali (Riepilogo, report): dalla
+# 3.12 e' una somma compensata (Neumaier), prima semplice. Con le ore che finiscono
+# in ,50 il totale in euro puo' cambiare di un centesimo tra i due modi, percio' la
+# Rendicontazione, che ricalcola il Riepilogo nel browser dopo ogni modifica, usa lo
+# stesso modo del Python che la serve (APP_CONFIG.somma_compensata). Si prova il
+# comportamento invece di leggere la versione.
+SOMMA_COMPENSATA = sum([1e100, 1.0, -1e100]) == 1.0
+
 # ==================== PARAMETRI CALCOLO / REPORT ====================
 # Giorni lavorativi di fallback se il calendario non ha dati per il mese
 GIORNI_LAVORATIVI_DEFAULT = 22
@@ -54,6 +88,10 @@ GIORNI_LAVORATIVI_DEFAULT = 22
 STORICO_MESI_DEFAULT = 6
 # Soglia percentuale per segnalare differenze anomale ore erogate vs previste
 SOGLIA_ANOMALIA_PERCENTUALE = 50
+# "Copia Mese Prec.": oltre questa differenza di giorni di scuola tra il mese di
+# origine e quello di destinazione (settembre da giugno, giugno da maggio...) la
+# conferma avvisa che le ore copiate non sono adatte
+SOGLIA_GIORNI_COPIA_PERCENTUALE = 20
 
 # ==================== LIMITI UPLOAD ====================
 MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
@@ -67,13 +105,18 @@ MAX_DESCRIZIONE_LENGTH = 500
 MAX_NOTE_LENGTH = 1000
 MAX_ORE_SETTIMANALI = 40.0
 MAX_ORE_MENSILI = 200.0
-MAX_PASTI_MENSILI = 31
+MAX_PASTI_MENSILI = 62  # fino a due pasti al giorno per 31 giorni (44 in un mese e' plausibile)
 MIN_GIORNI_LAVORATIVI = 0
 MAX_GIORNI_LAVORATIVI = 23
 
 # ==================== BACKUP ====================
 MAX_BACKUPS = 30  # Numero massimo di backup da conservare
 BACKUP_ON_STARTUP = True
+
+# ==================== ANNULLA (Ctrl+Z) ====================
+# Le azioni piu' vecchie non si annullano piu' (restano nel registro attivita'):
+# prima Ctrl+Z annullava senza chiedere anche modifiche di mesi prima
+UNDO_VALIDITA_ORE = 24
 
 # ==================== MESI ====================
 MESI_NOME = {

@@ -5,7 +5,9 @@ Gestionale OEPAC - Sistema di Rendicontazione
 
 import os
 import re
+import ast
 import csv
+import json
 import hashlib
 import secrets
 from functools import wraps
@@ -63,6 +65,46 @@ app.register_blueprint(dashboard_bp)
 app.config['UPLOAD_FOLDER'] = config.UPLOAD_FOLDER
 app.config['EXPORT_FOLDER'] = config.EXPORT_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
+
+
+def _parametri_calcolo():
+    """Parametri di calcolo per le pagine (window.APP_CONFIG e /api/config):
+    un'unica fonte (config.py) al posto di tariffe e percentuali scritte a mano
+    nei template, che sarebbero rimaste vecchie al primo cambio di tariffa."""
+    return {
+        'tariffa_oraria': config.TARIFFA_ORARIA,
+        'iva_percentuale': config.IVA_PERCENTUALE,
+        'tasso_assenza': config.TASSO_ASSENZA,
+        'coefficiente_giornaliero': config.COEFFICIENTE_GIORNALIERO,
+        'max_ore_settimanali': config.MAX_ORE_SETTIMANALI,
+        'max_pasti_mensili': config.MAX_PASTI_MENSILI,
+        'max_ore_mensili': config.MAX_ORE_MENSILI,
+        # come somma sum() su questo Python: la pagina ricalcola il Riepilogo allo stesso modo
+        'somma_compensata': config.SOMMA_COMPENSATA,
+    }
+
+
+def _leggi_versione():
+    try:
+        with open(os.path.join(config.BASE_DIR, 'VERSION'), encoding='utf-8') as f:
+            return f.read().strip()
+    except OSError:
+        return '0'
+
+
+VERSIONE_APP = _leggi_versione()
+
+
+def static_url(filename):
+    """URL di un asset statico con la versione dell'app in query string: ad ogni
+    release browser e service worker scaricano i file nuovi invece di riusare
+    quelli in cache (prima, dopo un aggiornamento, si vedeva la versione vecchia)."""
+    return url_for('static', filename=filename) + '?v=' + VERSIONE_APP
+
+
+@app.context_processor
+def inject_app_config():
+    return {'app_config': _parametri_calcolo(), 'app_versione': VERSIONE_APP, 'static_url': static_url}
 def _load_or_generate_secret_key():
     """Carica il secret_key da file, oppure lo genera random e lo persiste.
     Priorita': variabile ambiente FLASK_SECRET_KEY > file .flask_secret_key."""
@@ -109,7 +151,14 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('OEPAC_HTTPS', '0') == '1'
 app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 8  # 8 ore
 
-# Inizializza database
+# Backup all'avvio PRIMA delle migrazioni di init_db: se il database esiste gia'
+# (per esempio copiato da una versione precedente) resta una copia com'era prima
+# dell'aggiornamento. Al primo avvio assoluto non c'e' niente da salvare.
+if config.BACKUP_ON_STARTUP and os.path.exists(config.DATABASE_PATH):
+    if db.create_backup():
+        logger.info("Backup automatico all'avvio completato")
+
+# Inizializza database (schema e migrazioni)
 db.init_db()
 
 
@@ -325,14 +374,22 @@ def api_auth_logout():
 def api_auth_status():
     """Ritorna lo stato di autenticazione corrente."""
     user = db.auth_get_user() if db.auth_is_configured() else None
-    return jsonify({
+    autenticato = bool(session.get('authenticated'))
+    stato = {
         'configured': db.auth_is_configured(),
-        'authenticated': bool(session.get('authenticated')),
+        'authenticated': autenticato,
         'method': session.get('auth_method'),
         'username': user['username'] if user else None,
         'webauthn_available': WEBAUTHN_AVAILABLE,
         'webauthn_registered': len(db.webauthn_get_credentials()) > 0 if db.auth_is_configured() else False,
-    })
+    }
+    # Profilo: data di creazione dell'account e accesso in corso (con il metodo).
+    # Prima la pagina li mostrava sempre come '—'. Solo a chi ha gia' fatto l'accesso.
+    if autenticato and user:
+        stato['data_creazione'] = user.get('data_creazione')
+        stato['ultimo_accesso'] = user.get('ultimo_accesso')
+        stato['ultimo_accesso_metodo'] = user.get('ultimo_accesso_metodo')
+    return jsonify(stato)
 
 
 # ---------- WEBAUTHN (impronta digitale / Windows Hello) ----------
@@ -553,11 +610,6 @@ def profilo_page():
 
 
 
-# Backup all'avvio
-if config.BACKUP_ON_STARTUP:
-    db.create_backup()
-    logger.info("Backup automatico all'avvio completato")
-
 # Costanti da config
 MESI_NOME = config.MESI_NOME
 MESI_SCOLASTICI = config.MESI_SCOLASTICI
@@ -565,7 +617,106 @@ MESI_SCOLASTICI = config.MESI_SCOLASTICI
 
 # ==================== VALIDAZIONE ====================
 # Le funzioni di validazione vivono in validators.py (condivise con i blueprint).
-from validators import validate_string, validate_number  # noqa: E402
+from validators import validate_string, validate_number, validate_integer  # noqa: E402
+
+
+# ==================== HELPER CONDIVISI (audit, periodo, mese chiuso) ====================
+
+def _parse_dati_audit(raw):
+    """Decodifica i dati salvati nell'audit log: JSON (formato attuale) con
+    fallback al repr Python delle righe storiche (venivano salvate con str(dict),
+    che json.loads non legge: lo storico monte ore risultava sempre vuoto)."""
+    if not raw:
+        return {}
+    try:
+        dati = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        try:
+            dati = ast.literal_eval(raw)
+        except (ValueError, SyntaxError):
+            return {}
+    return dati if isinstance(dati, dict) else {}
+
+
+def _errore_periodo(anno, mese):
+    """Messaggio d'errore se (anno, mese) non e' un periodo valido, altrimenti None."""
+    if not 1 <= mese <= 12:
+        return f'Mese non valido: {mese} (deve essere tra 1 e 12)'
+    if not 2000 <= anno <= 2100:
+        return f'Anno non valido: {anno}'
+    return None
+
+
+def _risposta_mese_chiuso(anno, mese):
+    """Risposta 409 se il mese e' stato chiuso (Chiusura Mese), altrimenti None.
+
+    La chiusura blocca OGNI scrittura delle ore (singola, batch, copia, compila
+    con media, import Excel): per correggere bisogna prima riaprire il mese."""
+    data_chiusura = db.get_mese_chiuso(anno, mese)
+    if not data_chiusura:
+        return None
+    return jsonify({
+        'success': False,
+        'error': f"{MESI_NOME.get(mese, mese)} {anno} e' chiuso: le ore non si possono modificare. "
+                 "Riapri il mese dalla Chiusura Mese per correggerlo.",
+        'code': 'MESE_CHIUSO',
+        'data_chiusura': data_chiusura,
+    }), 409
+
+
+def _valida_riga_rendicontazione(riga):
+    """Valida ore/pasti/note di una riga di rendicontazione con i limiti di config.
+
+    Ritorna (valori, errore, campo): valori contiene le sole chiavi presenti nella
+    richiesta (assente = 'non toccare'), pronte per db.update_rendicontazione;
+    campo e' la chiave della richiesta sbagliata ('ore_lavorate_60', 'pasti', 'note')."""
+    valori = {}
+    if riga.get('ore_lavorate_60') is not None:
+        ore, err = validate_number(riga.get('ore_lavorate_60'), 'Ore lavorate',
+                                   0, config.MAX_ORE_MENSILI)
+        if err:
+            return None, err, 'ore_lavorate_60'
+        valori['ore_lavorate'] = ore
+    if riga.get('pasti') is not None:
+        pasti, err = validate_integer(riga.get('pasti'), 'Pasti', 0, config.MAX_PASTI_MENSILI)
+        if err:
+            return None, err, 'pasti'
+        valori['pasti'] = pasti
+    if riga.get('note') is not None:
+        note, err = validate_string(riga.get('note'), 'Note', config.MAX_NOTE_LENGTH, required=False)
+        if err:
+            return None, err, 'note'
+        valori['note'] = note
+    return valori, None, None
+
+
+def _valida_valori_rendicontazione(riga):
+    """Come _valida_riga_rendicontazione, senza il campo: ritorna (valori, errore)."""
+    valori, err, _ = _valida_riga_rendicontazione(riga)
+    return valori, err
+
+
+def _valida_mese_fine(valore, mese_inizio=None):
+    """Mese di fine di una variazione monte ore: vuoto -> None (aperta), altrimenti
+    'YYYY-MM' non precedente al mese di inizio (se noto). Ritorna (valore, errore)."""
+    mese_fine = (valore or '').strip() if isinstance(valore, str) else valore
+    if not mese_fine:
+        return None, None
+    if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', mese_fine):
+        return None, 'Mese fine non valido (formato YYYY-MM)'
+    if mese_inizio and mese_fine < mese_inizio:
+        return None, 'Il mese di fine non puo\' precedere il mese di inizio'
+    return mese_fine, None
+
+
+def _valida_anno_scolastico(anno_scolastico):
+    """'AAAA-AAAA' con anni consecutivi; ritorna il messaggio d'errore o None."""
+    if not re.match(r'^\d{4}-\d{4}$', anno_scolastico or ''):
+        return 'Formato anno scolastico non valido (es. 2026-2027)'
+    a1, a2 = map(int, anno_scolastico.split('-'))
+    if a2 != a1 + 1:
+        return 'Anno scolastico non coerente (deve essere consecutivo)'
+    return None
 
 
 # ==================== ROUTES PAGINE ====================
@@ -596,7 +747,8 @@ def chiusura_mese_page():
 
 @app.route('/api/mese-chiuso/<int:anno>/<int:mese>', methods=['GET'])
 def api_get_mese_chiuso(anno, mese):
-    """Stato di chiusura del mese (informativo: non blocca modifiche)."""
+    """Stato di chiusura del mese. Un mese chiuso rifiuta ogni scrittura delle
+    ore (409 MESE_CHIUSO) finche' non viene riaperto (DELETE)."""
     data_chiusura = db.get_mese_chiuso(anno, mese)
     return jsonify({'chiuso': data_chiusura is not None, 'data_chiusura': data_chiusura})
 
@@ -1104,6 +1256,8 @@ def _riepilogo_foglio(f, max_esempi=15):
         'n_non_trovati': len(f['non_trovati']),
         'n_ambigui': len(f['ambigui']),
         'n_senza_ore': len(f['senza_ore']),
+        'n_fuori_limite': len(f.get('fuori_limite', [])),
+        'esempi_fuori_limite': [dict(slim(v), motivo=v.get('motivo')) for v in f.get('fuori_limite', [])[:max_esempi]],
         'anteprima_match': [slim(v) for v in f['match'][:max_esempi]],
         'esempi_non_trovati': [slim(v) for v in f['non_trovati'][:max_esempi]],
         'esempi_ambigui': [slim(v) for v in f['ambigui'][:max_esempi]],
@@ -1129,6 +1283,7 @@ def api_preview_rendicontazione():
             'totale_match': sum(f['n_match'] for f in fogli),
             'totale_non_trovati': sum(f['n_non_trovati'] for f in fogli),
             'totale_ambigui': sum(f['n_ambigui'] for f in fogli),
+            'totale_fuori_limite': sum(f['n_fuori_limite'] for f in fogli),
         })
     except Exception as e:
         logger.error(f"Errore anteprima rendicontazione: {e}", exc_info=True)
@@ -1160,7 +1315,7 @@ def api_import_rendicontazione():
         logger.info(f"Backup pre-import rendicontazione creato: {backup_pre_import}")
 
     dettaglio = []
-    tot_scritti = tot_saltati_pieni = tot_non_trovati = tot_ambigui = 0
+    tot_scritti = tot_saltati_pieni = tot_non_trovati = tot_ambigui = tot_fuori_limite = 0
 
     for f in analisi:
         if not (f['mese'] and f['anno']):
@@ -1168,6 +1323,12 @@ def api_import_rendicontazione():
             continue
 
         anno, mese = f['anno'], f['mese']
+
+        # Mese chiuso (Chiusura Mese): non si tocca, va riaperto prima
+        if db.get_mese_chiuso(anno, mese):
+            dettaglio.append({'foglio': f['foglio'], 'mese': mese, 'anno': anno,
+                              'errore': 'Mese chiuso: ore non importate. Riaprilo dalla Chiusura Mese.'})
+            continue
 
         # In modalita' "solo vuoti" salta gli utenti che hanno gia' ore nel mese
         gia_con_ore = set()
@@ -1200,6 +1361,7 @@ def api_import_rendicontazione():
         tot_saltati_pieni += saltati_pieni
         tot_non_trovati += len(f['non_trovati'])
         tot_ambigui += len(f['ambigui'])
+        tot_fuori_limite += len(f['fuori_limite'])
         dettaglio.append({
             'foglio': f['foglio'], 'mese': mese, 'anno': anno,
             'mese_nome': MESI_NOME.get(mese, ''),
@@ -1207,6 +1369,8 @@ def api_import_rendicontazione():
             'saltati_gia_pieni': saltati_pieni,
             'non_trovati': len(f['non_trovati']),
             'ambigui': len(f['ambigui']),
+            # ore o pasti oltre i limiti: non scritte, con nome e motivo
+            'fuori_limite': [{'nome': v['nome_completo'], 'motivo': v['motivo']} for v in f['fuori_limite']],
         })
 
     db.log_audit('import_rendicontazione', 'rendicontazione',
@@ -1234,6 +1398,7 @@ def api_import_rendicontazione():
         'totale_saltati_gia_pieni': tot_saltati_pieni,
         'totale_non_trovati': tot_non_trovati,
         'totale_ambigui': tot_ambigui,
+        'totale_fuori_limite': tot_fuori_limite,
         'dettaglio': dettaglio,
         'backup_pre_import': backup_pre_import,
     })
@@ -1559,20 +1724,28 @@ def api_annulla_sostituto(sostituzione_id):
 
 @app.route('/api/utenti', methods=['GET'])
 def api_get_utenti():
-    """Ottiene lista utenti con paginazione opzionale"""
+    """Ottiene lista utenti con paginazione opzionale.
+
+    attivi: '1' (default) solo attivi, '0' solo archiviati, 'tutti' entrambi."""
     commessa = request.args.get('commessa')
     scuola_id = request.args.get('scuola_id')
     page = request.args.get('page', type=int)
     limit = request.args.get('limit', default=50, type=int)
+    attivo = {'1': True, '0': False}.get(request.args.get('attivi', '1'), None)
 
     # Limita il numero massimo di elementi per pagina
     limit = min(limit, 200)
 
-    utenti = db.get_all_utenti(commessa, scuola_id, page=page, limit=limit)
+    utenti = db.get_all_utenti(commessa, scuola_id, page=page, limit=limit, attivo=attivo)
+    # Lista d'attesa: conta quest'anno? (un'etichetta di un anno passato si
+    # mostra attenuata con l'anno, es. "Marzo 25/26")
+    anno_corrente = config.anno_scolastico_corrente()
+    for u in utenti:
+        u.update(db.info_lista_attesa(u, anno_corrente))
 
     # Se paginato, restituisci anche i metadati
     if page is not None:
-        total = db.count_utenti(commessa, scuola_id)
+        total = db.count_utenti(commessa, scuola_id, attivo=attivo)
         return jsonify({
             'data': [dict(u) for u in utenti],
             'pagination': {
@@ -1625,14 +1798,41 @@ def api_create_utente():
         if not scuola_id:
             return jsonify({'error': f'Commessa "{commessa}" non valida'}), 400
 
-        utente_id = db.get_or_create_utente(scuola_id, nome, cognome, monte_ore)
-        db.log_audit('creazione', 'utente', utente_id, f'{nome} {cognome}')
+        # Omonimo nella stessa scuola: prima veniva sovrascritto in silenzio
+        # (monte ore compreso) rispondendo "creato". Ora si segnala (409) e il
+        # secondo utente si crea solo con conferma esplicita (forza=true).
+        esistente = db.trova_utente_omonimo(scuola_id, nome, cognome)
+        if esistente and not data.get('forza'):
+            stato = '' if esistente['attivo'] else ' (archiviato: puoi ripristinarlo dal filtro "Archiviati")'
+            return jsonify({
+                'error': f"Esiste gia' {esistente['nome']} {esistente['cognome'] or ''} in questa scuola, "
+                         f"monte ore {esistente['monte_ore_settimanale']}h{stato}.",
+                'code': 'UTENTE_DUPLICATO',
+                'utente_esistente': esistente,
+            }), 409
+
+        utente_id = db.create_utente(scuola_id, nome, cognome, monte_ore)
+        db.log_audit('creazione', 'utente', utente_id, f'{nome} {cognome}',
+                     dati_nuovi={'monte_ore': monte_ore})
         logger.info(f"Utente creato: {nome} {cognome} (ID: {utente_id})")
 
         return jsonify({'success': True, 'utente_id': utente_id})
     except Exception as e:
         logger.error(f"Errore creazione utente: {e}")
         return jsonify({'error': 'Errore interno del server'}), 500
+
+
+def _lista_attesa_con_anno(dati):
+    """Etichetta lista d'attesa di una richiesta con il suo anno scolastico:
+    quello passato in 'lista_attesa_as' (formato AAAA-AAAA) o l'anno corrente.
+    Senza etichetta, niente anno. Ritorna (lista, anno, errore)."""
+    lista = str(dati.get('lista_attesa') or '').strip() or None
+    if not lista:
+        return None, None, None
+    anno = str(dati.get('lista_attesa_as') or '').strip() or config.anno_scolastico_corrente()
+    if _valida_anno_scolastico(anno):
+        return None, None, "lista_attesa_as deve essere un anno scolastico (formato AAAA-AAAA)"
+    return lista, anno, None
 
 
 @app.route('/api/utenti/<int:utente_id>', methods=['PUT'])
@@ -1680,8 +1880,16 @@ def api_update_utente(utente_id):
                     params.append(monte_ore)
 
             if 'lista_attesa' in data:
-                updates.append("lista_attesa = ?")
-                params.append(data['lista_attesa'] if data['lista_attesa'] else None)
+                # L'etichetta vale per un anno scolastico (quello indicato o l'attuale):
+                # nei report conta solo nei mesi di quell'anno
+                lista, anno_lista, err = _lista_attesa_con_anno(data)
+                if err:
+                    errors.append(err)
+                else:
+                    updates.append("lista_attesa = ?")
+                    params.append(lista)
+                    updates.append("lista_attesa_as = ?")
+                    params.append(anno_lista)
 
             # Gestione periodo di validità (data_inizio, data_fine)
             if 'data_inizio' in data:
@@ -1701,6 +1909,20 @@ def api_update_utente(utente_id):
                 else:
                     updates.append("data_fine = ?")
                     params.append(data_fine)
+
+            # Archiviazione / ripristino (soft delete: lo storico resta intatto)
+            if 'attivo' in data:
+                updates.append("attivo = ?")
+                params.append(1 if data['attivo'] else 0)
+                # Mese dell'archiviazione (sql_utente_nel_mese: nei mesi prima conta
+                # come quando era attivo). Scritto solo al passaggio da attivo ad
+                # archiviato, cosi' salvare di nuovo un archiviato non lo sposta;
+                # tolto al ripristino.
+                if data['attivo']:
+                    updates.append("archiviato_dal = NULL")
+                elif utente['attivo']:
+                    updates.append("archiviato_dal = ?")
+                    params.append(db.mese_archiviazione())
 
             if errors:
                 return jsonify({'error': '; '.join(errors)}), 400
@@ -1725,7 +1947,10 @@ def api_update_utente(utente_id):
             'id': utente_id,
             'dati_precedenti': dati_precedenti
         })
-        db.log_audit('modifica', 'utente', utente_id, dettagli='Aggiornamento utente', dati_precedenti=dati_precedenti, dati_nuovi=data)
+        dettagli = 'Aggiornamento utente'
+        if 'attivo' in data:
+            dettagli = 'Ripristino utente' if data['attivo'] else 'Archiviazione utente'
+        db.log_audit('modifica', 'utente', utente_id, dettagli=dettagli, dati_precedenti=dati_precedenti, dati_nuovi=data)
         logger.info(f"Utente aggiornato: ID {utente_id}")
 
         return jsonify({'success': True})
@@ -1740,7 +1965,8 @@ def api_delete_utente(utente_id):
     try:
         with db.get_db_context() as conn:
             cursor = conn.cursor()
-            # Snapshot per undo (utente + rendicontazioni + note/documenti/assenze)
+            # Snapshot per undo (utente + rendicontazioni, note, documenti, assenze,
+            # variazioni monte ore, assegnazioni operatori)
             snapshot = db.raccogli_snapshot_utente(cursor, utente_id)
             # Cancellazione completa (FK enforcement attivo: vanno rimossi
             # anche i record correlati senza CASCADE, nella stessa transazione)
@@ -1774,73 +2000,97 @@ def api_bulk_update_utenti():
     if len(updates) > 200:
         return jsonify({'error': 'Massimo 200 aggiornamenti per richiesta'}), 400
 
-    successi = 0
+    # Valida TUTTE le righe prima di scrivere: o passa tutto o niente
+    righe = []
     errori = []
-
     for upd in updates:
         uid = upd.get('id')
         if not uid:
             continue
-        try:
-            set_parts = []
-            params = []
+        set_parts = []
+        params = []
+        if 'monte_ore' in upd and upd['monte_ore'] is not None:
+            ore, err = validate_number(upd['monte_ore'], 'Monte ore', 0, config.MAX_ORE_SETTIMANALI)
+            if err:
+                errori.append(f'ID {uid}: {err}')
+                continue
+            set_parts.append('monte_ore_settimanale = ?')
+            params.append(ore)
+        if 'lista_attesa' in upd:
+            lista, anno_lista, err = _lista_attesa_con_anno(upd)
+            if err:
+                errori.append(f'ID {uid}: {err}')
+                continue
+            set_parts.append('lista_attesa = ?')
+            params.append(lista)
+            set_parts.append('lista_attesa_as = ?')
+            params.append(anno_lista)
+        if set_parts:
+            righe.append((uid, set_parts, params))
+    if errori:
+        return jsonify({'error': 'Nessuna modifica applicata: ' + '; '.join(errori), 'errori': errori}), 400
 
-            if 'monte_ore' in upd and upd['monte_ore'] is not None:
-                ore, err = validate_number(upd['monte_ore'], 'Monte ore', 0, config.MAX_ORE_SETTIMANALI)
-                if err:
-                    errori.append(f'ID {uid}: {err}')
-                    continue
-                set_parts.append('monte_ore_settimanale = ?')
-                params.append(ore)
+    # Una sola transazione, con i valori precedenti salvati per l'undo
+    # (prima: una transazione per riga e nessuna possibilita' di annullare)
+    precedenti = []
+    with db.get_db_context() as conn:
+        cursor = conn.cursor()
+        for uid, set_parts, params in righe:
+            cursor.execute("SELECT id, monte_ore_settimanale, lista_attesa, lista_attesa_as FROM utenti WHERE id = ?",
+                           (uid,))
+            row = cursor.fetchone()
+            if not row:
+                continue
+            precedenti.append({'id': uid, 'dati_precedenti': dict(row)})
+            cursor.execute(f"UPDATE utenti SET {', '.join(set_parts)} WHERE id = ?", params + [uid])
+    successi = len(precedenti)
 
-            if 'lista_attesa' in upd:
-                set_parts.append('lista_attesa = ?')
-                params.append(upd['lista_attesa'] if upd['lista_attesa'] else None)
-
-            if set_parts:
-                with db.get_db_context() as conn:
-                    cursor = conn.cursor()
-                    params.append(uid)
-                    cursor.execute(f"UPDATE utenti SET {', '.join(set_parts)} WHERE id = ?", params)
-                successi += 1
-        except Exception as e:
-            errori.append(f'ID {uid}: {str(e)}')
-
+    if precedenti:
+        push_undo('bulk_update_utenti', {'items': precedenti})
     db.log_audit('bulk_modifica', 'utenti', dettagli=f'{successi} utenti aggiornati in bulk')
-    logger.info(f"Bulk update: {successi} successi, {len(errori)} errori")
+    logger.info(f"Bulk update: {successi} utenti aggiornati")
 
     return jsonify({
         'success': True,
         'aggiornati': successi,
-        'errori': errori
+        'errori': []
     })
 
 
 @app.route('/api/utenti/bulk', methods=['DELETE'])
 def api_bulk_delete_utenti():
-    """Eliminazione bulk di utenti"""
-    data = request.json or {}
+    """Eliminazione bulk di utenti (ognuno annullabile con l'undo)"""
+    data = request.get_json(silent=True) or {}
     ids = data.get('ids', [])
 
-    if not ids:
+    if not ids or not isinstance(ids, list):
         return jsonify({'error': 'Nessun utente specificato'}), 400
+    if len(ids) > 200:
+        return jsonify({'error': 'Massimo 200 utenti per richiesta'}), 400
 
     eliminati = 0
+    errori = []
     for uid in ids:
         try:
             with db.get_db_context() as conn:
                 cursor = conn.cursor()
                 snapshot = db.raccogli_snapshot_utente(cursor, uid)
-                db.elimina_utente_completo(cursor, uid)
+                if snapshot:
+                    db.elimina_utente_completo(cursor, uid)
+            if not snapshot:
+                errori.append({'id': uid, 'errore': 'Utente non trovato'})
+                continue
             # push_undo solo a transazione riuscita (niente azioni fantasma)
-            if snapshot:
-                push_undo('delete_utente', snapshot)
+            push_undo('delete_utente', snapshot)
             eliminati += 1
         except Exception as e:
             logger.error(f"Errore bulk delete utente {uid}: {e}")
+            errori.append({'id': uid, 'errore': 'Eliminazione non riuscita'})
 
-    db.log_audit('bulk_eliminazione', 'utenti', dettagli=f'{eliminati} utenti eliminati in bulk')
-    return jsonify({'success': True, 'eliminati': eliminati})
+    db.log_audit('bulk_eliminazione', 'utenti',
+                 dettagli=f'{eliminati} utenti eliminati in bulk' + (f', {len(errori)} non riusciti' if errori else ''))
+    # Prima rispondeva sempre "success" anche con righe fallite: ora le elenca
+    return jsonify({'success': not errori, 'eliminati': eliminati, 'errori': errori})
 
 
 @app.route('/api/utenti/export-csv')
@@ -1852,7 +2102,7 @@ def api_export_utenti_csv():
         cursor = conn.cursor()
 
         query = '''
-            SELECT u.id, u.nome, u.cognome, u.monte_ore_settimanale, u.lista_attesa,
+            SELECT u.id, u.nome, u.cognome, u.monte_ore_settimanale, u.lista_attesa, u.lista_attesa_as,
                    u.data_inizio, u.data_fine, u.attivo,
                    s.nome_completo as scuola, c.nome as commessa
             FROM utenti u
@@ -1871,13 +2121,15 @@ def api_export_utenti_csv():
 
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow(['nome', 'cognome', 'scuola', 'monte_ore', 'commessa', 'lista_attesa', 'data_inizio', 'data_fine', 'attivo'])
+    # lista_attesa_anno in fondo: le colonne di prima restano dove erano
+    writer.writerow(['nome', 'cognome', 'scuola', 'monte_ore', 'commessa', 'lista_attesa', 'data_inizio', 'data_fine',
+                     'attivo', 'lista_attesa_anno'])
 
     for u in utenti:
         writer.writerow([
             u['nome'], u['cognome'], u['scuola'], u['monte_ore_settimanale'],
             u['commessa'], u['lista_attesa'] or '', u['data_inizio'] or '', u['data_fine'] or '',
-            'si' if u['attivo'] else 'no'
+            'si' if u['attivo'] else 'no', (u['lista_attesa_as'] or '') if u['lista_attesa'] else ''
         ])
 
     response = make_response(output.getvalue())
@@ -1984,9 +2236,11 @@ def api_duplica_utente(utente_id):
         nome_puntato = db.punteggia_nome(nuovo_nome, utente['cognome'])
 
         cursor.execute('''
-            INSERT INTO utenti (nome, cognome, nome_puntato, monte_ore_settimanale, scuola_id, lista_attesa, attivo, data_inserimento)
-            VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-        ''', (nuovo_nome, utente['cognome'], nome_puntato, utente['monte_ore_settimanale'], utente['scuola_id'], utente['lista_attesa'], datetime.now().isoformat()))
+            INSERT INTO utenti (nome, cognome, nome_puntato, monte_ore_settimanale, scuola_id, lista_attesa,
+                                lista_attesa_as, attivo, data_inserimento)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+        ''', (nuovo_nome, utente['cognome'], nome_puntato, utente['monte_ore_settimanale'], utente['scuola_id'],
+              utente['lista_attesa'], utente['lista_attesa_as'], datetime.now().isoformat()))
 
         nuovo_id = cursor.lastrowid
 
@@ -2046,18 +2300,22 @@ def api_storico_monte_ore(utente_id):
 
         storico = []
         for row in cursor.fetchall():
+            prec = _parse_dati_audit(row['dati_precedenti'])
+            nuov = _parse_dati_audit(row['dati_nuovi'])
+            prima = prec.get('monte_ore_settimanale', prec.get('monte_ore'))
+            dopo = nuov.get('monte_ore_settimanale', nuov.get('monte_ore'))
+            # Solo le modifiche in cui il monte ore e' cambiato davvero
             try:
-                import json
-                prec = json.loads(row['dati_precedenti']) if row['dati_precedenti'] else {}
-                nuov = json.loads(row['dati_nuovi']) if row['dati_nuovi'] else {}
-                storico.append({
-                    'timestamp': row['timestamp'],
-                    'monte_ore_precedente': prec.get('monte_ore_settimanale') or prec.get('monte_ore'),
-                    'monte_ore_nuovo': nuov.get('monte_ore_settimanale') or nuov.get('monte_ore'),
-                    'dettagli': row['dettagli']
-                })
-            except (json.JSONDecodeError, KeyError, TypeError):
-                pass
+                if dopo is None or (prima is not None and float(prima) == float(dopo)):
+                    continue
+            except (TypeError, ValueError):
+                continue
+            storico.append({
+                'timestamp': row['timestamp'],
+                'monte_ore_precedente': prima,
+                'monte_ore_nuovo': dopo,
+                'dettagli': row['dettagli']
+            })
 
         utente_info = {
             'nome': utente['nome'],
@@ -2098,10 +2356,14 @@ def api_add_variazione_monte_ore(utente_id):
         return jsonify({'error': 'Mese inizio obbligatorio (formato YYYY-MM)'}), 400
 
     nota = (data.get('nota') or '').strip()[:500] or None
+    mese_fine, err = _valida_mese_fine(data.get('mese_fine'), mese_inizio)
+    if err:
+        return jsonify({'error': err}), 400
 
-    var_id = db.add_variazione_monte_ore(utente_id, monte_ore, mese_inizio, nota)
+    var_id = db.add_variazione_monte_ore(utente_id, monte_ore, mese_inizio, nota, mese_fine=mese_fine)
     db.log_audit('variazione_monte_ore', 'utente', utente_id,
-                 dettagli=f'Aggiunta variazione: {monte_ore}h da {mese_inizio}')
+                 dettagli=f'Aggiunta variazione: {monte_ore}h da {mese_inizio}'
+                          + (f' a {mese_fine}' if mese_fine else ''))
     return jsonify({'success': True, 'id': var_id})
 
 
@@ -2126,6 +2388,12 @@ def api_update_variazione_monte_ore(variazione_id):
 
     if 'nota' in data:
         kwargs['nota'] = (data['nota'] or '').strip()[:500] or None
+
+    if 'mese_fine' in data:
+        mese_fine, err = _valida_mese_fine(data['mese_fine'], kwargs.get('mese_inizio'))
+        if err:
+            return jsonify({'error': err}), 400
+        kwargs['mese_fine'] = mese_fine  # None = riapre la variazione
 
     if not kwargs:
         return jsonify({'error': 'Nessun campo da aggiornare'}), 400
@@ -2225,7 +2493,7 @@ def api_create_commessa():
     descrizione, err = validate_string(data.get('descrizione', ''), 'Descrizione', config.MAX_DESCRIZIONE_LENGTH, required=False)
     if err: errors.append(err)
 
-    colore = data.get('colore', '#6366f1')
+    colore = data.get('colore', db.COLORE_COMMESSA)
     if colore and not re.match(r'^#[0-9a-fA-F]{6}$', colore):
         errors.append('Colore non valido (formato: #RRGGBB)')
 
@@ -2294,8 +2562,10 @@ def api_stats_advanced():
 
 @app.route('/api/stats/utenti-meno-ore/<int:anno>/<int:mese>')
 def api_utenti_meno_ore(anno, mese):
-    """Ottiene i 10 utenti con meno ore erogate rispetto alle previste"""
-    utenti = db.get_utenti_meno_ore(anno, mese, limit=10)
+    """Ottiene i 10 utenti con meno ore erogate rispetto alle previste
+    (?commessa= come gli altri riquadri di Statistiche)"""
+    commessa = (request.args.get('commessa') or '').strip() or None
+    utenti = db.get_utenti_meno_ore(anno, mese, limit=10, commessa=commessa)
     return jsonify(utenti)
 
 
@@ -2382,7 +2652,8 @@ def api_get_rendicontazione(anno, mese):
     """Ottiene rendicontazione mensile"""
     commessa = request.args.get('commessa')
     dati = db.get_rendicontazione_completa(anno, mese, commessa)
-    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
+    # Riusa le righe gia' calcolate (prima la stessa query veniva eseguita due volte)
+    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa, dati=dati)
 
     # Calcola totali generali. Imponibile/IVA/totale sono ricalcolati UNA volta
     # sulla somma delle ore (stesso metodo di export e totali per scuola): sommare
@@ -2405,29 +2676,41 @@ def api_get_rendicontazione(anno, mese):
         'totali_scuola': totali_scuola,
         'totale_generale': totale_generale,
         'mese_nome': MESI_NOME.get(mese, ''),
-        'anno': anno
+        'anno': anno,
+        # Data di chiusura (Chiusura Mese) o None: la pagina blocca gli input
+        'mese_chiuso': db.get_mese_chiuso(anno, mese)
     })
 
 
 @app.route('/api/rendicontazione/<int:anno>/<int:mese>', methods=['POST'])
 def api_update_rendicontazione(anno, mese):
     """Aggiorna rendicontazione per un utente"""
-    data = request.json
+    data = request.get_json(silent=True) or {}
     utente_id = data.get('utente_id')
 
     if not utente_id:
         return jsonify({'error': 'utente_id richiesto'}), 400
+    err = _errore_periodo(anno, mese)
+    if err:
+        return jsonify({'error': err}), 400
+    bloccato = _risposta_mese_chiuso(anno, mese)
+    if bloccato:
+        return bloccato
+    if not db.get_utente_by_id(utente_id):
+        return jsonify({'error': 'Utente non trovato'}), 404
+    valori, err = _valida_valori_rendicontazione(data)
+    if err:
+        return jsonify({'error': err}), 400
 
     # Assicurati che esista la rendicontazione
     db.get_or_create_rendicontazione(utente_id, anno, mese)
 
-    # Aggiorna
-    db.update_rendicontazione(
-        utente_id, anno, mese,
-        ore_lavorate=data.get('ore_lavorate_60'),
-        pasti=data.get('pasti'),
-        note=data.get('note')
-    )
+    # Aggiorna (solo i campi presenti nella richiesta)
+    db.update_rendicontazione(utente_id, anno, mese, **valori)
+    # Le ore sono il dato su cui si fattura: ogni modifica lascia traccia
+    db.log_audit('modifica_ore', 'rendicontazione', utente_id,
+                 dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: "
+                          + ', '.join(f'{k}={v}' for k, v in valori.items()))
 
     return jsonify({'success': True})
 
@@ -2435,44 +2718,107 @@ def api_update_rendicontazione(anno, mese):
 @app.route('/api/rendicontazione/<int:anno>/<int:mese>/batch', methods=['POST'])
 def api_batch_update_rendicontazione(anno, mese):
     """Aggiorna rendicontazione per più utenti in una singola transazione"""
-    data = request.json
-    updates = data.get('updates', [])
+    data = request.get_json(silent=True) or {}
+    updates = data.get('updates') or []
+    if not isinstance(updates, list):
+        return jsonify({'error': 'updates deve essere una lista'}), 400
+
+    err = _errore_periodo(anno, mese)
+    if err:
+        return jsonify({'error': err}), 400
+    bloccato = _risposta_mese_chiuso(anno, mese)
+    if bloccato:
+        return bloccato
+
+    # Valida TUTTE le righe prima di scrivere: o passa tutto o niente. Il messaggio
+    # dice di quale utente e di quale casella si tratta (prima solo "Riga 12"), e la
+    # risposta porta utente_id e campo per segnare la casella nella pagina.
+    righe = []
+    for i, u in enumerate(updates, start=1):
+        if not isinstance(u, dict) or not u.get('utente_id'):
+            return jsonify({'error': f'Riga {i}: utente_id mancante'}), 400
+        valori, err, campo = _valida_riga_rendicontazione(u)
+        if err:
+            utente = db.get_utente_by_id(u['utente_id'])
+            chi = (f"{utente['nome']} {utente['cognome']}".strip() if utente
+                   else f"utente {u['utente_id']}")
+            return jsonify({'error': f'{chi}: {err}. Nessuna modifica salvata.', 'motivo': err,
+                            'utente_id': u['utente_id'], 'campo': campo, 'riga': i}), 400
+        righe.append({'utente_id': u['utente_id'], **valori})
 
     try:
-        aggiornati = db.update_rendicontazione_batch(anno, mese, [
-            {
-                'utente_id': u.get('utente_id'),
-                'ore_lavorate': u.get('ore_lavorate_60'),
-                'pasti': u.get('pasti'),
-                'note': u.get('note')
-            }
-            for u in updates
-        ])
+        aggiornati = db.update_rendicontazione_batch(anno, mese, righe)
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Salvataggio annullato: {e}'}), 500
+        logger.error(f"Errore salvataggio batch {mese}/{anno}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Salvataggio annullato: nessuna modifica applicata'}), 500
+
+    if aggiornati:
+        db.log_audit('modifica_ore', 'rendicontazione', None,
+                     dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: {aggiornati} utenti aggiornati",
+                     dati_nuovi={'utenti': [r['utente_id'] for r in righe]})
 
     return jsonify({'success': True, 'aggiornati': aggiornati})
+
+
+def _mese_scolastico_precedente(anno, mese):
+    """Mese precedente nell'anno scolastico (regola unica in config)."""
+    return config.mese_scolastico_precedente(anno, mese)
+
+
+def _giorni_scuola_per_tipo(anno, mese):
+    """Giorni di scuola effettivi di un mese per tipo di scuola, con le regole della
+    vista mensile (calendario infanzia / altri ordini, poi il valore predefinito)."""
+    g_def, g_altri = db.get_calendario_full(config.anno_scolastico_di(anno, mese), mese, anno)
+    return {'infanzia': db.risolvi_giorni_lavorativi(g_def),
+            'altri': db.risolvi_giorni_lavorativi(g_altri if g_altri is not None else g_def)}
+
+
+@app.route('/api/rendicontazione/<int:anno>/<int:mese>/copia-precedente', methods=['GET'])
+def api_copia_mese_precedente_anteprima(anno, mese):
+    """Prima di "Copia Mese Prec.": giorni di scuola del mese di origine e di quello
+    di destinazione, per i tipi di scuola degli utenti del mese. Se differiscono
+    oltre config.SOGLIA_GIORNI_COPIA_PERCENTUALE (settembre da giugno, giugno da
+    maggio, ottobre da settembre) le ore copiate non sono adatte e la pagina lo dice."""
+    err = _errore_periodo(anno, mese)
+    if err:
+        return jsonify({'error': err}), 400
+    commessa = request.args.get('commessa')
+    anno_prec, mese_prec = _mese_scolastico_precedente(anno, mese)
+    dati = db.get_rendicontazione_completa(anno, mese, commessa)
+    tipi = {'infanzia' if db.is_scuola_infanzia(d['scuola']) else 'altri' for d in dati} or {'altri'}
+    origine, destinazione = _giorni_scuola_per_tipo(anno_prec, mese_prec), _giorni_scuola_per_tipo(anno, mese)
+    soglia = config.SOGLIA_GIORNI_COPIA_PERCENTUALE
+    giorni = []
+    for tipo, etichetta in (('altri', 'altri ordini'), ('infanzia', 'infanzia')):
+        if tipo not in tipi:
+            continue
+        o, d = origine[tipo], destinazione[tipo]
+        differenza = round(abs(d - o) / o * 100) if o else (100 if d else 0)
+        giorni.append({'tipo': tipo, 'etichetta': etichetta, 'origine': o, 'destinazione': d,
+                       'differenza_perc': differenza})
+    return jsonify({
+        'mese_origine': f"{MESI_NOME.get(mese_prec, '')} {anno_prec}",
+        'mese_destinazione': f"{MESI_NOME.get(mese, '')} {anno}",
+        'giorni': giorni,
+        'giorni_diversi': any(g['differenza_perc'] > soglia for g in giorni),
+        'soglia_perc': soglia,
+    })
 
 
 @app.route('/api/rendicontazione/<int:anno>/<int:mese>/copia-precedente', methods=['POST'])
 def api_copia_mese_precedente(anno, mese):
     """Copia ore dal mese precedente per utenti selezionati o tutti"""
-    data = request.json
+    data = request.get_json(silent=True) or {}
+    err = _errore_periodo(anno, mese)
+    if err:
+        return jsonify({'error': err}), 400
+    bloccato = _risposta_mese_chiuso(anno, mese)
+    if bloccato:
+        return bloccato
     utente_ids = data.get('utente_ids', [])  # Se vuoto, copia per tutti
     solo_vuoti = data.get('solo_vuoti', True)  # Copia solo se utente non ha ore
 
-    # Calcola mese precedente NELL'ANNO SCOLASTICO: per settembre il mese
-    # precedente e' giugno (agosto/luglio non sono mesi scolastici e sono
-    # sempre vuoti: il pulsante non copiava mai nulla).
-    if mese == 9:
-        mese_prec = 6
-        anno_prec = anno
-    elif mese == 1:
-        mese_prec = 12
-        anno_prec = anno - 1
-    else:
-        mese_prec = mese - 1
-        anno_prec = anno
+    anno_prec, mese_prec = _mese_scolastico_precedente(anno, mese)
 
     # Ottieni dati mese precedente
     dati_prec = db.get_rendicontazione_completa(anno_prec, mese_prec)
@@ -2482,6 +2828,10 @@ def api_copia_mese_precedente(anno, mese):
     # Ottieni dati mese corrente per verificare quali utenti hanno già ore
     dati_corrente = db.get_rendicontazione_completa(anno, mese)
     utenti_con_ore = {d['utente_id'] for d in dati_corrente if (d.get('ore_lavorate_60') or 0) > 0}
+    # Si copia solo verso chi e' in servizio nel mese di destinazione e non e'
+    # archiviato: un archiviato presente nel mese di origine (ha ore li') non deve
+    # ricomparire nel mese nuovo, ne' chi e' uscito il mese prima
+    destinatari = {d['utente_id'] for d in dati_corrente if d.get('attivo')}
 
     updates = []
     for d in dati_prec:
@@ -2489,6 +2839,9 @@ def api_copia_mese_precedente(anno, mese):
 
         # Filtra per utente_ids se specificato
         if utente_ids and uid not in utente_ids:
+            continue
+
+        if uid not in destinatari:
             continue
 
         # Salta se utente ha già ore e solo_vuoti è True
@@ -2502,7 +2855,14 @@ def api_copia_mese_precedente(anno, mese):
     try:
         copiati = db.update_rendicontazione_batch(anno, mese, updates)
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Copia annullata: {e}'}), 500
+        logger.error(f"Errore copia mese precedente {mese}/{anno}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Copia annullata: nessuna modifica applicata'}), 500
+
+    if copiati:
+        db.log_audit('modifica_ore', 'rendicontazione', None,
+                     dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: ore di {copiati} utenti copiate "
+                              f"da {MESI_NOME.get(mese_prec, '')} {anno_prec}",
+                     dati_nuovi={'utenti': [u['utente_id'] for u in updates]})
 
     return jsonify({
         'success': True,
@@ -2514,7 +2874,13 @@ def api_copia_mese_precedente(anno, mese):
 @app.route('/api/rendicontazione/<int:anno>/<int:mese>/compila-media', methods=['POST'])
 def api_compila_con_media(anno, mese):
     """Compila le ore con la media prevista per utenti senza ore"""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
+    err = _errore_periodo(anno, mese)
+    if err:
+        return jsonify({'error': err}), 400
+    bloccato = _risposta_mese_chiuso(anno, mese)
+    if bloccato:
+        return bloccato
     utente_ids = data.get('utente_ids', [])  # Se vuoto, compila per tutti senza ore
 
     dati = db.get_rendicontazione_completa(anno, mese)
@@ -2525,6 +2891,10 @@ def api_compila_con_media(anno, mese):
 
         # Filtra per utente_ids se specificato
         if utente_ids and uid not in utente_ids:
+            continue
+
+        # Gli archiviati restano nei mesi passati ma non si compilano
+        if not d.get('attivo'):
             continue
 
         # Solo utenti senza ore
@@ -2539,7 +2909,13 @@ def api_compila_con_media(anno, mese):
     try:
         compilati = db.update_rendicontazione_batch(anno, mese, updates)
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Compilazione annullata: {e}'}), 500
+        logger.error(f"Errore compilazione con media {mese}/{anno}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Compilazione annullata: nessuna modifica applicata'}), 500
+
+    if compilati:
+        db.log_audit('modifica_ore', 'rendicontazione', None,
+                     dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: {compilati} utenti compilati con la media prevista",
+                     dati_nuovi={'utenti': [u['utente_id'] for u in updates]})
 
     return jsonify({
         'success': True,
@@ -2598,12 +2974,8 @@ def api_storico_utente(utente_id):
         variazioni_utente = db.get_variazioni_monte_ore(utente_id)
 
         def _get_monte_ore_mese(anno_r, mese_r):
-            periodo = f"{anno_r:04d}-{mese_r:02d}"
-            mo = monte_ore_base
-            for v in variazioni_utente:
-                if v['mese_inizio'] <= periodo:
-                    mo = v['monte_ore']
-            return mo
+            # Regola unica (inizio/fine variazione), la stessa della vista mensile
+            return db.risolvi_monte_ore(monte_ore_base, variazioni_utente, f"{anno_r:04d}-{mese_r:02d}")
 
         for r in cursor.fetchall():
             monte_ore = _get_monte_ore_mese(r['anno'], r['mese'])
@@ -2642,26 +3014,32 @@ def api_storico_utente(utente_id):
 
 @app.route('/api/rendicontazione/<int:anno>/<int:mese>/confronto-precedente')
 def api_confronto_mese_precedente(anno, mese):
-    """Ottiene le differenze di ore rispetto al mese precedente"""
+    """Differenze di ore rispetto al mese precedente dell'anno scolastico.
+
+    Oltre alla differenza sulle ore grezze, `scostamento_giornaliero_perc` confronta
+    le ore PER GIORNO LAVORATIVO (giorni di ciascun utente, infanzia/altri a giugno):
+    giugno ha ~8 giorni contro i ~20 di maggio e con le ore grezze tutte le righe
+    risultavano in calo del 60%. E' None se uno dei due mesi non ha ore o giorni.
+    """
     commessa = request.args.get('commessa')
 
-    # Calcola mese precedente
-    if mese == 1:
-        mese_prec, anno_prec = 12, anno - 1
-    else:
-        mese_prec, anno_prec = mese - 1, anno
+    # Stesso mese precedente di "Copia Mese Prec." (per settembre: giugno)
+    anno_prec, mese_prec = _mese_scolastico_precedente(anno, mese)
 
     dati_corrente = db.get_rendicontazione_completa(anno, mese, commessa)
     dati_prec = db.get_rendicontazione_completa(anno_prec, mese_prec, commessa)
 
-    # Crea mappa ore mese precedente
+    # Crea mappa ore (e giorni lavorativi) del mese precedente
     ore_prec_map = {d['utente_id']: d.get('ore_lavorate_60', 0) for d in dati_prec}
+    giorni_prec_map = {d['utente_id']: d.get('giorni_lavorativi') or 0 for d in dati_prec}
 
     differenze = {}
     for d in dati_corrente:
         uid = d['utente_id']
         ore_corr = d.get('ore_lavorate_60', 0) or 0
         ore_prec = ore_prec_map.get(uid, 0) or 0
+        giorni_corr = d.get('giorni_lavorativi') or 0
+        giorni_prec = giorni_prec_map.get(uid, 0)
 
         if ore_prec > 0:
             diff = ore_corr - ore_prec
@@ -2670,11 +3048,23 @@ def api_confronto_mese_precedente(anno, mese):
             diff = ore_corr
             diff_perc = 100 if ore_corr > 0 else 0
 
+        ore_giorno_corr = ore_corr / giorni_corr if giorni_corr > 0 else None
+        ore_giorno_prec = ore_prec / giorni_prec if giorni_prec > 0 else None
+        if ore_corr > 0 and ore_prec > 0 and ore_giorno_corr is not None and ore_giorno_prec:
+            scostamento = round((ore_giorno_corr - ore_giorno_prec) / ore_giorno_prec * 100, 1)
+        else:
+            scostamento = None
+
         differenze[uid] = {
             'ore_precedente': round(ore_prec, 2),
             'ore_corrente': round(ore_corr, 2),
             'differenza': round(diff, 2),
-            'differenza_perc': diff_perc
+            'differenza_perc': diff_perc,
+            'giorni_precedente': giorni_prec,
+            'giorni_corrente': giorni_corr,
+            'ore_giorno_precedente': round(ore_giorno_prec, 2) if ore_giorno_prec is not None else None,
+            'ore_giorno_corrente': round(ore_giorno_corr, 2) if ore_giorno_corr is not None else None,
+            'scostamento_giornaliero_perc': scostamento,
         }
 
     return jsonify({
@@ -2689,9 +3079,15 @@ def api_confronto_mese_precedente(anno, mese):
 
 @app.route('/api/alerts', methods=['GET'])
 def api_get_alerts():
-    """Ottiene alert automatici per la dashboard"""
+    """Ottiene alert automatici per la dashboard.
+
+    Con ?commessa= gli avvisi sugli utenti riguardano solo quella commessa, come
+    lo "Stato del mese" accanto (prima il filtro diceva 16 utenti e gli avvisi 35).
+    Ogni avviso ha una 'categoria' fissa: la Dashboard la usa per non ripetere cio'
+    che lo Stato del mese dice gia' (utenti senza ore, percentuale completata)."""
     anno = request.args.get('anno', type=int)
     mese = request.args.get('mese', type=int)
+    commessa = (request.args.get('commessa') or '').strip() or None
 
     if not anno or not mese:
         # Default: mese corrente
@@ -2703,11 +3099,12 @@ def api_get_alerts():
     alerts = []
 
     # 1. Utenti senza ore nel mese corrente
-    dati = db.get_rendicontazione_completa(anno, mese)
+    dati = db.get_rendicontazione_completa(anno, mese, commessa)
     senza_ore = [d for d in dati if not d.get('ore_lavorate_60') or d['ore_lavorate_60'] == 0]
     if senza_ore:
         alerts.append({
             'type': 'warning',
+            'categoria': 'senza_ore',
             'title': f'{len(senza_ore)} utenti senza ore registrate',
             'message': f'Nel mese di {MESI_NOME.get(mese, "")} {anno}',
             'action': '/rendicontazione',
@@ -2723,6 +3120,7 @@ def api_get_alerts():
     if sotto_media:
         alerts.append({
             'type': 'danger',
+            'categoria': 'sotto_media',
             'title': f'{len(sotto_media)} utenti con ore < 50% della media',
             'message': 'Ore erogate significativamente sotto la media prevista',
             'action': '/rendicontazione',
@@ -2739,6 +3137,7 @@ def api_get_alerts():
     if sopra_media:
         alerts.append({
             'type': 'info',
+            'categoria': 'sopra_media',
             'title': f'{len(sopra_media)} utenti con ore > 150% della media',
             'message': 'Verificare se le ore extra sono corrette',
             'action': '/rendicontazione',
@@ -2760,6 +3159,7 @@ def api_get_alerts():
     if cal_count < 10:  # Meno di 10 mesi configurati
         alerts.append({
             'type': 'warning',
+            'categoria': 'calendario',
             'title': 'Calendario scolastico incompleto',
             'message': f'Solo {cal_count}/10 mesi configurati per {anno_scolastico}',
             'action': '/calendario',
@@ -2774,6 +3174,7 @@ def api_get_alerts():
         if perc < 100:
             alerts.append({
                 'type': 'info',
+                'categoria': 'completamento',
                 'title': f'Completamento mese: {perc}%',
                 'message': f'{completati}/{len(dati)} utenti rendicontati',
                 'action': '/rendicontazione',
@@ -2781,12 +3182,27 @@ def api_get_alerts():
                 'progress': perc
             })
 
+    # Utenti della commessa scelta (tutti, anche fuori dal periodo): filtro per
+    # gli avvisi che non passano dalla rendicontazione del mese
+    ids_commessa = None
+    if commessa:
+        with db.get_db_context() as conn:
+            ids_commessa = {r['id'] for r in conn.execute('''
+                SELECT u.id FROM utenti u
+                JOIN scuole s ON u.scuola_id = s.id
+                JOIN commesse c ON s.commessa_id = c.id
+                WHERE c.nome = ?
+            ''', (commessa,)).fetchall()}
+
     # 6. Documenti in scadenza nei prossimi 30 giorni
     try:
         docs = db.get_documenti_in_scadenza(giorni=30)
+        if ids_commessa is not None:
+            docs = [d for d in docs if d['utente_id'] in ids_commessa]
         if docs:
             alerts.append({
                 'type': 'warning',
+                'categoria': 'documenti',
                 'title': f'{len(docs)} documenti in scadenza',
                 'message': 'Documenti utente in scadenza nei prossimi 30 giorni',
                 'count': len(docs),
@@ -2798,9 +3214,12 @@ def api_get_alerts():
     # 7. Budget ore quasi esaurito
     try:
         critici = db.get_utenti_budget_critico(anno_scolastico, 80)
+        if commessa:
+            critici = [u for u in critici if u['commessa'] == commessa]
         if critici:
             alerts.append({
                 'type': 'danger',
+                'categoria': 'budget',
                 'title': f"{len(critici)} utenti oltre l'80% del budget ore",
                 'message': f'Budget annuale quasi esaurito ({anno_scolastico})',
                 'count': len(critici),
@@ -2814,6 +3233,7 @@ def api_get_alerts():
         'anno': anno,
         'mese': mese,
         'mese_nome': MESI_NOME.get(mese, ''),
+        'commessa': commessa,
         'total_alerts': len(alerts)
     })
 
@@ -2821,7 +3241,7 @@ def api_get_alerts():
 @app.route('/api/calendario', methods=['GET'])
 def api_get_calendario():
     """Ottiene calendario scolastico"""
-    anno_scolastico = request.args.get('anno_scolastico', '2025-2026')
+    anno_scolastico = request.args.get('anno_scolastico') or config.anno_scolastico_corrente()
 
     with db.get_db_context() as conn:
         cursor = conn.cursor()
@@ -2850,19 +3270,41 @@ def api_get_calendario():
 
 @app.route('/api/calendario', methods=['POST'])
 def api_update_calendario():
-    """Aggiorna giorni lavorativi (default/infanzia + opzionale altri)"""
-    data = request.json
+    """Aggiorna giorni lavorativi (default/infanzia + opzionale altri).
+
+    I giorni sono il moltiplicatore della media prevista di TUTTI gli utenti del
+    mese: un valore fuori scala (es. 220 invece di 22) falserebbe a cascata
+    credito/debito e report, quindi viene rifiutato con i limiti di config."""
+    data = request.get_json(silent=True) or {}
+
+    anno_scolastico = str(data.get('anno_scolastico') or '').strip()
+    if not re.match(r'^\d{4}-\d{4}$', anno_scolastico):
+        return jsonify({'error': 'Anno scolastico mancante o non valido (formato AAAA-AAAA)'}), 400
+    mese, err = validate_integer(data.get('mese'), 'Mese', 1, 12)
+    if err:
+        return jsonify({'error': err}), 400
+    anno, err = validate_integer(data.get('anno'), 'Anno', 2000, 2100)
+    if err:
+        return jsonify({'error': err}), 400
+    giorni, err = validate_integer(data.get('giorni_lavorativi'), 'Giorni lavorativi',
+                                   config.MIN_GIORNI_LAVORATIVI, config.MAX_GIORNI_LAVORATIVI)
+    if err:
+        return jsonify({'error': err}), 400
+
     # giorni_lavorativi_altri e' opzionale: se non passato o None -> non distinzione
     altri = data.get('giorni_lavorativi_altri')
-    if altri == '' or altri == 0:
+    if altri in ('', 0, '0', None):
         altri = None
-    db.set_calendario(
-        data['anno_scolastico'],
-        data['mese'],
-        data['anno'],
-        data['giorni_lavorativi'],
-        altri
-    )
+    else:
+        altri, err = validate_integer(altri, 'Giorni lavorativi (altri)',
+                                      config.MIN_GIORNI_LAVORATIVI, config.MAX_GIORNI_LAVORATIVI)
+        if err:
+            return jsonify({'error': err}), 400
+
+    db.set_calendario(anno_scolastico, mese, anno, giorni, altri)
+    db.log_audit('modifica', 'calendario', None,
+                 dettagli=f'Giorni lavorativi {mese}/{anno} ({anno_scolastico}): {giorni}'
+                          + (f' / altri {altri}' if altri is not None else ''))
     return jsonify({'success': True})
 
 
@@ -3082,11 +3524,15 @@ def api_anno_scolastico_prossimo():
     """Stato del prossimo anno scolastico: serve per il banner in dashboard."""
     oggi = datetime.now()
     anno_target, pronto = _prossimo_anno_da_preparare(oggi)
+    # Passo 2 (utenti: variazioni chiuse, monte ore, archiviazioni) gia' fatto?
+    utenti_pronti = anno_target is not None and \
+        db.get_impostazione('anno_utenti_preparato') == anno_target
     return jsonify({
         'corrente': config.anno_scolastico_di(oggi.year, oggi.month),
         'prossimo': anno_target,
         'pronto': bool(pronto),
-        'mostra_banner': anno_target is not None and not pronto,
+        'utenti_pronti': bool(utenti_pronti),
+        'mostra_banner': anno_target is not None and not (pronto and utenti_pronti),
     })
 
 
@@ -3095,13 +3541,11 @@ def api_anno_scolastico_prepara():
     """Prepara il nuovo anno scolastico: calcola e salva il calendario con le
     regole della Regione Lazio (rivedibile a mano) e ritorna il riepilogo.
     Idempotente: rieseguirlo ricalcola il calendario dell'anno indicato."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     anno_scolastico = (data.get('anno_scolastico') or '').strip()
-    if not re.match(r'^\d{4}-\d{4}$', anno_scolastico):
-        return jsonify({'error': 'Formato anno scolastico non valido (es. 2026-2027)'}), 400
-    a1, a2 = map(int, anno_scolastico.split('-'))
-    if a2 != a1 + 1:
-        return jsonify({'error': 'Anno scolastico non coerente (deve essere consecutivo)'}), 400
+    err = _valida_anno_scolastico(anno_scolastico)
+    if err:
+        return jsonify({'error': err}), 400
 
     mesi = calcola_e_salva_calendario_auto(anno_scolastico)
     utenti_attivi = db.count_utenti()
@@ -3114,6 +3558,88 @@ def api_anno_scolastico_prepara():
         'anno_scolastico': anno_scolastico,
         'mesi': mesi,
         'utenti_attivi': utenti_attivi,
+    })
+
+
+@app.route('/api/anno-scolastico/utenti-anteprima', methods=['GET'])
+def api_anno_scolastico_utenti_anteprima():
+    """Passo 'Utenti' del wizard: anteprima di cosa cambierebbe (monte ore base,
+    effettivo a giugno, variazioni aperte da chiudere, utenti usciti da archiviare).
+    Non modifica nulla."""
+    anno_scolastico = (request.args.get('anno_scolastico') or '').strip()
+    err = _valida_anno_scolastico(anno_scolastico)
+    if err:
+        return jsonify({'error': err}), 400
+    utenti = db.anteprima_utenti_nuovo_anno(anno_scolastico)
+    return jsonify({
+        'anno_scolastico': anno_scolastico,
+        'utenti': utenti,
+        'variazioni_da_chiudere': sum(u['variazioni_aperte'] for u in utenti),
+        'da_archiviare': sum(1 for u in utenti if u['proposta_archivio']),
+        # usciti prima di settembre: solo un'indicazione, nessuna spunta proposta
+        'usciti': sum(1 for u in utenti if u['uscito']),
+        'gia_preparato': db.get_impostazione('anno_utenti_preparato') == anno_scolastico,
+    })
+
+
+@app.route('/api/anno-scolastico/prepara-utenti', methods=['POST'])
+def api_anno_scolastico_prepara_utenti():
+    """Passo 'Utenti' del wizard (una transazione): chiude al 31/8 le variazioni
+    monte ore aperte, aggiorna i monte ore base indicati, archivia gli utenti
+    indicati. Ogni monte ore cambiato finisce nello storico dell'utente (audit)."""
+    data = request.get_json(silent=True) or {}
+    anno_scolastico = (data.get('anno_scolastico') or '').strip()
+    err = _valida_anno_scolastico(anno_scolastico)
+    if err:
+        return jsonify({'error': err}), 400
+
+    chiudi = bool(data.get('chiudi_variazioni', True))
+
+    monte_ore = {}
+    for chiave, valore in (data.get('monte_ore') or {}).items():
+        try:
+            uid = int(chiave)
+        except (TypeError, ValueError):
+            return jsonify({'error': f'Id utente non valido: {chiave}'}), 400
+        val, err = validate_number(valore, f'Monte ore (utente {uid})', 0, config.MAX_ORE_SETTIMANALI)
+        if err:
+            return jsonify({'error': err}), 400
+        monte_ore[uid] = val
+
+    archivia = data.get('archivia') or []
+    if not isinstance(archivia, list) or not all(isinstance(x, int) for x in archivia):
+        return jsonify({'error': 'archivia deve essere una lista di id utente'}), 400
+
+    esito = db.prepara_utenti_nuovo_anno(anno_scolastico, chiudi, monte_ore, archivia)
+
+    # Audit DOPO il commit: una riga per utente, cosi' lo storico monte ore le vede
+    for m in esito['monte_ore_modificati']:
+        conservato = m.get('conservato')
+        nota = (f" (mesi passati: {m['prima']} h fino al {conservato['mese_fine']}, "
+                f"variazione dal {conservato['mese_inizio']})") if conservato else ''
+        db.log_audit('modifica', 'utente', m['id'],
+                     dettagli=f'Nuovo anno {anno_scolastico}: monte ore {m["prima"]} -> {m["dopo"]}{nota}',
+                     dati_precedenti={'monte_ore_settimanale': m['prima']},
+                     dati_nuovi={'monte_ore': m['dopo']})
+    for a in esito['archiviati']:
+        db.log_audit('archiviazione', 'utente', a['id'],
+                     dettagli=f'Archiviato con il nuovo anno {anno_scolastico}')
+    db.log_audit('preparazione_anno_utenti', 'sistema',
+                 dettagli=f'Utenti preparati per {anno_scolastico}: '
+                          f"{esito['variazioni_chiuse']} variazioni chiuse, "
+                          f"{len(esito['monte_ore_modificati'])} monte ore aggiornati "
+                          f"({esito['variazioni_conservate']} con il valore vecchio conservato "
+                          f"per i mesi passati), {len(esito['archiviati'])} archiviati")
+    logger.info(f"Passo utenti nuovo anno {anno_scolastico}: {esito}")
+
+    return jsonify({
+        'success': True,
+        'anno_scolastico': anno_scolastico,
+        'variazioni_chiuse': esito['variazioni_chiuse'],
+        'monte_ore_modificati': len(esito['monte_ore_modificati']),
+        'variazioni_conservate': esito['variazioni_conservate'],
+        'archiviati': len(esito['archiviati']),
+        'dettaglio': esito,
     })
 
 
@@ -3130,7 +3656,9 @@ def api_utenti_da_completare(anno, mese):
         # periodo della vista mensile: chi non era in servizio nel mese non
         # deve comparire come "da completare" (anomalia non risolvibile).
         periodo = f"{anno:04d}-{mese:02d}"
-        cursor.execute('''
+        # Archiviati: stessa regola della vista mensile (sql_utente_nel_mese)
+        conta_sql, conta_params = db.sql_utente_nel_mese(anno, mese)
+        cursor.execute(f'''
             SELECT u.id, u.nome, u.cognome, u.monte_ore_settimanale,
                    s.nome_completo as scuola, c.nome as commessa
             FROM utenti u
@@ -3138,24 +3666,28 @@ def api_utenti_da_completare(anno, mese):
             JOIN commesse c ON s.commessa_id = c.id
             LEFT JOIN rendicontazione r ON u.id = r.utente_id
                 AND r.anno = ? AND r.mese = ?
-            WHERE u.attivo = 1
+            WHERE {conta_sql}
                 AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
                 AND (u.data_fine IS NULL OR u.data_fine >= ?)
                 AND (r.ore_lavorate_60 IS NULL OR r.ore_lavorate_60 = 0)
             ORDER BY c.nome, s.nome_completo, u.cognome, u.nome
-        ''', (anno, mese, periodo, periodo))
+        ''', [anno, mese] + conta_params + [periodo, periodo])
 
-        utenti = []
-        for row in cursor.fetchall():
-            utenti.append({
-                'id': row['id'],
-                'nome': row['nome'],
-                'cognome': row['cognome'],
-                'nome_completo': f"{row['nome']} {row['cognome']}",
-                'monte_ore': row['monte_ore_settimanale'],
-                'scuola': row['scuola'],
-                'commessa': row['commessa']
-            })
+        righe = cursor.fetchall()
+
+    # Monte ore del MESE (variazioni comprese), non la base di oggi
+    effettivi = db.get_monte_ore_effettivo_bulk(anno, mese)
+    utenti = []
+    for row in righe:
+        utenti.append({
+            'id': row['id'],
+            'nome': row['nome'],
+            'cognome': row['cognome'],
+            'nome_completo': f"{row['nome']} {row['cognome']}",
+            'monte_ore': effettivi.get(row['id'], row['monte_ore_settimanale']),
+            'scuola': row['scuola'],
+            'commessa': row['commessa']
+        })
 
     return jsonify(utenti)
 
@@ -3193,25 +3725,90 @@ def api_stats():
 
 # ==================== UNDO ====================
 
+# Campi che l'annullamento di una "Modifica utente" rimette com'erano, con il nome
+# da mostrare nella conferma di Ctrl+Z
+CAMPI_UNDO_UTENTE = [('nome', 'nome'), ('cognome', 'cognome'), ('monte_ore_settimanale', 'monte ore'),
+                     ('lista_attesa', "lista d'attesa"), ('data_inizio', 'inizio servizio'),
+                     ('data_fine', 'fine servizio'), ('attivo', 'stato')]
+
+
+def _valore_undo(campo, valore):
+    if campo == 'attivo':
+        return 'attivo' if valore in (1, True, '1', None) else 'archiviato'
+    if valore is None or valore == '':
+        return 'vuoto'
+    if isinstance(valore, float):
+        return f'{valore:g}'.replace('.', ',')
+    if campo in ('data_inizio', 'data_fine') and re.match(r'^\d{4}-\d{2}$', str(valore)):
+        return f'{str(valore)[5:7]}/{str(valore)[:4]}'
+    return str(valore)
+
+
+def _quando_undo(timestamp):
+    try:
+        return datetime.fromisoformat(timestamp).strftime('%d/%m/%Y alle %H:%M')
+    except (TypeError, ValueError):
+        return ''
+
+
+def _descrivi_azione_undo(action):
+    """Frase per la conferma di Ctrl+Z: chi, cosa cambia (valore di adesso ->
+    valore che torna) e, a parte, quando e' stata fatta la modifica."""
+    tipo, dati = action['type'], action['data']
+    if tipo == 'delete_utente':
+        u = dati.get('utente', {})
+        return f"Eliminazione di {u.get('nome', '')} {u.get('cognome', '')}".strip() + \
+            ": l'utente torna con le sue ore, note e variazioni"
+    if tipo == 'bulk_update_utenti':
+        return f"Modifica di {len(dati.get('items', []))} utenti insieme (monte ore e lista d'attesa)"
+    if tipo == 'update_utente':
+        old = dati.get('dati_precedenti', {})
+        attuale = db.get_utente_by_id(dati.get('id')) or {}
+        chi = f"{attuale.get('nome', '')} {attuale.get('cognome', '')}".strip() or f"utente {dati.get('id')}"
+        cambi = [f'{etichetta} {_valore_undo(campo, attuale.get(campo))} → {_valore_undo(campo, old[campo])}'
+                 for campo, etichetta in CAMPI_UNDO_UTENTE
+                 if campo in old and _valore_undo(campo, old[campo]) != _valore_undo(campo, attuale.get(campo))]
+        return f"Modifica di {chi}: " + ('; '.join(cambi) if cambi else 'nessun dato da cambiare')
+    return f'Azione {tipo}'
+
+
+def _voce_undo(action, i=0):
+    return {
+        'index': i,
+        'id': action.get('id'),
+        'tipo': action['type'],
+        'descrizione': _descrivi_azione_undo(action),
+        'timestamp': action.get('timestamp', ''),
+        'quando': _quando_undo(action.get('timestamp')),
+    }
+
+
 @app.route('/api/undo', methods=['GET'])
 def api_get_undo_stack():
-    """Mostra le azioni annullabili (ora persistenti)"""
-    undo_stack = db.get_undo_stack()
-    actions = []
-    for i, action in enumerate(undo_stack):
-        desc = ''
-        if action['type'] == 'delete_utente':
-            u = action['data'].get('utente', {})
-            desc = f'Eliminazione utente: {u.get("nome", "")} {u.get("cognome", "")}'
-        elif action['type'] == 'update_utente':
-            desc = f'Modifica utente ID {action["data"].get("id", "?")}'
-        actions.append({
-            'index': i,
-            'tipo': action['type'],
-            'descrizione': desc,
-            'timestamp': action.get('timestamp', '')
-        })
-    return jsonify(actions[:10])
+    """Le azioni ancora annullabili (piu' recenti di config.UNDO_VALIDITA_ORE)"""
+    return jsonify([_voce_undo(a, i) for i, a in enumerate(db.get_undo_stack()[:10])])
+
+
+@app.route('/api/undo/ultima', methods=['GET'])
+def api_undo_ultima():
+    """Cosa annullerebbe Ctrl+Z (descrizione e data), per chiederlo prima; None se
+    non c'e' niente di annullabile. 'scadute': azioni troppo vecchie ancora in memoria."""
+    azione = db.peek_undo_action()
+    return jsonify({
+        'azione': _voce_undo(azione) if azione else None,
+        'scadute': db.conta_undo_scaduti(),
+        'ore_validita': config.UNDO_VALIDITA_ORE,
+    })
+
+
+@app.route('/api/undo/scadute', methods=['DELETE'])
+def api_undo_pulisci_scadute():
+    """Toglie dalla memoria di Ctrl+Z le azioni non piu' annullabili."""
+    rimosse = db.pulisci_undo_scaduti()
+    if rimosse:
+        db.log_audit('pulizia', 'undo', dettagli=(f'Tolta {rimosse} azione non più annullabile' if rimosse == 1
+                                                  else f'Tolte {rimosse} azioni non più annullabili'))
+    return jsonify({'success': True, 'rimosse': rimosse})
 
 
 @app.route('/api/undo', methods=['POST'])
@@ -3224,7 +3821,15 @@ def api_undo():
     action = db.peek_undo_action()
 
     if not action:
+        if db.conta_undo_scaduti():
+            return jsonify({'error': 'Nessuna modifica recente da annullare: quelle di più di '
+                                     f'{config.UNDO_VALIDITA_ORE} ore fa non si possono più annullare'}), 400
         return jsonify({'error': 'Nessuna azione da annullare'}), 400
+    # La pagina manda l'id dell'azione che ha mostrato nella conferma: se nel
+    # frattempo ne e' arrivata un'altra non si annulla quella sbagliata
+    atteso = (request.get_json(silent=True) or {}).get('id')
+    if atteso is not None and atteso != action['id']:
+        return jsonify({'error': "L'ultima modifica è cambiata nel frattempo: premi di nuovo Ctrl+Z"}), 409
 
     try:
         with db.get_db_context() as conn:
@@ -3235,15 +3840,16 @@ def api_undo():
                 # Ripristina utente (inclusi i budget ore, prima omessi)
                 cursor.execute('''
                     INSERT INTO utenti (id, scuola_id, nome, cognome, nome_puntato,
-                        monte_ore_settimanale, attivo, lista_attesa, data_inserimento,
-                        data_inizio, data_fine, budget_ore_mensile, budget_ore_annuale)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        monte_ore_settimanale, attivo, lista_attesa, lista_attesa_as, data_inserimento,
+                        data_inizio, data_fine, budget_ore_mensile, budget_ore_annuale, archiviato_dal)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (u['id'], u['scuola_id'], u['nome'], u['cognome'],
                       u.get('nome_puntato', ''), u['monte_ore_settimanale'],
-                      u.get('attivo', 1), u.get('lista_attesa'),
+                      u.get('attivo', 1), u.get('lista_attesa'), u.get('lista_attesa_as'),
                       u.get('data_inserimento', datetime.now().isoformat()),
                       u.get('data_inizio'), u.get('data_fine'),
-                      u.get('budget_ore_mensile'), u.get('budget_ore_annuale')))
+                      u.get('budget_ore_mensile'), u.get('budget_ore_annuale'),
+                      None if u.get('attivo', 1) else u.get('archiviato_dal')))
 
                 # Ripristina rendicontazioni
                 for r in action['data'].get('rendicontazioni', []):
@@ -3291,6 +3897,36 @@ def api_undo():
                           a.get('data_fine'), a.get('tipo', 'altro'), a.get('motivazione'),
                           a.get('note'),
                           a.get('data_registrazione', datetime.now().isoformat())))
+                # Variazioni monte ore e assegnazioni operatori (cancellate in
+                # cascata dalla delete): senza di queste l'utente tornava con
+                # le ore base in ogni mese e senza operatori assegnati.
+                for v in action['data'].get('variazioni', []):
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO variazioni_monte_ore
+                        (id, utente_id, monte_ore, mese_inizio, mese_fine, nota, data_inserimento)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (v.get('id'), v['utente_id'], v['monte_ore'], v['mese_inizio'],
+                          v.get('mese_fine'), v.get('nota'),
+                          v.get('data_inserimento', datetime.now().isoformat())))
+                for asg in action['data'].get('assegnazioni', []):
+                    # L'operatore potrebbe essere stato eliminato nel frattempo:
+                    # si salta la singola riga (FK), non l'intero ripristino.
+                    cursor.execute("SELECT 1 FROM dipendenti WHERE id = ?", (asg['dipendente_id'],))
+                    if not cursor.fetchone():
+                        continue
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO assegnazioni
+                        (id, utente_id, dipendente_id, ore_settimanali, valido_da, valido_a,
+                         note, data_inserimento)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (asg.get('id'), asg['utente_id'], asg['dipendente_id'],
+                          asg.get('ore_settimanali', 0), asg.get('valido_da'), asg.get('valido_a'),
+                          asg.get('note'), asg.get('data_inserimento', datetime.now().isoformat())))
+
+                # Snapshot di versioni senza l'anno della lista d'attesa: lo si
+                # ricava dalle ore appena ripristinate (usa questo stesso cursore,
+                # nessuna seconda connessione)
+                db.completa_anno_liste_attesa(cursor, [u['id']])
 
                 # Rimuovi l'azione NELLA STESSA transazione del ripristino.
                 # NB: niente chiamate db.* qui dentro (aprirebbero una seconda
@@ -3303,20 +3939,52 @@ def api_undo():
             elif action['type'] == 'update_utente':
                 old = action['data'].get('dati_precedenti', {})
                 uid = action['data'].get('id')
+                attuale = cursor.execute('SELECT * FROM utenti WHERE id = ?', (uid,)).fetchone()
+                attuale = dict(attuale) if attuale else {}
                 set_parts = []
                 params = []
                 for key in ['nome', 'cognome', 'monte_ore_settimanale', 'nome_puntato',
-                            'lista_attesa', 'data_inizio', 'data_fine']:
+                            'lista_attesa', 'lista_attesa_as', 'data_inizio', 'data_fine', 'attivo',
+                            'archiviato_dal']:
                     if key in old:
                         set_parts.append(f"{key} = ?")
                         params.append(old[key])
+                if 'lista_attesa' in old and 'lista_attesa_as' not in old:
+                    # azione salvata da una versione senza l'anno: si ricava
+                    set_parts.append("lista_attesa_as = NULL")
+                if old.get('attivo') and 'archiviato_dal' not in old:
+                    # azione salvata da una versione senza il mese dell'archiviazione
+                    set_parts.append("archiviato_dal = NULL")
                 if set_parts:
                     params.append(uid)
                     cursor.execute(f"UPDATE utenti SET {', '.join(set_parts)} WHERE id = ?", params)
+                    db.completa_anno_liste_attesa(cursor, [uid])
 
                 cursor.execute('DELETE FROM undo_actions WHERE id = ?', (action['id'],))
-                esito = ('utente', uid, 'Ripristinati dati precedenti',
-                         {'success': True, 'message': 'Modifica annullata'})
+                # Nel registro i valori prima e dopo l'annullamento: cosi' lo si vede
+                # anche nello Storico monte ore (prima i dati erano vuoti)
+                ripristinati = {k: old[k] for k, _ in CAMPI_UNDO_UTENTE if k in old}
+                esito = ('utente', uid, 'Annullata una modifica (Ctrl+Z): ripristinati i dati precedenti',
+                         {'success': True, 'message': 'Modifica annullata'},
+                         {k: attuale.get(k) for k in ripristinati}, ripristinati)
+
+            elif action['type'] == 'bulk_update_utenti':
+                n = 0
+                for item in action['data'].get('items', []):
+                    old = item.get('dati_precedenti', {})
+                    # lista_attesa_as assente (azione di una versione precedente):
+                    # NULL e poi ricavato dai dati
+                    cursor.execute(
+                        "UPDATE utenti SET monte_ore_settimanale = ?, lista_attesa = ?, lista_attesa_as = ? "
+                        "WHERE id = ?",
+                        (old.get('monte_ore_settimanale'), old.get('lista_attesa'), old.get('lista_attesa_as'),
+                         item.get('id')))
+                    n += cursor.rowcount
+                db.completa_anno_liste_attesa(
+                    cursor, [item.get('id') for item in action['data'].get('items', []) if item.get('id')])
+                cursor.execute('DELETE FROM undo_actions WHERE id = ?', (action['id'],))
+                esito = ('utenti', None, f'Annullata modifica massiva ({n} utenti)',
+                         {'success': True, 'message': f'Modifica massiva annullata ({n} utenti)'})
 
             else:
                 # Tipo non supportato: scarta l'azione per non bloccare lo stack
@@ -3326,8 +3994,9 @@ def api_undo():
         # Fuori dalla transazione: audit (apre una propria connessione) e risposta
         if esito is None:
             return jsonify({'error': 'Tipo azione non supportato per undo'}), 400
-        entita, entita_id, dettagli, risposta = esito
-        db.log_audit('undo', entita, entita_id, dettagli)
+        entita, entita_id, dettagli, risposta = esito[:4]
+        prima, dopo = (esito[4], esito[5]) if len(esito) > 4 else (None, None)
+        db.log_audit('undo', entita, entita_id, dettagli, dati_precedenti=prima, dati_nuovi=dopo)
         return jsonify(risposta)
 
     except Exception as e:
@@ -3403,18 +4072,25 @@ def api_stats_heatmap(anno_scolastico):
 
         with db.get_db_context() as conn:
             # Ottieni utenti con JOIN per commessa e scuola
-            query_utenti = """
+            # Archiviati: presenti se hanno righe nell'anno o se il loro periodo
+            # di servizio ne tocca i mesi passati (sql_utente_nell_anno)
+            conta_sql, conta_params = db.sql_utente_nell_anno(anno_scolastico)
+            query_utenti = f"""
                 SELECT u.id, u.nome, u.cognome, cm.nome as commessa,
                        s.nome_completo as scuola, u.monte_ore_settimanale
                 FROM utenti u
                 JOIN scuole s ON u.scuola_id = s.id
                 JOIN commesse cm ON s.commessa_id = cm.id
-                WHERE u.attivo = 1
+                WHERE {conta_sql}
             """
-            params = []
+            params = list(conta_params)
             if commessa:
                 query_utenti += " AND cm.nome = ?"
                 params.append(commessa)
+            # Totale degli utenti dell'anno scelto (archiviati compresi): la pagina lo
+            # usa per "Mostrati N su ..." e come limite di "Mostra tutti", al posto
+            # degli utenti attivi di oggi che per un anno passato sono un altro numero
+            totale = conn.execute(f"SELECT COUNT(*) FROM ({query_utenti})", params).fetchone()[0]
             query_utenti += " ORDER BY u.cognome, u.nome LIMIT ?"
             params.append(limit)
 
@@ -3442,7 +4118,9 @@ def api_stats_heatmap(anno_scolastico):
             giorni_per_mese = {}
             for m in mesi_scolastici:
                 variazioni_per_mese[(m['mese'], m['anno'])] = db.get_monte_ore_effettivo_bulk(m['anno'], m['mese'])
-                giorni_per_mese[(m['mese'], m['anno'])] = db.get_calendario(anno_scolastico, m['mese'], m['anno'])
+                # (infanzia, altri ordini): a giugno sono molto diversi, e con i soli giorni
+                # dell'infanzia la colonna era rossa per tutti gli altri
+                giorni_per_mese[(m['mese'], m['anno'])] = db.get_calendario_full(anno_scolastico, m['mese'], m['anno'])
 
             ore_map = {}
             utente_ids = [u['id'] for u in utenti]
@@ -3476,8 +4154,14 @@ def api_stats_heatmap(anno_scolastico):
                     var_mese = variazioni_per_mese.get((m['mese'], m['anno']), {})
                     monte_ore_eff = var_mese.get(utente['id'], utente['monte_ore_settimanale'] or 0)
 
-                    # Ore previste per il mese (formula centralizzata)
-                    giorni_lav = giorni_per_mese[(m['mese'], m['anno'])]
+                    # Ore previste per il mese (formula centralizzata), con i giorni del suo
+                    # tipo di scuola e le stesse regole della Rendicontazione
+                    giorni_def_cal, giorni_altri_cal = giorni_per_mese[(m['mese'], m['anno'])]
+                    if db.is_scuola_infanzia(utente['scuola']):
+                        giorni_cal = giorni_def_cal
+                    else:
+                        giorni_cal = giorni_altri_cal if giorni_altri_cal is not None else giorni_def_cal
+                    giorni_lav = db.risolvi_giorni_lavorativi(giorni_cal)
                     _, ore_previste_ridotte = db.calcola_media_prevista(monte_ore_eff, giorni_lav)
 
                     percentuale = (ore / ore_previste_ridotte * 100) if ore_previste_ridotte > 0 else 0
@@ -3494,6 +4178,7 @@ def api_stats_heatmap(anno_scolastico):
 
             return jsonify({
                 'heatmap': heatmap_data,
+                'totale': totale,
                 'mesi': [{'mese': m['mese'], 'anno': m['anno']} for m in mesi_scolastici]
             })
     except Exception as e:
@@ -3503,13 +4188,40 @@ def api_stats_heatmap(anno_scolastico):
 
 @app.route('/api/stats/scuole-dettaglio')
 def api_stats_scuole_dettaglio():
-    """Statistiche dettagliate per scuola con filtri"""
+    """Statistiche dettagliate per scuola con filtri.
+
+    Con anno e mese i numeri vengono dalla vista mensile (get_rendicontazione_completa):
+    stesso periodo di servizio, stessi archiviati (sql_utente_nel_mese) e monte ore
+    del mese (variazioni comprese) di Rendicontazione e report. Senza mese: gli
+    utenti di oggi con il loro monte ore base."""
     try:
         anno = request.args.get('anno', type=int)
         mese = request.args.get('mese', type=int)
         commessa = request.args.get('commessa')
         order_by = request.args.get('order_by', 'ore_erogate')
         order_dir = request.args.get('order_dir', 'desc')
+        discendente = order_dir.lower() == 'desc'
+
+        if anno and mese:
+            per_scuola = {}
+            for d in db.get_rendicontazione_completa(anno, mese, commessa):
+                sc = per_scuola.setdefault(d['scuola_id'], {
+                    'scuola': d['scuola'], 'commessa': d['commessa'],
+                    'num_utenti': 0, 'monte_ore_totale': 0, 'ore_erogate': 0})
+                sc['num_utenti'] += 1
+                sc['monte_ore_totale'] += d['monte_ore_effettivo'] or 0
+                sc['ore_erogate'] += d['ore_lavorate_60'] or 0
+            scuole = list(per_scuola.values())
+            colonna = order_by if order_by in ('num_utenti', 'monte_ore_totale', 'ore_erogate', 'scuola') \
+                else 'num_utenti'
+            scuole.sort(key=lambda x: (x[colonna] or '') if colonna == 'scuola' else (x[colonna] or 0),
+                        reverse=discendente)
+            # Deriva imponibile e totale IVA-inclusa dalle ore, via config
+            for sc in scuole:
+                imponibile, _iva, totale = config.calcola_fatturazione(sc['ore_erogate'])
+                sc['imponibile'] = imponibile
+                sc['totale_iva'] = totale
+            return jsonify({'scuole': scuole})
 
         with db.get_db_context() as conn:
             # NOTA: utenti.scuola e utenti.commessa non esistono, facciamo JOIN
@@ -3519,33 +4231,12 @@ def api_stats_scuole_dettaglio():
                     cm.nome as commessa,
                     COUNT(DISTINCT u.id) as num_utenti,
                     SUM(u.monte_ore_settimanale) as monte_ore_totale
-            """
-
-            if anno and mese:
-                # Solo le ore in SQL: imponibile/totale-IVA derivati in Python da
-                # config (mai costanti tariffa/IVA hardcoded nelle query).
-                query += """,
-                    COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate
-                """
-
-            query += """
                 FROM utenti u
                 JOIN scuole s ON u.scuola_id = s.id
                 JOIN commesse cm ON s.commessa_id = cm.id
+                WHERE u.attivo = 1
             """
-
-            if anno and mese:
-                query += """
-                    LEFT JOIN rendicontazione r ON u.id = r.utente_id
-                        AND r.anno = ? AND r.mese = ?
-                """
-
-            query += " WHERE u.attivo = 1"
-
             params = []
-            if anno and mese:
-                params.extend([anno, mese])
-
             if commessa:
                 query += " AND cm.nome = ?"
                 params.append(commessa)
@@ -3560,22 +4251,12 @@ def api_stats_scuole_dettaglio():
                 'monte_ore_totale': 'monte_ore_totale',
                 'scuola': 's.nome_completo'
             }
-            if anno and mese:
-                valid_orders['ore_erogate'] = 'ore_erogate'
             colonna_order = valid_orders.get(order_by, 'num_utenti')
-            direction = 'DESC' if order_dir.lower() == 'desc' else 'ASC'
+            direction = 'DESC' if discendente else 'ASC'
             query += f" ORDER BY {colonna_order} {direction}"
 
             cursor = conn.execute(query, params)
             scuole = [dict(row) for row in cursor.fetchall()]
-
-            # Deriva imponibile e totale IVA-inclusa dalle ore, via config
-            if anno and mese:
-                for s in scuole:
-                    imponibile, _iva, totale = config.calcola_fatturazione(s.get('ore_erogate', 0))
-                    s['imponibile'] = imponibile
-                    s['totale_iva'] = totale
-
             return jsonify({'scuole': scuole})
     except Exception as e:
         logger.error(f"Errore stats scuole: {e}")
@@ -3584,10 +4265,17 @@ def api_stats_scuole_dettaglio():
 
 @app.route('/api/stats/validazione')
 def api_stats_validazione():
-    """Verifica anomalie nei dati e restituisce avvisi"""
+    """Verifica anomalie nei dati e restituisce avvisi.
+
+    Con ?commessa= i controlli guardano solo gli utenti (e la commessa) scelti,
+    come lo "Stato del mese" della Dashboard."""
     try:
         anno = request.args.get('anno', type=int)
         mese = request.args.get('mese', type=int)
+        commessa = (request.args.get('commessa') or '').strip() or None
+        # Filtro SQL sulla commessa, da aggiungere alle query che hanno "cm"
+        filtro_cm = ' AND cm.nome = ?' if commessa else ''
+        param_cm = [commessa] if commessa else []
 
         if not anno or not mese:
             now = datetime.now()
@@ -3599,24 +4287,38 @@ def api_stats_validazione():
         # nel mese non sono anomalie (non risolvibili dal wizard di chiusura)
         periodo_val = f"{anno:04d}-{mese:02d}"
 
+        # Archiviati: contano come nella vista mensile (sql_utente_nel_mese)
+        conta_sql, conta_params = db.sql_utente_nel_mese(anno, mese, r=None)
+        conta_sql_r, conta_params_r = db.sql_utente_nel_mese(anno, mese)
+
+        # Monte ore del MESE (variazioni comprese), non la base di oggi: dopo il
+        # passo Utenti del nuovo anno la base puo' essere cambiata (anche a 0)
+        # mentre i mesi passati tengono il valore di allora
+        monte_ore_mese = db.get_monte_ore_effettivo_bulk(anno, mese)
+
+        def _monte_ore_del_mese(row):
+            return monte_ore_mese.get(row['id'], row['monte_ore_settimanale']) or 0
+
         with db.get_db_context() as conn:
-            # 1. Utenti senza ore nel mese
-            cursor = conn.execute("""
+            # 1. Utenti senza ore nel mese (con monte ore del mese > 0). ORDER BY
+            # esplicito: i 10 nomi di esempio restano quelli di sempre (per id)
+            cursor = conn.execute(f"""
                 SELECT u.id, u.nome, u.cognome, cm.nome as commessa,
                        s.nome_completo as scuola, u.monte_ore_settimanale
                 FROM utenti u
                 JOIN scuole s ON u.scuola_id = s.id
                 JOIN commesse cm ON s.commessa_id = cm.id
-                WHERE u.attivo = 1
-                AND u.monte_ore_settimanale > 0
+                WHERE {conta_sql}
                 AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
                 AND (u.data_fine IS NULL OR u.data_fine >= ?)
                 AND u.id NOT IN (
                     SELECT DISTINCT utente_id FROM rendicontazione
                     WHERE anno = ? AND mese = ? AND ore_lavorate_60 > 0
                 )
-            """, [periodo_val, periodo_val, anno, mese])
-            utenti_senza_ore = [dict(row) for row in cursor.fetchall()]
+            """ + filtro_cm + """
+                ORDER BY u.id
+            """, conta_params + [periodo_val, periodo_val, anno, mese] + param_cm)
+            utenti_senza_ore = [dict(row) for row in cursor.fetchall() if _monte_ore_del_mese(row) > 0]
 
             if utenti_senza_ore:
                 anomalie.append({
@@ -3634,9 +4336,11 @@ def api_stats_validazione():
                 SELECT u.id, u.nome, u.cognome, r.ore_lavorate_60, u.monte_ore_settimanale
                 FROM rendicontazione r
                 JOIN utenti u ON r.utente_id = u.id
+                JOIN scuole s ON u.scuola_id = s.id
+                JOIN commesse cm ON s.commessa_id = cm.id
                 WHERE r.anno = ? AND r.mese = ?
                 AND (r.ore_lavorate_60 < 0 OR r.ore_lavorate_60 > 200)
-            """, [anno, mese])
+            """ + filtro_cm, [anno, mese] + param_cm)
             ore_anomale = [dict(row) for row in cursor.fetchall()]
 
             if ore_anomale:
@@ -3650,16 +4354,19 @@ def api_stats_validazione():
                                 for u in ore_anomale]
                 })
 
-            # 3. Utenti con monte ore = 0 ma con ore lavorate
+            # 3. Utenti con monte ore del mese = 0 ma con ore lavorate
             cursor = conn.execute("""
-                SELECT u.id, u.nome, u.cognome, r.ore_lavorate_60
+                SELECT u.id, u.nome, u.cognome, r.ore_lavorate_60, u.monte_ore_settimanale
                 FROM rendicontazione r
                 JOIN utenti u ON r.utente_id = u.id
+                JOIN scuole s ON u.scuola_id = s.id
+                JOIN commesse cm ON s.commessa_id = cm.id
                 WHERE r.anno = ? AND r.mese = ?
-                AND u.monte_ore_settimanale = 0
                 AND r.ore_lavorate_60 > 0
-            """, [anno, mese])
-            monte_ore_zero = [dict(row) for row in cursor.fetchall()]
+            """ + filtro_cm + """
+                ORDER BY u.id
+            """, [anno, mese] + param_cm)
+            monte_ore_zero = [dict(row) for row in cursor.fetchall() if _monte_ore_del_mese(row) == 0]
 
             if monte_ore_zero:
                 anomalie.append({
@@ -3673,29 +4380,31 @@ def api_stats_validazione():
                 })
 
             # 4. Utenti con ore erogate molto diverse dalle previste (>50% differenza)
-            cursor = conn.execute("""
+            cursor = conn.execute(f"""
                 SELECT
                     u.id, u.nome, u.cognome, u.monte_ore_settimanale,
                     s.nome_completo as scuola,
                     COALESCE(SUM(r.ore_lavorate_60), 0) as ore_erogate
                 FROM utenti u
                 JOIN scuole s ON u.scuola_id = s.id
+                JOIN commesse cm ON s.commessa_id = cm.id
                 LEFT JOIN rendicontazione r ON u.id = r.utente_id AND r.anno = ? AND r.mese = ?
-                WHERE u.attivo = 1 AND u.monte_ore_settimanale > 0
+                WHERE {conta_sql_r}
                 AND (u.data_inizio IS NULL OR u.data_inizio <= ?)
                 AND (u.data_fine IS NULL OR u.data_fine >= ?)
+            """ + filtro_cm + """
                 GROUP BY u.id
-            """, [anno, mese, periodo_val, periodo_val])
+            """, [anno, mese] + conta_params_r + [periodo_val, periodo_val] + param_cm)
 
             # Giorni lavorativi con la stessa regola della vista mensile
             # (tipo scuola infanzia/altri + fallback al default)
             anno_scolastico_validazione = config.anno_scolastico_di(anno, mese)
             giorni_def_cal, giorni_altri_cal = db.get_calendario_full(anno_scolastico_validazione, mese, anno)
             differenze_anomale = []
-            variazioni_anomalie = db.get_monte_ore_effettivo_bulk(anno, mese)
 
             for row in cursor.fetchall():
-                monte_ore_eff = variazioni_anomalie.get(row['id'], row['monte_ore_settimanale'])
+                # monte ore del mese: con 0 le ore previste sono 0 e il controllo salta
+                monte_ore_eff = _monte_ore_del_mese(row)
                 if db.is_scuola_infanzia(row['scuola']):
                     giorni_cal = giorni_def_cal
                 else:
@@ -3725,6 +4434,43 @@ def api_stats_validazione():
                     'dettagli': differenze_anomale[:10]
                 })
 
+            # 4b. Pasti piu' dei giorni di scuola del mese (per tipo di scuola, come
+            # la vista mensile). Non blocca nulla: spesso sono le ore finite per
+            # sbaglio nella casella dei pasti (es. 44 pasti con 44 ore).
+            cursor = conn.execute("""
+                SELECT u.id, u.nome, u.cognome, s.nome_completo as scuola,
+                       r.pasti, r.ore_lavorate_60
+                FROM rendicontazione r
+                JOIN utenti u ON r.utente_id = u.id
+                JOIN scuole s ON u.scuola_id = s.id
+                JOIN commesse cm ON s.commessa_id = cm.id
+                WHERE r.anno = ? AND r.mese = ? AND r.pasti > 0
+            """ + filtro_cm + """
+                ORDER BY u.id
+            """, [anno, mese] + param_cm)
+            pasti_troppi = []
+            for row in cursor.fetchall():
+                if db.is_scuola_infanzia(row['scuola']):
+                    giorni_cal = giorni_def_cal
+                else:
+                    giorni_cal = giorni_altri_cal if giorni_altri_cal is not None else giorni_def_cal
+                giorni_scuola = db.risolvi_giorni_lavorativi(giorni_cal)
+                if row['pasti'] > giorni_scuola:
+                    pasti_troppi.append({'id': row['id'], 'nome': f"{row['nome']} {row['cognome']}",
+                                         'pasti': row['pasti'], 'giorni': giorni_scuola,
+                                         'ore': row['ore_lavorate_60']})
+            if pasti_troppi:
+                n = len(pasti_troppi)
+                anomalie.append({
+                    'tipo': 'warning',
+                    'categoria': 'pasti_oltre_giorni',
+                    'titolo': 'Pasti più dei giorni di scuola',
+                    'messaggio': (f"{n} utent{'e ha' if n == 1 else 'i hanno'} più pasti dei giorni di "
+                                  "scuola del mese: controlla che non ci siano finite le ore"),
+                    'conteggio': n,
+                    'dettagli': pasti_troppi[:10]
+                })
+
             # 5. Commesse senza dati nel mese
             cursor = conn.execute("""
                 SELECT c.nome, COUNT(u.id) as num_utenti
@@ -3732,9 +4478,10 @@ def api_stats_validazione():
                 LEFT JOIN scuole s ON s.commessa_id = c.id
                 LEFT JOIN utenti u ON u.scuola_id = s.id AND u.attivo = 1
                 WHERE c.attiva = 1
+            """ + (' AND c.nome = ?' if commessa else '') + """
                 GROUP BY c.id
                 HAVING num_utenti = 0
-            """)
+            """, param_cm)
             commesse_vuote = [dict(row) for row in cursor.fetchall()]
 
             if commesse_vuote:
@@ -3758,7 +4505,8 @@ def api_stats_validazione():
         return jsonify({
             'anomalie': anomalie,
             'riepilogo': riepilogo,
-            'periodo': {'anno': anno, 'mese': mese}
+            'periodo': {'anno': anno, 'mese': mese},
+            'commessa': commessa
         })
     except Exception as e:
         logger.error(f"Errore validazione: {e}")
@@ -3816,14 +4564,26 @@ def api_stats_confronto_annuale_dettaglio():
                     'imponibile': config.calcola_fatturazione(dati['ore_erogate'])[0]
                 })
 
-            # Calcola variazioni percentuali
-            for i in range(len(risultati) - 1):
-                if risultati[i + 1]['ore_erogate'] > 0:
-                    variazione = ((risultati[i]['ore_erogate'] - risultati[i + 1]['ore_erogate'])
-                                 / risultati[i + 1]['ore_erogate'] * 100)
-                    risultati[i]['variazione'] = round(variazione, 1)
+            # Variazioni percentuali di ogni anno rispetto al precedente. Nessuna
+            # variazione (None, a schermo "-") se l'anno piu' recente della coppia non
+            # ha dati in quel mese o se il mese non e' ancora concluso: prima un mese
+            # futuro o in corso ancora vuoto compariva come un calo del -100%
+            oggi = datetime.now()
+            for r in risultati:
+                if r['num_utenti'] == 0:
+                    r['nota'] = 'dati non ancora inseriti'
+                elif (r['anno'], r['mese']) >= (oggi.year, oggi.month):
+                    r['nota'] = 'mese non ancora concluso'
                 else:
-                    risultati[i]['variazione'] = None
+                    r['nota'] = None
+            for i in range(len(risultati) - 1):
+                corrente, precedente = risultati[i], risultati[i + 1]
+                if corrente['nota'] is None and precedente['ore_erogate'] > 0:
+                    variazione = ((corrente['ore_erogate'] - precedente['ore_erogate'])
+                                  / precedente['ore_erogate'] * 100)
+                    corrente['variazione'] = round(variazione, 1)
+                else:
+                    corrente['variazione'] = None
 
             if risultati:
                 risultati[-1]['variazione'] = None
@@ -3916,14 +4676,7 @@ def api_scuole_lista():
 @app.route('/api/config')
 def api_get_config():
     """Ritorna la configurazione corrente (parametri di calcolo)"""
-    return jsonify({
-        'tariffa_oraria': config.TARIFFA_ORARIA,
-        'iva_percentuale': config.IVA_PERCENTUALE,
-        'tasso_assenza': config.TASSO_ASSENZA,
-        'coefficiente_giornaliero': config.COEFFICIENTE_GIORNALIERO,
-        'max_ore_settimanali': config.MAX_ORE_SETTIMANALI,
-        'max_pasti_mensili': config.MAX_PASTI_MENSILI
-    })
+    return jsonify(_parametri_calcolo())
 
 
 def open_browser():
@@ -3934,9 +4687,45 @@ def open_browser():
     webbrowser.open('http://localhost:5000')
 
 
+PORTA_APP = 5000
+
+MESSAGGIO_GIA_APERTO = (
+    "Assisto è già aperto in un'altra finestra (http://localhost:5000). "
+    "Chiudi quella finestra nera (anche se è ridotta a icona nella barra in basso) "
+    "e poi riavvia. Se stai passando a una nuova versione, chiudi prima la vecchia: "
+    "due versioni aperte insieme sulla stessa porta si mescolano."
+)
+
+
+def assisto_gia_aperto(porta=PORTA_APP, host='127.0.0.1'):
+    """True se sulla porta risponde gia' un programma (di solito un altro Assisto).
+
+    Su Windows il server accetta di partire anche se la porta e' occupata
+    (SO_REUSEADDR): due versioni aperte insieme risponderebbero a turno e le ore
+    potrebbero finire nel database della cartella sbagliata."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, porta)) == 0
+
+
 if __name__ == '__main__':
     import sys
     import threading
+
+    # Prima di tutto: un'altra istanza (magari la versione vecchia) e' gia' aperta?
+    # (non nel processo figlio del ricaricamento automatico di FLASK_DEBUG=1, che
+    # trova la porta gia' aperta dal processo padre)
+    if os.environ.get('WERKZEUG_RUN_MAIN') != 'true' and assisto_gia_aperto():
+        logger.error(MESSAGGIO_GIA_APERTO)
+        if getattr(sys, 'frozen', False) and os.name == 'nt':
+            # eseguibile senza finestra nera: il messaggio in una finestra di Windows
+            try:
+                import ctypes
+                ctypes.windll.user32.MessageBoxW(0, MESSAGGIO_GIA_APERTO, 'Assisto', 0x30)
+            except Exception:
+                pass
+        sys.exit(1)
 
     logger.info("=" * 50)
     logger.info("  GESTIONALE OEPAC - Sistema di Rendicontazione")
@@ -3946,7 +4735,7 @@ if __name__ == '__main__':
     if getattr(sys, 'frozen', False):
         logger.info("  Apertura browser in corso...")
         threading.Thread(target=open_browser, daemon=True).start()
-        app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
+        app.run(host='127.0.0.1', port=PORTA_APP, debug=False, use_reloader=False)
     else:
         logger.info("  Premi Ctrl+C per terminare")
         # Default SICURI anche in esecuzione da sorgente: nessuna esposizione di
@@ -3956,4 +4745,4 @@ if __name__ == '__main__':
         # d'ambiente: FLASK_DEBUG=1 abilita debugger+reloader, OEPAC_HOST cambia il bind.
         host = os.environ.get('OEPAC_HOST', '127.0.0.1')
         debug = os.environ.get('FLASK_DEBUG', '0') == '1'
-        app.run(host=host, port=5000, debug=debug, use_reloader=debug)
+        app.run(host=host, port=PORTA_APP, debug=debug, use_reloader=debug)

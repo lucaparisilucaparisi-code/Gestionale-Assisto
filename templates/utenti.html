@@ -1,30 +1,36 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block title %}Gestione Utenti - Gestionale OEPAC{% endblock %}
 
 {% block content %}
+{# Stessa intestazione di Dipendenti: titolo a sinistra, azioni a destra, tutte alte uguali #}
 <div class="page-header">
-    <h1 class="page-title">Gestione Utenti</h1>
-    <p class="page-subtitle">Visualizza e gestisci gli utenti del servizio</p>
-    <div class="header-actions flex gap-2 flex-wrap">
-        <button class="btn btn-secondary btn-sm" onclick="exportUtentiCSV()" title="Esporta lista utenti in CSV">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Export CSV
-        </button>
-        <button class="btn btn-secondary btn-sm" onclick="openModal('modal-import-csv')" title="Importa utenti da CSV">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            Import CSV
-        </button>
-        <button class="btn btn-primary" onclick="openModal('modal-nuovo-utente')">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-            Nuovo Utente
-        </button>
+    <div class="page-header-row">
+        <div>
+            <h1 class="page-title">Gestione Utenti</h1>
+            <p class="page-subtitle">Visualizza e gestisci gli utenti del servizio</p>
+        </div>
+        <div class="header-actions flex gap-2 items-center flex-wrap">
+            <button class="btn btn-secondary" onclick="exportUtentiCSV()" title="Esporta l'elenco utenti in un file CSV">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Esporta CSV
+            </button>
+            <button class="btn btn-secondary" onclick="openModal('modal-import-csv')" title="Importa utenti da un file CSV">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                Importa CSV
+            </button>
+            <button class="btn btn-primary" onclick="openModal('modal-nuovo-utente')">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Nuovo Utente
+            </button>
+        </div>
     </div>
 </div>
 
@@ -32,53 +38,46 @@
 <div class="filters">
     <div class="filter-group">
         <label class="filter-label">Commessa</label>
-        <select id="filter-commessa" class="form-control" style="width: 200px;">
+        <select id="filter-commessa" class="form-control w-md">
             <option value="">Tutte</option>
         </select>
     </div>
 
     <div class="filter-group">
         <label class="filter-label">Scuola</label>
-        <select id="filter-scuola" class="form-control" style="width: 300px;">
+        <select id="filter-scuola" class="form-control w-lg">
             <option value="">Tutte le scuole</option>
         </select>
     </div>
 
     <div class="filter-group">
         <label class="filter-label">Cerca</label>
-        <input type="text" id="filter-search" class="form-control" placeholder="Nome o cognome..." style="width: 200px;">
+        <input type="text" id="filter-search" class="form-control w-md" placeholder="Nome o cognome...">
     </div>
 
     <div class="filter-group">
         <label class="filter-label">Stato</label>
-        <select id="filter-stato" class="form-control" style="width: 150px;">
+        <select id="filter-stato" class="form-control w-sm">
             <option value="">Tutti</option>
             <option value="attivo">Attivi</option>
             <option value="lista_attesa">In Lista Attesa</option>
             <option value="scaduto">Scaduti</option>
-            <option value="inattivo">Inattivi</option>
+            <option value="archiviato">Archiviati</option>
         </select>
     </div>
-
-    <div class="filter-group" style="margin-left: auto;">
-        <label class="filter-label">&nbsp;</label>
-        <button id="btn-load" class="btn btn-primary">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Carica
-        </button>
-    </div>
+    {# niente pulsante 'Carica': i filtri ricaricano l'elenco da soli e la ricerca e' immediata #}
 </div>
 
 <!-- Tabella Utenti -->
 <div class="card">
     <div class="card-header">
         <h2 class="card-title">Elenco Utenti</h2>
-        <span class="badge badge-primary" id="count-badge">0 utenti</span>
+        <span class="badge badge-secondary" id="count-badge">0 utenti</span>
     </div>
     <div class="card-body p-0">
-        <div class="table-container" id="table-container">
+        {# id proprio: con 'table-container' prendeva le regole della Rendicontazione
+           (colonna fissa 'Commessa' che restava bianca al passaggio del mouse) #}
+        <div class="table-container" id="tabella-utenti">
             <div class="loading">
                 <div class="spinner"></div>
             </div>
@@ -91,7 +90,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Aggiungi Nuovo Utente</h3>
-            <button class="modal-close" onclick="closeModal('modal-nuovo-utente')">✕</button>
+            {{ modal_close("closeModal('modal-nuovo-utente')") }}
         </div>
         <div class="modal-body">
             <div class="form-group">
@@ -102,7 +101,7 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Scuola/IC (Albero Attività) *</label>
-                <input type="text" id="new-scuola" class="form-control" maxlength="200" placeholder="es. /IC ACHILLE TEDESCHI/Infanzia/...">
+                <input type="text" id="new-scuola" class="form-control" maxlength="200" placeholder="es. /IC TEDESCHI/Infanzia/...">
             </div>
             <div class="form-group">
                 <label class="form-label">Nome *</label>
@@ -129,7 +128,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Reset Dati</h3>
-            <button class="modal-close" onclick="closeModal('modal-reset')">✕</button>
+            {{ modal_close("closeModal('modal-reset')") }}
         </div>
         <div class="modal-body">
             <p style="color:red;font-weight:bold;">⚠️ Attenzione! Questa operazione non può essere annullata.</p>
@@ -151,10 +150,11 @@
 
 <!-- Modal Modifica Utente -->
 <div class="modal-overlay" id="modal-edit">
-    <div class="modal">
+    {# 600px: i quattro pulsanti del piede stanno interi, in due gruppi #}
+    <div class="modal" style="max-width: 600px;">
         <div class="modal-header">
             <h3 class="modal-title">Modifica Utente</h3>
-            <button class="modal-close" onclick="closeModal('modal-edit')">✕</button>
+            {{ modal_close("closeModal('modal-edit')") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="edit-utente-id">
@@ -189,6 +189,7 @@
                     <option value="Maggio">Maggio</option>
                     <option value="Giugno">Giugno</option>
                 </select>
+                <p class="form-help" id="edit-lista-attesa-help" style="display:none;"></p>
             </div>
             <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 <div class="form-group">
@@ -203,14 +204,16 @@
             <div class="form-group">
                 <label class="form-label">Scuola</label>
                 <input type="text" id="edit-scuola" class="form-control" disabled>
-                <p class="form-help">La scuola non può essere modificata.</p>
+                <p class="form-help">Per spostare l'utente in un'altra scuola usa «Cambia scuola…».</p>
             </div>
         </div>
+        {# Azioni secondarie a sinistra (grigie: duplicare non cancella niente),
+           Annulla e Salva a destra #}
         <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="duplicaUtente()" title="Crea una copia di questo utente">Duplica</button>
+            <button class="btn btn-secondary mr-auto" onclick="openCambioScuola()" title="Sposta l'utente in un'altra scuola (lo storico resta)">Cambia scuola…</button>
             <button class="btn btn-secondary" onclick="closeModal('modal-edit')">Annulla</button>
-            <button class="btn btn-danger btn-sm mr-auto" onclick="duplicaUtente()" title="Crea una copia di questo utente">Duplica</button>
-            <button class="btn btn-warning btn-sm" onclick="openCambioScuola()" title="Cambia la scuola dell'utente">Cambia Scuola</button>
-            <button class="btn btn-primary" onclick="saveEditUtente()">Salva Modifiche</button>
+            <button class="btn btn-primary" onclick="saveEditUtente()">Salva modifiche</button>
         </div>
     </div>
 </div>
@@ -220,13 +223,15 @@
     <div class="modal" style="max-width: 500px;">
         <div class="modal-header">
             <h3 class="modal-title">Import Utenti da CSV</h3>
-            <button class="modal-close" onclick="closeModal('modal-import-csv')">✕</button>
+            {{ modal_close("closeModal('modal-import-csv')") }}
         </div>
         <div class="modal-body">
             <div class="alert alert-info mb-4">
-                <strong>Formato richiesto:</strong><br>
-                CSV con colonne: nome, cognome, scuola, monte_ore, commessa<br>
-                <a href="#" onclick="downloadTemplateCSV(); return false;">Scarica template CSV</a>
+                <div>
+                    <strong>Formato richiesto:</strong><br>
+                    CSV con colonne: nome, cognome, scuola, monte_ore, commessa<br>
+                    <a href="#" onclick="downloadTemplateCSV(); return false;">Scarica template CSV</a>
+                </div>
             </div>
             <div class="form-group">
                 <label class="form-label">File CSV</label>
@@ -256,7 +261,7 @@
     <div class="modal" style="max-width: 500px;">
         <div class="modal-header">
             <h3 class="modal-title">Cambia Scuola</h3>
-            <button class="modal-close" onclick="closeModal('modal-cambio-scuola')">✕</button>
+            {{ modal_close("closeModal('modal-cambio-scuola')") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="cambio-scuola-utente-id">
@@ -296,7 +301,7 @@
     <div class="modal" style="max-width: 500px;">
         <div class="modal-header">
             <h3 class="modal-title">Storico Monte Ore</h3>
-            <button class="modal-close" onclick="closeModal('modal-storico-monte-ore')">✕</button>
+            {{ modal_close("closeModal('modal-storico-monte-ore')") }}
         </div>
         <div class="modal-body" id="storico-monte-ore-content">
             <div class="text-center text-muted py-4">Caricamento...</div>
@@ -309,10 +314,10 @@
     <div class="modal" style="max-width: 600px;">
         <div class="modal-header">
             <h3 class="modal-title">Variazioni Monte Ore</h3>
-            <button class="modal-close" onclick="closeModal('modal-variazioni-monte-ore')">✕</button>
+            {{ modal_close("closeModal('modal-variazioni-monte-ore')") }}
         </div>
         <div class="modal-body">
-            <div class="alert alert-info" style="margin-bottom: 16px; font-size: 0.85rem;">
+            <div class="alert alert-info mb-4">
                 Aggiungi incrementi o decrementi del monte ore che si applicano a partire da un determinato mese.
                 Il sistema userà automaticamente il valore corretto nei calcoli della rendicontazione.
             </div>
@@ -324,7 +329,7 @@
             <hr style="margin: 16px 0;">
 
             <h4 style="font-size: 0.95rem; margin-bottom: 12px;">Nuova variazione</h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="griglia-variazione">
                 <div class="form-group mb-2">
                     <label class="form-label">Nuovo monte ore *</label>
                     <input type="number" id="var-monte-ore" class="form-control" placeholder="es. 18" step="0.5" min="0" max="40">
@@ -332,6 +337,11 @@
                 <div class="form-group mb-2">
                     <label class="form-label">A partire da *</label>
                     <input type="month" id="var-mese-inizio" class="form-control">
+                </div>
+                <div class="form-group mb-2">
+                    <label class="form-label">Fino a (opzionale)</label>
+                    <input type="month" id="var-mese-fine" class="form-control"
+                           title="Ultimo mese in cui vale. Vuoto = resta valida finché non la chiudi (il wizard di settembre chiude quelle aperte al 31/8)">
                 </div>
             </div>
             <div class="form-group mb-3">
@@ -355,7 +365,15 @@ function esc(str) {
     if (!str) return '';
     var d = document.createElement('div');
     d.textContent = str;
-    return d.innerHTML;
+    return d.innerHTML.replace(/"/g, '&quot;');
+}
+
+// Nomi delle scuole nelle tendine: i puntini solo se il nome e' davvero tagliato
+// (prima finivano tutti con '...', anche quelli corti)
+function nomeBreve(nome, max) {
+    max = max || 60;
+    nome = nome || '';
+    return nome.length > max ? nome.substring(0, max - 1).trimEnd() + '…' : nome;
 }
 
 // === Init ===
@@ -370,7 +388,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     document.getElementById('filter-scuola').addEventListener('change', loadUtenti);
     document.getElementById('filter-stato').addEventListener('change', loadUtenti);
-    document.getElementById('btn-load').addEventListener('click', loadUtenti);
 
     var searchTimeout;
     document.getElementById('filter-search').addEventListener('input', function(e) {
@@ -385,16 +402,37 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // === Ricerca locale ===
 function filterTable(query) {
-    var rows = document.querySelectorAll('#table-container tbody tr');
+    var rows = document.querySelectorAll('#tabella-utenti tbody tr');
     var matchCount = 0;
     rows.forEach(function(row) {
         if (!query) { row.style.display = ''; return; }
-        var match = row.textContent.toLowerCase().indexOf(query) >= 0;
+        // si cerca nei dati, non nei pulsanti ('mod' non deve trovare 'Modifica')
+        var testo = Array.prototype.slice.call(row.cells, 0, -1).map(function(c) { return c.textContent; }).join(' ');
+        var match = testo.toLowerCase().indexOf(query) >= 0;
         row.style.display = match ? '' : 'none';
         if (match) matchCount++;
     });
     document.getElementById('count-badge').textContent = query
-        ? matchCount + ' trovati' : allUtenti.length + ' utenti';
+        ? matchCount + (matchCount === 1 ? ' trovato' : ' trovati') : contaUtenti(allUtenti.length);
+
+    // Nessuna riga: una frase e il modo di tornare all'elenco, non la sola riga dei titoli
+    var tabella = document.querySelector('#tabella-utenti table');
+    var vuoto = document.getElementById('ricerca-vuota');
+    if (!tabella || !vuoto) return;
+    var nessuno = !!query && matchCount === 0;
+    tabella.style.display = nessuno ? 'none' : '';
+    vuoto.style.display = nessuno ? '' : 'none';
+    if (nessuno) {
+        document.getElementById('ricerca-vuota-testo').textContent =
+            'Nessun utente corrisponde a «' + document.getElementById('filter-search').value.trim() + '».';
+    }
+}
+
+function azzeraRicerca() {
+    var campo = document.getElementById('filter-search');
+    campo.value = '';
+    filterTable('');
+    campo.focus();
 }
 
 // === Caricamento dati ===
@@ -417,8 +455,7 @@ function loadScuole(commessa) {
     apiCall(url).then(function(scuole) {
         var html = '<option value="">Tutte le scuole</option>';
         scuole.forEach(function(s) {
-            var nome = s.nome_completo ? s.nome_completo.substring(0, 60) : '';
-            html += '<option value="' + s.id + '">' + esc(nome) + '...</option>';
+            html += '<option value="' + s.id + '" title="' + esc(s.nome_completo) + '">' + esc(nomeBreve(s.nome_completo)) + '</option>';
         });
         document.getElementById('filter-scuola').innerHTML = html;
     }).catch(function(err) { console.error('Errore scuole:', err); });
@@ -428,12 +465,13 @@ function loadUtenti() {
     var commessa = document.getElementById('filter-commessa').value;
     var scuolaId = document.getElementById('filter-scuola').value;
     var stato = document.getElementById('filter-stato').value;
-    showLoading('table-container');
+    showLoading('tabella-utenti');
 
     var url = '/api/utenti';
     var params = [];
     if (commessa) params.push('commessa=' + encodeURIComponent(commessa));
     if (scuolaId) params.push('scuola_id=' + scuolaId);
+    if (stato === 'archiviato') params.push('attivi=0');   // archiviati: li sceglie il server
     if (params.length > 0) url += '?' + params.join('&');
 
     apiCall(url).then(function(utenti) {
@@ -443,16 +481,16 @@ function loadUtenti() {
             var oggiStr = oggi.toISOString().slice(0, 7); // YYYY-MM
 
             utenti = utenti.filter(function(u) {
+                // Lista d'attesa: conta solo quella di quest'anno scolastico (una
+                // etichetta di un anno passato non tiene l'utente fuori dagli attivi)
                 if (stato === 'attivo') {
-                    return u.attivo && !u.lista_attesa && (!u.data_fine || u.data_fine >= oggiStr);
+                    return u.attivo && !u.lista_attesa_corrente && (!u.data_fine || u.data_fine >= oggiStr);
                 } else if (stato === 'lista_attesa') {
-                    return u.lista_attesa;
+                    return u.lista_attesa_corrente;
                 } else if (stato === 'scaduto') {
                     return u.data_fine && u.data_fine < oggiStr;
-                } else if (stato === 'inattivo') {
-                    return !u.attivo;
                 }
-                return true;
+                return true;   // 'archiviato': gia' filtrato dal server (attivi=0)
             });
         }
         allUtenti = utenti;
@@ -462,13 +500,27 @@ function loadUtenti() {
     });
 }
 
+// Lista d'attesa: quella di quest'anno in evidenza; quella di un anno passato
+// attenuata e con l'anno ("Marzo 25/26"), perche' nei report di quest'anno non conta
+function badgeListaAttesa(u) {
+    if (!u.lista_attesa) return '';
+    if (u.lista_attesa_corrente) return '<span class="badge badge-warning">' + esc(u.lista_attesa) + '</span>';
+    return '<span class="badge badge-secondary lista-anno-passato" title="Lista d\'attesa dell\'anno '
+        + esc(u.lista_attesa_anno_breve) + ': conta solo nei report di quell\'anno">'
+        + esc(u.lista_attesa) + ' ' + esc(u.lista_attesa_anno_breve) + '</span>';
+}
+
 // === Render tabella ===
+function contaUtenti(n) {
+    return n + (n === 1 ? ' utente' : ' utenti');
+}
+
 function renderTable(utenti) {
-    var container = document.getElementById('table-container');
-    document.getElementById('count-badge').textContent = utenti.length + ' utenti';
+    var container = document.getElementById('tabella-utenti');
+    document.getElementById('count-badge').textContent = contaUtenti(utenti.length);
 
     if (utenti.length === 0) {
-        showEmptyState('table-container', 'Nessun utente trovato', 'Importa i dati dalla sezione Import Excel oppure aggiungili manualmente');
+        showEmptyState('tabella-utenti', 'Nessun utente trovato', 'Importa i dati dalla sezione Import Excel oppure aggiungili manualmente');
         return;
     }
 
@@ -486,45 +538,75 @@ function renderTable(utenti) {
         return mesi[parseInt(parts[1]) - 1] + ' ' + parts[0].slice(2);
     }
 
+    // Una sola colonna 'Cognome e nome' (come Dipendenti e Turni), la prima: resta
+    // ferma quando la tabella scorre di lato. Commessa, N. puntati e Periodo sul
+    // telefono si nascondono (col-secondaria).
     var rows = '';
     utenti.forEach(function(u) {
         var periodo = '-';
         if (u.data_inizio || u.data_fine) {
             periodo = '<span class="badge badge-info">' + fmtPeriodo(u.data_inizio) + ' &rarr; ' + fmtPeriodo(u.data_fine) + '</span>';
         }
-        var lista = u.lista_attesa ? '<span class="badge badge-warning">' + esc(u.lista_attesa) + '</span>' : '-';
+        var lista = badgeListaAttesa(u) || '-';
+        var nome = ((u.cognome || '') + ' ' + (u.nome || '')).trim();
 
         rows += '<tr>'
-            + '<td><span class="badge badge-primary">' + esc(u.commessa) + '</span></td>'
-            + '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(u.scuola) + '">' + esc(u.scuola) + '</td>'
-            + '<td><a href="/utente/' + u.id + '" style="color:var(--primary);text-decoration:none;"><strong>' + esc(u.nome) + '</strong></a></td>'
-            + '<td><a href="/utente/' + u.id + '" style="color:var(--primary);text-decoration:none;"><strong>' + esc(u.cognome) + '</strong></a></td>'
-            + '<td>' + esc(u.nome_puntato) + '</td>'
-            + '<td class="text-center">' + u.monte_ore_settimanale + '</td>'
-            + '<td>' + periodo + '</td>'
+            + '<td><a href="/utente/' + u.id + '" class="font-semibold" title="Apri la scheda di ' + esc(nome) + '">' + esc(nome) + '</a></td>'
+            + '<td class="col-secondaria"><span class="badge badge-secondary">' + esc(u.commessa) + '</span></td>'
+            + '<td class="cella-scuola" title="' + esc(u.scuola) + '">' + esc(u.scuola) + '</td>'
+            + '<td class="col-secondaria">' + esc(u.nome_puntato) + '</td>'
+            + '<td class="text-center">' + formatNumero(u.monte_ore_settimanale) + '</td>'
+            + '<td class="col-secondaria">' + periodo + '</td>'
             + '<td>' + lista + '</td>'
-            + '<td style="white-space:nowrap;">'
-            +   '<a href="/utente/' + u.id + '" class="btn btn-sm btn-ghost" title="Dettaglio">👤</a> '
-            +   '<button class="btn btn-sm btn-secondary" onclick="apriModifica(' + u.id + ')">✏️</button> '
-            +   '<button class="btn btn-sm btn-danger" onclick="apriElimina(' + u.id + ')">🗑️</button>'
-            + '</td>'
+            + '<td class="text-right"><span class="azioni-riga">'
+            +   '<button type="button" class="btn btn-sm btn-secondary" onclick="apriModifica(' + u.id + ')" title="Modifica" aria-label="Modifica ' + esc(nome) + '">'
+            +     icona('matita') + '<span class="azione-testo">Modifica</span></button>'
+            +   '<button type="button" class="btn btn-sm btn-secondary btn-solo-icona" onclick="menuUtente(this, ' + u.id + ')"'
+            +     ' title="Altre azioni" aria-label="Altre azioni per ' + esc(nome) + '" aria-haspopup="menu" aria-expanded="false">'
+            +     icona('altro') + '</button>'
+            + '</span></td>'
             + '</tr>';
     });
 
-    container.innerHTML = '<table class="table">'
+    container.innerHTML = '<table class="table prima-colonna-fissa">'
         + '<thead><tr>'
-        + '<th>Commessa</th>'
+        + '<th>Cognome e nome</th>'
+        + '<th class="col-secondaria">Commessa</th>'
         + '<th>Scuola</th>'
-        + '<th>Cognome</th>'
-        + '<th>Nome</th>'
-        + '<th>N. Puntati</th>'
+        + '<th class="col-secondaria">N. Puntati</th>'
         + '<th class="text-center">Monte Ore</th>'
-        + '<th>Periodo</th>'
+        + '<th class="col-secondaria">Periodo</th>'
         + '<th>Lista Attesa</th>'
-        + '<th>Azioni</th>'
+        + '<th class="text-right">Azioni</th>'
         + '</tr></thead>'
         + '<tbody>' + rows + '</tbody>'
-        + '</table>';
+        + '</table>'
+        + '<div class="empty-state" id="ricerca-vuota" style="display:none">'
+        +   '<div class="empty-state-icon-wrapper">'
+        +     '<svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">'
+        +       '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>'
+        +   '</div>'
+        +   '<h3 class="empty-state-title">Nessun risultato</h3>'
+        +   '<p class="empty-state-text" id="ricerca-vuota-testo"></p>'
+        +   '<button type="button" class="btn btn-secondary" onclick="azzeraRicerca()">Azzera ricerca</button>'
+        + '</div>';
+
+    // una ricerca gia' scritta resta valida anche quando l'elenco si ricarica (filtri)
+    filterTable(document.getElementById('filter-search').value.toLowerCase().trim());
+}
+
+// Azioni meno frequenti di una riga, nel menu '⋯'
+function menuUtente(pulsante, id) {
+    var u = utentiMap[id];
+    if (!u) return;
+    MenuAzioni.apri(pulsante, [
+        { testo: 'Storico monte ore', icona: 'storico', azione: function() { showStoricoMonteOre(id); } },
+        u.attivo
+            ? { testo: 'Archivia', icona: 'archivia', azione: function() { archiviaUtente(id); } }
+            : { testo: 'Ripristina tra gli attivi', icona: 'ripristina', azione: function() { ripristinaUtente(id); } },
+        'separatore',
+        { testo: 'Elimina…', icona: 'cestino', pericolo: true, azione: function() { apriElimina(id); } }
+    ]);
 }
 
 // === Modifica utente ===
@@ -538,7 +620,7 @@ function apriModifica(id) {
     document.getElementById('edit-cognome').value = u.cognome || '';
     document.getElementById('edit-monte-ore').value = u.monte_ore_settimanale;
     document.getElementById('edit-scuola').value = u.scuola || '';
-    document.getElementById('edit-lista-attesa').value = u.lista_attesa || '';
+    impostaListaAttesaModifica(u);
     document.getElementById('edit-data-inizio').value = u.data_inizio || '';
     document.getElementById('edit-data-fine').value = u.data_fine || '';
 
@@ -556,6 +638,32 @@ function apriModifica(id) {
     openModal('modal-edit');
 }
 
+// Etichetta di un anno passato nella tendina: una voce a parte ("Marzo 25/26
+// (anno passato)") che, lasciata cosi', non cambia nulla. Scegliere un mese vuol
+// dire una lista d'attesa di quest'anno.
+var LISTA_ANNO_PASSATO = '__anno_passato__';
+
+function impostaListaAttesaModifica(u) {
+    var sel = document.getElementById('edit-lista-attesa');
+    var help = document.getElementById('edit-lista-attesa-help');
+    var vecchia = sel.querySelector('option[value="' + LISTA_ANNO_PASSATO + '"]');
+    if (vecchia) vecchia.remove();
+    help.style.display = 'none';
+    if (u.lista_attesa && !u.lista_attesa_corrente) {
+        var opt = document.createElement('option');
+        opt.value = LISTA_ANNO_PASSATO;
+        opt.textContent = u.lista_attesa + ' ' + u.lista_attesa_anno_breve + ' (anno passato)';
+        sel.insertBefore(opt, sel.options[1] || null);
+        sel.value = LISTA_ANNO_PASSATO;
+        help.textContent = "Lista d'attesa dell'anno " + u.lista_attesa_anno_breve
+            + ": conta solo nei report di quell'anno. Lasciala così per non cambiare i report passati; "
+            + "scegli un mese solo per una lista d'attesa di quest'anno.";
+        help.style.display = 'block';
+    } else {
+        sel.value = u.lista_attesa || '';
+    }
+}
+
 function saveEditUtente() {
     if (!editUtenteId) return;
     var nome = document.getElementById('edit-nome').value.trim();
@@ -570,16 +678,32 @@ function saveEditUtente() {
         showToast('Monte ore deve essere tra 0 e 40', 'error'); return;
     }
 
-    apiCall('/api/utenti/' + editUtenteId, {
+    var dati = {
+        nome: nome,
+        cognome: cognome,
+        monte_ore: parseFloat(monteOre),
+        data_inizio: dataInizio || null,
+        data_fine: dataFine || null
+    };
+    // la lista d'attesa di un anno passato, lasciata com'era, non si tocca
+    if (listaAttesa !== LISTA_ANNO_PASSATO) dati.lista_attesa = listaAttesa || null;
+
+    var id = editUtenteId;
+    var u = utentiMap[id];
+    var prima = u ? Number(u.monte_ore_settimanale) : NaN;
+    if (u && Number(dati.monte_ore) !== prima) {
+        // Cambio del monte ore BASE: vale per tutti i mesi, anche quelli gia'
+        // rendicontati. Se ce ne sono, prima si chiede (con la via delle Variazioni)
+        confermaMonteOreTuttiIMesi(u, dati.monte_ore, function() { inviaModificaUtente(id, dati); });
+        return;
+    }
+    inviaModificaUtente(id, dati);
+}
+
+function inviaModificaUtente(id, dati) {
+    apiCall('/api/utenti/' + id, {
         method: 'PUT',
-        body: JSON.stringify({
-            nome: nome,
-            cognome: cognome,
-            monte_ore: parseFloat(monteOre),
-            lista_attesa: listaAttesa || null,
-            data_inizio: dataInizio || null,
-            data_fine: dataFine || null
-        })
+        body: JSON.stringify(dati)
     }).then(function() {
         showToast('Utente modificato con successo', 'success');
         closeModal('modal-edit');
@@ -589,19 +713,71 @@ function saveEditUtente() {
     });
 }
 
+// Mesi gia' rendicontati (con ore, prima del mese di oggi): se ci sono, il cambio
+// del monte ore base chiede conferma, perche' ricalcola ore previste e
+// credito/debito anche di quei mesi. Senza mesi rendicontati si salva come prima.
+function confermaMonteOreTuttiIMesi(u, nuovo, salva) {
+    var oggi = new Date();
+    var meseOggi = oggi.getFullYear() * 100 + (oggi.getMonth() + 1);
+    apiCall('/api/utente/' + u.id + '/storico-ore').then(function(data) {
+        var passati = (data.storico || []).filter(function(r) {
+            return (r.anno * 100 + r.mese) < meseOggi && (r.ore_lavorate_60 || 0) > 0;
+        });
+        if (!passati.length) { salva(); return; }
+        var ultimo = passati.reduce(function(a, r) { return (r.anno * 100 + r.mese) > (a.anno * 100 + a.mese) ? r : a; });
+        var nome = ((u.nome || '') + ' ' + (u.cognome || '')).trim();
+        showConfirmDialog(
+            'Cambiare il monte ore anche nei mesi passati?',
+            nome + ' ha già ore rendicontate (fino a ' + formatMeseIT(ultimo.anno + '-' + String(ultimo.mese).padStart(2, '0')) + '). '
+            + 'Il monte ore base (' + formatNumero(u.monte_ore_settimanale) + ' → ' + formatNumero(nuovo) + ' h) vale per TUTTI i mesi, '
+            + 'anche quelli già rendicontati: cambiano le loro ore previste e il credito/debito. '
+            + 'Per un aumento da un certo mese in poi usa «Variazioni»: solo così la colonna '
+            + '«Di cui hanno ricevuto incremento ore» del Municipale lo conta.',
+            salva,
+            {
+                type: 'warning', confirmText: 'Cambia per tutti i mesi', cancelText: 'Annulla',
+                extraText: 'Apri le Variazioni',
+                onExtra: function() { apriVariazioniConNuovoMonteOre(u, nuovo); }
+            }
+        );
+    }).catch(function() {
+        // controllo non riuscito: meglio chiedere comunque che cambiare in silenzio
+        showConfirmDialog('Cambiare il monte ore in tutti i mesi?',
+            'Il monte ore base vale per TUTTI i mesi, anche quelli già rendicontati. '
+            + 'Per un aumento da un certo mese in poi usa «Variazioni».',
+            salva, { type: 'warning', confirmText: 'Cambia per tutti i mesi', cancelText: 'Annulla' });
+    });
+}
+
+// "Apri le Variazioni": il monte ore base torna quello di prima e il nuovo valore
+// si propone come variazione dal mese di oggi (mese modificabile prima di aggiungerla)
+function apriVariazioniConNuovoMonteOre(u, nuovo) {
+    document.getElementById('edit-monte-ore').value = u.monte_ore_settimanale;
+    openVariazioniMonteOre();
+    var oggi = new Date();
+    document.getElementById('var-monte-ore').value = nuovo;
+    document.getElementById('var-mese-inizio').value = oggi.getFullYear() + '-' + String(oggi.getMonth() + 1).padStart(2, '0');
+}
+
 // === Elimina utente ===
 function apriElimina(id) {
     var u = utentiMap[id];
     if (!u) { showToast('Utente non trovato', 'error'); return; }
 
-    if (confirm('Eliminare utente ' + (u.nome || '') + ' ' + (u.cognome || '') + '?')) {
-        apiCall('/api/utenti/' + u.id, { method: 'DELETE' }).then(function() {
-            showToast('Utente eliminato', 'success');
-            loadUtenti();
-        }).catch(function(err) {
-            showToast('Errore: ' + err.message, 'error');
-        });
-    }
+    showConfirmDialog(
+        'Elimina utente',
+        'Eliminare ' + ((u.nome || '') + ' ' + (u.cognome || '')).trim() + ' con tutte le sue ore, note e documenti? '
+        + 'Se ha solo lasciato il servizio, preferisci "Archivia": lo storico resta. (Puoi comunque annullare con Ctrl+Z.)',
+        function() {
+            apiCall('/api/utenti/' + u.id, { method: 'DELETE' }).then(function() {
+                showToast('Utente eliminato (Ctrl+Z per annullare)', 'success');
+                loadUtenti();
+            }).catch(function(err) {
+                showToast('Errore: ' + err.message, 'error');
+            });
+        },
+        { type: 'danger', confirmText: 'Elimina' }
+    );
 }
 
 // === Nuovo Utente ===
@@ -617,15 +793,19 @@ function createUtente() {
         return;
     }
 
+    inviaNuovoUtente({
+        commessa: commessa,
+        scuola: scuola,
+        nome: nome,
+        cognome: cognome,
+        monte_ore: parseFloat(monteOre)
+    });
+}
+
+function inviaNuovoUtente(payload) {
     apiCall('/api/utenti', {
         method: 'POST',
-        body: JSON.stringify({
-            commessa: commessa,
-            scuola: scuola,
-            nome: nome,
-            cognome: cognome,
-            monte_ore: parseFloat(monteOre)
-        })
+        body: JSON.stringify(payload)
     }).then(function() {
         showToast('Utente aggiunto con successo', 'success');
         closeModal('modal-nuovo-utente');
@@ -637,6 +817,17 @@ function createUtente() {
         loadUtenti();
         loadScuole();
     }).catch(function(err) {
+        // Omonimo nella stessa scuola: prima veniva sovrascritto in silenzio.
+        // Ora si chiede se e' davvero una persona diversa.
+        if (err.code === 'UTENTE_DUPLICATO' && !payload.forza) {
+            showConfirmDialog(
+                'Utente già presente',
+                err.message + ' Vuoi creare comunque un secondo utente con lo stesso nome (persona diversa)?',
+                function() { inviaNuovoUtente(Object.assign({}, payload, { forza: true })); },
+                { confirmText: 'Crea comunque', type: 'warning' }
+            );
+            return;
+        }
         showToast('Errore: ' + err.message, 'error');
     });
 }
@@ -790,7 +981,7 @@ function loadScuolePerCambio() {
 
     apiCall('/api/scuole?commessa_id=' + commessaId).then(function(scuole) {
         select.innerHTML = '<option value="">Seleziona scuola...</option>' +
-            scuole.map(s => '<option value="' + s.id + '">' + esc(s.nome_completo.substring(0, 60)) + '</option>').join('');
+            scuole.map(s => '<option value="' + s.id + '" title="' + esc(s.nome_completo) + '">' + esc(nomeBreve(s.nome_completo)) + '</option>').join('');
     });
 }
 
@@ -815,6 +1006,28 @@ function confermaCambioScuola() {
     });
 }
 
+// === Archiviazione (soft delete: lo storico resta) ===
+function archiviaUtente(id) {
+    var u = utentiMap[id];
+    var nome = u ? (u.nome + ' ' + (u.cognome || '')).trim() : 'questo utente';
+    showConfirmDialog('Archivia utente',
+        'Archiviare ' + nome + '? Non comparirà nei mesi futuri né negli elenchi di oggi; i mesi già rendicontati restano invariati (ore, importi e report). Potrai ripristinarlo dal filtro "Archiviati".',
+        function() {
+            apiCall('/api/utenti/' + id, { method: 'PUT', body: JSON.stringify({ attivo: false }) }).then(function() {
+                showToast('Utente archiviato', 'success');
+                loadUtenti();
+            }).catch(function(err) { showToast('Errore: ' + err.message, 'error'); });
+        },
+        { confirmText: 'Archivia', type: 'warning' });
+}
+
+function ripristinaUtente(id) {
+    apiCall('/api/utenti/' + id, { method: 'PUT', body: JSON.stringify({ attivo: true }) }).then(function() {
+        showToast('Utente ripristinato tra gli attivi', 'success');
+        loadUtenti();
+    }).catch(function(err) { showToast('Errore: ' + err.message, 'error'); });
+}
+
 // === Storico Monte Ore ===
 function showStoricoMonteOre(utenteId) {
     openModal('modal-storico-monte-ore');
@@ -824,7 +1037,7 @@ function showStoricoMonteOre(utenteId) {
     apiCall('/api/utenti/' + utenteId + '/storico-monte-ore').then(function(data) {
         var html = '<div style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">';
         html += '<strong>' + esc(data.utente.nome) + ' ' + esc(data.utente.cognome || '') + '</strong><br>';
-        html += '<span style="font-size: 0.85rem; color: var(--text-secondary);">Monte ore attuale: <strong>' + data.utente.monte_ore_attuale + 'h</strong></span>';
+        html += '<span style="font-size: 0.85rem; color: var(--text-secondary);">Monte ore attuale: <strong>' + formatNumero(data.utente.monte_ore_attuale) + 'h</strong></span>';
         html += '</div>';
 
         if (data.storico.length === 0) {
@@ -833,9 +1046,9 @@ function showStoricoMonteOre(utenteId) {
             html += '<table class="table" style="font-size: 0.85rem;"><thead><tr><th>Data</th><th>Da</th><th>A</th></tr></thead><tbody>';
             data.storico.forEach(function(s) {
                 html += '<tr>';
-                html += '<td>' + new Date(s.timestamp).toLocaleDateString('it-IT') + '</td>';
-                html += '<td>' + (s.monte_ore_precedente || '-') + 'h</td>';
-                html += '<td><strong>' + (s.monte_ore_nuovo || '-') + 'h</strong></td>';
+                html += '<td>' + esc(formatDataIT(s.timestamp)) + '</td>';
+                html += '<td>' + (s.monte_ore_precedente ? formatNumero(s.monte_ore_precedente) : '-') + 'h</td>';
+                html += '<td><strong>' + (s.monte_ore_nuovo ? formatNumero(s.monte_ore_nuovo) : '-') + 'h</strong></td>';
                 html += '</tr>';
             });
             html += '</tbody></table>';
@@ -877,22 +1090,25 @@ function loadVariazioniMonteOre() {
 
         var html = '<div style="padding: 10px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 12px;">';
         html += '<strong>' + esc(nomeUtente) + '</strong><br>';
-        html += '<span style="font-size:0.85rem; color:var(--text-secondary);">Monte ore base: <strong>' + (u ? u.monte_ore_settimanale : '-') + 'h</strong></span>';
+        html += '<span style="font-size:0.85rem; color:var(--text-secondary);">Monte ore base: <strong>' + (u ? formatNumero(u.monte_ore_settimanale) : '-') + 'h</strong></span>';
         html += '</div>';
 
         if (variazioni.length === 0) {
             html += '<div class="text-center text-muted py-3" style="font-size:0.85rem;">Nessuna variazione programmata. Il valore base viene usato per tutti i mesi.</div>';
         } else {
-            html += '<table class="table" style="font-size: 0.85rem;"><thead><tr><th>Da</th><th>Monte Ore</th><th>Nota</th><th></th></tr></thead><tbody>';
+            // l'elenco scorre di lato nel suo riquadro: sul telefono era piu' largo
+            // della finestra e faceva scorrere di lato anche i campi qui sotto
+            html += '<div class="table-responsive"><table class="table" style="font-size: 0.85rem;"><thead><tr><th>Da</th><th>Fino a</th><th>Monte Ore</th><th>Nota</th><th></th></tr></thead><tbody>';
             variazioni.forEach(function(v) {
                 html += '<tr>';
                 html += '<td>' + fmtMeseAnno(v.mese_inizio) + '</td>';
-                html += '<td><strong>' + v.monte_ore + 'h</strong></td>';
+                html += '<td>' + (v.mese_fine ? fmtMeseAnno(v.mese_fine) : '<span class="text-muted">aperta</span>') + '</td>';
+                html += '<td><strong>' + formatNumero(v.monte_ore) + 'h</strong></td>';
                 html += '<td style="color:var(--text-secondary);">' + esc(v.nota || '-') + '</td>';
-                html += '<td class="text-right"><button class="btn btn-sm btn-danger" onclick="deleteVariazioneMO(' + v.id + ')">Elimina</button></td>';
+                html += '<td class="text-right"><button type="button" class="btn btn-sm btn-icon-danger btn-solo-icona" onclick="deleteVariazioneMO(' + v.id + ')" title="Elimina" aria-label="Elimina la variazione da ' + fmtMeseAnno(v.mese_inizio) + '">' + icona('cestino') + '</button></td>';
                 html += '</tr>';
             });
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
         }
 
         list.innerHTML = html;
@@ -913,7 +1129,13 @@ function loadVariazioniMonteOre() {
 function addVariazioneMO() {
     var monteOre = document.getElementById('var-monte-ore').value;
     var meseInizio = document.getElementById('var-mese-inizio').value;
+    var meseFine = document.getElementById('var-mese-fine').value;
     var nota = document.getElementById('var-nota').value.trim();
+
+    if (meseFine && meseInizio && meseFine < meseInizio) {
+        showToast('Il mese di fine precede quello di inizio', 'error');
+        return;
+    }
 
     if (!monteOre || isNaN(parseFloat(monteOre)) || parseFloat(monteOre) < 0) {
         showToast('Monte ore non valido', 'error');
@@ -929,12 +1151,14 @@ function addVariazioneMO() {
         body: JSON.stringify({
             monte_ore: parseFloat(monteOre),
             mese_inizio: meseInizio,
+            mese_fine: meseFine || null,
             nota: nota || null
         })
     }).then(function() {
         showToast('Variazione aggiunta', 'success');
         document.getElementById('var-monte-ore').value = '';
         document.getElementById('var-mese-inizio').value = '';
+        document.getElementById('var-mese-fine').value = '';
         document.getElementById('var-nota').value = '';
         loadVariazioniMonteOre();
     }).catch(function(err) {
@@ -943,16 +1167,16 @@ function addVariazioneMO() {
 }
 
 function deleteVariazioneMO(varId) {
-    if (!confirm('Eliminare questa variazione?')) return;
-
-    apiCall('/api/variazioni-monte-ore/' + varId, {
-        method: 'DELETE'
-    }).then(function() {
-        showToast('Variazione eliminata', 'success');
-        loadVariazioniMonteOre();
-    }).catch(function(err) {
-        showToast('Errore: ' + err.message, 'error');
-    });
+    showConfirmDialog('Elimina variazione', 'Eliminare questa variazione del monte ore? I mesi interessati torneranno al valore precedente.', function() {
+        apiCall('/api/variazioni-monte-ore/' + varId, {
+            method: 'DELETE'
+        }).then(function() {
+            showToast('Variazione eliminata', 'success');
+            loadVariazioniMonteOre();
+        }).catch(function(err) {
+            showToast('Errore: ' + err.message, 'error');
+        });
+    }, { type: 'danger', confirmText: 'Elimina' });
 }
 </script>
 {% endblock %}

@@ -46,6 +46,19 @@ def decimal_to_sessagesimal(decimal_hours):
     return f"{hours}:{minutes:02d}"
 
 
+def signed_sessagesimal(decimal_hours):
+    """Come decimal_to_sessagesimal ma con segno esplicito, per il credito/debito.
+
+    Cosi' il credito/debito e' nello stesso formato ore:minuti di 'Monte Ore
+    Previsto' e 'Ore Erogate' e la riga torna a colpo d'occhio (es. 253:28 -
+    278:00 = -24:32). Credito -> '+H:MM', debito -> '-H:MM', zero -> '0:00'.
+    """
+    if decimal_hours is None or round(decimal_hours, 2) == 0:
+        return "0:00"
+    segno = '-' if decimal_hours < 0 else '+'
+    return segno + decimal_to_sessagesimal(abs(decimal_hours))
+
+
 # Mappa per ordinamento cronologico dei mesi di lista attesa (anno scolastico)
 _LISTA_ATTESA_MESI_ORDER = {
     'Settembre': 9, 'Ottobre': 10, 'Novembre': 11, 'Dicembre': 12,
@@ -95,6 +108,71 @@ def get_liste_attesa_ordinate(dati, anno_report, mese_report):
     return risultato
 
 
+def _filtra_dati_richiesta(dati):
+    """Applica ai dati mensili i filtri avanzati della pagina Report (e di
+    "Esporta filtrati" in Rendicontazione) passati in query string:
+    scuola (nome esatto) o scuola_id, search (nome, cognome o scuola) e ore
+    ('zero' = senza ore, 'sotto' / 'sopra' rispetto alle previste)."""
+    scuola = (request.args.get('scuola') or '').strip()
+    scuola_id = request.args.get('scuola_id', type=int)
+    search = (request.args.get('search') or '').strip().lower()
+    ore = (request.args.get('ore') or '').strip()
+    if scuola_id:
+        # un plesso preciso (Rendicontazione): due plessi possono avere lo stesso nome
+        dati = [d for d in dati if d.get('scuola_id') == scuola_id]
+    if scuola:
+        dati = [d for d in dati if (d.get('scuola') or '') == scuola]
+    if search:
+        dati = [d for d in dati
+                if search in f"{d.get('nome') or ''} {d.get('cognome') or ''} {d.get('scuola') or ''}".lower()]
+    if ore == 'zero':
+        dati = [d for d in dati if not (d.get('ore_lavorate_60') or 0)]
+    elif ore == 'sotto':
+        dati = [d for d in dati if (d.get('ore_lavorate_60') or 0) < (d.get('media_con_assenza_60') or 0)]
+    elif ore == 'sopra':
+        dati = [d for d in dati if (d.get('ore_lavorate_60') or 0) > (d.get('media_con_assenza_60') or 0)]
+    return dati
+
+
+def _utenti_con_incremento(dati, monte_ore_settembre):
+    """Utenti che nell'anno scolastico corrente hanno ricevuto un AUMENTO del
+    monte ore: nel mese hanno piu' ore rispetto all'INIZIO dell'anno scolastico
+    (settembre).
+
+    Cosi' contano SOLO gli aumenti avvenuti nel periodo set-giu dell'anno in corso
+    e non quelli ereditati da un anno precedente: a settembre il monte ore e' gia'
+    riportato al valore corretto, che diventa il riferimento. Serve alla colonna
+    'Di cui hanno ricevuto incremento ore' del riepilogativo per lista di attesa.
+
+    monte_ore_settembre: dict {utente_id: monte ore effettivo a settembre}, da
+    get_monte_ore_effettivo_bulk(anno_inizio, 9); per gli utenti assenti (nessuna
+    variazione attiva a settembre) si usa il monte ore base.
+    """
+    return [
+        d for d in dati
+        if (d.get('monte_ore_effettivo') or 0)
+        > (monte_ore_settembre.get(d['utente_id'], d.get('monte_ore_settimanale')) or 0)
+    ]
+
+
+def _lista_attesa_norm(d):
+    """Valore lista_attesa normalizzato (strip). '' se assente o solo spazi.
+
+    Usato per classificare gli utenti in modo COERENTE con get_liste_attesa_ordinate
+    e con le colonne per-mese, evitando che un valore di soli spazi finisca contato
+    come 'in lista' ma senza colonna (scarti inspiegabili nei totali)."""
+    return (d.get('lista_attesa') or '').strip()
+
+
+def _fmt_euro_it(valore):
+    """Importo in euro con convenzione italiana: '€ 1.234,56' (punto migliaia,
+    virgola decimali). Serve al report Word, dove gli importi sono testo e la
+    formattazione di Python di default e' anglosassone (€ 1,234.56)."""
+    s = f'{valore:,.2f}'  # convenzione EN: '1,234.56'
+    s = s.replace(',', '\x00').replace('.', ',').replace('\x00', '.')
+    return f'€ {s}'
+
+
 # ==================== BRAND / STILI REPORT ====================
 
 # Palette report (coerente con il brand)
@@ -131,6 +209,11 @@ def get_excel_brand_styles(workbook):
         'info': workbook.add_format({
             'italic': True, 'font_size': 9, 'font_name': FONT,
             'font_color': REPORT_MUTED, 'align': 'left', 'valign': 'vcenter',
+        }),
+        'note': workbook.add_format({
+            'italic': True, 'font_size': 9, 'font_name': FONT,
+            'font_color': REPORT_MUTED, 'align': 'left', 'valign': 'vcenter',
+            'text_wrap': True,
         }),
         'header': workbook.add_format({
             'bold': True, 'font_size': 10, 'font_name': FONT,
@@ -358,9 +441,9 @@ def api_export_excel(anno, mese):
     """Esporta rendicontazione in Excel - Versione Premium"""
     commessa = request.args.get('commessa')
     privacy = request.args.get('privacy', 'false').lower() == 'true'
-
-    dati = db.get_rendicontazione_completa(anno, mese, commessa)
-    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
+    # Filtri avanzati (Report / "Esporta filtrati"): prima venivano ignorati
+    dati = _filtra_dati_richiesta(db.get_rendicontazione_completa(anno, mese, commessa))
+    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa, dati=dati)
 
     # Calcola totali ore
     ore_totali_60 = sum(d['ore_lavorate_60'] or 0 for d in dati)
@@ -632,7 +715,8 @@ def api_export_excel(anno, mese):
             ws_detail.write(r, 1, d['scuola'], cell_fmt)
             ws_detail.write(r, 2, utente, cell_fmt)
             ws_detail.write(r, 3, d['nome_puntato'], cell_fmt)
-            ws_detail.write(r, 4, d['monte_ore_settimanale'], number_fmt)
+            # Monte ore EFFETTIVO del mese (variazioni comprese), non la base di oggi
+            ws_detail.write(r, 4, d['monte_ore_effettivo'], number_fmt)
             ws_detail.write(r, 5, d['media_mensile_60'], number_fmt)
             ws_detail.write(r, 6, d['media_con_assenza_60'], number_fmt)
             ws_detail.write(r, 7, decimal_to_sessagesimal(d['ore_lavorate_60'] or 0), cell_fmt)
@@ -778,22 +862,25 @@ def api_export_excel(anno, mese):
         ws_scuola.set_row(0, 30)
         ws_scuola.write('A1', f'Dettaglio per Scuola - {MESI_NOME[mese]} {anno}', title_fmt)
 
-        # Raggruppa dati per scuola
+        # Raggruppa dati per plesso (id): due plessi con lo stesso nome in commesse
+        # diverse restano due blocchi, e l'intestazione dice la commessa
         scuole_dict = {}
         for d in dati:
-            scuola = d['scuola']
-            if scuola not in scuole_dict:
-                scuole_dict[scuola] = []
-            scuole_dict[scuola].append(d)
+            chiave = (d['scuola'] or '', d.get('commessa') or '', d['scuola_id'])
+            scuole_dict.setdefault(chiave, []).append(d)
+        commesse_per_nome = {}
+        for nome_scuola, commessa_scuola, _ in scuole_dict:
+            commesse_per_nome.setdefault(nome_scuola, set()).add(commessa_scuola)
 
         # Headers colonne dati utente
         detail_headers = ['Nome Puntato', 'Monte Ore', 'Media Mens.', 'Media -11%', 'Ore Lav. (60\')',
                           'Ore (100\')', 'Imponibile', 'IVA 5%', 'Totale', 'Pasti', 'Cred/Deb', 'Lista Attesa']
 
         row = 3
-        for scuola, utenti in sorted(scuole_dict.items()):
-            # Riga header scuola (espandibile)
-            ws_scuola.merge_range(row, 0, row, len(detail_headers), f'⊟ {scuola}', scuola_header_fmt)
+        for (scuola, commessa_scuola, _), utenti in sorted(scuole_dict.items()):
+            # Riga header scuola (espandibile); la commessa solo se il nome si ripete
+            titolo = f'{commessa_scuola} - {scuola}' if len(commesse_per_nome[scuola]) > 1 else scuola
+            ws_scuola.merge_range(row, 0, row, len(detail_headers), f'⊟ {titolo}', scuola_header_fmt)
             row += 1
 
             # Header colonne per questa scuola
@@ -805,7 +892,7 @@ def api_export_excel(anno, mese):
             for u in utenti:
                 nome_puntato = u['nome_puntato'] if privacy else f"{u['nome']} {u['cognome']}"
                 ws_scuola.write(row, 0, nome_puntato, utente_cell_fmt)
-                ws_scuola.write(row, 1, u['monte_ore_settimanale'], utente_number_fmt)
+                ws_scuola.write(row, 1, u['monte_ore_effettivo'], utente_number_fmt)
                 ws_scuola.write(row, 2, u['media_mensile_60'] or 0, utente_number_fmt)
                 ws_scuola.write(row, 3, u['media_con_assenza_60'] or 0, utente_number_fmt)
                 ws_scuola.write(row, 4, decimal_to_sessagesimal(u['ore_lavorate_60'] or 0), utente_cell_fmt)
@@ -854,8 +941,6 @@ def api_export_annuale(anno_scolastico):
     anno_fine = int(anni[1])
 
     # Costanti
-    TARIFFA = config.TARIFFA_ORARIA
-    IVA_PERC = config.IVA_PERCENTUALE
     TASSO_ASSENZA = config.TASSO_ASSENZA
 
     # Raccogli tutti i dati dell'anno per calcoli aggregati
@@ -877,41 +962,82 @@ def api_export_annuale(anno_scolastico):
                     'nome_puntato': d['nome_puntato'],
                     'scuola': d['scuola'],
                     'commessa': d['commessa'],
-                    'monte_ore_settimanale': d['monte_ore_settimanale'],
+                    'monte_ore_settimanale': 0,   # media dei mesi attivi (post-loop)
+                    'monte_ore_mesi': [],         # monte ore EFFETTIVO di ogni mese
                     'ore_erogate_totali': 0,
-                    'monte_ore_previsto_totale': 0,  # Somma delle medie mensili -11%
+                    'monte_ore_previsto_totale': 0,  # Contrattuale: ore sett. x settimane -11% (post-loop)
                     'pasti_totali': 0,
                     'imponibile_totale': 0,
                     'mesi_attivi': 0
                 }
+            utenti_aggregati[utente_key]['monte_ore_mesi'].append(d['monte_ore_effettivo'] or 0)
             utenti_aggregati[utente_key]['ore_erogate_totali'] += d['ore_lavorate_60'] or 0
-            utenti_aggregati[utente_key]['monte_ore_previsto_totale'] += d['media_con_assenza_60'] or 0
             utenti_aggregati[utente_key]['pasti_totali'] += d['pasti'] or 0
+            utenti_aggregati[utente_key]['imponibile_totale'] += d['imponibile_100'] or 0
             utenti_aggregati[utente_key]['mesi_attivi'] += 1
 
-    # Imponibile per-utente calcolato UNA volta sul totale ore (non somma di
-    # arrotondamenti mensili): cosi' la somma della colonna quadra col totale annuale.
+    # Imponibile per-utente = somma degli imponibili mensili gia' arrotondati per
+    # (utente, mese) in get_rendicontazione_completa. Sommando gli stessi importi
+    # atomici mostrati nei fogli mensili, la colonna quadra col suo totale e il
+    # totale annuo coincide ovunque (KPI, andamento mensile, riepilogo utenti).
+    #
+    # Monte ore previsto per utente (SOLO report annuale): calcolo contrattuale a
+    # settimane = ore settimanali x settimane dell'anno scolastico, meno l'11% di
+    # assenze previste. Per chi e' attivo solo una parte dell'anno si proporziona
+    # ai mesi effettivi, cosi' il credito/debito resta confrontabile con le ore
+    # erogate nello stesso periodo. I report mensile e municipale, basati sui
+    # giorni del calendario, restano invariati.
+    #
+    # Il monte ore di ogni mese e' quello EFFETTIVO di quel mese (variazioni comprese,
+    # anche quelle che il nuovo anno lascia a conservare i mesi passati), non la
+    # base di oggi: media dei mesi attivi x settimane x quota, cioe' la somma dei
+    # mesi x settimane/n_mesi. Con un monte ore costante e' lo stesso numero di prima.
+    settimane = config.SETTIMANE_ANNO_SCOLASTICO
+    n_mesi = len(MESI_SCOLASTICI)
     for u in utenti_aggregati.values():
-        u['imponibile_totale'] = config.calcola_fatturazione(u['ore_erogate_totali'])[0]
+        u['imponibile_totale'] = round(u['imponibile_totale'], 2)
+        valori = u.pop('monte_ore_mesi')
+        if len(set(valori)) <= 1:
+            media_monte_ore = valori[0] if valori else 0   # costante: il valore esatto
+            u['monte_ore_settimanale'] = media_monte_ore
+        else:
+            media_monte_ore = sum(valori) / len(valori)
+            u['monte_ore_settimanale'] = round(media_monte_ore, 2)   # colonna "Monte Ore"
+        quota_anno = (u['mesi_attivi'] / n_mesi) if n_mesi else 0
+        u['monte_ore_previsto_totale'] = (
+            media_monte_ore * settimane * quota_anno * (1 - TASSO_ASSENZA)
+        )
 
     # Calcola totali annuali
     totale_ore_60 = sum(
         sum(d['ore_lavorate_60'] or 0 for d in m['dati'])
         for m in tutti_dati_anno.values()
     )
-    totale_ore_100 = sum(
-        sum(d['ore_lavorate_100'] or 0 for d in m['dati'])
-        for m in tutti_dati_anno.values()
-    )
-    totale_ore_previste = sum(
-        sum(d['media_con_assenza_60'] or 0 for d in m['dati'])
-        for m in tutti_dati_anno.values()
-    )
+    # Ore previste annuali = totale CONTRATTUALE, coerente col Riepilogo Utenti:
+    # somma dei monte ore previsti per utente (ore sett. x settimane -11%). Non piu'
+    # la somma delle medie mensili sui giorni, cosi' il Dashboard e il Riepilogo
+    # Utenti mostrano lo stesso "previsto" in tutto il report annuale.
+    totale_ore_previste = sum(u['monte_ore_previsto_totale'] for u in utenti_aggregati.values())
     totale_pasti = sum(
         sum(d['pasti'] or 0 for d in m['dati'])
         for m in tutti_dati_anno.values()
     )
-    imponibile_annuale, iva_annuale, totale_lordo_annuale = config.calcola_fatturazione(totale_ore_100)
+    # Fatturazione annuale = somma degli imponibili/IVA/totali gia' calcolati per
+    # ogni riga (utente-mese): sono gli stessi importi atomici dei fogli mensili,
+    # quindi il totale annuo e' esattamente la somma dei mesi e coincide con ogni
+    # riga TOTALE del report (nessuna divergenza di centesimi tra i fogli).
+    imponibile_annuale = round(sum(
+        sum(d['imponibile_100'] or 0 for d in m['dati'])
+        for m in tutti_dati_anno.values()
+    ), 2)
+    iva_annuale = round(sum(
+        sum(d['iva_100'] or 0 for d in m['dati'])
+        for m in tutti_dati_anno.values()
+    ), 2)
+    totale_lordo_annuale = round(sum(
+        sum(d['totale_100'] or 0 for d in m['dati'])
+        for m in tutti_dati_anno.values()
+    ), 2)
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -1206,11 +1332,17 @@ def api_export_annuale(anno_scolastico):
             dati = tutti_dati_anno[mese]['dati']
 
             ore_mese = sum(d['ore_lavorate_60'] or 0 for d in dati)
-            ore_100_mese = sum(d['ore_lavorate_100'] or 0 for d in dati)
-            ore_previste_mese = sum(d['media_con_assenza_60'] or 0 for d in dati)
-            imponibile_mese = round(ore_100_mese * TARIFFA, 2)
-            iva_mese = round(imponibile_mese * IVA_PERC, 2)
-            totale_mese = round(imponibile_mese + iva_mese, 2)
+            # Previste CONTRATTUALI del mese: ogni utente attivo vale la quota
+            # mensile del suo monte ore annuale (settimane/n_mesi settimane), meno
+            # l'11%. La somma sui mesi coincide col totale previsto del Riepilogo
+            # Utenti, quindi tutto il report annuale usa lo stesso "previsto".
+            ore_previste_mese = sum(
+                (d['monte_ore_effettivo'] or 0) for d in dati
+            ) * (settimane / n_mesi) * (1 - TASSO_ASSENZA)
+            # Somma degli imponibili di riga (stessi importi del foglio del mese):
+            # cosi' l'andamento mensile quadra con i fogli di dettaglio e col totale.
+            imponibile_mese = round(sum(d['imponibile_100'] or 0 for d in dati), 2)
+            totale_mese = round(sum(d['totale_100'] or 0 for d in dati), 2)
             pasti_mese = sum(d['pasti'] or 0 for d in dati)
             perc_mese = (ore_mese / ore_previste_mese * 100) if ore_previste_mese > 0 else 0
 
@@ -1257,7 +1389,7 @@ def api_export_annuale(anno_scolastico):
         ws_utenti.set_row(0, 40)
         ws_utenti.merge_range('A1:J1', f'RIEPILOGO PER UTENTE - A.S. {anno_scolastico}', title_fmt)
         ws_utenti.write('A2', 'Vista aggregata delle ore erogate per ogni utente', subtitle_fmt)
-        ws_utenti.write('A3', f'Monte ore con detrazione assenze previste: {int(TASSO_ASSENZA*100)}%', subtitle_fmt)
+        ws_utenti.write('A3', f'Monte ore previsto = ore settimanali x {config.SETTIMANE_ANNO_SCOLASTICO} settimane, meno {int(TASSO_ASSENZA*100)}% di assenze previste', subtitle_fmt)
 
         headers_utenti = [
             'Utente', 'Scuola', 'Commessa', 'Monte Ore Sett.',
@@ -1297,7 +1429,7 @@ def api_export_annuale(anno_scolastico):
             ws_utenti.write(utente_row, 4, u['mesi_attivi'], nf)
             ws_utenti.write(utente_row, 5, decimal_to_sessagesimal(u['monte_ore_previsto_totale']), cf)
             ws_utenti.write(utente_row, 6, decimal_to_sessagesimal(u['ore_erogate_totali']), cf)
-            ws_utenti.write(utente_row, 7, round(credito_debito, 2), cd_fmt)
+            ws_utenti.write(utente_row, 7, signed_sessagesimal(credito_debito), cd_fmt)
             ws_utenti.write(utente_row, 8, u['pasti_totali'], nf)
             ws_utenti.write(utente_row, 9, u['imponibile_totale'], mf)
 
@@ -1317,7 +1449,7 @@ def api_export_annuale(anno_scolastico):
         ws_utenti.write(utente_row, 4, len(utenti_sorted), total_fmt)
         ws_utenti.write(utente_row, 5, decimal_to_sessagesimal(tot_monte_previsto), total_fmt)
         ws_utenti.write(utente_row, 6, decimal_to_sessagesimal(tot_ore_erogate), total_fmt)
-        ws_utenti.write(utente_row, 7, round(tot_credito_debito, 2), total_fmt)
+        ws_utenti.write(utente_row, 7, signed_sessagesimal(tot_credito_debito), total_fmt)
         ws_utenti.write(utente_row, 8, tot_pasti, total_fmt)
         ws_utenti.write(utente_row, 9, tot_imponibile, total_money_fmt)
 
@@ -1371,7 +1503,7 @@ def api_export_annuale(anno_scolastico):
                 ws_mese.write(r, 0, d['commessa'], cf)
                 ws_mese.write(r, 1, d['scuola'], cf)
                 ws_mese.write(r, 2, utente, cf)
-                ws_mese.write(r, 3, d['monte_ore_settimanale'], nf)
+                ws_mese.write(r, 3, d['monte_ore_effettivo'], nf)
                 ws_mese.write(r, 4, round(d['media_mensile_60'] or 0, 2), nf)
                 ws_mese.write(r, 5, round(d['media_con_assenza_60'] or 0, 2), nf)
                 ws_mese.write(r, 6, decimal_to_sessagesimal(d['ore_lavorate_60'] or 0), cf)
@@ -1387,9 +1519,10 @@ def api_export_annuale(anno_scolastico):
                 total_row = 3 + len(dati)
                 ore_tot_60 = sum(d['ore_lavorate_60'] or 0 for d in dati)
                 ore_tot_100 = sum(d['ore_lavorate_100'] or 0 for d in dati)
-                imp_tot = round(ore_tot_100 * TARIFFA, 2)
-                iva_tot = round(imp_tot * IVA_PERC, 2)
-                tot_tot = round(imp_tot + iva_tot, 2)
+                # Totale = somma degli imponibili di riga: la colonna quadra col totale.
+                imp_tot = round(sum(d['imponibile_100'] or 0 for d in dati), 2)
+                iva_tot = round(sum(d['iva_100'] or 0 for d in dati), 2)
+                tot_tot = round(sum(d['totale_100'] or 0 for d in dati), 2)
                 cd_tot = sum(d['credito_debito'] or 0 for d in dati)
                 pasti_tot = sum(d['pasti'] or 0 for d in dati)
 
@@ -1479,9 +1612,11 @@ def classifica_livello_scolastico(scuola_nome):
 def api_export_municipale(anno, mese):
     """Esporta Riepilogo Municipale - Report per il Municipio"""
     commessa = request.args.get('commessa')
+    # Nomi puntati (privacy): stessa opzione del Report Completo
+    privacy = request.args.get('privacy', 'false').lower() == 'true'
 
-    dati = db.get_rendicontazione_completa(anno, mese, commessa)
-    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
+    dati = _filtra_dati_richiesta(db.get_rendicontazione_completa(anno, mese, commessa))
+    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa, dati=dati)
 
     # Costanti
     TARIFFA = config.TARIFFA_ORARIA
@@ -1493,7 +1628,7 @@ def api_export_municipale(anno, mese):
     # Calcola totali generali
     totale_generale = {
         'num_utenti': len(dati),
-        'utenti_lista_attesa': sum(1 for d in dati if d.get('lista_attesa')),
+        'utenti_lista_attesa': sum(1 for d in dati if _lista_attesa_norm(d)),
         'ore_previste': sum(d['media_con_assenza_60'] or 0 for d in dati),
         'ore_erogate_60': sum(d['ore_lavorate_60'] or 0 for d in dati),
         'ore_erogate_100': sum(d['ore_lavorate_100'] or 0 for d in dati),
@@ -1615,11 +1750,19 @@ def api_export_municipale(anno, mese):
         # Liste di attesa distinte ordinate cronologicamente
         liste_attesa = get_liste_attesa_ordinate(dati, anno, mese)
 
-        # Suddividi utenti
-        utenti_non_lista = [d for d in dati if not d.get('lista_attesa')]
-        utenti_in_lista_totali = [d for d in dati if d.get('lista_attesa')]
-        utenti_per_lista = {l['valore']: [d for d in dati if (d.get('lista_attesa') or '').strip() == l['valore']]
+        # Suddividi utenti. La classificazione lista usa il valore NORMALIZZATO
+        # (strip) coerente con get_liste_attesa_ordinate e con le colonne per-mese:
+        # cosi' 'totale = non in lista + somma delle liste' torna sempre, anche con
+        # valori sporchi (soli spazi), che vengono trattati come 'non in lista'.
+        utenti_non_lista = [d for d in dati if not _lista_attesa_norm(d)]
+        utenti_per_lista = {l['valore']: [d for d in dati if _lista_attesa_norm(d) == l['valore']]
                             for l in liste_attesa}
+        # Colonna "Di cui hanno ricevuto incremento ore": utenti con AUMENTO del
+        # monte ore nell'anno scolastico corrente (rispetto a settembre; il monte
+        # ore di settembre e' il riferimento riportato al valore corretto).
+        anno_inizio_as = anno if mese >= 9 else anno - 1
+        monte_ore_settembre = db.get_monte_ore_effettivo_bulk(anno_inizio_as, 9)
+        utenti_incremento = _utenti_con_incremento(dati, monte_ore_settembre)
 
         def _conta_con_ore(lst):
             return sum(1 for d in lst if (d['ore_lavorate_60'] or 0) > 0)
@@ -1635,7 +1778,7 @@ def api_export_municipale(anno, mese):
         row += 1
 
         # Header
-        riepilogo_headers = ['Indicatore', 'Utenti serviti totali', 'Non in lista attesa', 'Di cui in lista di attesa']
+        riepilogo_headers = ['Indicatore', 'Utenti serviti totali', 'Non in lista attesa', 'Di cui hanno ricevuto incremento ore']
         for l in liste_attesa:
             riepilogo_headers.append(l['label'])
         ws.set_row(row, 32)
@@ -1647,7 +1790,7 @@ def api_export_municipale(anno, mese):
         ws.write(row, 0, 'Alunni assistiti (totale)', s['cell'])
         ws.write(row, 1, totale_generale['num_utenti'], s['integer'])
         ws.write(row, 2, len(utenti_non_lista), s['integer'])
-        ws.write(row, 3, len(utenti_in_lista_totali), s['integer'])
+        ws.write(row, 3, len(utenti_incremento), s['integer'])
         for i, l in enumerate(liste_attesa):
             ws.write(row, 4 + i, len(utenti_per_lista[l['valore']]), s['integer'])
 
@@ -1656,35 +1799,44 @@ def api_export_municipale(anno, mese):
         ws.write(row, 0, 'Alunni effettivamente assistiti nel mese', s['cell_alt'])
         ws.write(row, 1, _conta_con_ore(dati), s['integer_alt'])
         ws.write(row, 2, _conta_con_ore(utenti_non_lista), s['integer_alt'])
-        ws.write(row, 3, _conta_con_ore(utenti_in_lista_totali), s['integer_alt'])
+        ws.write(row, 3, _conta_con_ore(utenti_incremento), s['integer_alt'])
         for i, l in enumerate(liste_attesa):
             ws.write(row, 4 + i, _conta_con_ore(utenti_per_lista[l['valore']]), s['integer_alt'])
 
         # Riga 3: Ore erogate (100')
         row += 1
         ore_100_non_lista = _somma_ore_100(utenti_non_lista)
-        ore_100_in_lista = _somma_ore_100(utenti_in_lista_totali)
+        ore_100_incremento = _somma_ore_100(utenti_incremento)
         ws.write(row, 0, "Ore effettivamente erogate (al netto dell'11%)", s['cell'])
         ws.write(row, 1, tot_ore_100, s['number'])
         ws.write(row, 2, ore_100_non_lista, s['number'])
-        ws.write(row, 3, ore_100_in_lista, s['number'])
+        ws.write(row, 3, ore_100_incremento, s['number'])
         for i, l in enumerate(liste_attesa):
             ws.write(row, 4 + i, _somma_ore_100(utenti_per_lista[l['valore']]), s['number'])
 
-        # Riga 4: Importo (imponibile + IVA)
+        # Riga 4: Importo (imponibile + IVA). Formula invariata (nessun cambio
+        # sugli arrotondamenti): ore * tariffa * (1 + IVA).
         row += 1
-        importo_non_lista = ore_100_non_lista * TARIFFA
-        importo_in_lista = ore_100_in_lista * TARIFFA
-        totale_non_lista = importo_non_lista * (1 + IVA_PERC)
-        totale_in_lista = importo_in_lista * (1 + IVA_PERC)
+        totale_non_lista = ore_100_non_lista * TARIFFA * (1 + IVA_PERC)
+        totale_incremento = ore_100_incremento * TARIFFA * (1 + IVA_PERC)
         ws.write(row, 0, 'Importo effettivamente erogato (IVA inclusa)', s['cell_alt'])
         ws.write(row, 1, totale_fatturare, s['money_alt'])
         ws.write(row, 2, totale_non_lista, s['money_alt'])
-        ws.write(row, 3, totale_in_lista, s['money_alt'])
+        ws.write(row, 3, totale_incremento, s['money_alt'])
         for i, l in enumerate(liste_attesa):
             ore_lista = _somma_ore_100(utenti_per_lista[l['valore']])
             tot_lista = ore_lista * TARIFFA * (1 + IVA_PERC)
             ws.write(row, 4 + i, tot_lista, s['money_alt'])
+
+        # Nota esplicativa: chiarisce come leggere le colonne (evita somme errate)
+        row += 1
+        ws.set_row(row, 28)
+        ws.merge_range(
+            row, 0, row, section_end_col,
+            "Le colonne \"Lista ...\" dettagliano gli iscritti in lista d'attesa per mese di iscrizione: "
+            "Totale = \"Non in lista attesa\" + somma delle liste. "
+            "\"Di cui hanno ricevuto incremento ore\" e' un sottoinsieme del totale e non va sommato alle altre colonne.",
+            s['note'])
 
         # Footer informativo
         row += 2
@@ -1738,8 +1890,8 @@ def api_export_municipale(anno, mese):
             money_f = s['money_alt'] if alt else s['money']
 
             ws_utenti.write(row_u, 0, d['scuola'], cell_f)
-            ws_utenti.write(row_u, 1, f"{d['nome']} {d['cognome']}", cell_f)
-            ws_utenti.write(row_u, 2, d['monte_ore_settimanale'], num_f)
+            ws_utenti.write(row_u, 1, d['nome_puntato'] if privacy else f"{d['nome']} {d['cognome']}", cell_f)
+            ws_utenti.write(row_u, 2, d['monte_ore_effettivo'], num_f)
             ws_utenti.write(row_u, 3, decimal_to_sessagesimal(d['ore_lavorate_60'] or 0), cell_c_f)
             ws_utenti.write(row_u, 4, d['ore_lavorate_100'] or 0, num_f)
             ws_utenti.write(row_u, 5, d['totale_100'] or 0, money_f)
@@ -1768,6 +1920,8 @@ def api_export_municipale(anno, mese):
     filename = f"Riepilogo_Municipale_{MESI_NOME[mese]}_{anno}"
     if commessa:
         filename += f"_{commessa.replace(' ', '_')}"
+    if privacy:
+        filename += "_privacy"
     filename += ".xlsx"
 
     return send_file(
@@ -1783,7 +1937,7 @@ def api_export_dipartimentale(anno, mese):
     """Esporta Monitoraggio Dipartimentale - Report per livello scolastico"""
     commessa = request.args.get('commessa')
 
-    dati = db.get_rendicontazione_completa(anno, mese, commessa)
+    dati = _filtra_dati_richiesta(db.get_rendicontazione_completa(anno, mese, commessa))
 
     # Costanti (stesse del riepilogo municipale per coerenza)
     TARIFFA = config.TARIFFA_ORARIA
@@ -1942,9 +2096,11 @@ def api_export_dipartimentale(anno, mese):
 def api_export_word(anno, mese):
     """Genera un documento Word con relazione sull'andamento del servizio mensile"""
     commessa = request.args.get('commessa')
+    # Nomi puntati (privacy): stessa opzione del Report Completo
+    privacy = request.args.get('privacy', 'false').lower() == 'true'
 
-    dati = db.get_rendicontazione_completa(anno, mese, commessa)
-    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa)
+    dati = _filtra_dati_richiesta(db.get_rendicontazione_completa(anno, mese, commessa))
+    totali_scuola = db.get_totali_per_scuola(anno, mese, commessa, dati=dati)
 
     # Costanti
     TARIFFA = config.TARIFFA_ORARIA
@@ -1965,7 +2121,7 @@ def api_export_word(anno, mese):
 
     # Utenti con ore e in lista attesa
     utenti_con_ore = sum(1 for d in dati if (d['ore_lavorate_60'] or 0) > 0)
-    utenti_lista_attesa = sum(1 for d in dati if d.get('lista_attesa'))
+    utenti_lista_attesa = sum(1 for d in dati if _lista_attesa_norm(d))
 
     # Determina anno scolastico
     anno_scolastico = config.anno_scolastico_di(anno, mese, sep='/')
@@ -2102,9 +2258,9 @@ def api_export_word(anno, mese):
 
     econ_data = [
         ('Ore erogate (centesimali)', f'{ore_totali_100:.2f}'),
-        ('Imponibile', f'€ {imponibile_totale:,.2f}'),
-        (f'IVA {int(IVA_PERC * 100)}%', f'€ {iva_totale:,.2f}'),
-        ('TOTALE DA FATTURARE', f'€ {totale_lordo:,.2f}'),
+        ('Imponibile', _fmt_euro_it(imponibile_totale)),
+        (f'IVA {int(IVA_PERC * 100)}%', _fmt_euro_it(iva_totale)),
+        ('TOTALE DA FATTURARE', _fmt_euro_it(totale_lordo)),
     ]
 
     for label, value in econ_data:
@@ -2124,10 +2280,16 @@ def api_export_word(anno, mese):
         run.font.color.rgb = RGBColor.from_string('4F46E5')
 
     liste_attesa = get_liste_attesa_ordinate(dati, anno, mese)
-    utenti_non_lista_rel = [d for d in dati if not d.get('lista_attesa')]
-    utenti_in_lista_rel = [d for d in dati if d.get('lista_attesa')]
-    utenti_per_lista_rel = {l['valore']: [d for d in dati if (d.get('lista_attesa') or '').strip() == l['valore']]
+    # Classificazione coerente con le colonne per-mese (strip): i valori sporchi
+    # (soli spazi) contano come 'non in lista', cosi' totale = non in lista + liste.
+    utenti_non_lista_rel = [d for d in dati if not _lista_attesa_norm(d)]
+    utenti_per_lista_rel = {l['valore']: [d for d in dati if _lista_attesa_norm(d) == l['valore']]
                             for l in liste_attesa}
+    # "Di cui hanno ricevuto incremento ore": aumento del monte ore nell'anno
+    # scolastico corrente, rispetto al valore di settembre (inizio anno).
+    anno_inizio_as = anno if mese >= 9 else anno - 1
+    monte_ore_settembre = db.get_monte_ore_effettivo_bulk(anno_inizio_as, 9)
+    utenti_incremento_rel = _utenti_con_incremento(dati, monte_ore_settembre)
 
     def _conta_con_ore_rel(lst):
         return sum(1 for d in lst if (d['ore_lavorate_60'] or 0) > 0)
@@ -2146,7 +2308,7 @@ def api_export_word(anno, mese):
     hdr[0].text = 'Indicatore'
     hdr[1].text = 'Utenti serviti totali'
     hdr[2].text = 'Non in lista attesa'
-    hdr[3].text = 'Di cui in lista di attesa'
+    hdr[3].text = 'Di cui hanno ricevuto incremento ore'
     for i, l in enumerate(liste_attesa):
         hdr[4 + i].text = l['label']
 
@@ -2155,7 +2317,7 @@ def api_export_word(anno, mese):
     r1[0].text = 'Alunni assistiti (totale)'
     r1[1].text = str(len(dati))
     r1[2].text = str(len(utenti_non_lista_rel))
-    r1[3].text = str(len(utenti_in_lista_rel))
+    r1[3].text = str(len(utenti_incremento_rel))
     for i, l in enumerate(liste_attesa):
         r1[4 + i].text = str(len(utenti_per_lista_rel[l['valore']]))
 
@@ -2164,36 +2326,43 @@ def api_export_word(anno, mese):
     r2[0].text = 'Alunni effettivamente assistiti nel mese'
     r2[1].text = str(_conta_con_ore_rel(dati))
     r2[2].text = str(_conta_con_ore_rel(utenti_non_lista_rel))
-    r2[3].text = str(_conta_con_ore_rel(utenti_in_lista_rel))
+    r2[3].text = str(_conta_con_ore_rel(utenti_incremento_rel))
     for i, l in enumerate(liste_attesa):
         r2[4 + i].text = str(_conta_con_ore_rel(utenti_per_lista_rel[l['valore']]))
 
     # Riga 3: Ore erogate (100')
     ore_100_non_lista_rel = _somma_ore_100_rel(utenti_non_lista_rel)
-    ore_100_in_lista_rel = _somma_ore_100_rel(utenti_in_lista_rel)
+    ore_100_incremento_rel = _somma_ore_100_rel(utenti_incremento_rel)
     r3 = table_riep.add_row().cells
     r3[0].text = "Ore effettivamente erogate (al netto dell'11%)"
     r3[1].text = f'{ore_totali_100:.2f}'
     r3[2].text = f'{ore_100_non_lista_rel:.2f}'
-    r3[3].text = f'{ore_100_in_lista_rel:.2f}'
+    r3[3].text = f'{ore_100_incremento_rel:.2f}'
     for i, l in enumerate(liste_attesa):
         r3[4 + i].text = f'{_somma_ore_100_rel(utenti_per_lista_rel[l["valore"]]):.2f}'
 
-    # Riga 4: Importo (imponibile + IVA)
+    # Riga 4: Importo (imponibile + IVA). Formula invariata (nessun cambio arrotondamenti).
     importo_non_lista_rel = ore_100_non_lista_rel * TARIFFA * (1 + IVA_PERC)
-    importo_in_lista_rel = ore_100_in_lista_rel * TARIFFA * (1 + IVA_PERC)
+    importo_incremento_rel = ore_100_incremento_rel * TARIFFA * (1 + IVA_PERC)
     r4 = table_riep.add_row().cells
-    r4[0].text = 'Importo erogato (IVA inclusa)'
-    r4[1].text = f'€ {totale_lordo:,.2f}'
-    r4[2].text = f'€ {importo_non_lista_rel:,.2f}'
-    r4[3].text = f'€ {importo_in_lista_rel:,.2f}'
+    r4[0].text = 'Importo effettivamente erogato (IVA inclusa)'
+    r4[1].text = _fmt_euro_it(totale_lordo)
+    r4[2].text = _fmt_euro_it(importo_non_lista_rel)
+    r4[3].text = _fmt_euro_it(importo_incremento_rel)
     for i, l in enumerate(liste_attesa):
         ore_l = _somma_ore_100_rel(utenti_per_lista_rel[l['valore']])
         imp_l = ore_l * TARIFFA * (1 + IVA_PERC)
-        r4[4 + i].text = f'€ {imp_l:,.2f}'
+        r4[4 + i].text = _fmt_euro_it(imp_l)
 
     style_word_table_header(table_riep)
     style_word_table_alternating_rows(table_riep)
+
+    nota_riep = doc.add_paragraph()
+    nota_riep.add_run(
+        "Le colonne \"Lista ...\" dettagliano gli iscritti in lista d'attesa per mese di iscrizione "
+        "(Totale = \"Non in lista attesa\" + somma delle liste). \"Di cui hanno ricevuto incremento ore\" "
+        "e' un sottoinsieme del totale e non va sommato alle altre colonne."
+    ).italic = True
 
     doc.add_paragraph()
 
@@ -2226,8 +2395,8 @@ def api_export_word(anno, mese):
             row_cells[0].text = nome_scuola
             row_cells[1].text = str(t['num_utenti'])
             row_cells[2].text = f"{t['ore_lavorate_60']:.2f}"
-            row_cells[3].text = f"€ {t['imponibile_100']:,.2f}"
-            row_cells[4].text = f"€ {t['totale_100']:,.2f}"
+            row_cells[3].text = _fmt_euro_it(t['imponibile_100'])
+            row_cells[4].text = _fmt_euro_it(t['totale_100'])
 
             tot_utenti_s += t['num_utenti'] or 0
             tot_ore_s += t['ore_lavorate_60'] or 0
@@ -2239,8 +2408,8 @@ def api_export_word(anno, mese):
         tot_cells[0].text = 'TOTALE'
         tot_cells[1].text = str(tot_utenti_s)
         tot_cells[2].text = f"{tot_ore_s:.2f}"
-        tot_cells[3].text = f"€ {tot_imp_s:,.2f}"
-        tot_cells[4].text = f"€ {tot_tot_s:,.2f}"
+        tot_cells[3].text = _fmt_euro_it(tot_imp_s)
+        tot_cells[4].text = _fmt_euro_it(tot_tot_s)
 
         style_word_table_header(table_scuole)
         style_word_table_alternating_rows(table_scuole)
@@ -2287,7 +2456,7 @@ def api_export_word(anno, mese):
             tasso = (ore_erogate / ore_previste) * 100
             if tasso < 50:
                 utenti_bassa_erogazione.append({
-                    'nome': f"{d['nome']} {d['cognome']}",
+                    'nome': d['nome_puntato'] if privacy else f"{d['nome']} {d['cognome']}",
                     'scuola': d['scuola'],
                     'ore_previste': ore_previste,
                     'ore_erogate': ore_erogate,
@@ -2337,7 +2506,7 @@ def api_export_word(anno, mese):
     concl = doc.add_paragraph()
     concl.add_run(f"In sintesi, nel mese di {MESI_NOME[mese]} {anno} il servizio OEPAC ha erogato "
                   f"complessivamente {ore_totali_60:.2f} ore di assistenza a {utenti_con_ore} utenti, "
-                  f"per un importo totale da fatturare pari a € {totale_lordo:,.2f}.")
+                  f"per un importo totale da fatturare pari a {_fmt_euro_it(totale_lordo)}.")
 
     # Data e firma
     doc.add_paragraph()
@@ -2367,6 +2536,8 @@ def api_export_word(anno, mese):
     filename = f"Relazione_OEPAC_{MESI_NOME[mese]}_{anno}"
     if commessa:
         filename += f"_{commessa.replace(' ', '_')}"
+    if privacy:
+        filename += "_privacy"
     filename += ".docx"
 
     return send_file(

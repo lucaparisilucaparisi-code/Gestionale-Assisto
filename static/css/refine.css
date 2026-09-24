@@ -1,4 +1,362 @@
 /* =====================================================================
+   REFINE.CSS - layer finale, caricato per ultimo da TUTTE le pagine
+   (app, login e setup). Riunisce, nello stesso ordine di cascata:
+     1. ex theme-premium.css - vetro leggero, bordi, badge, pagina di accesso
+     2. refine.css           - design system "calmo & premium" (sotto)
+   ===================================================================== */
+
+/* ====================== PARTE: ex theme-premium.css ====================== */
+
+/* ==================== WORLDQUANT-INSPIRED AESTHETIC (LITE) ==================== */
+/* Layer finale ottimizzato per performance:
+   - Aurora mesh STATICO (niente animazione continua)
+   - Niente noise SVG
+   - backdrop-filter ridotto al minimo indispensabile
+   - GPU hints solo dove serve davvero
+   Mantiene il look premium: gradient text, bordi luminosi su hover,
+   glassmorphism leggero su topbar/sidebar/auth-card.
+*/
+
+:root {
+    --aurora-1: rgba(10, 132, 255, 0.16);
+    --aurora-2: rgba(191, 90, 242, 0.12);
+    --aurora-3: rgba(48, 209, 88, 0.08);
+    --aurora-4: rgba(100, 210, 255, 0.10);
+
+    --gradient-hero: linear-gradient(135deg, #ffffff 0%, #a8c7ff 40%, #bf5af2 100%);
+    --gradient-accent: linear-gradient(135deg, var(--primary) 0%, #BF5AF2 100%);
+    --gradient-border-card: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02));
+}
+
+[data-theme="light"] {
+    --aurora-1: rgba(10, 132, 255, 0.10);
+    --aurora-2: rgba(191, 90, 242, 0.07);
+    --aurora-3: rgba(48, 209, 88, 0.05);
+    --aurora-4: rgba(100, 210, 255, 0.07);
+    --gradient-hero: linear-gradient(135deg, var(--primary) 0%, #5E2BA3 60%, #0b1a2d 100%);
+    --gradient-border-card: linear-gradient(135deg, rgba(0,0,0,0.08), rgba(0,0,0,0.02));
+}
+
+/* ==================== AURORA MESH STATICO ==================== */
+/* Niente animazione: la GPU non viene stressata.
+   Lo sfondo e' fisso, elegante, con quattro bolle radiali. */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Il gradient del container originale viene ridotto */
+.app-container::before { opacity: 0.35; }
+
+/* ==================== HERO TYPOGRAPHY ==================== */
+
+.page-subtitle {
+    letter-spacing: -0.005em;
+}
+
+/* ==================== CARDS (senza blur: solidi con trasparenza) ==================== */
+.card {
+    position: relative;
+    will-change: auto;
+}
+
+/* Bordo gradient SOLO su hover: nessun pseudo-element sempre attivo */
+.card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(10, 132, 255, 0.28);
+}
+
+/* ==================== STAT CARDS ==================== */
+.stat-value {
+    font-weight: 700;
+}
+
+.stat-label {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+}
+
+/* Linea accent: solo un bordo statico, niente pseudo animato */
+.stat-card {
+    position: relative;
+    isolation: isolate;
+}
+
+/* ==================== BUTTONS ==================== */
+.btn-primary {
+    box-shadow: 0 4px 12px -4px rgba(10, 132, 255, 0.5);
+    letter-spacing: -0.005em;
+    font-weight: 600;
+}
+
+.btn-primary:hover {
+    box-shadow: 0 6px 18px -6px rgba(10, 132, 255, 0.65);
+    filter: brightness(1.05);
+}
+
+.btn-primary:active { filter: brightness(0.98); }
+
+/* Secondary senza blur */
+.btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning) {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    transition: background 150ms ease, border-color 150ms ease;
+}
+
+.btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning):hover {
+    background: rgba(255,255,255,0.09);
+    border-color: rgba(255,255,255,0.16);
+}
+
+[data-theme="light"] .btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning) {
+    background: rgba(11, 26, 45, 0.04);
+    border-color: rgba(11, 26, 45, 0.08);
+}
+
+/* ==================== TOPBAR & SIDEBAR ==================== */
+/* Blur leggero, solo qui: superfici piccole e fisse, impatto minimo */
+.topbar {
+    -webkit-backdrop-filter: blur(10px);
+}
+
+[data-theme="light"] .topbar {
+    border-bottom: 1px solid rgba(11, 26, 45, 0.06);
+}
+
+[data-theme="light"] .sidebar {
+    border-right: 1px solid rgba(11, 26, 45, 0.06);
+}
+
+/* Nav link accent */
+.nav-link {
+    position: relative;
+}
+
+.nav-link::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 10px; bottom: 10px;
+    width: 2px;
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+
+.nav-link.active::before,
+.nav-link:hover::before {
+    opacity: 1;
+}
+
+/* ==================== LOGO / BRAND ==================== */
+.brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.brand-mark::after {
+    content: 'A';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1rem;
+    color: white;
+    letter-spacing: -0.02em;
+}
+
+.brand-mark--sm {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+}
+
+.brand-mark--sm::after { font-size: 0.85rem; }
+
+.brand-name {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-size: 1.05rem;
+}
+
+.brand-name--sm { font-size: 0.95rem; }
+
+.brand-tagline {
+    display: block;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+    font-weight: 500;
+}
+
+.brand-text { display: inline-flex; flex-direction: column; line-height: 1.15; }
+
+.sidebar-logo, .topbar-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: inherit;
+}
+
+/* ==================== FORM / INPUT ==================== */
+/* stesso aspetto di .form-control:focus (refine.css): bordo blu e alone tenue,
+   senza il bagliore di 18px in un altro blu che aveva solo 'Filtra' */
+.form-control:focus,
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ==================== SCROLLBAR ==================== */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.08);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); background-clip: padding-box; border: 2px solid transparent; }
+
+[data-theme="light"] *::-webkit-scrollbar-thumb { background: rgba(11,26,45,0.12); background-clip: padding-box; border: 2px solid transparent; }
+[data-theme="light"] *::-webkit-scrollbar-thumb:hover { background: rgba(11,26,45,0.22); background-clip: padding-box; border: 2px solid transparent; }
+
+/* ==================== TABLE ==================== */
+.table th {
+    text-transform: uppercase;
+}
+
+/* ==================== BADGES ==================== */
+.badge {
+    letter-spacing: 0.02em;
+}
+
+/* ==================== ANIMAZIONI INGRESSO (solo 1 volta) ==================== */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translate3d(0, 10px, 0); }
+    to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.page-header,
+.stats-grid > * {
+    animation: fadeInUp 400ms ease both;
+}
+
+.stats-grid > *:nth-child(1) { animation-delay: 30ms; }
+.stats-grid > *:nth-child(2) { animation-delay: 60ms; }
+.stats-grid > *:nth-child(3) { animation-delay: 90ms; }
+.stats-grid > *:nth-child(4) { animation-delay: 120ms; }
+.stats-grid > *:nth-child(5) { animation-delay: 150ms; }
+.stats-grid > *:nth-child(6) { animation-delay: 180ms; }
+
+@media (prefers-reduced-motion: reduce) {
+    .page-header,
+    .stats-grid > * { animation: none; }
+}
+
+/* ==================== FOCUS VISIBLE ==================== */
+:focus-visible {
+    outline: 2px solid rgba(10,132,255,0.6);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+/* ==================== AUTH PAGES ==================== */
+.auth-card {
+    background: rgba(28, 28, 30, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow:
+        0 1px 0 rgba(255,255,255,0.05) inset,
+        0 20px 60px -18px rgba(0,0,0,0.55);
+}
+
+[data-theme="light"] .auth-card {
+    background: rgba(255,255,255,0.92);
+    border: 1px solid rgba(11,26,45,0.06);
+}
+
+/* Titolo dell'accesso a tinta unita (era sfumato dal bianco, o dal blu, al viola) */
+.auth-title {
+    letter-spacing: -0.03em;
+    font-weight: 700;
+}
+
+/* ==================== PERFORMANCE OVERRIDES ==================== */
+/* Riduce blur costosi lasciati dai CSS precedenti.
+   Manteniamo il blur SOLO su: topbar, sidebar, auth-card, modal, command-palette.
+   Su tutto il resto -> disabilitato o fortemente ridotto. */
+
+.stat-card,
+.card-header,
+.card-body,
+.card-footer,
+.tooltip,
+.toast {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Sidebar: niente blur (colonna alta, costa molto) */
+.sidebar {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Floating particles layer: rimosso, spreca memoria GPU */
+.content-area::before { display: none !important; }
+
+/* Animazioni infinite meno critiche: disabilitate.
+   Rimangono attive solo quelle realmente informative (spinner, status dot live). */
+.empty-state-icon {
+    animation: none !important;
+}
+
+/* GPU acceleration mirata solo dove serve (hover transform) */
+.card,
+.btn,
+.nav-link,
+.stat-card {
+    transform: translateZ(0);
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 768px) {
+    /* Su mobile: niente aurora (risparmio batteria) */
+    body::before { display: none; }
+}
+
+/* Dispositivi a bassa potenza: ulteriore alleggerimento */
+@media (max-width: 480px), (prefers-reduced-motion: reduce) {
+    .topbar {
+        -webkit-backdrop-filter: none !important;
+    }
+    .auth-card {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+}
+
+/* ====================== PARTE: ex refine.css ====================== */
+
+/* =====================================================================
    ASSISTO · DESIGN SYSTEM  (refine.css)
    Layer unico e autorevole del look "calmo & premium".
    Caricato per ultimo: sobrieta', coerenza, spazio bianco.
@@ -7,21 +365,20 @@
    ===================================================================== */
 
 :root {
-    /* Un solo accento protagonista (gli altri colori solo per i dati/stati) */
-    --accent: #3B82F6;
-    --accent-hover: #2f6fe0;
-    --accent-soft: rgba(59, 130, 246, 0.12);
-
-    /* Unifica il vecchio --primary sull'accento: stepper, grafici e card
-       usavano un secondo blu (#0A84FF) che conviveva con questo */
-    --primary: var(--accent);
+    /* I colori (--primary, --accent, --accent-hover, --accent-soft) vivono in
+       style.css: qui non si ridefinisce nessun token di colore, cosi' esiste
+       un solo blu primario in tutta l'app. */
 
     /* Scala di spazi coerente */
     --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;  --sp-4: 16px;
     --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
 
-    /* Raggi e bordi sobri */
-    --r-sm: 8px; --r-md: 10px; --r-lg: 14px;
+    /* Tre soli arrotondamenti: 6px etichette (badge), 8px pulsanti e campi,
+       12px riquadri, card e finestre. Sullo schermo ce n'erano 9 (card 14, barra
+       filtri 16, riquadri numerici 10, finestre 20...). I nomi della scala di
+       style.css restano, come sinonimi, finche' i fogli non vengono riordinati. */
+    --r-sm: 8px; --r-md: 12px; --r-lg: 12px;
+    --radius-lg: 12px; --radius-xl: 12px; --radius-2xl: 12px;
 
     /* Ombre tenui (niente glow) */
     --shadow-1: 0 1px 2px rgba(0,0,0,.20), 0 1px 3px rgba(0,0,0,.12);
@@ -51,22 +408,32 @@ body::before { background: none !important; }
     margin-top: 2px;
 }
 .page-header { margin-bottom: var(--sp-5); }
+@media (max-width: 480px) {
+    /* Pulsanti dell'intestazione sul telefono: riempiono la riga ma, se non ci stanno
+       interi, vanno a capo (con flex:1 erano tre colonne uguali e 'Nuovo Utente'
+       usciva dal pulsante). */
+    .header-actions .btn { flex: 1 1 auto; }
+}
+
+/* Pulsanti, tendine e caselle nel carattere della pagina: il browser dava loro il
+   suo (Arial) e 'Importa da Excel' (link) e 'Nuovo Dipendente' (pulsante), uno
+   accanto all'altro, erano in due caratteri diversi. */
+button, input, select, textarea { font-family: inherit; }
 
 /* ---------- 3. Pulsanti: tinta unita, niente gradienti/glow/shimmer ---------- */
 .btn {
     border-radius: var(--r-sm) !important;
     font-weight: 550;
-    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
     box-shadow: none !important;
 }
 .btn::after, .btn::before { display: none !important; }   /* via shimmer/ripple decorativi */
 
 .btn-primary {
-    background: var(--accent) !important;
-    border: 1px solid var(--accent) !important;
+    background: var(--accent-strong) !important;
+    border: 1px solid var(--accent-strong) !important;
     color: #fff !important;
 }
-.btn-primary:hover { background: var(--accent-hover) !important; border-color: var(--accent-hover) !important; }
+.btn-primary:hover { background: var(--accent-strong-hover) !important; border-color: var(--accent-strong-hover) !important; }
 
 .btn-secondary {
     background: var(--bg-tertiary) !important;
@@ -75,13 +442,26 @@ body::before { background: none !important; }
 }
 .btn-secondary:hover { background: var(--bg-card-solid) !important; border-color: var(--border-light) !important; }
 
-.btn-success { background: #16a34a !important; border: 1px solid #16a34a !important; color: #fff !important; }
-.btn-success:hover { background: #15893f !important; }
+.btn-success { background: var(--success-strong) !important; border: 1px solid var(--success-strong) !important; color: #fff !important; }
+.btn-success:hover { background: var(--success-strong-hover) !important; border-color: var(--success-strong-hover) !important; }
 .btn-danger  { background: #dc2626 !important; border: 1px solid #dc2626 !important; color: #fff !important; }
 .btn-danger:hover { background: #c11f1f !important; }
+/* "Salta al contenuto" (compare col tasto Tab): nel tema chiaro il colore dei link
+   (#0055D4) finiva sul fondo blu, 1,8:1. */
+.skip-link, .skip-link:hover { background: var(--accent-strong) !important; color: #fff !important; }
+/* Suggerimento sulle ore anomale: testo scuro sull'arancio (bianco era 2,1:1) */
+[data-warning]::before { background: #FF9F0A !important; color: #1C1C1E !important; }
 
-/* Marchio: quadratino in tinta accento (niente gradiente sgargiante) */
+/* Marchio: quadratino in tinta accento (niente gradiente sgargiante) e scritta
+   "Assisto" a tinta unita (theme-premium.css la sfumava fino al viola). */
 .brand-mark { background: var(--accent) !important; }
+.brand-name {
+    background: none !important;
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+    -webkit-text-fill-color: currentColor !important;
+    color: var(--text-primary) !important;
+}
 
 /* ---------- 4. Card: solide, bordo a un capello, ombra tenue ---------- */
 .card {
@@ -93,7 +473,13 @@ body::before { background: none !important; }
     border-radius: var(--r-lg) !important;
 }
 .card::before, .card::after { display: none !important; }   /* via bordi luminosi animati */
+/* Icona del titolo ferma: al passaggio del mouse sulla card ruotava e si ingrandiva */
+.card:hover .card-title svg { transform: none !important; }
 .card-header { border-bottom: 1px solid var(--border-color); }
+/* L'intestazione sta sopra il corpo: .card-body ha position:relative e z-index:1 e,
+   con le misure frazionarie del telefono, copriva la riga di separazione (Chiusura
+   Mese, Statistiche) */
+.card > .card-header { position: relative; z-index: 2; }
 .card-header::before, .card-header::after { display: none !important; }   /* via la riga sfumata */
 .card-title {
     font-size: 1rem !important;
@@ -112,6 +498,15 @@ body::before { background: none !important; }
     font-weight: 600 !important;
 }
 .table tbody tr:hover { background: var(--accent-soft) !important; }
+/* Nomi cliccabili nelle tabelle: blu dei testi (sul fondo scuro #3B82F6 era 3,7:1) */
+.table td a:not(.btn) { color: var(--accent-text); }
+/* Colonne di numeri: .table th/td{text-align:left} (style.css) e' piu' specifica di
+   .text-right/.text-center e annullava l'allineamento chiesto dalle pagine. */
+.table th.text-right, .table td.text-right { text-align: right !important; }
+/* note tra parentesi nelle intestazioni ('(Infanzia)'): stessa misura e colore del
+   titolo, non 'smaller' (erano 9,3px e in piu' semitrasparenti) */
+.table th small { font-size: inherit; }
+.table th.text-center, .table td.text-center { text-align: center !important; }
 /* Numeri sempre tabellari e ben allineati */
 .table td, .stat-value, .kpi-value, .stat-content .stat-value,
 .table-input, .badge, td.numeric, .font-mono {
@@ -128,23 +523,79 @@ body::before { background: none !important; }
     box-shadow: none !important;
     border: 1px solid transparent;
 }
+/* Via l'alone sfocato al passaggio del mouse (premium-effects.css): sporgeva di 2px
+   per lato e il pulsante '12 senza ore' risultava piu' stretto del suo contenuto */
+.badge::before { display: none; }
 .badge-primary,
 .badge-secondary { background: var(--bg-tertiary) !important; color: var(--text-secondary) !important; border-color: var(--border-color); }
 .badge-success { background: rgba(22,163,74,.15) !important;  color: #4ade80 !important; }
 .badge-warning { background: rgba(245,158,11,.15) !important; color: #fbbf24 !important; }
 .badge-danger  { background: rgba(220,38,38,.15) !important;  color: #f87171 !important; }
+/* Tema chiaro: fondo pastello e testo scuro della stessa famiglia (6,4-6,8:1).
+   Con i colori qui sopra 'Attivo', 'Marzo', '12 senza ore', '0%' scendevano a 1,2-2,2:1. */
+[data-theme="light"] .badge-success { background: #DCFCE7 !important; color: #166534 !important; border-color: #BBF7D0; }
+[data-theme="light"] .badge-warning { background: #FEF3C7 !important; color: #92400E !important; border-color: #FDE68A; }
+[data-theme="light"] .badge-danger  { background: #FEE2E2 !important; color: #991B1B !important; border-color: #FECACA; }
+/* Testo arancio dentro i riquadri azzurri ("Le righe in giallo..."): li' #B45309 arriva
+   solo a 4,0:1, serve la tinta piu' scura della stessa famiglia (5,7:1). */
+[data-theme="light"] .alert-info .text-warning { color: #92400E !important; }
 
 /* ---------- 7. Barra filtri coerente ---------- */
 .filters { gap: var(--sp-3); align-items: flex-end; }
+/* Etichette dei filtri come quelle dei moduli (.form-label, style.css): testo
+   normale. Erano in MAIUSCOLO da 12px nelle barre dei filtri e normali da 13,6px
+   nei moduli (Sostituzioni), e salivano di 2px quando il campo prendeva il focus. */
+.filter-group label, .filter-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: none;
+    letter-spacing: 0.01em;
+}
+[data-theme="light"] .filter-group label, [data-theme="light"] .filter-label { color: #1C1C1E; font-weight: 500; }
+.filter-group:focus-within .filter-label { transform: none; }
+/* Casella di spunta nella barra ('Mostra disattivati'): e' un'opzione, non il titolo
+   di un campo (era in maiuscolo come le etichette) */
+.filter-group label.pointer { font-weight: 400; color: var(--text-primary); }
+/* Larghezze standard dei campi nelle barre dei filtri, al posto delle misure scritte
+   a mano in ogni pagina (200/300/200/150px in Utenti, 240/180px in Dipendenti...).
+   Sotto i 768px i campi prendono tutta la riga (style.css). */
+.w-sm { width: 160px; }
+.w-md { width: 200px; }
+.w-lg { width: 280px; }
 .form-control, .filter-group select, .filter-group input {
     border-radius: var(--r-sm) !important;
     border: 1px solid var(--border-color) !important;
-    background: var(--bg-input) !important;
+    /* solo il colore: la forma breve "background" cancellava la freccia delle tendine */
+    background-color: var(--bg-input) !important;
+}
+/* Tendine: freccia grigia a destra, in entrambi i temi e anche con il focus
+   (altre regole con "background" la cancellavano: senza freccia una tendina
+   sembrava una normale casella di testo). */
+select.form-control, .filter-group select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23888'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 12px center !important;
+    background-size: 16px !important;
+    padding-right: 36px !important;
 }
 .form-control:focus {
     border-color: var(--accent) !important;
     box-shadow: 0 0 0 3px var(--accent-soft) !important;
     outline: none !important;
+}
+/* Focus da tastiera (Tab): lo stesso contorno blu fermo su tutti i campi, come su
+   pulsanti e link. Prima tendine e filtri avevano solo un alone al 12% quasi
+   invisibile sul fondo scuro, 'Filtra' un bagliore di un altro blu e il campo ore
+   si ingrandiva a ogni passaggio. */
+input:focus-visible, select:focus-visible, textarea:focus-visible,
+.form-control:focus-visible, .table-input:focus-visible {
+    outline: 2px solid var(--accent) !important;
+    outline-offset: 1px !important;
+    border-color: var(--accent) !important;
+    box-shadow: none !important;
 }
 
 /* ---------- 8. Stat / KPI card: piatte ---------- */
@@ -171,16 +622,86 @@ body::before { background: none !important; }
     color: var(--text-primary) !important;
 }
 .kpi-card:hover .kpi-value { transform: none !important; }
+/* Valori della stessa riga alla stessa altezza anche quando un'etichetta va
+   su due righe (Statistiche: "Monte ore settimanale oggi" sotto i 1366px):
+   etichetta in alto, valore in fondo alla scheda. */
+.kpi-grid .kpi-card { display: flex; flex-direction: column; justify-content: space-between; }
 
 /* ---------- 9. Topbar / sidebar: piu' quieti ---------- */
 .topbar { backdrop-filter: none !important; background: var(--bg-primary) !important; border-bottom: 1px solid var(--border-color); }
 .sidebar { background: var(--bg-sidebar) !important; border-right: 1px solid var(--border-color); }
-.nav-link.active { background: var(--accent-soft) !important; color: var(--accent) !important; }
-.nav-link.active svg { color: var(--accent) !important; }
-.nav-section-title { letter-spacing: 0.08em; font-size: 0.66rem; }
+.nav-link.active { background: var(--accent-soft) !important; color: var(--accent-text) !important; }
+.nav-link.active svg { color: var(--accent-text) !important; }
+/* Menu senza effetti: un solo blu e niente movimento. Al passaggio del mouse si
+   sommavano una barretta blu-viola, due sottolineature (una sfumata), uno
+   spostamento di 2px e l'icona che ruotava e rimbalzava; il quadratino 'A' e la
+   voce attiva avevano un alone luminoso. Resta la barretta, in blu. */
+.nav-link::after, .nav-link span::after { display: none !important; }
+.nav-link::before { background: var(--accent) !important; box-shadow: none !important; }
+.nav-link, .nav-link svg { transform: none !important; animation: none !important; }
+.nav-link.active, .brand-mark { box-shadow: none !important; }
+/* Riga sopra le barre dei filtri (blu-viola-verde) e barra di scorrimento in cima
+   alla pagina (blu-viola): la prima via, la seconda nel blu dell'app */
+.filters::before { display: none !important; }
+.scroll-indicator { background: var(--accent) !important; }
+/* Scritte piccole del menu ('PRINCIPALE', 'OEPAC · GESTIONALE', versione): erano
+   10,6-10,9px, ora 12px come il resto dei testi secondari. */
+.nav-section-title { letter-spacing: 0.08em; font-size: 0.75rem; }
+.brand-tagline, .sidebar-footer-text { font-size: 0.75rem; }
+
+/* Menu laterale compatto: con gli spazi di style.css era alto 828px e su un
+   portatile 1366x768 (o 1440x900) 'Import Excel' e 'Impostazioni' finivano
+   sotto il bordo. Senza le righe di separazione (i titoli di sezione bastano)
+   e con voci un po' piu' basse tutte le 10 voci entrano anche a 1280x720. */
+.sidebar-nav { padding: 6px 0; }
+.nav-section { padding: 10px 12px 2px; }
+.nav-section:first-child { padding-top: 2px; }
+.nav-section:not(:first-child)::before { display: none; }
+.nav-section-title { margin-bottom: 4px; }
+.nav-link { padding: 8px 14px; margin: 1px 8px; }
+/* Sul telefono il menu e' alto quanto lo spazio davvero visibile (senza le barre del browser) */
+.sidebar { height: 100dvh; }
+/* Menu a pannello (telefono, tablet, finestra a meta' schermo): velo scuro sulla
+   pagina, sotto il menu (z 100) e sopra la barra in alto (z 90). Toccandolo il
+   menu si chiude (app.js); prima la pagina accanto restava illuminata e non
+   c'era niente che facesse capire di poter toccare fuori. */
+@media (max-width: 1024px) {
+    body.sidebar-open::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 99;
+    }
+}
+
+/* Logo nella barra in alto solo quando il menu laterale e' nascosto (<=1024px):
+   su PC compariva due volte (theme-premium.css annullava la regola di style.css). */
+@media (min-width: 1025px) {
+    .topbar-logo { display: none !important; }
+}
+
+/* La scorciatoia "Ctrl+K" e i tasti suggeriti in fondo alla ricerca servono solo
+   con la tastiera: su telefono e tablet si nascondono (a 390px la barra in alto
+   sbordava di 3px e il pulsante Cerca mostrava solo "Ctrl+K"). */
+@media (max-width: 1024px), (hover: none) {
+    .topbar-kbd, .command-palette-footer, .command-palette .command-kbd { display: none; }
+    .topbar-btn { padding: 8px 10px; }
+}
 
 /* ---------- 10. Tabs (report, import, dettaglio utente) ---------- */
-.tab.active { color: var(--accent) !important; border-bottom-color: var(--accent) !important; }
+.tab.active { color: var(--accent-text) !important; border-bottom-color: var(--accent) !important; }
+/* Tema chiaro: le schede fatte con link (Report, Impostazioni) prendevano il blu dei
+   link (#0055D4) e sembravano piu' "selezionate" di quella attiva. */
+[data-theme="light"] a.tab:not(.active) { color: var(--text-secondary) !important; }
+[data-theme="light"] a.tab:not(.active):hover { color: var(--text-primary) !important; }
+/* Telefono e tablet: le schede vanno a capo invece di scorrere di lato. Prima, nella
+   scheda utente, se ne vedevano 2 su 7 senza nessun segno che ce ne fossero altre,
+   e la scheda attiva poteva restare tagliata ('Profil', la sola icona). */
+@media (max-width: 768px) {
+    .tabs { flex-wrap: wrap; overflow: visible; row-gap: 2px; }
+    .tab { padding: 10px 12px; }
+}
 
 /* ---------- 10b. Breadcrumb ---------- */
 .breadcrumb {
@@ -235,29 +756,21 @@ details.section[open] > summary::before { transform: rotate(90deg); }
 .empty-state-icon { width: 44px; height: 44px; color: var(--text-quaternary); margin: 0 auto var(--sp-3); }
 .empty-state-title { font-size: 1rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
 .empty-state-text { color: var(--text-tertiary); font-size: 0.88rem; }
+/* Cerchio dell'icona senza l'anello blu-viola attorno (Turni 'Scegli un operatore',
+   Stato budget della scheda utente) */
+.empty-state-icon-wrapper::before { display: none !important; }
 
-/* Spinner piu' sobrio */
-.spinner { border-width: 2px !important; }
-
-/* Skeleton loader (placeholder durante i caricamenti) */
-.skeleton {
-    position: relative;
-    overflow: hidden;
-    background: var(--bg-tertiary);
-    border-radius: 6px;
+/* Spinner piu' sobrio: un solo arco blu che gira regolare (era blu e viola, con
+   un secondo anello e una rotazione "a molla") */
+.spinner {
+    border-width: 2px !important;
+    border-right-color: var(--border-color) !important;
+    animation-timing-function: linear !important;
 }
-.skeleton::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
-    animation: ds-shimmer 1.3s infinite;
-}
-.skeleton-line { height: 12px; margin: 8px 0; }
-.skeleton-line.sm { width: 40%; }
-.skeleton-line.md { width: 70%; }
-@keyframes ds-shimmer { 100% { transform: translateX(100%); } }
+.spinner::before { display: none !important; }
+/* Barre di avanzamento ('Stato del mese' in Dashboard, passo 1 di Chiusura Mese):
+   tratto pieno, senza il riflesso bianco che scorreva senza fine ogni 2 secondi */
+.progress-bar-fill::after { display: none !important; }
 
 /* ---------- 12. Meno animazioni: rispetta chi le riduce ---------- */
 @media (prefers-reduced-motion: reduce) {
@@ -271,7 +784,794 @@ details.section[open] > summary::before { transform: rotate(90deg); }
 /* Griglie a colonne usate nelle schede di dettaglio (erano usate ma mai definite) */
 .grid { display: grid; gap: var(--sp-4); }
 .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 860px) {
-    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
 }
+
+/* Caselle di spunta un po' piu' grandi (13px di base del browser) e nel blu dell'app.
+   :where() non pesa: vince qualunque regola piu' precisa (interruttori, ecc.). */
+:where(input[type="checkbox"]) { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+
+/* ---------- 14. Larghezza della pagina ---------- */
+/* .main-content e' un elemento flex: senza min-width:0 si allarga fino alla tabella
+   piu' larga (Rendicontazione, Utenti) e porta fuori schermo pulsanti, colonne e
+   comandi della barra in alto, senza barra di scorrimento. Con min-width:0 la
+   pagina resta larga quanto la finestra e le tabelle scorrono nel loro riquadro. */
+.main-content { min-width: 0; }
+@media (max-width: 768px) {
+    /* Sul telefono le righe di schede (.flex.gap-4) diventano colonne (components.css):
+       con flex-wrap ogni "riga" prendeva la larghezza della scheda piu' larga e in
+       Statistiche le schede uscivano di 9px dallo schermo. Su una sola riga ogni
+       scheda e' larga quanto lo schermo. */
+    .flex.gap-4 { flex-wrap: nowrap; }
+    /* ux-enhancements.css dava a ogni .table min-width:600px: fuori da un riquadro
+       che scorre, la .card (overflow:hidden) tagliava la tabella e colonne e pulsanti
+       a destra non si potevano raggiungere (Sostituzioni, scheda dipendente,
+       Assegnazioni OEPAC, Report, Import). Ora i 600px restano solo agli elenchi
+       principali (.table-container, che scorrono di lato); le altre tabelle stanno
+       nello schermo e, se proprio non ci stanno, scorrono nel loro .table-responsive. */
+    .table { min-width: 0; }
+    .table-container .table { min-width: 600px; }
+}
+
+/* ---------- 15. Finestre (modali) ---------- */
+/* Sopra menu laterale e barra in alto: premium-effects.css dava a .content-area
+   z-index:1 (serviva ai puntini decorativi, ormai spenti) e cosi' le finestre, che
+   stanno dentro il contenuto, restavano sotto il menu (z 100) e la barra (z 90):
+   menu cliccabile a finestra aperta, wizard tagliato a sinistra, X non cliccabile
+   sul telefono. I figli del contenuto restano a z-index:1 (premium-effects.css). */
+.content-area { z-index: auto !important; }
+
+/* Finestre, conferme e ricerca rapida con un solo aspetto: fondo pieno, bordo a un
+   capello, angoli da 12px e comparsa in dissolvenza breve (0,18s), senza rimbalzo
+   ne' sfocatura. Erano tre versioni: la finestra trasparente al 70% con sfocatura,
+   angoli da 20px e apertura "a molla"; la conferma piena con angoli da 16px e
+   anch'essa a molla; la ricerca trasparente con angoli da 20px. */
+:root .modal, :root .confirm-dialog, :root .command-palette {
+    background: var(--bg-card-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border: 1px solid var(--border-color);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-xl);
+}
+.modal-overlay .modal, .modal-overlay.active .modal,
+.confirm-dialog-overlay .confirm-dialog, .confirm-dialog-overlay.active .confirm-dialog,
+.command-palette-overlay .command-palette, .command-palette-overlay.active .command-palette {
+    transform: none;
+    animation: none;
+    transition: none;
+}
+.modal-overlay, .modal-overlay.active, .confirm-dialog-overlay, .command-palette-overlay {
+    background: rgba(0, 0, 0, 0.6);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+/* Dissolvenza, ma 'visibility' cambia SUBITO all'apertura (e solo a dissolvenza finita
+   alla chiusura): con 'visibility .18s' la finestra era ancora nascosta nell'istante
+   di focus() e con Ctrl+K le prime lettere andavano perse */
+.modal-overlay, .confirm-dialog-overlay, .command-palette-overlay {
+    transition: opacity .18s ease, visibility 0s linear .18s;
+}
+.modal-overlay.active, .confirm-dialog-overlay.active, .command-palette-overlay.active {
+    transition: opacity .18s ease, visibility 0s linear 0s;
+}
+[data-theme="light"] .modal-overlay,
+[data-theme="light"] .confirm-dialog-overlay,
+[data-theme="light"] .command-palette-overlay { background: rgba(0, 0, 0, 0.5); }
+/* Conferme con tre pulsanti ("Apri le Variazioni · Annulla · Cambia per tutti i
+   mesi"): vanno a capo interi invece di uscire dalla finestra larga 420px */
+.confirm-dialog-actions { flex-wrap: wrap; }
+/* Guida alle scorciatoie (tasto ?): finestra normale, righe nome / tasti */
+.scorciatoia-riga { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); padding: 7px 0; border-bottom: 1px solid var(--border-color); }
+.scorciatoie-sezione { margin: var(--sp-4) 0 2px; font-weight: 600; color: var(--text-secondary); }
+.scorciatoie-nota { margin: var(--sp-4) 0 0; font-size: 0.8rem; color: var(--text-tertiary); }
+.scorciatoia-riga .command-kbd, .scorciatoie-nota .command-kbd { display: inline-flex; }   /* style.css le nasconde sotto i 640px */
+
+/* Titolo e pulsanti sempre visibili: scorre solo il corpo della finestra
+   (prima scorreva tutta la finestra e 'Annulla / Applica' restava sotto il bordo). */
+.modal { display: flex; flex-direction: column; overflow: hidden; }
+.modal-header, .modal-footer { flex-shrink: 0; }
+.modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.modal-footer { align-items: center; }
+/* Finestre con un elenco lungo (wizard "Utenti e monte ore"): scorre solo l'elenco,
+   con le intestazioni ferme; se lo spazio non basta scorre il corpo intero. */
+.modal-body-elenco { display: flex; flex-direction: column; }
+.modal-body-elenco > * { flex-shrink: 0; }
+.modal-body-elenco > .table-container { flex: 1 1 auto; min-height: 180px; overflow: auto; }
+/* sul telefono lo spazio e' poco: un solo scorrimento, quello del corpo */
+@media (max-width: 640px) {
+    .modal-body-elenco { display: block; }
+    .modal-body-elenco > .table-container { max-height: none; }
+}
+@media (max-width: 480px) {
+    /* Sul telefono i pulsanti del piede riempiono la riga e, se non ci stanno
+       (Modifica utente ne ha quattro), vanno a capo interi invece di tagliare
+       la scritta ('mbia Scu', 'va Modific'). */
+    .modal-footer { flex-wrap: wrap; }
+    .modal-footer .btn { flex: 1 1 auto; justify-content: center; }
+}
+
+/* ---------- 16. Riquadri informativi ---------- */
+/* Il grassetto resta nella frase: con display:block (style.css) ogni parola in
+   grassetto andava a capo da sola e le virgole restavano isolate. Dove il grassetto
+   fa da titolo c'e' gia' un <br> subito dopo. */
+.alert strong { display: inline; margin: 0; }
+
+/* ---------- 17. Rendicontazione ---------- */
+/* Utente archiviato in un mese passato: piccola etichetta "archiviato" dopo il nome
+   (stesso aspetto di "var."), il suo mese resta com'era */
+.badge-var.badge-archiviato { margin: 0 0 0 6px; }
+/* Fasce delle scuole: grigio neutro con barretta blu. Erano una sfumatura blu-viola
+   accesa con testo bianco (3,5:1), la cosa piu' vistosa della pagina; nel tema
+   chiaro, al passaggio del mouse, il nome diventava bianco su azzurro chiarissimo. */
+.table tbody tr.scuola-header,
+.table tbody tr.scuola-header:hover { background: var(--bg-tertiary) !important; box-shadow: none !important; }
+.table tbody tr.scuola-header td { color: var(--text-primary) !important; text-shadow: none; font-weight: 600; }
+.table tbody tr.scuola-header td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.scuola-header td::before { content: none !important; }
+/* Riga "Totale" della scuola: lo pseudo-elemento sul <tr> diventava una cella in
+   piu' a inizio riga e spostava gli importi di una colonna (ore sotto Imponibile,
+   ultima cella fuori dalla tabella). La barretta ora sta sulla prima cella. */
+.scuola-totale::before { content: none !important; display: none !important; }
+.table tbody tr.scuola-totale td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+/* Utenti senza ore: barra arancione a sinistra e velatura visibile. Prima la tinta
+   era all'8% e le celle in piu' trasparenti (0,85): erano le righe MENO leggibili. */
+.table tbody tr.utente-senza-ore { background: rgba(255, 159, 10, 0.13) !important; }
+.table tbody tr.utente-senza-ore:hover { background: rgba(255, 159, 10, 0.2) !important; }
+.utente-senza-ore td { opacity: 1; }
+#table-container .table tbody tr.utente-senza-ore:not(.scuola-header) td:first-child,
+[data-theme="light"] #table-container .table tbody tr.utente-senza-ore:not(.scuola-header) td:first-child {
+    background: linear-gradient(rgba(255, 159, 10, 0.13), rgba(255, 159, 10, 0.13)), var(--bg-card-solid);
+    box-shadow: inset 4px 0 0 var(--warning);
+}
+/* Colonna Utente fissa: al passaggio del mouse prende la stessa tinta della riga
+   (aveva un fondo pieno suo e restava un riquadro scuro, o bianco, a inizio riga) */
+:root #table-container .table tbody tr[data-utente-id]:hover td:first-child {
+    background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-card-solid);
+}
+:root #table-container .table tbody tr.utente-senza-ore[data-utente-id]:hover td:first-child {
+    background: linear-gradient(rgba(255, 159, 10, 0.2), rgba(255, 159, 10, 0.2)), var(--bg-card-solid);
+}
+/* Mese chiuso: le caselle bloccate si leggono come testo, non come campi da compilare */
+.table input.table-input:disabled {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: var(--text-secondary) !important;
+    box-shadow: none !important;
+    cursor: not-allowed;
+    opacity: 1;
+}
+/* Avviso "Mese chiuso" su una riga sola (era alto 80px con i margini, sopra la tabella) */
+#mese-chiuso-banner { margin: 8px 24px; padding: 8px 14px; align-items: center; }
+@media (max-width: 768px) {
+    #mese-chiuso-banner { margin: 8px 16px; align-items: flex-start; }
+}
+
+/* ---------- 18. Pulsanti disattivati ---------- */
+/* Grigi in tutta l'app. Con la sola trasparenza al 50% un pulsante verde o blu
+   disattivato sembrava rotto ('Salva tutte le modifiche' verde scuro, testo a 1,8:1).
+   Grigio senza bordo e un po' attenuato: un pulsante grigio pieno (opacita' 1) si
+   confondeva con i pulsanti secondari attivi ('Avanti' spento accanto a 'Indietro').
+   Esclusi i pulsanti "in caricamento" (setButtonLoading), che restano colorati. */
+.btn:disabled:not(.loading),
+.btn:disabled:not(.loading):hover {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-tertiary) !important;
+    border-color: transparent !important;
+    opacity: 0.6;
+}
+
+/* ---------- 19. Stampa ---------- */
+@media print {
+    /* Tutta la tabella sul foglio: prima restava chiusa nel riquadro alto il 70%
+       dello schermo e uscivano solo 7-9 righe, senza le ultime colonne. */
+    .table-container { max-height: none !important; overflow: visible !important; }
+    /* Titolo nero: .page-title (sopra) lo forzava al colore del tema, bianco nel tema scuro */
+    .page-title { color: #000 !important; -webkit-text-fill-color: #000 !important; }
+
+    /* Foglio chiaro anche dal tema scuro, su tutte le pagine (la Rendicontazione lo
+       faceva gia' da sola). Le card restavano #1C1C1E (§4 annullava il bianco di
+       components.css) con il testo reso nero: nella scheda utente i dati erano nero
+       su quasi nero (1,2:1) e i titoli delle card bianchi sul grigio chiaro. */
+    :root, :root[data-theme] {
+        --bg-primary: #fff; --bg-secondary: #fff; --bg-tertiary: #f2f2f2; --bg-elevated: #fff;
+        --bg-card: #fff; --bg-card-solid: #fff; --bg-input: #fff;
+        --glass-bg: #fff; --glass-border: #ccc;
+        --text-primary: #000; --text-secondary: #222; --text-tertiary: #444; --text-quaternary: #555;
+        --border-color: #bbb; --border-light: #ccc; --accent-text: #000;
+        --success: #15803D; --warning: #B45309; --danger: #B91C1C;
+    }
+    /* badge con le tinte del tema chiaro: quelle scure su bianco erano 1,7:1 */
+    .badge-success { background: #DCFCE7 !important; color: #166534 !important; border-color: #BBF7D0; }
+    .badge-warning { background: #FEF3C7 !important; color: #92400E !important; border-color: #FDE68A; }
+    .badge-danger  { background: #FEE2E2 !important; color: #991B1B !important; border-color: #FECACA; }
+    /* Grafici: nel tema scuro sono disegnati con scritte e griglia chiare, che sul
+       foglio bianco sparivano. Inverte la luminosita' e rigira la tinta: scritte
+       nere, il blu resta blu. */
+    :root:not([data-theme="light"]) canvas { filter: invert(1) hue-rotate(180deg); }
+}
+
+/* ---------- 20. Dashboard ---------- */
+/* In cima lo Stato del mese e il pannello "Da fare", affiancati sul PC: a
+   1366x768 si vedono senza scorrere (prima la pagina era lunga 3 schermate e
+   sopra c'erano solo lo stato e meta' degli avvisi). */
+.dash-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: var(--sp-4);
+    align-items: start;
+    margin-bottom: var(--sp-4);
+}
+.dash-top > .card { margin-bottom: 0; }
+.dash-colonna { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+.dash-colonna > .card { margin-bottom: 0; }
+@media (max-width: 1100px) {
+    .dash-top { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Stato del mese: righe cliccabili verso la Rendicontazione (prima erano <div>
+   che al passaggio del mouse si spostavano e diventavano gialle, senza fare
+   nulla) e nessuno scorrimento nascosto dentro il riquadro. */
+.da-completare-list { margin-top: var(--sp-3); }
+.da-completare-list:empty { display: none; }
+/* Angoli vivi: con gli angoli arrotondati la linea di separazione in basso si
+   curvava agli estremi ("a sorriso") */
+.da-completare-item {
+    gap: var(--sp-3);
+    padding: 9px 12px;
+    color: inherit;
+    text-decoration: none;
+    border-radius: 0;
+    transform: none !important;
+}
+a.da-completare-item:hover,
+[data-theme="light"] a.da-completare-item:hover { background: var(--accent-soft); }
+/* Righe non cliccabili (mese che la Rendicontazione non puo' ancora aprire):
+   nessun cambio al passaggio del mouse */
+.da-completare-item:not(a):hover,
+[data-theme="light"] .da-completare-item:not(a):hover { background: transparent; }
+a.da-completare-item:hover .da-completare-nome { color: var(--accent-text); }
+a.da-completare-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.da-completare-monte { flex-shrink: 0; font-weight: 500; }
+.da-completare-more {
+    display: block;
+    margin-top: var(--sp-2);
+    padding: 9px 12px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: var(--bg-tertiary);
+    color: var(--accent-text);
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-decoration: none;
+}
+.da-completare-more:hover { text-decoration: underline; }
+/* Al posto di "Vedi tutti" quando il mese non ha ancora il calendario */
+.da-completare-avviso {
+    margin: var(--sp-2) 0 0;
+    padding: 9px 12px;
+    border-radius: var(--r-sm);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+.da-completare-avviso a { color: var(--accent-text); font-weight: 600; white-space: nowrap; }
+.da-completare-ok { margin: var(--sp-3) 0 0; color: var(--success); font-weight: 600; text-align: center; }
+
+/* Da fare: avvisi e controlli dei dati in un solo elenco */
+.da-fare-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+.da-fare-icona { width: 20px; height: 20px; flex-shrink: 0; margin-top: 1px; }
+.da-fare-danger .da-fare-icona { color: var(--danger); }
+.da-fare-warning .da-fare-icona { color: var(--warning); }
+.da-fare-info .da-fare-icona { color: var(--accent-text); }
+.da-fare-testo { flex: 1; min-width: 0; }
+.da-fare-titolo { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
+.da-fare-messaggio { font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px; }
+.da-fare-nomi { font-size: 0.78rem; color: var(--text-tertiary); margin-top: 6px; }
+.da-fare-nomi a { color: var(--accent-text); }
+.da-fare-azione { flex-shrink: 0; }
+.da-fare-vuoto { margin: 0; padding: 18px 16px; color: var(--success); font-weight: 600; }
+@media (max-width: 640px) {
+    /* sul telefono il pulsante va sotto il testo (lo copriva) */
+    .da-fare-item { flex-wrap: wrap; }
+    .da-fare-testo { flex-basis: calc(100% - 32px); }
+    .da-fare-azione { margin-left: 32px; width: auto !important; }
+}
+
+/* Nuovo anno scolastico: una riga con i due passi, spiegazione su richiesta
+   (sta sotto "Da fare", dove prima restava uno spazio vuoto) */
+.nuovo-anno-riga {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--sp-2) var(--sp-4);
+    padding: 12px 16px;
+}
+.nuovo-anno-titolo { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px var(--sp-3); }
+.nuovo-anno-titolo .text-muted { font-size: 0.85rem; }
+/* icona a linea al posto dell'emoji 🎒 (a colori su Windows, diversa da PC a PC) */
+.nuovo-anno-icona { width: 18px; height: 18px; margin-right: 8px; vertical-align: -3px; color: var(--text-tertiary); }
+.nuovo-anno-azioni { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.nuovo-anno-dettagli {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--accent-text);
+    text-decoration: underline;
+    cursor: pointer;
+}
+.nuovo-anno-dettagli::after { content: " ▾"; text-decoration: none; }
+.nuovo-anno-dettagli[aria-expanded="true"]::after { content: " ▴"; }
+.nuovo-anno-dettagli:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.nuovo-anno-body { border-top: 1px solid var(--border-color); }
+.nuovo-anno-esito { padding: 0 16px 12px; }
+.nuovo-anno-esito:empty { display: none; }
+
+/* Numeri del servizio: striscia compatta (erano 4 riquadri alti 110px) */
+.dash-numeri {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: var(--sp-4);
+    background: var(--bg-card-solid);
+    border: 1px solid var(--border-color);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-1);
+    overflow: hidden;
+}
+a.dash-numero, a.dash-numero:hover {
+    color: var(--text-secondary);   /* non il blu dei link del tema chiaro */
+}
+.dash-numero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    padding: 12px 16px;
+    text-decoration: none;
+    border-left: 1px solid var(--border-color);
+    min-width: 0;
+}
+.dash-numero:first-child { border-left: 0; }
+.dash-numero:hover { background: var(--accent-soft); }
+.dash-numero:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dash-numero-valore {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+.dash-numero-label { font-size: 0.85rem; }
+.dash-numero-dettaglio { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 0.78rem; color: var(--text-tertiary); }
+.dash-numero-dettaglio:empty { display: none; }
+.dash-numero-commessa { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.dash-numero-commessa .legend-dot { width: 8px; height: 8px; }
+@media (max-width: 900px) {
+    .dash-numeri { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dash-numero:nth-child(3) { border-left: 0; }
+    .dash-numero:nth-child(n+3) { border-top: 1px solid var(--border-color); }
+}
+
+/* Grafico senza dati: una frase al posto della linea piatta a zero */
+.chart-vuoto {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--sp-4);
+    text-align: center;
+    color: var(--text-tertiary);
+}
+.chart-vuoto[hidden] { display: none; }
+/* senza dati il riquadro si riduce a una riga (non 210px vuoti) */
+.chart-container:has(> .chart-vuoto:not([hidden])) { height: auto !important; min-height: 64px; }
+
+/* Report rapidi: riquadri neutri, il blu solo al passaggio del mouse. Avevano il
+   bordo sinistro verde, blu, arancio e viola senza significato (verde e arancio
+   nell'app vogliono dire 'fatto' e 'attenzione'); chi scarica subito un file lo
+   dice, con l'icona e il mese. */
+.report-quick-grid .report-quick-card { border-left: 1px solid var(--border-color); }
+.report-quick-grid .report-quick-card:hover { background: var(--accent-soft); border-color: var(--accent); }
+.report-quick-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.report-quick-desc { display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-size: 0.75rem; }
+.report-quick-dl { width: 14px; height: 14px; flex-shrink: 0; }
+.report-quick-periodo { font-size: 0.75rem; color: var(--text-tertiary); text-align: center; }
+.report-quick-periodo:empty { display: none; }
+
+/* ---------- 21. Statistiche ---------- */
+/* Filtri: tendine larghe quanto il testo ('Tutte le commes', 'Settembre 20…')
+   e un solo "Mese di riferimento" per tutti i riquadri mensili */
+.stat-filtri { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sp-3); }
+.stat-filtri .form-control { width: auto; }
+.stat-filtro-commessa { min-width: 190px; }
+.stat-filtro-anno { min-width: 150px; }
+.stat-filtro-mese { display: inline-flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: 0.85rem; color: var(--text-secondary); }
+.stat-filtro-mese .form-control { min-width: 175px; }
+@media (max-width: 640px) {
+    .stat-filtri { justify-content: stretch; }
+    .stat-filtri > .form-control, .stat-filtro-mese { flex: 1 1 100%; }
+    .stat-filtro-mese .form-control { flex: 1; min-width: 0; }
+}
+/* Etichetta grigia del periodo nell'intestazione dei riquadri ("Giugno 2026") */
+.card-periodo { font-size: 0.8rem; color: var(--text-tertiary); white-space: nowrap; }
+@media (max-width: 640px) { .card-periodo { white-space: normal; } }
+
+/* Heatmap: una tinta per ogni fascia (prima 2 e 3, 4 e 5 differivano solo per la
+   trasparenza) e numeri leggibili in entrambi i temi (bianco su pastello era
+   1,4-2,1:1 nel tema chiaro). */
+.heatmap-cell { font-size: 0.75rem; }
+.heatmap-cell[data-level="1"] { background: rgba(239, 68, 68, 0.42); color: #fff; }
+.heatmap-cell[data-level="2"] { background: rgba(249, 115, 22, 0.45); color: #fff; }
+.heatmap-cell[data-level="3"] { background: rgba(234, 179, 8, 0.38); color: #fff; }
+.heatmap-cell[data-level="4"] { background: rgba(74, 222, 128, 0.28); color: #fff; }
+.heatmap-cell[data-level="5"] { background: #047857; color: #fff; }
+/* Casella sotto il mouse: ferma, con un bordo blu netto. Si ingrandiva del 10% con
+   un alone blu sfocato (components.css). */
+.heatmap-table .heatmap-cell:hover { transform: none; box-shadow: 0 0 0 2px var(--accent); }
+[data-theme="light"] .heatmap-cell[data-level="0"] { background: #E5E7EB; color: #374151; }
+[data-theme="light"] .heatmap-cell[data-level="1"] { background: #FECACA; color: #7F1D1D; }
+[data-theme="light"] .heatmap-cell[data-level="2"] { background: #FED7AA; color: #7C2D12; }
+[data-theme="light"] .heatmap-cell[data-level="3"] { background: #FEF08A; color: #713F12; }
+[data-theme="light"] .heatmap-cell[data-level="4"] { background: #BBF7D0; color: #14532D; }
+[data-theme="light"] .heatmap-cell[data-level="5"] { background: #22C55E; color: #052E16; }
+.heatmap-table td:first-child { max-width: 190px; }
+.heatmap-altri { display: flex; align-items: center; justify-content: center; gap: var(--sp-2); padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); }
+.heatmap-altri[hidden] { display: none; }
+/* Legenda a parole, testo di 12px (era 9,6px) */
+.heatmap-legenda-riga { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); padding: 12px 16px; font-size: 0.8rem; }
+.heatmap-legenda { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; margin: 0; padding: 0; list-style: none; }
+.heatmap-legenda li { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-secondary); }
+.heatmap-legenda .heatmap-cell { width: 14px; height: 14px; border-radius: 3px; cursor: default; }
+.heatmap-legenda .heatmap-cell:hover { transform: none; box-shadow: none; }
+
+/* Top 5 scuole: tutte e 5 visibili (prima la quinta era in uno scorrimento interno) */
+.top-scuola { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border-color); }
+.top-scuola:last-child { border-bottom: 0; }
+.top-scuola-pos {
+    width: 24px; height: 24px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: var(--accent-strong); color: #fff;
+    font-weight: 700; font-size: 0.75rem;
+}
+.top-scuola-info { flex: 1; min-width: 0; }
+.top-scuola-nome { font-weight: 500; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-scuola-dettaglio { font-size: 0.75rem; color: var(--text-tertiary); }
+.top-scuola-ore { font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
+
+/* Confronto mese */
+.confronto-variazione { font-size: 2rem; font-weight: 700; line-height: 1.2; }
+.confronto-nota { font-size: 0.78rem; color: var(--text-tertiary); text-align: center; }
+.confronto-vuoto { padding: 8px 0; color: var(--text-tertiary); }
+.confronto-colonna { flex: 1; text-align: center; }
+.confronto-etichetta { font-size: 0.72rem; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.03em; }
+.confronto-ore { font-size: 1.1rem; font-weight: 600; }
+.confronto-dettaglio { font-size: 0.75rem; color: var(--text-secondary); }
+/* Confronto annuale accanto ai "10 utenti": 5 colonne corte, niente 600px minimi */
+#confronto-annuale-container .table { min-width: 0; }
+#confronto-annuale-container .table th,
+#confronto-annuale-container .table td { padding-left: 12px; padding-right: 12px; }
+#confronto-annuale-container .table th { white-space: normal; }
+
+/* ---------- 22. Pagina Report e Import ---------- */
+/* Le 4 schede di download sono pulsanti veri (Tab + Invio): prima erano <div>
+   cliccabili solo col mouse. Stanno su una riga anche a 1366px (erano 3+1). */
+.report-cards-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-4); }
+button.report-card {
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    align-items: stretch;
+}
+.report-card-icon, .report-card-title, .report-card-desc { display: block; }
+.report-card-icon { display: flex; }
+.report-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* "Scarica ..." nel colore del testo: verde Excel e blu Word sul fondo scuro, o
+   arancio sul bianco, scendevano a 2,0-2,9:1. Il colore del tipo di report resta
+   alla striscia in alto, all'icona e alla freccia. */
+.report-card-action { color: var(--text-primary); }
+.report-card-action svg { color: var(--report-card-color, var(--primary)); }
+.report-card-icon,
+[data-theme="light"] .report-card-icon {
+    background: color-mix(in srgb, var(--report-card-color, var(--primary)) 14%, transparent);
+}
+/* Il colore dice il tipo di file: verde Excel per i tre file .xlsx, blu Word per
+   la relazione (prima Municipale era blu e Dipartimentale arancio, come un avviso) */
+.report-card.excel, .report-card.municipale, .report-card.dipartimentale { --report-card-color: var(--report-excel); }
+.report-card.word { --report-card-color: var(--report-word); }
+
+/* Zone "Clicca per selezionare" dell'Import: raggiungibili col Tab (app.js) */
+.file-upload:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Guida "Cosa contiene ogni report": chiusa di base */
+.report-guida { margin-top: var(--sp-5); }
+
+/* ---------- 23. Reportistica DD ---------- */
+/* "Carica Report" alla stessa altezza dei campi: .form-group:last-child perdeva
+   il margine in basso e, allineato in fondo alla griglia, scendeva di 20px */
+.form-group-azione { display: flex; align-items: flex-end; }
+.form-row > .form-group-azione:last-child { margin-bottom: 20px; }
+@media (max-width: 768px) {
+    .form-row > .form-group-azione:last-child { margin-bottom: 0; }
+}
+
+/* Cestino sulle righe: icona tranquilla che diventa rossa al passaggio del mouse
+   o col Tab (era un pulsante rosso pieno su ogni riga, piu' vistoso dei dati) */
+.btn.btn-icon-danger {
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    color: var(--text-tertiary) !important;
+}
+.btn.btn-icon-danger:hover,
+.btn.btn-icon-danger:focus-visible {
+    background: rgba(220, 38, 38, 0.12) !important;
+    border-color: rgba(220, 38, 38, 0.35) !important;
+    color: var(--danger) !important;
+}
+
+/* Azioni sulle righe degli elenchi (Utenti, Dipendenti, Commesse, Turni...): stesso
+   schema ovunque, 'Modifica' con la matita e le azioni rare nel menu '⋯' (app.js,
+   MenuAzioni). Erano 5 emoji a colori per riga con un cestino rosso pieno. */
+.azioni-riga { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn.btn-sm.btn-solo-icona { padding-left: 9px; padding-right: 9px; }
+.menu-azioni {
+    position: fixed;
+    z-index: 950;   /* sopra barra in alto e menu laterale, sotto le finestre */
+    min-width: 210px;
+    padding: 4px;
+    background: var(--bg-card-solid);
+    border: 1px solid var(--border-color);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-2);
+}
+.menu-azioni-voce {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: left;
+    cursor: pointer;
+}
+.menu-azioni-voce svg { color: var(--text-tertiary); flex-shrink: 0; }
+.menu-azioni-voce:hover, .menu-azioni-voce:focus-visible { background: var(--bg-tertiary); outline: none; }
+.menu-azioni-voce.pericolo, .menu-azioni-voce.pericolo svg { color: var(--danger); }
+.menu-azioni-sep { height: 1px; margin: 4px 0; background: var(--border-color); }
+
+/* ---------- 24. Riquadri numerici (stat-card) ---------- */
+/* Icone grigie e ferme (Riepilogo Totali della Rendicontazione): erano blu, viola,
+   azzurra e verde, con un alone sfocato e si ingrandivano al passaggio del mouse */
+.stat-card .stat-icon { background: var(--bg-tertiary); color: var(--text-secondary); box-shadow: none; }
+.stat-icon::before { display: none; }
+.stat-card:hover .stat-icon, .stat-card:hover .stat-icon svg { transform: none; }
+/* Anche il numero resta fermo: al passaggio del mouse si ingrandiva del 5% e sotto
+   si allungava una sottolineatura blu-viola (premium-effects.css) */
+.stat-value::after { display: none !important; }
+.stat-card:hover .stat-value { transform: none !important; }
+/* Il valore resta intero e dentro la scheda (a 1366px '32.471,40 €' usciva e
+   perdeva il '€'): nelle schede strette (meno di 280px, tutte quelle di una
+   riga hanno la stessa larghezza) l'icona va SOPRA il valore, cosi' la riga
+   resta uniforme; se un valore non ci sta comunque accanto all'icona va a capo
+   da solo invece di uscire. Nessun valore viene rimpicciolito. La scritta sotto
+   non decide l'a capo (contain): si adatta alla larghezza che c'e'. */
+.stat-card:has(> .stat-content) { container-type: inline-size; flex-wrap: wrap; row-gap: 10px; min-width: 0; }
+.stat-card .stat-content { flex: 1 1 auto; }
+.stat-content .stat-value { white-space: nowrap; }
+.stat-content .stat-label { contain: inline-size; }
+@container (max-width: 280px) {
+    .stat-card .stat-content { flex-basis: 100%; }
+}
+
+/* ---------- 25. Anagrafiche: Utenti, Dipendenti, Turni, schede ---------- */
+/* Lista d'attesa di un anno scolastico passato (elenco Utenti e scheda): grigia,
+   attenuata e con l'anno ("Marzo 25/26"), perche' nei report di quest'anno non conta */
+.lista-anno-passato { opacity: .8; font-weight: 500; }
+/* Elenco Utenti: resta ferma a sinistra la colonna 'Cognome e nome' quando la
+   tabella scorre di lato (prima restava ferma 'Commessa', presa in prestito dalle
+   regole della Rendicontazione, e al passaggio del mouse restava bianca). */
+.table.prima-colonna-fissa th:first-child,
+.table.prima-colonna-fissa td:first-child { position: sticky; left: 0; white-space: nowrap; }
+.table.prima-colonna-fissa thead th:first-child { z-index: 11; }
+.table.prima-colonna-fissa tbody td:first-child { z-index: 2; background: var(--bg-card-solid); }
+.table.prima-colonna-fissa tbody tr:hover td:first-child {
+    background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-card-solid);
+}
+/* Tema chiaro: la cella ferma delle righe pari ha la stessa tinta della riga
+   (style.css, rgba(0,0,0,.015)); restava bianca, anche al passaggio del mouse */
+[data-theme="light"] .table.prima-colonna-fissa tbody tr:nth-child(even) td:first-child {
+    background: linear-gradient(rgba(0, 0, 0, 0.015), rgba(0, 0, 0, 0.015)), var(--bg-card-solid);
+}
+[data-theme="light"] .table.prima-colonna-fissa tbody tr:nth-child(even):hover td:first-child {
+    background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-card-solid);
+}
+/* Elenco compatto: a 1366px entra tutto, azioni comprese, senza scorrere di lato
+   (con i margini normali la tabella era larga 1214px in un riquadro di 1040) */
+.table.prima-colonna-fissa th, .table.prima-colonna-fissa td { padding-left: 12px; padding-right: 12px; }
+.table.prima-colonna-fissa td.cella-scuola { max-width: 260px; }
+@media (max-width: 1400px) {
+    /* 'Modifica' resta la matita, col nome nel suggerimento e per i lettori di schermo */
+    .table.prima-colonna-fissa .azione-testo { display: none; }
+}
+/* colonne che sul telefono si possono tralasciare (restano nella scheda) */
+@media (max-width: 768px) {
+    .table .col-secondaria { display: none; }
+}
+
+/* Nomi delle scuole nelle tabelle: interi finche' ci stanno, poi i puntini, e il
+   nome completo passando il mouse (title). Prima erano tagliati nel codice a
+   30-40 lettere senza puntini, proprio dove si distingue il plesso. */
+.table td.cella-scuola {
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Nomi di persone (assistito, operatore) su una riga: accanto alla colonna Scuola,
+   che si prende fino a 320px, nella scheda dipendente a 1366 'Barbieri / Alice'
+   andava a capo in una colonna da 100px mentre 'Ore/sett.' ne aveva 99 per un '6' */
+.table td.cella-nome { white-space: nowrap; }
+/* Tabelle nelle card a meta' pagina della scheda dipendente (Assistiti seguiti,
+   Turni): la Scuola prende solo lo spazio che avanza e finisce coi puntini. Col
+   tetto fisso di 320px, a 1280-1366 la tabella usciva dalla card e scorreva di lato. */
+.table.tabella-scheda td.cella-scuola { width: 100%; max-width: 0; }
+/* sul telefono le tabelle piccole (scheda dipendente, turni) restano nello schermo */
+@media (max-width: 768px) {
+    .table td.cella-scuola, .table.prima-colonna-fissa td.cella-scuola { max-width: 170px; }
+}
+@media (max-width: 480px) {
+    /* nelle righe resta la matita, con il nome del comando nel suggerimento */
+    .azioni-riga .azione-testo { display: none; }
+}
+
+/* ---------- 26. Barre dei filtri su tablet e telefono ---------- */
+/* In griglia: a 768px i 4 filtri della Rendicontazione stanno su una riga (il
+   pannello scende da 402 a circa 170px), sul telefono uno per riga, tutti larghi
+   uguali. Prima erano uno sotto l'altro a tutta larghezza anche sul tablet,
+   'Scuola' si fermava a 250px (anche a 390px, lasciando un vuoto a destra) e la
+   casella 'Mostra disattivati' di Dipendenti si allargava a tutta la riga, con la
+   scritta lontana, sul bordo destro. */
+@media (max-width: 768px) {
+    .filters {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        align-items: end;
+    }
+    .filter-group-scuola select.form-control { max-width: none; }
+    .filters input[type="checkbox"], .filters input[type="radio"] { width: 18px !important; flex-shrink: 0; }
+    /* Dashboard sul tablet: le due tendine dell'intestazione affiancate, non una per
+       riga (sul telefono, dove non ci stanno intere, tornano una per riga) */
+    .page-header-row > .header-actions > select.form-control { flex: 1 1 200px; width: auto !important; }
+    /* ...e i pulsanti tengono la loro larghezza: se non c'e' posto vanno a capo.
+       Con 'flex: 1' (style.css, ux-enhancements.css) partivano da zero e le
+       tendine li schiacciavano: tra 481 e 768px 'Import Dati' era tagliato. */
+    .page-header-row > .header-actions > .btn { flex: 1 1 auto; }
+}
+@media (max-width: 480px) {
+    /* telefono: un filtro per riga, tutti larghi uguali. In due colonne da 160px si
+       tagliavano 'Tutte le scuole', '— scegli un operatore —' e i pulsanti del
+       Calendario finivano uno sotto l'altro in mezza riga. */
+    .filters { grid-template-columns: minmax(0, 1fr); }
+}
+@media (min-width: 481px) and (max-width: 768px) {
+    /* tablet: la ricerca per nome e la scelta dell'operatore prendono due colonne,
+       in una sola da 160-200px si tagliavano ('— scegli un operator',
+       'Nome, cognome o C.') */
+    .filters .filter-group:has(input[type="text"], input[type="search"], #sel-operatore) { grid-column: span 2; }
+}
+
+/* ---------- 27. Schede Utente e Dipendente (stesso componente) ---------- */
+/* Intestazione: freccia 'indietro' e nome a sinistra, azioni a destra */
+.scheda-titolo { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.scheda-titolo-testo { min-width: 0; }
+.scheda-titolo .btn { flex-shrink: 0; }
+/* 'Disattiva' e' un pulsante grigio con la scritta rossa (tinte leggibili sul grigio) */
+.btn.btn-secondary.text-danger { color: var(--danger-light) !important; }
+[data-theme="light"] .btn.btn-secondary.text-danger { color: var(--danger) !important; }
+
+/* Dati della scheda: righe etichetta/valore, etichetta piccola e grigia, valore
+   normale; i valori mancanti sono un trattino grigio, non 'Non specificato' in
+   grassetto come un dato vero (app.js, rigaDati) */
+.dati-riga {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--sp-4);
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.dati-riga:last-child { border-bottom: 0; }
+.dati-etichetta { flex-shrink: 0; font-size: 0.8125rem; color: var(--text-tertiary); }
+.dati-valore { min-width: 0; font-size: 0.9375rem; font-weight: 500; color: var(--text-primary); text-align: right; overflow-wrap: anywhere; }
+.dati-valore.vuoto { font-weight: 400; color: var(--text-quaternary); }
+
+/* Riepilogo ore della scheda utente: numero grande sopra, etichetta sotto */
+/* sempre due per riga (2x2): con 'auto-fit' a 1440 la card larga circa 510px ne
+   prendeva 3 e 'Media ore al mese' restava da solo sulla seconda riga; a 390 i
+   riquadri sono larghi circa 160px e i numeri ci stanno interi */
+.ud-kpi-griglia { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.ud-kpi {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+    padding: 14px 16px;
+    background: var(--bg-tertiary);
+    border-radius: var(--r-md);
+}
+.ud-kpi-valore { font-size: 1.75rem; font-weight: 700; line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.ud-kpi-etichetta { font-size: 0.8125rem; color: var(--text-secondary); }
+/* Stato budget: stesso riquadro, con la barra a tutta larghezza e la nota sotto.
+   Barra alta 8px come le altre; binario del colore della card, perche' il grigio
+   comune (bg-tertiary, #E5E5EA nel chiaro) e' lo stesso del riquadro e il binario
+   spariva. Tratto pieno senza alone; arancio sopra il 70%, rosso sopra il 90%. */
+.ud-budget .progress-bar { align-self: stretch; height: 8px; margin-top: 4px; border-radius: 4px; background: var(--bg-card-solid); }
+.ud-budget .progress-fill { height: 100%; border-radius: 4px; background: var(--primary); transition: width .3s ease; }
+.ud-budget .progress-fill.warning { background: var(--warning); }
+.ud-budget .progress-fill.danger { background: var(--danger); }
+.ud-budget-nota { margin-top: 4px; font-size: 0.8125rem; color: var(--text-secondary); }
+/* Etichetta "N variaz." accanto al monte ore: il dettaglio e' nel suggerimento */
+.ud-badge-variazioni { cursor: help; }
+
+/* Orari nelle tabelle delle schede: su una riga, carattere normale */
+.cella-orario { white-space: nowrap; font-weight: 600; }
+
+/* ---------- 28. Telefono: campi e pulsanti comodi da toccare ---------- */
+/* Testo dei campi da 16px: sotto questa misura l'iPhone ingrandisce la pagina a
+   ogni tocco su un campo (filtri 14,4px, ore 13,3-14,4px, accesso 15,2px) e poi
+   va rimpicciolita a mano. Pulsanti alti almeno 40px (alcuni erano 26-31px). */
+@media (max-width: 768px) {
+    /* !important: vale anche sui campi con la misura scritta nella pagina (Dashboard) */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+    select, textarea, .form-control, .table input.table-input { font-size: 16px !important; }
+    .btn { min-height: 40px; }
+}
+/* Nuova variazione del monte ore: due campi per riga, uno per riga sul telefono
+   (a 360px il campo 'A partire da' usciva dalla finestra: le colonne '1fr' non
+   scendevano sotto la larghezza minima del campo mese) */
+.griglia-variazione { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.griglia-variazione .form-control { min-width: 0; }
+/* l'ultimo campo ('Fino a') perdeva il margine (.form-group:last-child) e 'Nota' gli
+   stava attaccata */
+.griglia-variazione > .form-group:last-child { margin-bottom: var(--space-2); }
+@media (max-width: 480px) {
+    .griglia-variazione { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+/* Due campi affiancati (Attivo da / fino a, Data inizio / fine): ciascuno sta nella
+   sua meta' anche sul telefono (il campo mese usciva a destra dalla finestra) */
+.form-row > .form-group { min-width: 0; }
+
+/* ---------- 29. Ricerca rapida (Ctrl+K) ---------- */
+/* Icone grigie, la voce scelta in blu e ferma. Erano riquadri blu, viola, verdi,
+   azzurri e arancioni (verde e arancio sono i colori di 'fatto' e 'attenzione') e
+   la voce scelta si spostava di 6px con una barra blu-viola. */
+.command-palette .command-item-icon { background: var(--bg-tertiary); color: var(--text-secondary); }
+.command-palette .command-item.selected .command-item-icon { background: var(--accent-soft); color: var(--accent-text); }
+.command-item:hover, .command-item.selected { transform: none !important; }
+.command-item::before { display: none !important; }
+
+/* ---------- 30. Messaggi a comparsa (toast) ---------- */
+/* La X sempre sul bordo destro e grigia: seguiva la lunghezza del testo (con piu'
+   messaggi stava ogni volta in un punto diverso) e prendeva il colore dell'icona
+   di stato, cosi' in 'Errore nel salvataggio' sembrava una seconda icona rossa. */
+.toast > span { flex: 1; min-width: 0; }
+.toast-close { margin-left: auto; }
+.toast .toast-close svg { color: inherit; }

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block title %}Reportistica DD - Gestionale OEPAC{% endblock %}
 
@@ -23,7 +24,7 @@
                 <select id="select-anno" class="form-control">
                 </select>
             </div>
-            <div class="form-group" style="display: flex; align-items: flex-end;">
+            <div class="form-group form-group-azione">
                 <button class="btn btn-primary" onclick="caricaReport()">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -47,7 +48,7 @@
         </button>
     </div>
     <div class="card-body">
-        <p class="text-muted mb-3">Le ore annuali delle DD sono gia decurtate dell'11% per assenze previste.</p>
+        <p class="text-muted mb-3">Le ore annuali delle DD sono già decurtate dell'11% per assenze previste.</p>
         <div class="table-container">
             <table class="table" id="tabella-dd">
                 <thead>
@@ -55,8 +56,8 @@
                         <th>N. DD</th>
                         <th>Data DD</th>
                         <th>Mese Inizio</th>
-                        <th>Ore Settimanali</th>
-                        <th>Ore Annuali (-11%)</th>
+                        <th class="text-right">Ore Settimanali</th>
+                        <th class="text-right">Ore Annuali (-11%)</th>
                         <th>Note</th>
                         <th>Azioni</th>
                     </tr>
@@ -66,7 +67,7 @@
                 <tfoot>
                     <tr class="table-summary">
                         <td colspan="4"><strong>Totale Ore Annuali</strong></td>
-                        <td id="totale-dd-ore"><strong>0</strong></td>
+                        <td id="totale-dd-ore" class="text-right"><strong>0</strong></td>
                         <td colspan="2"></td>
                     </tr>
                 </tfoot>
@@ -78,7 +79,7 @@
 <!-- Report mensile -->
 <div class="card mb-4" id="sezione-report" style="display: none;">
     <div class="card-header">
-        <h2 class="card-title">Report Mensile - <span id="nome-commessa"></span></h2>
+        <h2 class="card-title"><span>Report Mensile - <span id="nome-commessa"></span></span></h2>
     </div>
     <div class="card-body">
         <div class="table-container">
@@ -86,13 +87,13 @@
                 <thead>
                     <tr>
                         <th>Mese</th>
-                        <th>GG Lav.</th>
-                        <th>Progettato</th>
-                        <th>Erogato</th>
-                        <th>Recuperi</th>
-                        <th>Saldo Ore</th>
-                        <th>Max Imponibile</th>
-                        <th>Effettivo</th>
+                        <th class="text-right">GG Lav.</th>
+                        <th class="text-right">Progettato</th>
+                        <th class="text-right">Erogato</th>
+                        <th class="text-right">Recuperi</th>
+                        <th class="text-right">Saldo Ore</th>
+                        <th class="text-right">Max Imponibile</th>
+                        <th class="text-right">Effettivo</th>
                     </tr>
                 </thead>
                 <tbody id="tbody-report">
@@ -100,13 +101,13 @@
                 <tfoot>
                     <tr class="table-summary">
                         <td><strong>TOTALI</strong></td>
-                        <td id="tot-giorni"></td>
-                        <td id="tot-progettato"></td>
-                        <td id="tot-erogato"></td>
-                        <td id="tot-recuperi"></td>
-                        <td id="tot-saldo"></td>
-                        <td id="tot-max-imp"></td>
-                        <td id="tot-effettivo"></td>
+                        <td id="tot-giorni" class="text-right"></td>
+                        <td id="tot-progettato" class="text-right"></td>
+                        <td id="tot-erogato" class="text-right"></td>
+                        <td id="tot-recuperi" class="text-right"></td>
+                        <td id="tot-saldo" class="text-right"></td>
+                        <td id="tot-max-imp" class="text-right"></td>
+                        <td id="tot-effettivo" class="text-right"></td>
                     </tr>
                 </tfoot>
             </table>
@@ -132,7 +133,7 @@
                 <thead>
                     <tr>
                         <th>Mese</th>
-                        <th>Ore Recupero</th>
+                        <th class="text-right">Ore Recupero</th>
                         <th>Note</th>
                         <th>Azioni</th>
                     </tr>
@@ -149,7 +150,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title" id="modal-dd-title">Aggiungi Determina Dirigenziale</h3>
-            <button class="modal-close" onclick="chiudiModalDD()">&times;</button>
+            {{ modal_close("chiudiModalDD()") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="dd-id">
@@ -211,7 +212,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title" id="modal-recupero-title">Aggiungi Recupero</h3>
-            <button class="modal-close" onclick="chiudiModalRecupero()">&times;</button>
+            {{ modal_close("chiudiModalRecupero()") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="recupero-id">
@@ -260,11 +261,6 @@
 .table-summary td {
     border-top: 2px solid var(--primary-color);
 }
-.text-success { color: var(--success-color); }
-.text-danger { color: var(--danger-color); }
-.text-warning { color: var(--warning-color); }
-.mb-3 { margin-bottom: 1rem; }
-.mb-4 { margin-bottom: 1.5rem; }
 
 /* Stili per celle editabili */
 .editable-cell {
@@ -309,6 +305,7 @@ const MESI_NOME = {
 };
 
 let reportCorrente = null;
+let recuperiCorrenti = [];   // singoli recuperi (id, note): per modifica/eliminazione
 
 // Inizializzazione
 document.addEventListener('DOMContentLoaded', async () => {
@@ -365,6 +362,12 @@ async function caricaReport() {
         if (!response.ok) throw new Error('Errore caricamento report');
 
         reportCorrente = await response.json();
+        try {
+            const r = await fetch(`/api/recuperi/${commessaId}/${annoScolastico}`);
+            recuperiCorrenti = r.ok ? await r.json() : [];
+        } catch (e) {
+            recuperiCorrenti = [];
+        }
         renderReport();
 
         // Mostra le sezioni
@@ -405,18 +408,18 @@ function renderDD() {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${dd.numero_dd || '-'}</td>
-            <td>${dd.data_dd || '-'}</td>
+            <td>${dd.data_dd ? escapeHtml(formatDataIT(dd.data_dd)) : '-'}</td>
             <td>${MESI_NOME[dd.mese_inizio]} ${dd.anno_inizio}</td>
-            <td>${dd.ore_settimanali.toFixed(2)}</td>
-            <td>${dd.ore_annuali.toFixed(2)}</td>
+            <td class="text-right">${formatNumber(dd.ore_settimanali)}</td>
+            <td class="text-right">${formatNumber(dd.ore_annuali)}</td>
             <td>${dd.note || '-'}</td>
             <td>
-                <button class="btn btn-secondary btn-sm" onclick="modificaDD(${dd.id})">
+                <button class="btn btn-secondary btn-sm" onclick="modificaDD(${dd.id})" title="Modifica" aria-label="Modifica DD">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                 </button>
-                <button class="btn btn-danger btn-sm" onclick="eliminaDD(${dd.id})">
+                <button class="btn btn-sm btn-icon-danger" onclick="eliminaDD(${dd.id})" title="Elimina" aria-label="Elimina DD">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
@@ -426,7 +429,7 @@ function renderDD() {
         tbody.appendChild(tr);
     });
 
-    document.getElementById('totale-dd-ore').innerHTML = `<strong>${totaleOre.toFixed(2)}</strong>`;
+    document.getElementById('totale-dd-ore').innerHTML = `<strong>${formatNumber(totaleOre)}</strong>`;
 }
 
 function renderTabellaReport() {
@@ -455,7 +458,7 @@ function renderTabellaReport() {
             ${progCell}
             ${erogCell}
             ${recCell}
-            <td class="${saldoClass}">${m.saldo >= 0 ? '+' : ''}${m.saldo.toFixed(2)}</td>
+            <td class="text-right ${saldoClass}">${formatOre(m.saldo, true)}</td>
             ${maxImpCell}
             ${effCell}
         `;
@@ -467,26 +470,34 @@ function renderTabellaReport() {
     const saldoClass = t.saldo >= 0 ? 'text-success' : 'text-danger';
 
     document.getElementById('tot-giorni').textContent = totGiorni;
-    document.getElementById('tot-progettato').innerHTML = `<strong>${t.progettato.toFixed(2)}</strong>`;
-    document.getElementById('tot-erogato').innerHTML = `<strong>${t.erogato.toFixed(2)}</strong>`;
-    document.getElementById('tot-recuperi').innerHTML = `<strong>${t.recuperi.toFixed(2)}</strong>`;
-    document.getElementById('tot-saldo').innerHTML = `<strong class="${saldoClass}">${t.saldo >= 0 ? '+' : ''}${t.saldo.toFixed(2)}</strong>`;
+    document.getElementById('tot-progettato').innerHTML = `<strong>${formatNumber(t.progettato)}</strong>`;
+    document.getElementById('tot-erogato').innerHTML = `<strong>${formatNumber(t.erogato)}</strong>`;
+    document.getElementById('tot-recuperi').innerHTML = `<strong>${formatNumber(t.recuperi)}</strong>`;
+    document.getElementById('tot-saldo').innerHTML = `<strong class="${saldoClass}">${formatOre(t.saldo, true)}</strong>`;
     document.getElementById('tot-max-imp').innerHTML = `<strong>${formatCurrency(t.max_imponibile)}</strong>`;
     document.getElementById('tot-effettivo').innerHTML = `<strong>${formatCurrency(t.effettivo)}</strong>`;
+
+    // Dopo un salvataggio la tabella viene ricostruita: torna sulla cella di partenza
+    rifocalizzaCella();
 }
 
-// Helper per costruire celle editabili
+// Celle modificabili: la modifica avviene DENTRO la cella (Invio salva, Esc annulla,
+// Tab passa alla cella successiva, vuoto = torna al calcolo automatico) ed e'
+// raggiungibile da tastiera (Tab tra le celle, Invio o F2 per modificare).
+// Prima ogni valore si cambiava con una finestra di sistema (prompt).
 function buildEditableCell(m, campo, valore, valoreAuto, isOverride, decimali) {
     const overrideClass = isOverride ? 'has-override' : '';
-    const displayValue = decimali ? valore.toFixed(2) : valore;
-    const displayAuto = decimali ? valoreAuto.toFixed(2) : valoreAuto;
+    const displayValue = decimali ? formatNumber(valore) : valore;
+    const displayAuto = decimali ? formatNumber(valoreAuto) : valoreAuto;
     const title = isOverride
-        ? `Valore modificato (auto: ${displayAuto}). Clicca per modificare.`
-        : 'Clicca per modificare';
+        ? `Valore modificato (automatico: ${displayAuto}). Invio o clic per modificare; vuoto = torna all'automatico`
+        : 'Invio o clic per modificare';
     const indicator = isOverride ? '<span class="override-indicator">*</span>' : '';
 
-    return `<td class="editable-cell ${overrideClass}" title="${title}"
-                onclick="modificaCampo(${m.mese}, ${m.anno}, '${campo}', ${valore}, ${valoreAuto}, ${isOverride}, ${decimali})">
+    return `<td class="editable-cell text-right ${overrideClass}" tabindex="0" role="button" title="${title}"
+                data-mese="${m.mese}" data-anno="${m.anno}" data-campo="${campo}"
+                data-valore="${valore}" data-auto="${valoreAuto}" data-override="${isOverride ? 1 : 0}"
+                data-decimali="${decimali ? 1 : 0}" data-currency="0">
                 <span>${displayValue}</span>${indicator}
             </td>`;
 }
@@ -494,12 +505,14 @@ function buildEditableCell(m, campo, valore, valoreAuto, isOverride, decimali) {
 function buildEditableCurrencyCell(m, campo, valore, valoreAuto, isOverride) {
     const overrideClass = isOverride ? 'has-override' : '';
     const title = isOverride
-        ? `Valore modificato (auto: ${formatCurrency(valoreAuto)}). Clicca per modificare.`
-        : 'Clicca per modificare';
+        ? `Valore modificato (automatico: ${formatCurrency(valoreAuto)}). Invio o clic per modificare; vuoto = torna all'automatico`
+        : 'Invio o clic per modificare';
     const indicator = isOverride ? '<span class="override-indicator">*</span>' : '';
 
-    return `<td class="editable-cell ${overrideClass}" title="${title}"
-                onclick="modificaCampo(${m.mese}, ${m.anno}, '${campo}', ${valore}, ${valoreAuto}, ${isOverride}, true, true)">
+    return `<td class="editable-cell text-right ${overrideClass}" tabindex="0" role="button" title="${title}"
+                data-mese="${m.mese}" data-anno="${m.anno}" data-campo="${campo}"
+                data-valore="${valore}" data-auto="${valoreAuto}" data-override="${isOverride ? 1 : 0}"
+                data-decimali="1" data-currency="1">
                 <span>${formatCurrency(valore)}</span>${indicator}
             </td>`;
 }
@@ -514,39 +527,114 @@ const CAMPO_NOMI = {
     'effettivo': 'Effettivo'
 };
 
-// Funzione generica per modificare qualsiasi campo
-function modificaCampo(mese, anno, campo, valoreAttuale, valoreAuto, isOverride, decimali = true, isCurrency = false) {
-    const meseNome = MESI_NOME[mese];
-    const campoNome = CAMPO_NOMI[campo] || campo;
+// Cella da rimettere a fuoco dopo il ricaricamento della tabella (salvataggio)
+let cellaDaRifocalizzare = null;
 
-    const formatVal = (v) => {
-        if (isCurrency) return formatCurrency(v);
-        return decimali ? v.toFixed(2) : v.toString();
+// Un solo set di listener (delegati) per tutte le celle modificabili
+document.addEventListener('DOMContentLoaded', () => {
+    const tbody = document.getElementById('tbody-report');
+    if (!tbody) return;
+    tbody.addEventListener('click', (e) => {
+        const td = e.target.closest('td.editable-cell');
+        if (td && !td.querySelector('input')) avviaModificaCella(td);
+    });
+    tbody.addEventListener('keydown', (e) => {
+        const td = e.target.closest('td.editable-cell');
+        if (!td || e.target.tagName === 'INPUT') return;
+        if (e.key === 'Enter' || e.key === 'F2') {
+            e.preventDefault();
+            avviaModificaCella(td);
+        }
+    });
+});
+
+function rifocalizzaCella() {
+    if (!cellaDaRifocalizzare) return;
+    const { mese, anno, campo, apri } = cellaDaRifocalizzare;
+    cellaDaRifocalizzare = null;
+    const td = document.querySelector(`#tbody-report td.editable-cell[data-mese="${mese}"][data-anno="${anno}"][data-campo="${campo}"]`);
+    if (!td) return;
+    td.focus();
+    if (apri) avviaModificaCella(td);
+}
+
+function avviaModificaCella(td) {
+    if (td.querySelector('input')) return;
+    const d = td.dataset;
+    const decimali = d.decimali === '1';
+    const isOverride = d.override === '1';
+    const valoreAttuale = Number(d.valore);
+    const span = td.querySelector('span');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.className = 'form-control cella-input';
+    // virgola come nella cella, senza separatore delle migliaia (la conferma legge ',' e '.')
+    input.value = decimali ? valoreAttuale.toFixed(2).replace('.', ',') : String(valoreAttuale);
+    input.setAttribute('aria-label', `${CAMPO_NOMI[d.campo] || d.campo} ${MESI_NOME[d.mese]} ${d.anno}`);
+    const autoTesto = d.currency === '1' ? formatCurrency(Number(d.auto)) : (decimali ? formatNumber(Number(d.auto)) : d.auto);
+    input.title = `Automatico: ${autoTesto}. Vuoto = torna all'automatico`;
+    td.classList.add('in-modifica');
+    if (span) span.style.display = 'none';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    let chiuso = false;
+    const chiudi = (rifocalizza) => {
+        if (chiuso) return;
+        chiuso = true;
+        input.remove();
+        td.classList.remove('in-modifica');
+        if (span) span.style.display = '';
+        if (rifocalizza) td.focus();
     };
-
-    let messaggio = `Modifica ${campoNome} per ${meseNome} ${anno}:\n`;
-    messaggio += `Valore calcolato automatico: ${formatVal(valoreAuto)}\n`;
-    if (isOverride) {
-        messaggio += `Valore attuale (modificato): ${formatVal(valoreAttuale)}\n`;
-    }
-    messaggio += `\nInserisci il nuovo valore (lascia vuoto per tornare al calcolo automatico):`;
-
-    const defaultVal = decimali ? valoreAttuale.toFixed(2) : valoreAttuale.toString();
-    const nuovoValore = prompt(messaggio, defaultVal);
-
-    if (nuovoValore === null) return; // Annullato
-
-    if (nuovoValore.trim() === '' && isOverride) {
-        // Rimuovi override
-        resetCampo(mese, anno, campo);
-    } else if (nuovoValore.trim() !== '') {
-        const val = parseFloat(nuovoValore.replace(',', '.'));
+    // Ritorna true se e' partito un salvataggio (la tabella verra' ricaricata)
+    const conferma = () => {
+        const testo = input.value.trim();
+        chiudi(false);
+        if (testo === '') {
+            if (isOverride) {
+                resetCampo(Number(d.mese), Number(d.anno), d.campo);
+                return true;
+            }
+            return false;
+        }
+        const val = parseFloat(testo.replace(',', '.'));
         if (isNaN(val) || val < 0) {
             showToast('Valore non valido', 'error');
-            return;
+            td.focus();
+            return false;
         }
-        salvaCampo(mese, anno, campo, val);
-    }
+        if (val === valoreAttuale) return false;
+        salvaCampo(Number(d.mese), Number(d.anno), d.campo, val);
+        return true;
+    };
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            cellaDaRifocalizzare = { mese: d.mese, anno: d.anno, campo: d.campo, apri: false };
+            if (!conferma()) { cellaDaRifocalizzare = null; td.focus(); }
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            chiudi(true);
+        } else if (e.key === 'Tab') {
+            e.preventDefault();
+            const celle = Array.from(document.querySelectorAll('#tbody-report td.editable-cell'));
+            const prossima = celle[celle.indexOf(td) + (e.shiftKey ? -1 : 1)];
+            if (prossima) {
+                cellaDaRifocalizzare = { mese: prossima.dataset.mese, anno: prossima.dataset.anno, campo: prossima.dataset.campo, apri: true };
+            }
+            const salvato = conferma();
+            if (!salvato) {
+                cellaDaRifocalizzare = null;
+                if (prossima) avviaModificaCella(prossima); else td.focus();
+            }
+        }
+    });
+    input.addEventListener('blur', () => { if (!chiuso) conferma(); });
 }
 
 async function salvaCampo(mese, anno, campo, valore) {
@@ -607,22 +695,26 @@ function renderRecuperi() {
     const tbody = document.getElementById('tbody-recuperi');
     tbody.innerHTML = '';
 
-    // Filtra i mesi con recuperi
-    const mesiConRecuperi = reportCorrente.mesi.filter(m => m.ore_recupero > 0);
-
-    if (mesiConRecuperi.length === 0) {
+    // Un rigo per ogni recupero registrato (con note, modifica ed eliminazione):
+    // prima la tabella mostrava solo i totali per mese e "Note" era sempre "-".
+    if (!recuperiCorrenti || recuperiCorrenti.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nessun recupero registrato</td></tr>';
         return;
     }
 
-    mesiConRecuperi.forEach(m => {
+    recuperiCorrenti.forEach(r => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${MESI_NOME[m.mese]} ${m.anno}</td>
-            <td>${m.ore_recupero.toFixed(2)}</td>
-            <td>-</td>
-            <td>
-                <button class="btn btn-danger btn-sm" onclick="eliminaRecuperoMese(${m.mese}, ${m.anno})">
+            <td>${MESI_NOME[r.mese]} ${r.anno}</td>
+            <td class="text-right">${formatNumber(r.ore_recupero)}</td>
+            <td>${r.note ? escapeHtml(r.note) : '-'}</td>
+            <td style="white-space: nowrap;">
+                <button class="btn btn-secondary btn-sm" onclick="modificaRecupero(${r.id})" title="Modifica" aria-label="Modifica recupero">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                </button>
+                <button class="btn btn-sm btn-icon-danger" onclick="eliminaRecupero(${r.id})" title="Elimina" aria-label="Elimina recupero">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
@@ -631,6 +723,18 @@ function renderRecuperi() {
         `;
         tbody.appendChild(tr);
     });
+}
+
+function modificaRecupero(id) {
+    const r = (recuperiCorrenti || []).find(x => x.id === id);
+    if (!r) return;
+    document.getElementById('modal-recupero-title').textContent = 'Modifica Recupero';
+    document.getElementById('recupero-id').value = r.id;
+    document.getElementById('recupero-mese').value = String(r.mese);
+    document.getElementById('recupero-anno').value = r.anno;
+    document.getElementById('recupero-ore').value = r.ore_recupero;
+    document.getElementById('recupero-note').value = r.note || '';
+    document.getElementById('modal-recupero').classList.add('active');
 }
 
 function formatCurrency(value) {
@@ -685,7 +789,7 @@ function modificaDD(ddId) {
     document.getElementById('dd-ore-settimanali').value = dd.ore_settimanali;
 
     // Mostra preview con valore attuale
-    updateOreAnnualiPreview(`Valore attuale salvato: ${dd.ore_annuali.toFixed(2)} h`);
+    updateOreAnnualiPreview(`Valore attuale salvato: ${formatNumber(dd.ore_annuali)} h`);
     document.getElementById('dd-ore-annuali').value = dd.ore_annuali;
     document.getElementById('dd-note').value = dd.note || '';
 
@@ -758,21 +862,24 @@ async function salvaDD() {
     }
 }
 
-async function eliminaDD(ddId) {
-    if (!confirm('Sei sicuro di voler eliminare questa DD?')) return;
-
-    try {
-        const response = await fetch(`/api/dd/${ddId}`, { method: 'DELETE' });
-        const result = await response.json();
-        if (result.error) throw new Error(result.error);
-
-        showToast('DD eliminata', 'success');
-        caricaReport();
-
-    } catch (error) {
-        console.error(error);
-        showToast('Errore nell\'eliminazione', 'error');
-    }
+function eliminaDD(ddId) {
+    showConfirmDialog(
+        'Elimina DD',
+        'Eliminare questa determina dirigenziale? L\'operazione non si può annullare.',
+        async () => {
+            try {
+                const response = await fetch(`/api/dd/${ddId}`, { method: 'DELETE' });
+                const result = await response.json();
+                if (result.error) throw new Error(result.error);
+                showToast('DD eliminata', 'success');
+                caricaReport();
+            } catch (error) {
+                console.error(error);
+                showToast('Errore nell\'eliminazione', 'error');
+            }
+        },
+        { type: 'danger', confirmText: 'Elimina' }
+    );
 }
 
 // Gestione Recuperi
@@ -806,12 +913,16 @@ async function salvaRecupero() {
         mese: parseInt(document.getElementById('recupero-mese').value),
         anno: parseInt(document.getElementById('recupero-anno').value),
         ore_recupero: parseFloat(document.getElementById('recupero-ore').value) || 0,
-        note: document.getElementById('recupero-note').value || null
+        note: document.getElementById('recupero-note').value.trim()
     };
 
+    // Con un id valorizzato il modale sta modificando un recupero esistente
+    const recuperoId = document.getElementById('recupero-id').value;
+    const url = recuperoId ? `/api/recuperi/${recuperoId}` : '/api/recuperi';
+
     try {
-        const response = await fetch('/api/recuperi', {
-            method: 'POST',
+        const response = await fetch(url, {
+            method: recuperoId ? 'PUT' : 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
@@ -819,7 +930,7 @@ async function salvaRecupero() {
         const result = await response.json();
         if (result.error) throw new Error(result.error);
 
-        showToast('Recupero aggiunto', 'success');
+        showToast(recuperoId ? 'Recupero aggiornato' : 'Recupero aggiunto', 'success');
         chiudiModalRecupero();
         caricaReport();
 
@@ -829,11 +940,26 @@ async function salvaRecupero() {
     }
 }
 
-async function eliminaRecuperoMese(mese, anno) {
-    if (!confirm('Sei sicuro di voler eliminare questo recupero?')) return;
-
-    // TODO: Implementare eliminazione recupero specifico
-    showToast('Funzionalita in sviluppo', 'warning');
+function eliminaRecupero(id) {
+    const r = (recuperiCorrenti || []).find(x => x.id === id);
+    const cosa = r ? `${MESI_NOME[r.mese]} ${r.anno} (${formatNumber(r.ore_recupero)} ore)` : 'questo recupero';
+    showConfirmDialog(
+        'Elimina recupero',
+        `Eliminare il recupero di ${cosa}? L'operazione non si può annullare.`,
+        async () => {
+            try {
+                const response = await fetch(`/api/recuperi/${id}`, { method: 'DELETE' });
+                const result = await response.json();
+                if (!response.ok || result.error) throw new Error(result.error || 'Errore');
+                showToast('Recupero eliminato', 'success');
+                caricaReport();
+            } catch (error) {
+                console.error(error);
+                showToast(error.message || 'Errore nell\'eliminazione', 'error');
+            }
+        },
+        { type: 'danger', confirmText: 'Elimina' }
+    );
 }
 
 // Toast notifications (usa quella esistente se disponibile)
@@ -903,12 +1029,13 @@ function calcolaOreAnnuali() {
         return;
     }
 
-    // Formula: ore_settimanali * 0.89 (decurtazione 11%) * settimane
-    const oreDecurtate = oreSettimanali * 0.89;
+    // Formula: ore_settimanali * (1 - tasso assenza da config) * settimane
+    const fattore = 1 - ((window.APP_CONFIG || {}).tasso_assenza ?? 0.11);
+    const oreDecurtate = oreSettimanali * fattore;
     const oreAnnuali = oreDecurtate * settimane;
 
     document.getElementById('dd-ore-annuali').value = oreAnnuali.toFixed(2);
-    updateOreAnnualiPreview(`${oreSettimanali.toFixed(0)} h/sett x 0.89 x ${settimane} sett = ${oreAnnuali.toFixed(2)} h`);
+    updateOreAnnualiPreview(`${formatNumero(oreSettimanali)} h/sett x ${formatNumber(fattore)} x ${settimane} sett = ${formatNumber(oreAnnuali)} h`);
 }
 
 function updateOreAnnualiPreview(text) {

@@ -9,9 +9,16 @@
             <h1 class="page-title">Chiusura Mese</h1>
             <p class="page-subtitle">Procedura guidata: verifica, controlla, riepiloga ed esporta</p>
         </div>
-        <div class="header-actions flex gap-3 items-center flex-wrap">
-            <select id="filter-anno" aria-label="Anno scolastico" class="form-control" style="width: 150px;"></select>
-            <select id="filter-mese" aria-label="Mese" class="form-control" style="width: 170px;"></select>
+        {# Etichette visibili: prima erano due menu senza nome in alto a destra #}
+        <div class="header-actions chiusura-periodo">
+            <div class="filter-group">
+                <label class="filter-label" for="filter-anno">Anno scolastico</label>
+                <select id="filter-anno" class="form-control" style="width: 150px;"></select>
+            </div>
+            <div class="filter-group">
+                <label class="filter-label" for="filter-mese">Mese</label>
+                <select id="filter-mese" class="form-control" style="width: 170px;"></select>
+            </div>
         </div>
     </div>
 </div>
@@ -40,6 +47,8 @@
                 <span class="chiusura-step-label">Export</span>
             </div>
         </div>
+        <!-- Quale mese si sta chiudendo e se e' gia' chiuso (sempre visibile) -->
+        <p class="chiusura-stato" id="chiusura-stato" role="status" aria-live="polite"></p>
     </div>
 </div>
 
@@ -54,11 +63,16 @@
         <div class="progress-bar" style="height: 8px; border-radius: 4px; overflow: hidden; margin: 12px 0;">
             <div class="progress-bar-fill" id="step1-bar" style="width: 0%; height: 100%;"></div>
         </div>
-        <div id="step1-lista" style="max-height: 240px; overflow-y: auto;"></div>
+        {# Elenco senza riquadro scorrevole (tagliava a meta' la quarta riga): i primi 8
+           nomi e il collegamento a tutti gli altri in Rendicontazione #}
+        <div id="step1-lista"></div>
+        <p class="chiusura-nota" id="step1-chiuso" hidden>
+            Il mese è chiuso: le ore non si possono modificare. Per correggerle riaprilo al passo 4.
+        </p>
         <div class="flex gap-2 mt-3 flex-wrap">
             <button class="btn btn-secondary btn-sm" id="btn-compila-media">Compila vuoti con media prevista</button>
             <button class="btn btn-secondary btn-sm" id="btn-copia-precedente">Copia ore dal mese precedente</button>
-            <a href="/rendicontazione" class="btn btn-secondary btn-sm">Apri Rendicontazione</a>
+            <a href="/rendicontazione" class="btn btn-secondary btn-sm" id="link-rendicontazione">Apri Rendicontazione</a>
         </div>
     </div>
 </div>
@@ -92,27 +106,43 @@
         <span class="badge badge-secondary" id="step4-badge">0 generati</span>
     </div>
     <div class="card-body">
-        <p class="text-muted mb-3">Scarica i documenti del mese. Ogni export viene spuntato dopo il download.</p>
+        <p class="text-muted mb-3">Scarica i documenti del mese. Ogni export riceve la spunta dopo il download.</p>
         <div class="report-quick-grid">
             <a href="#" class="report-quick-card excel" data-export="excel">
-                <div class="report-quick-icon">✓</div>
+                <div class="report-quick-icon" aria-hidden="true">
+                    <svg class="icona-scarica" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    <svg class="icona-fatto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
+                </div>
                 <span class="report-quick-title">Report Completo</span>
                 <span class="report-quick-desc">Excel multi-foglio</span>
+                <span class="report-quick-stato"></span>
             </a>
             <a href="#" class="report-quick-card municipale" data-export="municipale">
-                <div class="report-quick-icon">✓</div>
+                <div class="report-quick-icon" aria-hidden="true">
+                    <svg class="icona-scarica" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    <svg class="icona-fatto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
+                </div>
                 <span class="report-quick-title">Municipale</span>
                 <span class="report-quick-desc">Excel</span>
+                <span class="report-quick-stato"></span>
             </a>
             <a href="#" class="report-quick-card dipartimentale" data-export="dipartimentale">
-                <div class="report-quick-icon">✓</div>
+                <div class="report-quick-icon" aria-hidden="true">
+                    <svg class="icona-scarica" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    <svg class="icona-fatto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
+                </div>
                 <span class="report-quick-title">Dipartimentale</span>
                 <span class="report-quick-desc">Excel</span>
+                <span class="report-quick-stato"></span>
             </a>
             <a href="#" class="report-quick-card locale" data-export="word">
-                <div class="report-quick-icon">✓</div>
+                <div class="report-quick-icon" aria-hidden="true">
+                    <svg class="icona-scarica" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    <svg class="icona-fatto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
+                </div>
                 <span class="report-quick-title">Relazione</span>
                 <span class="report-quick-desc">Word</span>
+                <span class="report-quick-stato"></span>
             </a>
         </div>
         <div class="alert alert-success mt-4" id="chiusura-completata" style="display: none;">
@@ -126,8 +156,8 @@
             <span class="badge badge-success" id="badge-mese-chiuso" style="display:none;"></span>
         </div>
         <p class="text-muted mt-2" style="font-size: 0.85rem;">
-            Lo stato "chiuso" è un promemoria persistente: resta salvato anche cambiando pagina
-            e non blocca eventuali correzioni successive.
+            Il mese chiuso blocca le modifiche delle ore (in Rendicontazione e negli import);
+            per correggere riaprilo.
         </p>
     </div>
 </div>
@@ -148,23 +178,23 @@
     gap: 8px;
     flex-wrap: wrap;
 }
+/* Passi non attivi grigi ma leggibili (prima trasparenti al 45%: 3,35:1 nel tema chiaro) */
 .chiusura-step {
     display: flex;
     align-items: center;
     gap: 8px;
-    opacity: 0.45;
-    transition: opacity 0.2s;
+    color: var(--text-secondary);
 }
 .chiusura-step.active,
 .chiusura-step.done {
-    opacity: 1;
+    color: var(--text-primary);
 }
 .chiusura-step-num {
     width: 28px;
     height: 28px;
     border-radius: 50%;
     background: var(--bg-tertiary);
-    color: var(--text-primary);
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -172,11 +202,11 @@
     font-size: 0.85rem;
 }
 .chiusura-step.active .chiusura-step-num {
-    background: var(--primary);
+    background: var(--accent-strong);
     color: #fff;
 }
 .chiusura-step.done .chiusura-step-num {
-    background: var(--success);
+    background: var(--success-strong);
     color: #fff;
 }
 .chiusura-step-label {
@@ -188,10 +218,36 @@
     height: 2px;
     background: var(--border-color);
 }
-.report-quick-card.export-done {
-    outline: 2px solid var(--success);
-    outline-offset: -2px;
+/* Sul telefono i passi vanno su due righe: le lineette non collegherebbero niente */
+@media (max-width: 600px) {
+    .chiusura-step-line { display: none; }
+    .chiusura-stepper { gap: 8px 16px; }
 }
+.chiusura-periodo { align-items: flex-end; }
+.chiusura-stato {
+    margin: 12px 0 0;
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+.chiusura-stato strong { color: var(--text-primary); }
+.chiusura-stato .stato-chiuso { color: var(--warning); font-weight: 600; white-space: nowrap; }
+.chiusura-stato .stato-chiuso svg { vertical-align: -2px; }
+.chiusura-stato .stato-aperto { color: var(--success); font-weight: 600; }
+.chiusura-nota { margin: 12px 0 0; font-size: 0.85rem; color: var(--warning); }
+.chiusura-vedi-tutti { display: inline-block; padding: 10px 16px; font-size: 0.85rem; font-weight: 600; }
+/* Export: colori neutri all'inizio; la spunta verde e l'ora compaiono solo dopo
+   il download (prima ogni scheda aveva gia' la spunta con "0 generati") */
+#panel-4 .report-quick-card { border: 1px solid var(--border-color); cursor: pointer; }
+#panel-4 .report-quick-icon { border-radius: 50%; background: var(--bg-tertiary); }
+#panel-4 .report-quick-icon svg { width: 22px; height: 22px; }
+#panel-4 .report-quick-icon .icona-fatto,
+#panel-4 .report-quick-card.export-done .icona-scarica { display: none; }
+#panel-4 .report-quick-card.export-done .icona-fatto { display: block; }
+#panel-4 .report-quick-card.export-done { border-color: var(--success); }
+#panel-4 .report-quick-card.export-done .report-quick-icon { background: var(--success-strong); color: #fff; }
+.report-quick-stato { margin-top: 4px; font-size: 0.75rem; font-weight: 600; color: var(--success); }
+.report-quick-stato:empty { display: none; }
 </style>
 <script>
 let stepCorrente = 1;
@@ -243,9 +299,24 @@ function getPeriodo() {
     return { anno, mese };
 }
 
+// 'Giugno 2026': il testo del mese scelto nel menu
+function nomePeriodo() {
+    const sel = document.getElementById('filter-mese');
+    return sel.options[sel.selectedIndex]?.textContent || '';
+}
+
+// Rendicontazione aperta sul mese di questa pagina (non sul mese di oggi)
+function urlRendicontazione(p, soloSenzaOre = false) {
+    return `/rendicontazione?anno=${p.anno}&mese=${p.mese}${soloSenzaOre ? '&senza_ore=1' : ''}`;
+}
+
 function ricaricaTutto() {
     exportFatti.clear();
     document.querySelectorAll('.report-quick-card').forEach(c => c.classList.remove('export-done'));
+    document.querySelectorAll('.report-quick-stato').forEach(el => { el.textContent = ''; });
+    const p = getPeriodo();
+    if (p) document.getElementById('link-rendicontazione').href = urlRendicontazione(p);
+    document.getElementById('chiusura-stato').innerHTML = `<strong>${escapeHtml(nomePeriodo())}</strong>`;
     document.getElementById('chiusura-completata').style.display = 'none';
     document.getElementById('step4-badge').textContent = '0 generati';
     loadStep1();
@@ -297,15 +368,20 @@ async function loadStep1() {
         } else {
             badge.className = 'badge badge-warning';
             badge.textContent = `${senzaOre.length} senza ore`;
-            lista.innerHTML = senzaOre.slice(0, 15).map(u => `
+            // I primi 8 nomi; gli altri si vedono in Rendicontazione (filtro "senza ore").
+            // Il badge e' il monte ore SETTIMANALE: '15h' si leggeva come '15 ore mancanti'.
+            const MAX_NOMI = 8;
+            lista.innerHTML = senzaOre.slice(0, MAX_NOMI).map(u => `
                 <div class="da-completare-item">
                     <div class="da-completare-info">
                         <span class="da-completare-nome">${escapeHtml(u.nome)} ${escapeHtml(u.cognome)}</span>
-                        <span class="da-completare-scuola">${escapeHtml(u.commessa)} - ${escapeHtml((u.scuola || '').substring(0, 40))}</span>
+                        <span class="da-completare-scuola" title="${escapeHtml(u.scuola || '')}">${escapeHtml(u.commessa)} - ${escapeHtml(u.scuola || '')}</span>
                     </div>
-                    <span class="badge badge-secondary">${u.monte_ore_settimanale}h</span>
+                    <span class="badge badge-secondary" title="Monte ore settimanale">${formatNumero(u.monte_ore_settimanale)} h/sett.</span>
                 </div>
-            `).join('') + (senzaOre.length > 15 ? `<div class="da-completare-more"><span class="text-muted">+ altri ${senzaOre.length - 15}</span></div>` : '');
+            `).join('') + (senzaOre.length > MAX_NOMI
+                ? `<a class="chiusura-vedi-tutti" href="${urlRendicontazione(p, true)}">Vedi tutti i ${senzaOre.length} in Rendicontazione →</a>`
+                : '');
         }
     } catch (e) {
         testo.textContent = 'Errore nel caricamento';
@@ -313,36 +389,49 @@ async function loadStep1() {
     }
 }
 
-async function compilaConMedia() {
+function compilaConMedia() {
     const p = getPeriodo();
     if (!p) return;
-    if (!confirm('Compilare tutti gli utenti senza ore con la media prevista (-11%)?')) return;
-    try {
-        const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/compila-media`, {
-            method: 'POST',
-            body: JSON.stringify({})
-        });
-        showToast(`${res.compilati} utenti compilati con la media`, 'success');
-        loadStep1(); loadStep2(); loadStep3();
-    } catch (e) {
-        showToast('Errore nella compilazione', 'error');
-    }
+    const pct = Math.round(((window.APP_CONFIG || {}).tasso_assenza ?? 0.11) * 100);
+    showConfirmDialog(
+        'Compila con la media',
+        `Compilare tutti gli utenti senza ore con la media prevista (-${pct}%)? Chi ha già delle ore non viene toccato.`,
+        async () => {
+            try {
+                const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/compila-media`, {
+                    method: 'POST',
+                    body: JSON.stringify({})
+                });
+                showToast(`${res.compilati} utenti compilati con la media`, 'success');
+                loadStep1(); loadStep2(); loadStep3();
+            } catch (e) {
+                showToast('Errore: ' + (e.message || 'compilazione non riuscita'), 'error');
+            }
+        },
+        { confirmText: 'Compila' }
+    );
 }
 
-async function copiaMesePrecedente() {
+function copiaMesePrecedente() {
     const p = getPeriodo();
     if (!p) return;
-    if (!confirm('Copiare le ore dal mese precedente per gli utenti senza ore?')) return;
-    try {
-        const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/copia-precedente`, {
-            method: 'POST',
-            body: JSON.stringify({ solo_vuoti: true })
-        });
-        showToast(`${res.copiati} utenti copiati da ${res.mese_origine}`, 'success');
-        loadStep1(); loadStep2(); loadStep3();
-    } catch (e) {
-        showToast('Errore nella copia', 'error');
-    }
+    showConfirmDialog(
+        'Copia dal mese precedente',
+        'Copiare le ore del mese precedente per gli utenti che non hanno ancora ore? Chi ha già delle ore non viene toccato.',
+        async () => {
+            try {
+                const res = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}/copia-precedente`, {
+                    method: 'POST',
+                    body: JSON.stringify({ solo_vuoti: true })
+                });
+                showToast(`${res.copiati} utenti copiati da ${res.mese_origine}`, 'success');
+                loadStep1(); loadStep2(); loadStep3();
+            } catch (e) {
+                showToast('Errore: ' + (e.message || 'copia non riuscita'), 'error');
+            }
+        },
+        { confirmText: 'Copia' }
+    );
 }
 
 // ---------- STEP 2 ----------
@@ -357,10 +446,12 @@ async function loadStep2() {
 
         if (data.riepilogo.critiche > 0) {
             badge.className = 'badge badge-danger';
-            badge.textContent = `${data.riepilogo.critiche} critiche`;
+            const n = data.riepilogo.critiche;
+            badge.textContent = `${n} ${n === 1 ? 'critica' : 'critiche'}`;
         } else if (data.riepilogo.avvisi > 0) {
             badge.className = 'badge badge-warning';
-            badge.textContent = `${data.riepilogo.avvisi} avvisi`;
+            const n = data.riepilogo.avvisi;
+            badge.textContent = `${n} ${n === 1 ? 'avviso' : 'avvisi'}`;
         } else {
             badge.className = 'badge badge-success';
             badge.textContent = 'Nessuna anomalia';
@@ -396,26 +487,21 @@ async function loadStep3() {
         const data = await apiCall(`/api/rendicontazione/${p.anno}/${p.mese}`);
         const dati = data.dati || [];
 
-        const tot = dati.reduce((acc, d) => {
-            acc.ore60 += d.ore_lavorate_60 || 0;
-            acc.ore100 += d.ore_lavorate_100 || 0;
-            acc.imponibile += d.imponibile_100 || 0;
-            acc.iva += d.iva_100 || 0;
-            acc.totale += d.totale_100 || 0;
-            acc.pasti += d.pasti || 0;
-            return acc;
-        }, { ore60: 0, ore100: 0, imponibile: 0, iva: 0, totale: 0, pasti: 0 });
-
-        const fmtEur = v => v.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
-        const fmtH = v => v.toLocaleString('it-IT', { maximumFractionDigits: 2 });
+        // Totali presi dal server (totale_generale): gli importi sono calcolati una volta
+        // sulla somma delle ore, come in Rendicontazione e nei documenti ufficiali.
+        // Sommare qui le righe gia' arrotondate dava 1 centesimo di differenza.
+        const tot = data.totale_generale || {};
+        const fmtEur = v => formatCurrency(v);
+        // Ore (60') in ore e minuti, come in Rendicontazione ('358:19')
+        const fmtH60 = v => decimalToSessagesimal(v) || '0:00';
 
         totaliEl.innerHTML = `
             <div class="stat-card"><div class="stat-content"><div class="stat-value">${dati.length}</div><div class="stat-label">Utenti</div></div></div>
-            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtH(tot.ore60)}</div><div class="stat-label">Ore (60')</div></div></div>
-            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtH(tot.ore100)}</div><div class="stat-label">Ore (100')</div></div></div>
-            <div class="stat-card"><div class="stat-content"><div class="stat-value">${tot.pasti}</div><div class="stat-label">Pasti</div></div></div>
-            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtEur(tot.imponibile)}</div><div class="stat-label">Imponibile</div></div></div>
-            <div class="stat-card"><div class="stat-content"><div class="stat-value text-success">${fmtEur(tot.totale)}</div><div class="stat-label">Totale con IVA 5%</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtH60(tot.ore_lavorate_60)}</div><div class="stat-label">Ore (60')</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${formatNumber(tot.ore_lavorate_100)}</div><div class="stat-label">Ore (100')</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${tot.pasti || 0}</div><div class="stat-label">Pasti</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value">${fmtEur(tot.imponibile_100)}</div><div class="stat-label">Imponibile</div></div></div>
+            <div class="stat-card"><div class="stat-content"><div class="stat-value text-success">${fmtEur(tot.totale_100)}</div><div class="stat-label">Totale con IVA ${Math.round(((window.APP_CONFIG || {}).iva_percentuale ?? 0.05) * 100)}%</div></div></div>
         `;
 
         // Riepilogo per commessa
@@ -437,7 +523,7 @@ async function loadStep3() {
                             <tr>
                                 <td><strong>${escapeHtml(nome)}</strong></td>
                                 <td class="text-right">${v.utenti}</td>
-                                <td class="text-right">${fmtH(v.ore)}</td>
+                                <td class="text-right">${fmtH60(v.ore)}</td>
                                 <td class="text-right">${fmtEur(v.totale)}</td>
                             </tr>
                         `).join('')}
@@ -452,6 +538,7 @@ async function loadStep3() {
 }
 
 // ---------- STEP 4 ----------
+const ORA_IT = () => new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 async function avviaExport(tipo, card) {
     const p = getPeriodo();
     if (!p) return;
@@ -486,7 +573,9 @@ async function avviaExport(tipo, card) {
 
     exportFatti.add(tipo);
     card.classList.add('export-done');
-    document.getElementById('step4-badge').textContent = `${exportFatti.size} generati`;
+    const stato = card.querySelector('.report-quick-stato');
+    if (stato) stato.textContent = `Scaricato alle ${ORA_IT()}`;
+    document.getElementById('step4-badge').textContent = `${exportFatti.size} ${exportFatti.size === 1 ? 'generato' : 'generati'}`;
     if (exportFatti.size >= 4) {
         document.getElementById('chiusura-completata').style.display = '';
         document.getElementById('step4-badge').className = 'badge badge-success';
@@ -500,38 +589,79 @@ async function caricaStatoChiusura() {
     try {
         const res = await fetch(`/api/mese-chiuso/${p.anno}/${p.mese}`);
         const data = await res.json();
+        // la risposta arriva dopo: vale solo se il menu e' ancora sullo stesso mese
+        const ora = getPeriodo();
+        if (!ora || ora.anno !== p.anno || ora.mese !== p.mese) return;
         aggiornaBadgeChiusura(data);
     } catch (e) { console.error(e); }
 }
 
+/**
+ * Stato del mese in tutta la pagina: riga sotto i passi ("Novembre 2025 · Chiuso il
+ * 23/09/2026"), azioni del passo 1 disattivate se chiuso (il server risponderebbe
+ * 409), pulsante del passo 4 ("Riapri" come pulsante secondario).
+ */
 function aggiornaBadgeChiusura(data) {
     const btn = document.getElementById('btn-segna-chiuso');
     const badge = document.getElementById('badge-mese-chiuso');
     if (!btn || !badge) return;
-    if (data.chiuso) {
+    const chiuso = !!data.chiuso;
+    const periodo = escapeHtml(nomePeriodo());
+    let quando = '';
+    if (chiuso) {
         const d = new Date(data.data_chiusura);
-        badge.textContent = `✓ Mese chiuso il ${d.toLocaleDateString('it-IT')}`;
+        quando = isNaN(d.getTime()) ? '' : ` il ${d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+        badge.textContent = `✓ Mese chiuso${quando}`;
         badge.style.display = '';
         btn.textContent = 'Riapri mese';
+        btn.className = 'btn btn-secondary';
     } else {
         badge.style.display = 'none';
         btn.textContent = 'Segna mese come chiuso';
+        btn.className = 'btn btn-primary';
     }
+    btn.dataset.chiuso = chiuso ? '1' : '';
+    document.getElementById('chiusura-stato').innerHTML = chiuso
+        ? `<strong>${periodo}</strong> · <span class="stato-chiuso"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg> Chiuso${quando}</span> · le ore non si possono modificare`
+        : `<strong>${periodo}</strong> · <span class="stato-aperto">Aperto</span>`;
+    document.getElementById('step1-chiuso').hidden = !chiuso;
+    ['btn-compila-media', 'btn-copia-precedente'].forEach(id => {
+        const b = document.getElementById(id);
+        b.disabled = chiuso;
+        b.title = chiuso ? 'Mese chiuso: riaprilo al passo 4 per modificare le ore' : '';
+    });
 }
 
 async function toggleMeseChiuso() {
     const p = getPeriodo();
     if (!p) return;
+    const periodo = nomePeriodo();
+    let cur;
     try {
-        const cur = await (await fetch(`/api/mese-chiuso/${p.anno}/${p.mese}`)).json();
-        const method = cur.chiuso ? 'DELETE' : 'POST';
-        const res = await fetch(`/api/mese-chiuso/${p.anno}/${p.mese}`, { method });
-        if (!res.ok) throw new Error();
-        showToast(cur.chiuso ? 'Mese riaperto' : 'Mese segnato come chiuso', 'success');
-        caricaStatoChiusura();
+        cur = await (await fetch(`/api/mese-chiuso/${p.anno}/${p.mese}`)).json();
     } catch (e) {
-        showToast('Errore nel salvataggio dello stato', 'error');
+        showToast('Errore nel leggere lo stato del mese', 'error');
+        return;
     }
+    const riapri = !!cur.chiuso;
+    // Conferma sia per chiudere (blocca le modifiche) sia per riaprire
+    showConfirmDialog(
+        riapri ? `Riaprire ${periodo}?` : `Chiudere ${periodo}?`,
+        riapri
+            ? 'Le ore del mese torneranno modificabili in Rendicontazione. Dopo le correzioni ricordati di richiuderlo.'
+            : 'Il mese chiuso blocca le modifiche delle ore in Rendicontazione e negli import. Potrai riaprirlo da questa pagina.',
+        async () => {
+            try {
+                const res = await fetch(`/api/mese-chiuso/${p.anno}/${p.mese}`, { method: riapri ? 'DELETE' : 'POST' });
+                if (!res.ok) throw new Error();
+                showToast(riapri ? `${periodo} riaperto` : `${periodo} chiuso`, 'success');
+                caricaStatoChiusura();
+            } catch (e) {
+                showToast('Errore nel salvataggio dello stato', 'error');
+            }
+        },
+        { confirmText: riapri ? 'Riapri il mese' : 'Chiudi il mese', type: 'warning' }
+    );
 }
 
 document.getElementById('btn-segna-chiuso')?.addEventListener('click', toggleMeseChiuso);

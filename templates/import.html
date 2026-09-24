@@ -34,19 +34,17 @@
 <!-- ============ TAB ANAGRAFICA UTENTI ============ -->
 <div id="tab-anagrafica" class="import-tab-panel">
 
-<!-- Azioni rapide -->
-<div class="filters" style="justify-content: flex-end;">
-    <button id="btn-scarica-template" class="btn btn-secondary">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-        </svg>
-        Scarica Template Excel
-    </button>
-</div>
-
+{# 'Scarica Template Excel' nell'intestazione della card a cui si riferisce, come
+   'Aggiorna' in Cronologia (prima era da solo in una barra intera sopra la card) #}
 <div class="card">
-    <div class="card-header">
+    <div class="card-header flex justify-between items-center">
         <h2 class="card-title">Carica File</h2>
+        <button id="btn-scarica-template" class="btn btn-sm btn-secondary">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Scarica Template Excel
+        </button>
     </div>
     <div class="card-body">
         <div class="alert alert-info mb-4">
@@ -378,8 +376,10 @@
         <!-- Anteprima Migrazione -->
         <div id="migrazione-preview" class="hidden mt-4">
             <div class="alert alert-warning">
-                <strong>Anteprima importazione:</strong>
-                <div id="migrazione-preview-content"></div>
+                <div>
+                    <strong>Anteprima importazione:</strong>
+                    <div id="migrazione-preview-content"></div>
+                </div>
             </div>
             <div class="flex gap-3 mt-3">
                 <div class="form-group" style="margin-bottom: 0;">
@@ -392,6 +392,13 @@
                     <label class="flex items-center gap-2 pointer">
                         <input type="radio" name="migrazione_mode" value="skip">
                         <span><strong>Solo nuovi</strong> - Non modificare dati esistenti</span>
+                    </label>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="flex items-center gap-2 pointer">
+                        <input type="radio" name="migrazione_mode" value="replace">
+                        <span><strong>Sostituisci tutto</strong> - Svuota questo gestionale e ricarica ogni dato dal file
+                            (per spostarsi su un altro PC; backup automatico prima)</span>
                     </label>
                 </div>
             </div>
@@ -417,6 +424,7 @@
         <h2 class="card-title">Colonne Riconosciute (Import Excel)</h2>
     </div>
     <div class="card-body">
+        <div class="table-responsive">
         <table class="table">
             <thead>
                 <tr>
@@ -443,6 +451,7 @@
                 </tr>
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -613,6 +622,7 @@ async function loadCronologiaImport() {
         }
 
         container.innerHTML = `
+            <div class="table-responsive">
             <table class="table">
                 <thead>
                     <tr>
@@ -637,6 +647,7 @@ async function loadCronologiaImport() {
                     `).join('')}
                 </tbody>
             </table>
+            </div>
         `;
     } catch (error) {
         container.innerHTML = '<p class="text-danger">Errore caricamento cronologia</p>';
@@ -739,10 +750,12 @@ async function previewFile() {
         if (data.errors && data.errors.length > 0) {
             errorsDiv.innerHTML = `
                 <div class="alert alert-warning mb-3">
-                    <strong>${data.errors.length} righe con problemi:</strong>
-                    <ul style="margin: 8px 0 0 20px; list-style: disc;">
-                        ${data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
-                    </ul>
+                    <div>
+                        <strong>${data.errors.length} righe con problemi:</strong>
+                        <ul style="margin: 8px 0 0 20px; list-style: disc;">
+                            ${data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
+                        </ul>
+                    </div>
                 </div>
             `;
         } else {
@@ -888,6 +901,8 @@ async function uploadFile() {
 // ==================== IMPORT RENDICONTAZIONE MENSILE ====================
 
 let rendFile = null;
+// Limiti di ore e pasti (config.py), gli stessi dell'inserimento a mano
+const CFG_IMPORT = window.APP_CONFIG || {};
 
 function handleRendFileSelect(file) {
     if (!file.name.match(/\.(xlsx|xls)$/i)) {
@@ -944,6 +959,7 @@ function renderRendPreview(data) {
                 <strong>${data.totale_match}</strong> rendicontazioni pronte da importare.
                 ${data.totale_non_trovati > 0 ? `<span class="text-warning">${data.totale_non_trovati} righe non abbinate</span> (utenti non in anagrafica, saltate).` : ''}
                 ${data.totale_ambigui > 0 ? ` <span class="text-warning">${data.totale_ambigui} ambigue</span> (omonimi non risolti).` : ''}
+                ${data.totale_fuori_limite > 0 ? ` <span class="text-danger">${data.totale_fuori_limite} fuori limite</span> (ore oltre ${CFG_IMPORT.max_ore_mensili} o pasti oltre ${CFG_IMPORT.max_pasti_mensili}: non verranno importate).` : ''}
             </div>
         </div>
     `;
@@ -965,6 +981,9 @@ function renderRendPreview(data) {
         const ambiguiEsempi = f.n_ambigui
             ? `<div class="text-xs text-warning" style="margin-top:6px;">Omonimi non risolti: ${f.esempi_ambigui.map(v => escapeHtml(v.nome)).join(', ')}</div>`
             : '';
+        const fuoriLimiteEsempi = f.n_fuori_limite
+            ? `<div class="text-xs text-danger" style="margin-top:6px;">Non verranno importati (fuori limite): ${f.esempi_fuori_limite.map(v => `${escapeHtml(v.nome)} (${escapeHtml(v.motivo)})`).join(', ')}</div>`
+            : '';
         return `
             <div class="card mb-3">
                 <div class="card-header flex justify-between items-center flex-wrap gap-2">
@@ -973,6 +992,7 @@ function renderRendPreview(data) {
                         <span class="badge badge-success">${f.n_match} da importare</span>
                         ${f.n_non_trovati ? `<span class="badge badge-warning">${f.n_non_trovati} non abbinati</span>` : ''}
                         ${f.n_ambigui ? `<span class="badge badge-danger">${f.n_ambigui} ambigui</span>` : ''}
+                        ${f.n_fuori_limite ? `<span class="badge badge-danger">${f.n_fuori_limite} fuori limite</span>` : ''}
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -984,14 +1004,14 @@ function renderRendPreview(data) {
                                     <tr>
                                         <td>${escapeHtml(m.utente_nome || m.nome)}</td>
                                         <td class="text-xs text-muted">${escapeHtml(m.scuola)}</td>
-                                        <td style="text-align:right; font-family:monospace;">${m.ore}</td>
-                                        <td style="text-align:right; font-family:monospace;">${m.pasti}</td>
+                                        <td style="text-align:right;">${m.ore}</td>
+                                        <td style="text-align:right;">${m.pasti}</td>
                                     </tr>`).join('')}
                                 ${f.n_match > f.anteprima_match.length ? `<tr><td colspan="4" class="text-muted text-center">… e altri ${f.n_match - f.anteprima_match.length} utenti</td></tr>` : ''}
                             </tbody>
                         </table>
                     </div>
-                    <div style="padding: 10px 16px;">${nonTrovatiEsempi}${ambiguiEsempi}</div>
+                    <div style="padding: 10px 16px;">${nonTrovatiEsempi}${ambiguiEsempi}${fuoriLimiteEsempi}</div>
                 </div>
             </div>
         `;
@@ -1028,6 +1048,8 @@ async function importRendicontazione() {
                     <strong>Import completato:</strong> ${data.totale_scritti} rendicontazioni salvate.
                     ${data.totale_saltati_gia_pieni > 0 ? `<br>${data.totale_saltati_gia_pieni} saltate (mese già compilato).` : ''}
                     ${data.totale_non_trovati > 0 ? `<br>${data.totale_non_trovati} righe non abbinate (utenti non in anagrafica).` : ''}
+                    ${data.totale_fuori_limite > 0 ? `<br><span class="text-danger">${data.totale_fuori_limite === 1 ? '1 riga NON importata' : `${data.totale_fuori_limite} righe NON importate`} perché fuori limite:</span> ` +
+                        data.dettaglio.flatMap(d => d.fuori_limite || []).map(v => `${escapeHtml(v.nome)} (${escapeHtml(v.motivo)})`).join(', ') : ''}
                 </div>
             </div>
             <div class="table-responsive mt-3">
@@ -1072,28 +1094,42 @@ async function importRendicontazione() {
 
 // ==================== ANNULLA IMPORT ====================
 
-async function annullaImport(backupName) {
-    if (!confirm('Annullare questo import?\n\nI dati torneranno esattamente allo stato precedente ' +
-                 'all\'import (viene ripristinato il backup creato automaticamente prima di importare).')) {
-        return;
-    }
-    try {
-        const res = await fetch('/api/backup/restore', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ backup: backupName, confirm: 'CONFERMA' })
-        });
-        if (!res.ok) throw new Error();
-        showToast('Import annullato: dati ripristinati. Ricarico la pagina…', 'success');
-        setTimeout(() => location.reload(), 1500);
-    } catch (e) {
-        showToast('Errore nell\'annullamento dell\'import', 'error');
-    }
+function annullaImport(backupName) {
+    // La parola di conferma la digita l'operatore: prima era scritta nel codice
+    // e il controllo del server non serviva a nulla
+    showConfirmDialog(
+        'Annulla import',
+        'I dati torneranno esattamente allo stato precedente all\'import (viene ripristinato il backup ' +
+        'creato automaticamente prima di importare). Per procedere digita CONFERMA.',
+        async (testo) => {
+            const parola = (testo || '').trim().toUpperCase();
+            if (parola !== 'CONFERMA') {
+                showToast('Annullamento non eseguito: digita CONFERMA per procedere', 'warning');
+                return;
+            }
+            try {
+                const res = await fetch('/api/backup/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ backup: backupName, confirm: parola })
+                });
+                const esito = await res.json().catch(() => ({}));
+                // il server spiega il motivo (file vuoto o estraneo, backup di sicurezza non riuscito...)
+                if (!res.ok) throw new Error(esito.error || '');
+                showToast('Import annullato: dati ripristinati. Ricarico la pagina…', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } catch (e) {
+                showToast(e.message || 'Errore nell\'annullamento dell\'import', 'error');
+            }
+        },
+        { type: 'danger', confirmText: 'Ripristina', requireInput: true, inputPlaceholder: 'Digita CONFERMA' }
+    );
 }
 
 // ==================== MIGRAZIONE DATI ====================
 
 let migrazioneFile = null;
+let migrazioneMancanti = [];   // dati che un file di versione precedente non contiene
 
 document.addEventListener('DOMContentLoaded', () => {
     // Event listeners per migrazione
@@ -1158,6 +1194,7 @@ async function handleMigrazioneFile(e) {
     }
 
     migrazioneFile = file;
+    migrazioneMancanti = [];
 
     // Mostra anteprima
     const formData = new FormData();
@@ -1177,7 +1214,18 @@ async function handleMigrazioneFile(e) {
             <div class="mt-2">
                 <strong>File:</strong> ${escapeHtml(file.name)}<br>
                 <strong>Versione:</strong> ${data.versione || 'N/D'}<br>
-                <strong>Data esportazione:</strong> ${data.data_esportazione ? new Date(data.data_esportazione).toLocaleString('it-IT') : 'N/D'}<br>
+                <strong>Data esportazione:</strong> ${data.data_esportazione ? escapeHtml(formatDataOraIT(data.data_esportazione)) : 'N/D'}<br>
+                <strong>Contenuto:</strong> ${data.completo
+                    ? `completo (${Object.keys(data.tabelle || {}).length} tabelle: anche variazioni monte ore, personale, turni, note, DD…)`
+                    : 'formato precedente: solo anagrafica, ore e calendario (la modalità "Sostituisci tutto" non è disponibile)'}<br>
+                ${(data.mancanti || []).length ? `
+                    <div class="alert alert-danger mt-3" id="migrazione-mancanti">
+                        <div>
+                            <strong>Questo file NON contiene:</strong>
+                            <ul style="margin: 4px 0; padding-left: 20px;">${data.mancanti.map(m => `<li>${escapeHtml(m)}</li>`).join('')}</ul>
+                            ${escapeHtml(data.consiglio || '')}
+                        </div>
+                    </div>` : ''}
                 <div class="mt-3 flex gap-4 flex-wrap">
                     <span class="badge badge-primary">${data.riepilogo.commesse} Commesse</span>
                     <span class="badge badge-primary">${data.riepilogo.scuole} Scuole</span>
@@ -1193,6 +1241,7 @@ async function handleMigrazioneFile(e) {
             </div>
         `;
 
+        migrazioneMancanti = data.mancanti || [];
         document.getElementById('migrazione-preview').classList.remove('hidden');
         document.getElementById('migrazione-result').classList.add('hidden');
 
@@ -1202,14 +1251,58 @@ async function handleMigrazioneFile(e) {
     }
 }
 
-async function confermaMigrazione() {
+function confermaMigrazione() {
     if (!migrazioneFile) {
         showToast('Nessun file selezionato', 'error');
         return;
     }
-
     const mode = document.querySelector('input[name="migrazione_mode"]:checked')?.value || 'merge';
 
+    if (mode === 'replace') {
+        showConfirmDialog(
+            'Sostituire TUTTI i dati?',
+            'Tutti i dati di questo gestionale (utenti, ore, personale, calendario, impostazioni) verranno ' +
+            'cancellati e sostituiti con quelli del file. Prima viene creato un backup automatico. ' +
+            'Per procedere digita SOSTITUISCI.',
+            (testo) => {
+                const parola = (testo || '').trim().toUpperCase();
+                if (parola !== 'SOSTITUISCI') {
+                    showToast('Sostituzione non eseguita: digita SOSTITUISCI per procedere', 'warning');
+                    return;
+                }
+                eseguiMigrazione(mode, parola);
+            },
+            { type: 'danger', confirmText: 'Sostituisci', requireInput: true, inputPlaceholder: 'Digita SOSTITUISCI' }
+        );
+        return;
+    }
+    if (migrazioneMancanti.length) {
+        // File della versione precedente: non e' un aggiornamento completo, lo si dice prima
+        showConfirmDialog(
+            'File incompleto',
+            'Questo file non contiene: ' + migrazioneMancanti.join(', ') + '. Questi dati non arriveranno. ' +
+            'Per aggiornare da una versione precedente copia invece il file gestionale.db. Vuoi importarlo comunque?',
+            () => eseguiMigrazione(mode, ''),
+            { type: 'warning', confirmText: 'Importa comunque' }
+        );
+        return;
+    }
+    eseguiMigrazione(mode, '');
+}
+
+function _righeEsitoMigrazione(stats) {
+    return Object.entries(stats || {}).map(([tabella, s]) => {
+        if (typeof s === 'number') return `${tabella}: ${s}`;
+        const imp = s.importati ?? s.importate ?? 0;
+        const agg = s.aggiornati ?? s.aggiornate ?? 0;
+        const salt = s.saltati ?? 0;
+        const chiusi = s.saltate_mese_chiuso ?? 0;
+        return `${tabella}: ${imp} nuovi, ${agg} aggiornati${salt ? `, ${salt} saltati` : ''}` +
+            (chiusi ? `, ${chiusi} non scritte (mese chiuso)` : '');
+    });
+}
+
+async function eseguiMigrazione(mode, conferma) {
     const btn = document.getElementById('btn-conferma-migrazione');
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner" style="width: 16px; height: 16px;"></div> Importazione...';
@@ -1217,6 +1310,7 @@ async function confermaMigrazione() {
     const formData = new FormData();
     formData.append('file', migrazioneFile);
     formData.append('mode', mode);
+    if (conferma) formData.append('confirm', conferma);
 
     try {
         const response = await fetch('/api/migrazione/importa', {
@@ -1225,39 +1319,34 @@ async function confermaMigrazione() {
         });
         const data = await response.json();
 
-        if (data.error) throw new Error(data.error);
+        if (!response.ok || data.error) throw new Error(data.error || 'Importazione non riuscita');
 
         const resultDiv = document.getElementById('migrazione-result');
+        const titolo = data.mode === 'replace' ? 'Dati sostituiti!' : 'Migrazione completata!';
         resultDiv.innerHTML = `
             <div class="alert alert-success">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                    <strong>Migrazione completata!</strong><br>
-                    <div class="mt-2">
-                        <strong>Importati:</strong>
-                        ${data.stats.commesse.importate} commesse,
-                        ${data.stats.scuole.importate} scuole,
-                        ${data.stats.utenti.importati} utenti,
-                        ${data.stats.rendicontazione.importate} rendicontazioni<br>
-                        <strong>Aggiornati:</strong>
-                        ${data.stats.commesse.aggiornate} commesse,
-                        ${data.stats.scuole.aggiornate} scuole,
-                        ${data.stats.utenti.aggiornati} utenti,
-                        ${data.stats.rendicontazione.aggiornate} rendicontazioni
-                    </div>
+                    <strong>${titolo}</strong> ${data.totale_importati} importati, ${data.totale_aggiornati} aggiornati.
+                    ${data.backup ? `<br>Backup dei dati precedenti: <code>${escapeHtml(data.backup)}</code>` : ''}
+                    <div class="mt-2" style="font-size: 0.85rem;">${_righeEsitoMigrazione(data.stats).map(escapeHtml).join('<br>')}</div>
+                    ${(data.avvisi || []).map(a => `<div class="mt-2"><strong>Attenzione:</strong> ${escapeHtml(a)}</div>`).join('')}
+                    ${data.mode === 'replace' ? '<div class="mt-2">Ricarico la pagina…</div>' : ''}
                 </div>
             </div>
         `;
         resultDiv.classList.remove('hidden');
 
         document.getElementById('migrazione-preview').classList.add('hidden');
-        showToast(`Migrazione completata: ${data.totale_importati} importati, ${data.totale_aggiornati} aggiornati`, 'success');
+        showToast(`${titolo} ${data.totale_importati} importati, ${data.totale_aggiornati} aggiornati`,
+                  (data.avvisi || []).length ? 'warning' : 'success');
 
         // Reset
         migrazioneFile = null;
         document.getElementById('migrazione-file-input').value = '';
+        if (data.mode === 'replace') setTimeout(() => location.reload(), 2500);
 
     } catch (error) {
         showToast('Errore: ' + error.message, 'error');

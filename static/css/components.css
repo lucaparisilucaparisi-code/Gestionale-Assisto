@@ -1,0 +1,2804 @@
+/* =====================================================================
+   COMPONENTI ED EFFETTI (components.css)
+   Caricato solo dalle pagine dell'app (base.html), tra style.css e refine.css.
+   Riunisce, nello stesso ordine di cascata, tre fogli che prima erano
+   caricati uno dopo l'altro:
+     1. ex premium-effects.css  - effetti di sfondo, card, pulsanti, toast, finestre
+     2. ex ux-enhancements.css  - tooltip, focus, stati dei campi, telefono e tablet
+     3. ex components.css       - report rapidi, filtri avanzati, validazione,
+                                  heatmap, stampa
+   L'ordine delle parti conta: non spostare regole da una parte all'altra.
+   ===================================================================== */
+
+/* ====================== PARTE: ex premium-effects.css ====================== */
+
+/* ==================== PREMIUM VISUAL EFFECTS ==================== */
+/* Effetti visivi all'avanguardia per un'interfaccia eccezionale */
+
+/* ==================== ANIMATED GRADIENT BACKGROUND ==================== */
+.app-container::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background:
+        radial-gradient(ellipse at 0% 0%, rgba(10, 132, 255, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 100% 0%, rgba(191, 90, 242, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 100% 100%, rgba(48, 209, 88, 0.05) 0%, transparent 50%),
+        radial-gradient(ellipse at 0% 100%, rgba(255, 159, 10, 0.04) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+    /* animation rimossa: gradientShift consumava GPU costantemente */
+}
+
+[data-theme="light"] .app-container::before {
+    background:
+        radial-gradient(ellipse at 0% 0%, rgba(10, 132, 255, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 100% 0%, rgba(191, 90, 242, 0.04) 0%, transparent 50%),
+        radial-gradient(ellipse at 100% 100%, rgba(48, 209, 88, 0.03) 0%, transparent 50%),
+        radial-gradient(ellipse at 0% 100%, rgba(255, 159, 10, 0.03) 0%, transparent 50%);
+}
+
+/* ==================== FLOATING PARTICLES EFFECT ==================== */
+.content-area {
+    position: relative;
+}
+
+.content-area::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 300px;
+    background:
+        radial-gradient(2px 2px at 20% 30%, rgba(10, 132, 255, 0.3), transparent),
+        radial-gradient(2px 2px at 40% 70%, rgba(191, 90, 242, 0.2), transparent),
+        radial-gradient(2px 2px at 60% 20%, rgba(48, 209, 88, 0.25), transparent),
+        radial-gradient(2px 2px at 80% 50%, rgba(255, 159, 10, 0.2), transparent),
+        radial-gradient(1px 1px at 25% 60%, rgba(100, 210, 255, 0.3), transparent),
+        radial-gradient(1px 1px at 75% 80%, rgba(10, 132, 255, 0.2), transparent);
+    background-size: 250px 250px;
+    /* animation rimossa: particleFloat consumava GPU costantemente */
+    opacity: 0.6;
+    pointer-events: none;
+    z-index: -1;
+}
+
+[data-theme="light"] .content-area::before {
+    opacity: 0.4;
+}
+
+/* Assicura che tutti i contenuti siano sopra gli effetti (esclusi i modal) */
+.content-area > *:not(.modal-overlay) {
+    position: relative;
+    z-index: 1;
+}
+
+/* ==================== GRADIENT TEXT EFFECTS ==================== */
+.page-title {
+    background-size: 200% auto;
+    /* animation rimossa: gradientText consumava GPU costantemente */
+}
+
+[data-theme="light"] .page-title {
+    background-size: 200% auto;
+}
+
+/* Effetto shine al hover - SOLO su hover per non interferire */
+.card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.08),
+        transparent
+    );
+    transition: 0.5s;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.card:hover::after {
+    left: 100%;
+}
+
+/* Assicura che il contenuto della card sia sopra gli effetti */
+.card-header,
+.card-body,
+.card-footer {
+    position: relative;
+    z-index: 1;
+    background: inherit;
+}
+
+/* Tabella e contenuto devono essere sempre visibili */
+.table-container {
+    position: relative;
+    z-index: 2;
+}
+
+.table {
+    position: relative;
+    z-index: 2;
+}
+
+/* Disabilita hover transform su card grandi (tabelle, form) */
+.card:has(.table-container),
+.card:has(.card-body > form) {
+    transform: none !important;
+}
+
+.card:has(.table-container):hover,
+.card:has(.card-body > form):hover {
+    transform: none;
+}
+
+[data-theme="light"] .card {
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+/* ==================== 3D STAT CARDS WITH GLOW ==================== */
+.stat-card {
+    will-change: transform;
+}
+
+/* Pseudo-elemento glow rimosso: filter blur(20px) è molto pesante */
+
+.stat-card.blue:hover::after { background: radial-gradient(circle, rgba(10, 132, 255, 0.4), transparent 70%); }
+
+/* ==================== ANIMATED STAT ICONS ==================== */
+.stat-icon {
+    position: relative;
+    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.stat-icon::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: inherit;
+    background: inherit;
+    opacity: 0.4;
+    filter: blur(6px);
+    z-index: -1;
+}
+
+/* ==================== ANIMATED COUNTER EFFECT ==================== */
+.stat-value {
+    position: relative;
+    display: inline-block;
+}
+
+.stat-value::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary), var(--secondary), var(--accent));
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.5s ease;
+    border-radius: 1px;
+}
+
+.stat-card:hover .stat-value::after {
+    transform: scaleX(1);
+}
+
+/* ==================== PREMIUM BUTTONS WITH GRADIENT ANIMATION ==================== */
+.btn-primary {
+    background-size: 200% auto;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-primary:hover {
+    background-position: right center;
+    transform: translateY(-1px);
+}
+
+.btn-primary::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.btn-primary:active::after {
+    opacity: 1;
+    animation: rippleEffect 0.6s ease-out;
+}
+
+@keyframes rippleEffect {
+    0% { transform: scale(0); opacity: 1; }
+    100% { transform: scale(1); opacity: 0; }
+}
+
+/* Success button glow */
+.btn-success {
+    box-shadow: 0 4px 15px rgba(48, 209, 88, 0.3);
+}
+
+.btn-success:hover {
+    box-shadow: 0 8px 25px rgba(48, 209, 88, 0.5);
+    transform: translateY(-2px);
+}
+
+/* ==================== GLOWING INPUTS ==================== */
+
+.form-control:focus {
+    background: var(--bg-secondary);
+}
+
+.form-control:hover:not(:focus) {
+    border-color: var(--border-light);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* ==================== ANIMATED NAVIGATION LINKS ==================== */
+.nav-link {
+    overflow: hidden;
+}
+
+.nav-link::after {
+    transform: translateX(-50%);
+    border-radius: 1px;
+}
+
+.nav-link.active::after {
+    width: 80%;
+    background: white;
+}
+
+/* Hover icon animation */
+.nav-link:hover svg {
+    animation: iconBounce 0.5s ease;
+}
+
+/* ==================== FLOATING SIDEBAR EFFECT ==================== */
+.sidebar {
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="light"] .sidebar {
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.06);
+}
+
+/* ==================== CARD HEADER GRADIENT BORDER ==================== */
+.card-header {
+    position: relative;
+}
+
+.card-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--primary), var(--secondary), transparent);
+    opacity: 0.5;
+}
+
+/* ==================== BADGE GLOW EFFECTS ==================== */
+.badge {
+    position: relative;
+}
+
+.badge::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    background: inherit;
+    filter: blur(6px);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: -1;
+}
+
+.badge:hover::before {
+    opacity: 0.6;
+}
+
+.badge-primary:hover { box-shadow: 0 4px 15px rgba(10, 132, 255, 0.4); }
+.badge-success:hover { box-shadow: 0 4px 15px rgba(48, 209, 88, 0.4); }
+.badge-warning:hover { box-shadow: 0 4px 15px rgba(255, 159, 10, 0.4); }
+.badge-danger:hover { box-shadow: 0 4px 15px rgba(255, 69, 58, 0.4); }
+
+/* ==================== PREMIUM TOAST NOTIFICATIONS ==================== */
+.toast {
+    animation: toastSlideIn 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes toastSlideIn {
+    0% {
+        transform: translateX(100%) scale(0.8);
+        opacity: 0;
+    }
+    100% {
+        transform: translateX(0) scale(1);
+        opacity: 1;
+    }
+}
+
+/* ==================== LOADING SPINNER PREMIUM ==================== */
+.spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spinnerRotate 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+    position: relative;
+}
+
+.spinner::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border: 2px solid transparent;
+    border-top-color: rgba(10, 132, 255, 0.3);
+    border-radius: 50%;
+    animation: spinnerRotate 2s linear infinite reverse;
+}
+
+@keyframes spinnerRotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ==================== COMMAND PALETTE PREMIUM ==================== */
+.command-palette {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+    animation: commandPaletteOpen 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+@keyframes commandPaletteOpen {
+    0% {
+        transform: translateY(-30px) scale(0.95);
+        opacity: 0;
+    }
+    100% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+
+.command-item {
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.command-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--primary), var(--secondary));
+    transform: scaleY(0);
+    transition: transform 0.2s ease;
+    border-radius: 0 2px 2px 0;
+}
+
+.command-item:hover::before,
+.command-item.selected::before {
+    transform: scaleY(1);
+}
+
+.command-item:hover,
+.command-item.selected {
+    background: rgba(10, 132, 255, 0.1);
+}
+
+/* ==================== TOPBAR GLASS EFFECT ==================== */
+.topbar {
+    box-shadow: 0 1px 12px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="light"] .topbar {
+    box-shadow: 0 1px 30px rgba(0, 0, 0, 0.08);
+}
+
+/* ==================== THEME TOGGLE ANIMATION ==================== */
+.theme-toggle {
+    position: relative;
+    overflow: hidden;
+}
+
+/* (niente rotazione dell'icona al passaggio del mouse: l'app non usa effetti di movimento) */
+
+/* ==================== SCROLLBAR PREMIUM ==================== */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--primary), var(--secondary));
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(10, 132, 255, 0.5), rgba(191, 90, 242, 0.5));
+    background-clip: padding-box;
+}
+
+/* Firefox scrollbar */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary) rgba(0, 0, 0, 0.1);
+}
+
+/* ==================== PAGE TRANSITIONS ==================== */
+/* L'ingresso delle pagine e' la dissolvenza breve di refine.css (ds-fade-in):
+   qui c'era pageSlideIn (0,5s con ritardi a cascata), che la copriva. */
+
+/* Assicura che i modal non ereditino transform da animazioni */
+.content-area > .modal-overlay {
+    animation: none !important;
+    transform: none !important;
+}
+
+/* ==================== STAGGERED CARD ANIMATIONS ==================== */
+.stats-grid .stat-card:nth-child(1) { animation-delay: 0.1s; }
+.stats-grid .stat-card:nth-child(2) { animation-delay: 0.2s; }
+.stats-grid .stat-card:nth-child(3) { animation-delay: 0.3s; }
+.stats-grid .stat-card:nth-child(4) { animation-delay: 0.4s; }
+.stats-grid .stat-card:nth-child(5) { animation-delay: 0.5s; }
+.stats-grid .stat-card:nth-child(6) { animation-delay: 0.6s; }
+
+/* ==================== MODAL PREMIUM EFFECTS ==================== */
+
+.modal {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+}
+
+/* ==================== ALERT PREMIUM EFFECTS ==================== */
+
+.alert::before {
+    border-radius: 4px 0 0 4px;
+}
+
+/* ==================== CHART CONTAINER EFFECTS ==================== */
+.chart-container {
+    position: relative;
+}
+
+/* (la sfumatura azzurra sulla meta' bassa dei grafici e' stata tolta: sembrava
+   un riquadro con gli angoli arrotondati che finiva a meta' grafico) */
+
+/* ==================== FILTER BAR EFFECTS ==================== */
+
+.filters::before {
+    opacity: 0.6;
+}
+
+/* ==================== QUICK ACTIONS BUTTON HOVER ==================== */
+.btn-secondary {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.btn-secondary::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(10, 132, 255, 0.1), transparent);
+    transition: left 0.5s ease;
+}
+
+.btn-secondary:hover::before {
+    left: 100%;
+}
+
+.btn-secondary:hover {
+    transform: translateY(-1px);
+}
+
+/* ==================== DA COMPLETARE ITEM EFFECTS ==================== */
+.da-completare-item {
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+/* (via lo spostamento a destra e la tinta arancio al passaggio del mouse:
+   facevano sembrare cliccabili righe che non lo erano; ora le righe sono link
+   e il loro stato "hover" e' in refine.css) */
+
+/* ==================== RESPONSIVE ADJUSTMENTS ==================== */
+@media (max-width: 768px) {
+    .app-container::before {
+        animation: none;
+    }
+}
+
+/* ==================== KPI CARDS PREMIUM ==================== */
+.kpi-card {
+    position: relative;
+    overflow: hidden;
+    will-change: transform;
+}
+
+.kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary), var(--secondary));
+    transform: scaleX(0);
+    transition: transform 0.4s ease;
+    transform-origin: left;
+}
+
+.kpi-card:hover::before {
+    transform: scaleX(1);
+}
+
+.kpi-card:hover {
+    transform: translateY(-3px);
+}
+
+.kpi-value {
+    transition: all 0.3s ease;
+}
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+}
+
+/* ==================== CLICKABLE STAT CARD ==================== */
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    animation: statusPulse 2s ease-in-out infinite;
+}
+
+.status-dot.online {
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+}
+
+@keyframes statusPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.9); }
+}
+
+/* ==================== LINK HOVER EFFECTS ==================== */
+a.btn:not(.btn-primary):not(.btn-success):not(.btn-danger) {
+    position: relative;
+}
+
+a.btn:not(.btn-primary):not(.btn-success):not(.btn-danger)::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary), var(--secondary));
+    transform: translateX(-50%);
+    transition: width 0.3s ease;
+}
+
+a.btn:not(.btn-primary):not(.btn-success):not(.btn-danger):hover::after {
+    width: 80%;
+}
+
+/* ==================== FOCUS RING ==================== */
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--primary-glow);
+}
+
+/* ==================== EMPTY STATE ANIMATION ==================== */
+.empty-state svg {
+    animation: emptyBounce 2s ease-in-out infinite;
+}
+
+@keyframes emptyBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+
+/* ==================== FILTERS BAR ENHANCED ==================== */
+.filters {
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+}
+
+.filters::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary), var(--secondary), var(--success));
+}
+
+/* ==================== SEARCH BAR ENHANCED ==================== */
+
+.search-input {
+    transition: all 0.3s ease;
+}
+
+.search-input:focus {
+    background: var(--bg-secondary);
+}
+
+/* ==================== ALERT PREMIUM ==================== */
+.alert {
+    position: relative;
+    background: var(--glass-bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.alert::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+}
+
+.alert-info::before {
+    background: linear-gradient(180deg, var(--primary), var(--primary-light));
+}
+
+.alert-success::before {
+    background: linear-gradient(180deg, var(--success), var(--success-light));
+}
+
+.alert-warning::before {
+    background: linear-gradient(180deg, var(--warning), var(--warning-light));
+}
+
+.alert-danger::before {
+    background: linear-gradient(180deg, var(--danger), var(--danger-light));
+}
+
+/* ==================== AUTO SAVE INDICATOR ==================== */
+.auto-save-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(48, 209, 88, 0.1);
+    border: 1px solid rgba(48, 209, 88, 0.2);
+    border-radius: var(--radius);
+    font-size: 0.8rem;
+    color: var(--success);
+}
+
+.auto-save-indicator svg {
+    animation: checkPulse 2s ease-in-out infinite;
+}
+
+@keyframes checkPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(0.95); }
+}
+
+/* ==================== TABLE HEADER SCHOOL ==================== */
+.scuola-header {
+    background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%) !important;
+    position: relative;
+}
+
+.scuola-header td {
+    color: white !important;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.scuola-totale {
+    background: rgba(10, 132, 255, 0.1);
+    position: relative;
+}
+
+.scuola-totale::before {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--primary);
+}
+
+/* ==================== FORM SELECT ENHANCED ==================== */
+select.form-control {
+    transition: all 0.3s ease;
+}
+
+select.form-control:hover {
+    border-color: var(--primary);
+}
+
+/* ==================== BUTTON GROUP ==================== */
+.btn-group {
+    display: inline-flex;
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-group .btn {
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-group .btn:last-child {
+    border-right: none;
+}
+
+/* ==================== BADGE VARIANTS ==================== */
+.badge-primary {
+    border: 1px solid rgba(10, 132, 255, 0.3);
+}
+
+.badge-success {
+    border: 1px solid rgba(48, 209, 88, 0.3);
+}
+
+.badge-warning {
+    border: 1px solid rgba(255, 159, 10, 0.3);
+}
+
+.badge-danger {
+    border: 1px solid rgba(255, 69, 58, 0.3);
+}
+
+/* ==================== LOADING STATE ==================== */
+.btn.loading {
+    position: relative;
+    color: transparent !important;
+    pointer-events: none;
+}
+
+.btn.loading::after {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    top: 50%;
+    left: 50%;
+    margin-left: -9px;
+    margin-top: -9px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: btnSpinner 0.8s linear infinite;
+}
+
+@keyframes btnSpinner {
+    to { transform: rotate(360deg); }
+}
+
+/* === Magnetic Button Effect === */
+.btn-primary,
+.btn-success {
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.btn-primary:active,
+.btn-success:active {
+    transform: scale(0.96);
+    transition-duration: 0.1s;
+}
+
+/* === Morphing Icon Animation === */
+.nav-link svg {
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.nav-link:hover svg {
+    transform: rotate(8deg) scale(1.15);
+}
+
+/* Niente animazione al focus dei campi: il segnale e' il contorno fermo di refine.css */
+.form-control,
+.table-input {
+    position: relative;
+}
+
+/* === Staggered List Animation === */
+/* Animazione disabilitata per evitare problemi di visibilità */
+.da-completare-list .da-completare-item {
+    opacity: 1;
+}
+
+/* === Counter Animation Effect === */
+.stat-value {
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* === Floating Labels Effect === */
+.filter-label {
+    transition: all 0.3s ease;
+}
+
+.filter-group:focus-within .filter-label {
+    color: var(--primary);
+}
+
+/* === Button Shine Effect === */
+.btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.2),
+        transparent
+    );
+    transition: left 0.5s ease;
+}
+
+.btn:hover::before {
+    left: 100%;
+}
+
+/* === Badge Warning - animazione rimossa per performance === */
+.badge-warning {
+    /* badgePulse rimossa: box-shadow animato costantemente è pesante */
+}
+
+/* === Smooth Card Entrance === */
+/* Animazione rimossa per evitare problemi di visibilità dei contenuti */
+/* Le card usano già transizioni CSS definite nella sezione glassmorphism */
+
+/* === Chart Container Glow === */
+.chart-container canvas {
+    transition: filter 0.3s ease;
+}
+
+/* === Sidebar Link Underline Animation === */
+.nav-link span {
+    position: relative;
+}
+
+.nav-link span::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary), var(--secondary));
+    transition: width 0.3s ease;
+    border-radius: 1px;
+}
+
+.nav-link:hover span::after {
+    width: 100%;
+}
+
+/* === Toast Notification Enhancement === */
+
+.toast::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+}
+
+.toast-success::before {
+    background: linear-gradient(90deg, var(--success), var(--success-light));
+}
+
+.toast-error::before {
+    background: linear-gradient(90deg, var(--danger), var(--danger-light));
+}
+
+.toast-warning::before {
+    background: linear-gradient(90deg, var(--warning), var(--warning-light));
+}
+
+.toast-info::before {
+    background: linear-gradient(90deg, var(--primary), var(--primary-light));
+}
+
+/* === Page Header Animation === */
+/* Animazioni header rimosse per stabilità - usano transizioni CSS native */
+.page-header {
+    opacity: 1;
+}
+
+.page-subtitle {
+    opacity: 1;
+}
+
+/* === Interactive Cursor Effects === */
+.btn,
+.nav-link,
+.command-item {
+    cursor: pointer;
+}
+
+/* === Gradient Border - statica per performance === */
+.card-header::after {
+    /* gradientFlow rimossa: animazione infinita non necessaria */
+}
+
+/* === Smooth Scroll Behavior === */
+html {
+    scroll-behavior: smooth;
+}
+
+/* === Focus Ring Enhancement === */
+:focus-visible {
+    box-shadow:
+        0 0 0 2px var(--bg-primary),
+        0 0 0 4px var(--primary),
+        0 0 20px rgba(10, 132, 255, 0.2);
+}
+
+/* === Text Selection === */
+::selection {
+    background: rgba(10, 132, 255, 0.3);
+    color: var(--text-primary);
+}
+
+/* === Improved Scrollbar Hover === */
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, var(--primary), var(--secondary));
+}
+
+/* === Utente Senza Ore - statica per performance === */
+tr.utente-senza-ore {
+    background: rgba(255, 159, 10, 0.08) !important;
+    /* warnPulse rimossa: animazione infinita su righe tabella è pesante */
+}
+
+/* === Card Footer Link Hover === */
+.card-footer .btn {
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.card-footer .btn:hover {
+    transform: translateY(-2px);
+}
+
+/* === Input Error Shake === */
+.input-error {
+    animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+    border-color: var(--danger) !important;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+}
+
+/* === Hover Scale for Images/Icons === */
+.stat-icon svg,
+.card-title svg {
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* === Table Input Focus State === */
+
+.table-input:focus {
+    box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+/* === Ore Anomale Warning Style === */
+.table-input.ore-anomale {
+    border-color: var(--warning) !important;
+    background: rgba(255, 159, 10, 0.1) !important;
+    animation: pulseWarning 2s ease-in-out infinite;
+}
+
+@keyframes pulseWarning {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 159, 10, 0.4); }
+    50% { box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.1); }
+}
+
+/* === Changed Input Indicator === */
+.table-input.changed {
+    border-color: var(--primary) !important;
+    background: rgba(10, 132, 255, 0.05) !important;
+}
+
+.table-input.changed::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    background: var(--primary);
+    border-radius: 50%;
+    animation: dotPulse 1s ease infinite;
+}
+
+@keyframes dotPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.7; }
+}
+
+/* ====================== PARTE: ex ux-enhancements.css ====================== */
+
+/* ==================== UX ENHANCEMENTS ==================== */
+/* Miglioramenti avanzati per l'esperienza utente */
+
+/* ==================== SKELETON LOADING ==================== */
+
+@keyframes skeletonShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Skeleton per stat cards */
+.stat-card.loading .stat-value,
+.stat-card.loading .stat-label {
+    color: transparent;
+    background: linear-gradient(90deg, var(--bg-tertiary), var(--bg-elevated), var(--bg-tertiary));
+    background-size: 200% 100%;
+    animation: skeletonShimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-xs);
+}
+
+/* ==================== TOOLTIPS ==================== */
+[data-tooltip] {
+    position: relative;
+    cursor: help;
+}
+
+[data-tooltip]::before,
+[data-tooltip]::after {
+    position: absolute;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+    z-index: 1000;
+}
+
+[data-tooltip]::before {
+    content: attr(data-tooltip);
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    padding: 8px 14px;
+    background: var(--bg-card-solid);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: blur(10px);
+}
+
+[data-tooltip]::after {
+    content: '';
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    border: 6px solid transparent;
+    border-top-color: var(--bg-card-solid);
+}
+
+[data-tooltip]:hover::before,
+[data-tooltip]:hover::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* Tooltip bottom */
+[data-tooltip-position="bottom"]::before {
+    bottom: auto;
+    top: calc(100% + 8px);
+    transform: translateX(-50%) translateY(-8px);
+}
+
+[data-tooltip-position="bottom"]::after {
+    bottom: auto;
+    top: calc(100% + 2px);
+    border-top-color: transparent;
+    border-bottom-color: var(--bg-card-solid);
+    transform: translateX(-50%) translateY(-8px);
+}
+
+[data-tooltip-position="bottom"]:hover::before,
+[data-tooltip-position="bottom"]:hover::after {
+    transform: translateX(-50%) translateY(0);
+}
+
+/* ==================== RIPPLE EFFECT ==================== */
+.ripple {
+    position: relative;
+    overflow: hidden;
+}
+
+/* ==================== PROGRESS BAR ==================== */
+.progress-bar {
+    width: 100%;
+    height: 6px;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--secondary));
+    border-radius: 3px;
+    transition: width 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+    position: relative;
+}
+
+.progress-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.3) 50%,
+        transparent 100%
+    );
+    animation: progressShine 2s ease-in-out infinite;
+}
+
+@keyframes progressShine {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* ==================== INPUT FEEDBACK ==================== */
+.form-control.success {
+    border-color: var(--success);
+    box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.2);
+}
+
+.form-control.error {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.2);
+    animation: inputShake 0.5s ease;
+}
+
+@keyframes inputShake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-6px); }
+    40%, 80% { transform: translateX(6px); }
+}
+
+/* ==================== SWITCH TOGGLE ==================== */
+.switch {
+    position: relative;
+    width: 50px;
+    height: 28px;
+    cursor: pointer;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+/* ==================== ENHANCED TABLE ROWS ==================== */
+.table tbody tr.selected {
+    background: rgba(10, 132, 255, 0.1);
+}
+
+/* ==================== SMOOTH SCROLL INDICATOR ==================== */
+.scroll-indicator {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    transform-origin: left;
+    transform: scaleX(0);
+    z-index: 9999;
+    transition: transform 0.1s ease;
+}
+
+/* ==================== SMOOTH THEME TRANSITION ==================== */
+/* Ottimizzato: transizioni solo sugli elementi principali, non wildcard * */
+html.theme-transitioning .app-container,
+html.theme-transitioning .sidebar,
+html.theme-transitioning .topbar,
+html.theme-transitioning .content-area,
+html.theme-transitioning .card,
+html.theme-transitioning .stat-card,
+html.theme-transitioning .modal,
+html.theme-transitioning .btn,
+html.theme-transitioning .form-control,
+html.theme-transitioning .table,
+html.theme-transitioning .badge,
+html.theme-transitioning .alert,
+html.theme-transitioning .filters,
+html.theme-transitioning .nav-link,
+html.theme-transitioning .page-title {
+    transition: background-color 0.35s ease,
+                border-color 0.35s ease,
+                color 0.25s ease,
+                box-shadow 0.35s ease !important;
+}
+
+/* ==================== KEYBOARD FOCUS VISIBLE ==================== */
+.btn:focus-visible,
+.nav-link:focus-visible,
+.card:focus-visible,
+[tabindex]:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* ==================== HIGH CONTRAST MODE ==================== */
+@media (prefers-contrast: high) {
+    :root {
+        --border-color: rgba(255, 255, 255, 0.3);
+        --text-secondary: rgba(255, 255, 255, 0.9);
+    }
+
+    .btn {
+        border: 2px solid currentColor;
+    }
+}
+
+/* ==================== RESPONSIVE TOUCH TARGETS ==================== */
+@media (pointer: coarse) {
+    .btn {
+        min-height: 44px;
+        min-width: 44px;
+    }
+}
+
+/* ==================== ENHANCED TABLE INPUT ==================== */
+.table-input {
+    transition: all 0.3s ease;
+}
+
+.table-input:focus {
+    z-index: 10;
+    position: relative;
+}
+
+.table-input.saving {
+    background: rgba(10, 132, 255, 0.1) !important;
+    border-color: var(--primary) !important;
+}
+
+.table-input.saved {
+    background: rgba(48, 209, 88, 0.15) !important;
+    border-color: var(--success) !important;
+    animation: inputSaved 0.5s ease;
+}
+
+@keyframes inputSaved {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.table-input.error {
+    background: rgba(255, 69, 58, 0.15) !important;
+    border-color: var(--danger) !important;
+    animation: inputShake 0.5s ease;
+}
+
+/* ==================== EMPTY STATE ENHANCED ==================== */
+/* Nota: stili base in style.css, qui solo miglioramenti */
+.empty-state {
+    position: relative;
+    z-index: 5;
+}
+
+.empty-state svg.empty-state-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 20px;
+    color: var(--text-quaternary);
+    opacity: 0.7;
+}
+
+/* Variante con sfondo circolare */
+
+.empty-state-text {
+    margin-bottom: 20px;
+}
+
+/* ==================== CONFIRMATION DIALOG ==================== */
+.confirm-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    opacity: 0;
+}
+
+.confirm-dialog-overlay.active {
+    opacity: 1;
+}
+
+.confirm-dialog {
+    text-align: center;
+    padding: 32px;
+    background: var(--bg-card-solid);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    max-width: 420px;
+    width: 90%;
+    transform: scale(0.9) translateY(20px);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.confirm-dialog-icon {
+    margin: 0 auto 20px;
+}
+
+.confirm-dialog-icon svg {
+    width: 48px;
+    height: 48px;
+}
+
+.confirm-dialog-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+
+.confirm-dialog-message {
+    color: var(--text-tertiary);
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
+
+.confirm-dialog-input {
+    width: 100%;
+    padding: 10px 14px;
+    margin-bottom: 20px;
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    text-align: center;
+    transition: border-color 0.2s ease;
+}
+
+.confirm-dialog-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.confirm-dialog-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.confirm-dialog-actions .btn {
+    min-width: 100px;
+}
+
+/* ==================== FIELD VALIDATION ERRORS ==================== */
+.field-error {
+    display: block;
+    color: var(--danger);
+    font-size: 0.75rem;
+    margin-top: 4px;
+    animation: fieldErrorIn 0.3s ease;
+}
+
+@keyframes fieldErrorIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==================== TOAST IMPROVEMENTS ==================== */
+.toast {
+    position: relative;
+    overflow: hidden;
+}
+
+.toast.info {
+    border-left-color: var(--primary);
+}
+
+.toast.info svg {
+    color: var(--primary);
+}
+
+.toast-close {
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.toast-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.toast-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: currentColor;
+    opacity: 0.3;
+    animation: toastProgress linear forwards;
+    width: 100%;
+}
+
+@keyframes toastProgress {
+    from { width: 100%; }
+    to { width: 0; }
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    z-index: 1;
+}
+
+/* ==================== COUNT BADGE ANIMATION ==================== */
+.count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    background: var(--primary);
+    color: white;
+    font-size: 0.7rem;
+    font-weight: 700;
+    border-radius: 10px;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.count-badge.updated {
+    animation: countBadgeUpdate 0.5s ease;
+}
+
+@keyframes countBadgeUpdate {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.3); }
+}
+
+/* ==================== RESPONSIVE TABLES ==================== */
+.table-responsive {
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -1px;
+}
+
+.table-responsive::-webkit-scrollbar {
+    height: 6px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: var(--text-quaternary);
+    border-radius: 3px;
+}
+
+/* Scroll shadow hint on mobile */
+.table-responsive::after {
+    content: '';
+    position: sticky;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 30px;
+    background: linear-gradient(to left, var(--bg-card-solid), transparent);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+@media (max-width: 768px) {
+    .table th:nth-child(n+5),
+    .table td:nth-child(n+5) {
+        white-space: nowrap;
+    }
+
+    .filters {
+        flex-direction: column;
+    }
+
+    .filters .filter-group {
+        width: 100%;
+    }
+
+    .filters .form-control {
+        width: 100% !important;
+    }
+
+    .page-header {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .header-actions {
+        width: 100%;
+        display: flex;
+        gap: 8px;
+    }
+
+    .header-actions .btn {
+        flex: 1;
+        justify-content: center;
+    }
+
+    /* Card view for very narrow screens */
+    .card-body[style*="padding: 0"] {
+        overflow-x: auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .confirm-dialog {
+        padding: 20px;
+        width: 95%;
+    }
+
+    .confirm-dialog-actions {
+        flex-direction: column;
+    }
+
+    .confirm-dialog-actions .btn {
+        width: 100%;
+    }
+
+    .stat-card {
+        padding: 12px;
+    }
+}
+
+/* ==================== ACCESSIBILITY ==================== */
+
+/* Skip to content link */
+.skip-link {
+    position: absolute;
+    top: -100%;
+    left: 0;
+    padding: 12px 24px;
+    z-index: 100000;
+    font-weight: 600;
+    border-radius: 0 0 var(--radius) 0;
+    transition: top 0.2s;
+}
+
+.skip-link:focus {
+    top: 0;
+}
+
+/* Focus visible styles */
+*:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        scroll-behavior: auto !important;
+    }
+}
+
+/* High contrast adjustments */
+@media (forced-colors: active) {
+    .btn {
+        border: 2px solid ButtonText;
+    }
+}
+
+/* ==================== ALERT CARDS ==================== */
+.alert-card {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    border-left: 4px solid;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.alert-card.danger {
+    background: rgba(255, 69, 58, 0.1);
+    border-left-color: var(--danger);
+}
+
+.alert-card.warning {
+    background: rgba(255, 159, 10, 0.1);
+    border-left-color: var(--warning);
+}
+
+.alert-card.info {
+    background: rgba(10, 132, 255, 0.1);
+    border-left-color: var(--primary);
+}
+
+.alert-card-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.alert-card-detail {
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+}
+
+/* ==================== LIGHT THEME OVERRIDES ==================== */
+[data-theme="light"] .alert-card.danger {
+    background: rgba(255, 69, 58, 0.08);
+    color: #721c24;
+}
+
+[data-theme="light"] .alert-card.warning {
+    background: rgba(255, 159, 10, 0.1);
+    color: #856404;
+}
+
+[data-theme="light"] .alert-card.info {
+    background: rgba(10, 132, 255, 0.08);
+    color: #004085;
+}
+
+[data-theme="light"] .alert-card-title {
+    color: #1C1C1E;
+}
+
+[data-theme="light"] .alert-card-detail {
+    color: #636366;
+}
+
+[data-theme="light"] [data-tooltip]::before {
+    background: #FFFFFF;
+    border-color: #D1D1D6;
+    color: #1C1C1E;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] [data-tooltip]::after {
+    border-top-color: #FFFFFF;
+}
+
+[data-theme="light"] .progress-bar {
+    background: #E5E5EA;
+}
+
+/* ==================== REPORT CARDS ==================== */
+.report-cards-grid {
+    display: grid;
+}
+
+.report-card {
+    background: var(--bg-card-solid);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all 0.25s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.report-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--report-card-color, var(--primary));
+    opacity: 0.8;
+}
+
+.report-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    border-color: var(--report-card-color, var(--primary));
+}
+
+.report-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius);
+    background: linear-gradient(135deg, rgba(var(--report-card-color-rgb, 10, 132, 255), 0.15), rgba(var(--report-card-color-rgb, 10, 132, 255), 0.05));
+    align-items: center;
+    justify-content: center;
+    color: var(--report-card-color, var(--primary));
+}
+
+.report-card-icon svg {
+    width: 24px;
+    height: 24px;
+}
+
+.report-card-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.report-card-desc {
+    font-size: 0.85rem;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+    flex: 1;
+}
+
+.report-card-action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: auto;
+}
+
+.report-card-action svg {
+    width: 16px;
+    height: 16px;
+    transition: transform 0.2s ease;
+}
+
+.report-card:hover .report-card-action svg {
+    transform: translateX(4px);
+}
+
+/* Report card color variants */
+.report-card.excel {
+    --report-card-color-rgb: 33, 115, 70;
+}
+
+.report-card.municipale {
+    --report-card-color-rgb: 10, 132, 255;
+}
+
+.report-card.dipartimentale {
+    --report-card-color-rgb: 255, 159, 10;
+}
+
+.report-card.word {
+    --report-card-color-rgb: 43, 87, 154;
+}
+
+/* Light theme overrides */
+[data-theme="light"] .report-card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .report-card:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .report-card-icon {
+    background: linear-gradient(135deg, rgba(var(--report-card-color-rgb, 10, 132, 255), 0.12), rgba(var(--report-card-color-rgb, 10, 132, 255), 0.05));
+}
+
+/* Button press effect */
+
+.btn:active {
+    transform: scale(0.97);
+}
+
+/* Icon bounce on hover */
+
+@keyframes iconBounce {
+    0%, 100% { transform: translateY(0); }
+    25% { transform: translateY(-3px); }
+    50% { transform: translateY(0); }
+    75% { transform: translateY(-1px); }
+}
+
+/* Smooth collapse/expand */
+.collapsible {
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+/* Badge count animation */
+.badge-count {
+    transition: transform 0.2s ease;
+}
+
+.badge-count.updated {
+    animation: badgePop 0.3s ease;
+}
+
+@keyframes badgePop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+}
+
+/* Input focus animation */
+.form-control {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+/* Navbar link underline animation */
+
+.nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    height: 2px;
+    background: var(--primary);
+    transition: width 0.2s ease, left 0.2s ease;
+}
+
+.nav-link:hover::after {
+    width: 80%;
+    left: 10%;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ==================== ENHANCED RESPONSIVE DESIGN ==================== */
+
+/* Tablet breakpoint */
+@media (max-width: 1024px) {
+    .page-header-row {
+        flex-direction: column;
+        gap: 16px;
+        align-items: flex-start;
+    }
+
+    .header-actions {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .card-header .header-actions {
+        width: 100%;
+    }
+}
+
+/* Mobile breakpoint */
+@media (max-width: 768px) {
+    .content-area {
+        padding: 16px;
+    }
+
+    /* Form improvements */
+    .form-row {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .form-row .form-group {
+        width: 100%;
+    }
+
+    /* Table mobile optimization */
+    .table-container {
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -16px;
+        padding: 0 16px;
+    }
+
+    .table th,
+    .table td {
+        padding: 10px 8px;
+        font-size: 0.8rem;
+    }
+
+    /* Cards */
+
+    .card-body {
+        padding: 16px;
+    }
+
+    /* KPI grid */
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .kpi-card {
+        padding: 16px 12px;
+    }
+
+    .kpi-value {
+        font-size: 1.5rem;
+    }
+
+    .kpi-label {
+        font-size: 0.7rem;
+    }
+
+    /* Report cards grid */
+
+    .report-card {
+        padding: 16px;
+    }
+
+    .report-card-title {
+        font-size: 0.9rem;
+    }
+
+    .report-card-desc {
+        font-size: 0.75rem;
+    }
+
+    /* Buttons */
+    .btn {
+        padding: 10px 16px;
+        font-size: 0.85rem;
+    }
+
+    .btn-sm {
+        padding: 6px 12px;
+        font-size: 0.75rem;
+    }
+
+    /* Modal adjustments */
+    .modal {
+        width: 95%;
+        max-width: none;
+        margin: 16px;
+        max-height: calc(100vh - 32px);
+    }
+
+    .modal-body {
+        padding: 16px;
+    }
+}
+
+/* Small mobile */
+@media (max-width: 480px) {
+    .content-area {
+        padding: 12px;
+    }
+
+    .kpi-grid {
+        gap: 8px;
+    }
+
+    .kpi-card {
+        padding: 12px 10px;
+    }
+
+    .kpi-value {
+        font-size: 1.25rem;
+    }
+
+    /* Niente '.btn{width:100%}' e '.btn + .btn{margin-top:8px}' per tutti i pulsanti:
+       valevano anche per quelli in riga, nelle celle e negli avvisi (cestino largo
+       219px, freccia 'indietro' larga meta' schermo, pulsanti affiancati sfalsati).
+       Le file di pulsanti che devono riempire la riga lo dicono da se'
+       (.header-actions, .modal-footer in refine.css). */
+
+    /* Stat cards */
+    .stats-grid {
+        gap: 12px;
+    }
+
+    .stat-card {
+        flex-direction: row;
+        text-align: left;
+    }
+
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+    }
+}
+
+/* Touch-friendly improvements */
+@media (hover: none) and (pointer: coarse) {
+    /* Larger touch targets */
+    .btn,
+    .nav-link,
+    .form-control,
+    select {
+        min-height: 44px;
+    }
+
+    /* Better scrolling */
+    .table-container,
+    .heatmap-container {
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x proximity;
+    }
+}
+
+/* Print styles */
+@media print {
+    .main-content {
+        padding-top: 0 !important;
+    }
+
+    .btn {
+        display: none;
+    }
+
+    .table {
+        font-size: 10pt;
+    }
+}
+
+/* ====================== PARTE: ex components.css ====================== */
+
+/* =====================================================================
+   COMPONENTI (components.css)
+   Regole ripristinate da advanced-features.css (rimosso in v1.8.0 perche' in
+   gran parte inutilizzato): qui restano SOLO i componenti davvero usati dalle
+   pagine - report rapidi (Dashboard, Chiusura Mese), filtri avanzati (Report),
+   righe di validazione, heatmap (Statistiche). Il file e' caricato nella stessa
+   posizione della cascata del vecchio file, cosi' l'aspetto e' identico.
+   ===================================================================== */
+
+.heatmap-cell {
+    cursor: pointer;
+}
+
+.heatmap-cell:hover {
+    box-shadow: 0 0 8px rgba(10, 132, 255, 0.5);
+}
+
+/* Stampa: blocco della v1.7.6 ripristinato integralmente (testi neri, pulsanti
+   nascosti, margini di pagina): la prima estrazione aveva perso le regole sugli
+   elementi (h1, p, span, a, body) e .btn:not(.btn-print). */
+@media print {
+    /* Hide non-essential elements */
+    .sidebar,
+    .topbar,
+    .toast-container,
+    .command-palette-overlay,
+    .global-loading-overlay,
+    .btn:not(.btn-print),
+    .filters,
+    .pagination,
+    .scroll-indicator {
+        display: none !important;
+    }
+
+    /* Reset layout */
+    body {
+        background: white !important;
+        color: black !important;
+        font-size: 12pt;
+        line-height: 1.5;
+    }
+
+    .app-container {
+        display: block !important;
+    }
+
+    .main-content {
+        margin-left: 0 !important;
+        padding: 0 !important;
+    }
+
+    .content-area {
+        padding: 0 !important;
+    }
+
+    /* Card styling */
+    .card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        margin-bottom: 20px;
+    }
+
+    .card-header {
+        background: #f5f5f5 !important;
+        border-bottom: 1px solid #ddd !important;
+    }
+
+    /* Table styling */
+    .table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+    }
+
+    .table th,
+    .table td {
+        border: 1px solid #ddd !important;
+        padding: 8px !important;
+        background: white !important;
+        color: black !important;
+    }
+
+    .table th {
+        background: #f5f5f5 !important;
+    }
+
+    .table tbody tr:nth-child(even) {
+        background: #fafafa !important;
+    }
+
+    /* Text colors */
+    h1, h2, h3, h4, h5, h6 {
+        color: black !important;
+        page-break-after: avoid;
+    }
+
+    p, span, div {
+        color: black !important;
+    }
+
+    /* Links */
+    a {
+        color: black !important;
+        text-decoration: underline !important;
+    }
+
+    a[href]::after {
+        content: " (" attr(href) ")";
+        font-size: 0.8em;
+        color: #666;
+    }
+
+    a[href^="#"]::after,
+    a[href^="javascript"]::after {
+        content: "";
+    }
+
+    /* Stat cards */
+
+    .stat-value {
+        color: black !important;
+    }
+
+    .stat-label {
+        color: #666 !important;
+    }
+
+    /* Badges */
+    .badge {
+        background: #eee !important;
+        color: black !important;
+        border: 1px solid #ccc !important;
+    }
+
+    /* Page margins */
+    @page {
+        margin: 2cm;
+        size: A4;
+    }
+
+    @page :first {
+        margin-top: 3cm;
+    }
+}
+
+.topbar-btn {
+    position: relative;
+}
+
+[data-theme="light"] .heatmap-cell:hover {
+    box-shadow: 0 0 8px rgba(10, 132, 255, 0.4);
+}
+
+.report-quick-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+}
+
+.report-quick-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 12px;
+    border-radius: var(--radius);
+    text-decoration: none;
+    transition: all var(--transition-fast);
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.report-quick-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+    border-color: var(--primary);
+}
+
+.report-quick-card.excel {
+    border-left: 3px solid #30D158;
+}
+
+.report-quick-card.excel:hover {
+    background: rgba(48, 209, 88, 0.08);
+}
+
+.report-quick-card.municipale {
+    border-left: 3px solid #0A84FF;
+}
+
+.report-quick-card.municipale:hover {
+    background: rgba(10, 132, 255, 0.08);
+}
+
+.report-quick-card.dipartimentale {
+    border-left: 3px solid #BF5AF2;
+}
+
+.report-quick-card.dipartimentale:hover {
+    background: rgba(191, 90, 242, 0.08);
+}
+
+.report-quick-card.locale {
+    border-left: 3px solid #FF9F0A;
+}
+
+.report-quick-card.locale:hover {
+    background: rgba(255, 159, 10, 0.08);
+}
+
+.report-quick-card.stats {
+    border-left: 3px solid #64D2FF;
+}
+
+.report-quick-card.stats:hover {
+    background: rgba(100, 210, 255, 0.08);
+}
+
+.report-quick-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+}
+
+.report-quick-icon svg {
+    width: 28px;
+    height: 28px;
+}
+
+.report-quick-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: center;
+}
+
+.report-quick-desc {
+    color: var(--text-tertiary);
+    text-align: center;
+    margin-top: 2px;
+}
+
+.validation-item {
+    transition: background-color var(--transition-fast);
+}
+
+.validation-item:hover {
+    background-color: var(--bg-hover, rgba(255,255,255,0.02));
+}
+
+.validation-item:last-child {
+    border-bottom: none;
+}
+
+.heatmap-container {
+    overflow-x: auto;
+    padding-bottom: 8px;
+}
+
+.heatmap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+}
+
+.heatmap-table th, .heatmap-table td {
+    padding: 6px 8px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.heatmap-table th {
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.heatmap-table th:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+}
+
+.heatmap-table td:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background: var(--bg-secondary);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.heatmap-cell {
+    width: 50px;
+    height: 32px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
+    transition: transform var(--transition-fast);
+}
+
+.heatmap-cell:hover {
+    transform: scale(1.1);
+    z-index: 10;
+}
+
+.heatmap-cell[data-level="0"] { background: rgba(107, 114, 128, 0.2); color: var(--text-tertiary); }
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 150px;
+}
+
+.filter-details {
+    margin-top: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-tertiary);
+}
+
+.filter-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+
+.filter-summary::-webkit-details-marker {
+    display: none;
+}
+
+.filter-summary::after {
+    content: '';
+    margin-left: auto;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid var(--text-tertiary);
+    transition: transform var(--transition-fast);
+}
+
+.filter-details[open] .filter-summary::after {
+    transform: rotate(180deg);
+}
+
+.filter-summary:hover {
+    color: var(--text-primary);
+}
+
+.filter-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--primary);
+    border-radius: 10px;
+}
+
+.filter-content {
+    padding: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* ==================== RENDICONTAZIONE ==================== */
+
+/* Intestazione della pagina: il mese mostrato nel titolo ("Rendicontazione Mensile
+   · <mese> <anno>"), giorni lavorativi e coefficiente al posto del sottotitolo, le azioni
+   sul mese a destra. Prima c'erano un pannello "Periodo" (220px, poi 52px + margine)
+   e una fila di pulsanti sopra la tabella: a 1366x768 si vedevano 3 utenti. */
+/* Spazi un po' piu' stretti che nelle altre pagine (16px tra i blocchi, filtri da
+   92px invece di 104): qui conta vedere piu' righe della tabella possibile */
+.page-header.rend-header { margin-bottom: var(--sp-4); }
+.filters.rend-filtri { padding-top: var(--sp-3); padding-bottom: var(--sp-3); margin-bottom: var(--sp-4); }
+.rend-header-testo { min-width: 0; }
+.rend-titolo-periodo {
+    color: var(--text-secondary);
+    -webkit-text-fill-color: var(--text-secondary);   /* .page-title la forza sul testo */
+    font-weight: 500;
+}
+.rend-titolo-periodo:not(:empty)::before {
+    content: "\00B7";
+    margin: 0 0.3em;
+    color: var(--text-tertiary);
+    -webkit-text-fill-color: var(--text-tertiary);
+}
+.rend-periodo { display: flex; flex-wrap: wrap; gap: 2px 20px; }
+.rend-periodo[hidden] { display: none; }
+.rend-periodo strong { color: var(--text-primary); font-weight: 600; }
+.rend-azioni { gap: 8px; }
+@media (min-width: 1025px) {
+    /* se lo spazio non basta va a capo la riga dei giorni, non i pulsanti (+52px) */
+    .rend-header .page-header-row { flex-wrap: nowrap; }
+    .rend-azioni { flex-shrink: 0; }
+}
+
+/* Stato del salvataggio automatico accanto al titolo "Dettaglio Utenti": una
+   scritta, senza riquadro verde e senza l'icona che pulsava di continuo */
+.card-header .auto-save-indicator {
+    padding: 0;
+    background: none;
+    border: none;
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+}
+.card-header .auto-save-indicator svg { animation: none; }
+.card-header .auto-save-indicator.saved { color: var(--success); }
+.card-header .auto-save-indicator.pending,
+.card-header .auto-save-indicator.saving { color: var(--text-secondary); }
+.card-header .auto-save-indicator.pending svg { display: none; }
+.card-header .auto-save-indicator.errore { color: var(--danger); font-weight: 600; }
+
+/* Intestazione "Dettaglio Utenti" su una riga: titolo e stato del salvataggio a
+   sinistra, poi filtro per nome, "N senza ore" e aiuto sul formato ore (erano una
+   barra a parte sotto l'intestazione: 73 + 57px, ora 53px) */
+.rend-card-header { flex-wrap: wrap; gap: 8px 16px; padding: 8px 24px; min-height: 0; }
+.rend-card-titolo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.rend-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    flex: 1 1 420px;
+    min-width: 0;
+    gap: 8px 12px;
+}
+/* casella da 180 a 300px: con "N utenti su 35" o "Nessun utente trovato" accanto
+   resta tutto su una riga anche a 1366 */
+.excel-filter-bar { flex: 1 1 180px; max-width: 300px; min-width: 180px; }
+.excel-filter-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 4px 0 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+/* lo stesso contorno blu degli altri campi, sul riquadro e non sulla sola scritta */
+.excel-filter-input-group:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.excel-filter-input-group svg { color: var(--text-tertiary); flex-shrink: 0; }
+.excel-filter-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.875rem;
+}
+.excel-filter-input:focus-visible { outline: none !important; }
+.excel-filter-input::placeholder { color: var(--text-tertiary); }
+.excel-filter-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+}
+.excel-filter-clear:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.excel-filter-results {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.excel-filter-results:empty { display: none; }
+.excel-filter-results.no-results { color: var(--warning); }
+
+/* "12 senza ore": un'etichetta che si puo' premere (mostra solo quelle righe) */
+.badge-toggle { font-family: inherit; cursor: pointer; }
+.badge-toggle:hover { filter: brightness(1.12); }
+.badge-toggle[aria-pressed="true"] { box-shadow: inset 0 0 0 2px currentColor !important; }
+.badge-toggle[aria-pressed="true"]::after { content: "\2715"; margin-left: 2px; }
+
+.btn-aiuto {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px 5px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+.btn-aiuto-icona {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    font-weight: 700;
+    font-size: 0.75rem;
+}
+.btn-aiuto:hover, .btn-aiuto[aria-expanded="true"] { color: var(--text-primary); background: var(--bg-tertiary); }
+.rend-aiuto { margin: 12px 24px; }
+.rend-aiuto[hidden] { display: none; }   /* .alert e' display:flex e annullava [hidden] */
+
+/* Tabella compatta: righe da ~45px invece di 88 (nome, iniziali e ore su una
+   riga; casella ore da 72px), cosi' all'apertura si vedono gli utenti */
+/* 8px ai lati: con casella ore e scostamento sulla stessa riga le 12 colonne
+   entrano ancora in 1040px (1366x768, menu laterale aperto) */
+.tabella-rend th, .tabella-rend td { padding: 8px; }
+.tabella-rend th:first-child, .tabella-rend td:first-child { padding-left: 12px; }
+.tabella-rend thead th, .tabella-rend tr.scuola-header td { padding-top: 6px; padding-bottom: 6px; }
+.tabella-rend tr[data-utente-id] > td:first-child,
+.tabella-rend .cella-ac { white-space: nowrap; }
+/* Intestazioni su due righe solo se serve ("Media / Mens."): con le 12 colonne su
+   una riga la tabella non entrava a 1366-1440px e Cred/Deb restava fuori */
+.tabella-rend th { white-space: normal; vertical-align: bottom; }
+.tabella-rend input.table-input.ore-input { width: 72px; padding: 5px 6px; }
+/* casella e scostamento sulla stessa riga (andava a capo: righe da 66px) */
+.tabella-rend .cella-ore { white-space: nowrap; }
+.tabella-rend input.table-input.pasti-input { width: 56px; padding: 5px 6px; }
+.tabella-rend .totale-ore-60 { display: inline-block; min-width: 72px; text-align: center; font-family: var(--font-mono); }
+/* Riquadro della tabella quasi alto quanto la finestra (era il 70%) */
+.rend-scroll { max-height: calc(100vh - 180px); }
+
+/* Scostamento dal mese precedente (ore per giorno lavorativo): leggibile,
+   neutro, rosso solo quando e' forte; la freccia dice la direzione */
+.diff-indicator {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    vertical-align: middle;
+    cursor: help;
+}
+.diff-indicator.forte { color: var(--danger); }
+
+/* Monte ore con una variazione attiva: etichetta "var." (prima solo il colore arancio,
+   lo stesso di "senza ore", e la spiegazione solo passando col mouse). Sta PRIMA del
+   numero, cosi' le cifre restano allineate a destra con quelle delle altre righe. */
+.badge-var {
+    display: inline-block;
+    margin-right: 2px;
+    padding: 1px 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+    font-weight: 600;
+    vertical-align: 1px;
+    cursor: help;
+}
+
+.totali-nota { font-size: 0.85rem; font-weight: 400; color: var(--text-tertiary); }
+
+@media (max-width: 1024px) {
+    /* intestazione in colonna (ux-enhancements): la barra dei filtri a tutta larghezza */
+    .rend-card-header .rend-toolbar { align-self: stretch; flex-basis: auto; flex-wrap: wrap; }
+}
+@media (max-width: 768px) {
+    /* telefono: due pulsanti per riga, non tre tagliati ("Compila con Med") */
+    .rend-azioni .btn { flex: 1 1 140px; }
+    .rend-azioni .btn + .btn { margin-top: 0; }   /* lo spazio lo da' gap (sfalsati di 8px) */
+    .rend-card-header { padding: 12px 16px; }
+    .excel-filter-bar { flex: 1 1 100%; max-width: none; }
+    .rend-aiuto { margin: 12px 16px; }
+}
+
+/* ==================== CALENDARIO ==================== */
+/* Giugno: i due valori (Infanzia / Altri ordini) nella stessa cella, con l'etichetta */
+.cal-giugno { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.cal-campo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+    .report-quick-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .filter-group {
+        width: 100%;
+    }
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .flex.gap-4 {
+        flex-direction: column;
+    }
+    .flex.gap-4 > .card {
+        min-width: 100% !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .report-quick-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    .report-quick-card {
+        padding: 12px 8px;
+    }
+    .report-quick-icon {
+        width: 32px;
+        height: 32px;
+    }
+    .report-quick-icon svg {
+        width: 22px;
+        height: 22px;
+    }
+    .report-quick-title {
+        font-size: 0.75rem;
+    }
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

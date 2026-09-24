@@ -1,9 +1,12 @@
 // ==================== DASHBOARD ====================
-// Logica della dashboard: stato del mese, avvisi, validazione e grafici.
-// Helper condivisi (apiCall, animateCounter, MESI, ...) sono in app.js.
+// Logica della dashboard: stato del mese, cose da fare, numeri e trend.
+// Helper condivisi (apiCall, animateCounter, MESI, ChartManager, ...) sono in app.js.
 
-let chartCommesse = null;
-let chartTrend = null;
+let _ultimoTrend = null;   // dati del trend, per ridisegnarlo al cambio di tema
+// Numero del caricamento in corso: cambiando in fretta commessa e mese, le
+// risposte di un caricamento vecchio non devono sovrascrivere quelle nuove.
+let _caricamento = 0;
+const _superato = (n) => n !== _caricamento;
 
 document.addEventListener('DOMContentLoaded', async () => {
     await initDashboardFilters();
@@ -58,17 +61,45 @@ function getPeriodoCorrente() {
     };
 }
 
-async function loadDashboardData() {
-    try {
-        const filters = getActiveFilters();
-        const queryParams = new URLSearchParams();
-        if (filters.commessa) queryParams.set('commessa', filters.commessa);
-        if (filters.anno) queryParams.set('anno', filters.anno);
-        if (filters.mese) queryParams.set('mese', filters.mese);
-        const qs = queryParams.toString() ? `?${queryParams}` : '';
+/** Querystring con anno, mese e (se scelta) commessa del periodo mostrato. */
+function _qsPeriodo() {
+    const { anno, mese, commessa } = getPeriodoCorrente();
+    const qs = new URLSearchParams({ anno, mese });
+    if (commessa) qs.set('commessa', commessa);
+    return qs.toString();
+}
 
-        // KPI
-        const stats = await apiCall(`/api/stats/filtered${qs}`);
+async function loadDashboardData() {
+    // Ogni blocco si carica per conto suo: un errore in uno non ferma gli altri
+    // (prima un'eccezione nei grafici lasciava 'Ultimo aggiornamento: --').
+    const filters = getActiveFilters();
+    const n = ++_caricamento;
+    aggiornaSottotitoliReport();
+    await Promise.allSettled([
+        loadNumeri(filters, n),
+        loadStatoMese(n),
+        loadDaFare(n),
+        loadTrend(n),
+    ]);
+    if (_superato(n)) return;
+    // Banner nuovo anno scolastico (giugno-ottobre, se non ancora preparato)
+    loadBannerNuovoAnno();
+    updateLastRefresh();
+}
+
+// ==================== NUMERI DEL SERVIZIO ====================
+
+async function loadNumeri(filters, n = _caricamento) {
+    try {
+        const qs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}` : '';
+        const urlUtenti = filters.commessa ? `/api/utenti?commessa=${encodeURIComponent(filters.commessa)}` : '/api/utenti';
+        const [stats, commesse, base, utenti] = await Promise.all([
+            apiCall(`/api/stats/filtered${qs}`),
+            apiCall('/api/commesse'),
+            apiCall('/api/stats'),
+            apiCall(urlUtenti),
+        ]);
+        if (_superato(n)) return;
         animateCounter(document.getElementById('stat-utenti'), stats.num_utenti || 0, 800);
         animateCounter(document.getElementById('stat-scuole'), stats.num_scuole || 0, 800);
 
@@ -79,35 +110,45 @@ async function loadDashboardData() {
                 (!filters.commessa && (stats.num_utenti || 0) === 0) ? '' : 'none';
         }
 
-        // Banner nuovo anno scolastico (giugno-ottobre, se non ancora preparato)
-        loadBannerNuovoAnno();
+        // Commesse attive: con un filtro conta solo quella scelta
+        const attive = commesse.filter(c => c.attiva && (!filters.commessa || c.nome === filters.commessa));
+        animateCounter(document.getElementById('stat-commesse'), attive.length, 800);
+        const labelCommesse = document.getElementById('stat-commesse-label');
+        if (labelCommesse) labelCommesse.textContent = attive.length === 1 ? 'commessa attiva' : 'commesse attive';
 
-        const commesse = await apiCall('/api/commesse');
-        animateCounter(document.getElementById('stat-commesse'), commesse.filter(c => c.attiva).length, 800);
+        // Utenti per commessa, col colore scelto in Impostazioni > Commesse
+        // (sostituisce la ciambella, identica a quella di Statistiche): un colore
+        // diverso per commessa, anche se due ne hanno salvato lo stesso
+        const dettaglio = document.getElementById('stat-utenti-commesse');
+        if (dettaglio) {
+            const perCommessa = base.utenti_per_commessa || {};
+            const conUtenti = filters.commessa ? [] : commesse.filter(c => (perCommessa[c.nome] || 0) > 0);
+            const colori = coloriCommesseDistinti(conUtenti);
+            const voci = conUtenti
+                .map((c, i) => `<span class="dash-numero-commessa"><span class="legend-dot" style="background:${escapeHtml(colori[i])}"></span>${escapeHtml(c.nome)} ${perCommessa[c.nome]}</span>`);
+            dettaglio.innerHTML = voci.length > 1 ? voci.join('') : '';
+        }
 
-        const urlUtenti = filters.commessa ? `/api/utenti?commessa=${encodeURIComponent(filters.commessa)}` : '/api/utenti';
-        const utenti = await apiCall(urlUtenti);
         const monteOreTotale = utenti.reduce((sum, u) => sum + (u.monte_ore_settimanale || 0), 0);
         animateCounter(document.getElementById('stat-monte-ore'), Math.round(monteOreTotale), 1000);
-
-        // Stato del mese, avvisi, validazione
-        await loadStatoMese();
-        await loadAlerts();
-        await loadValidazione();
-
-        // Grafici
-        const statsBase = await apiCall('/api/stats');
-        await updateCharts(statsBase.utenti_per_commessa);
-
-        updateLastRefresh();
     } catch (error) {
-        console.error('Errore caricamento dati dashboard:', error);
+        console.error('Errore caricamento numeri dashboard:', error);
     }
 }
 
 // ==================== STATO DEL MESE ====================
 
-async function loadStatoMese() {
+// Quanti nomi mostrare: gli altri si vedono in Rendicontazione (niente scorrimento interno)
+const DA_COMPLETARE_VISIBILI = 5;
+
+/** Il mese mostrato non e' ancora finito (le ore si registrano a fine mese). */
+function _meseInCorso(anno, mese) {
+    const oggi = new Date();
+    const chiave = anno * 12 + mese;
+    return chiave >= oggi.getFullYear() * 12 + (oggi.getMonth() + 1);
+}
+
+async function loadStatoMese(n = _caricamento) {
     const { anno, mese, commessa } = getPeriodoCorrente();
     const nomeEl = document.getElementById('stato-mese-nome');
     const percentEl = document.getElementById('stato-mese-percent');
@@ -117,50 +158,89 @@ async function loadStatoMese() {
     if (!nomeEl) return;
 
     nomeEl.textContent = `${MESI[mese]} ${anno}`;
+    const urlMese = `/rendicontazione?anno=${anno}&mese=${mese}`;
+    document.getElementById('stato-mese-link')?.setAttribute('href', urlMese);
 
     try {
-        let daCompletare = await apiCall(`/api/stats/utenti-da-completare/${anno}/${mese}`);
-        if (commessa) {
-            daCompletare = daCompletare.filter(u => u.commessa === commessa);
-        }
-
         const qsTot = new URLSearchParams({ anno, mese });
         if (commessa) qsTot.set('commessa', commessa);
-        const statsTot = await apiCall(`/api/stats/filtered?${qsTot}`);
+        const [elenco, statsTot, anniConCalendario] = await Promise.all([
+            apiCall(`/api/stats/utenti-da-completare/${anno}/${mese}`),
+            apiCall(`/api/stats/filtered?${qsTot}`),
+            // stesso elenco del menu "Anno scolastico" della Rendicontazione
+            apiCall('/api/anni-scolastici').catch(() => null),
+        ]);
+        if (_superato(n)) return;
+        const daCompletare = commessa ? elenco.filter(u => u.commessa === commessa) : elenco;
         const totale = statsTot.num_utenti || 0;
+
+        // La Rendicontazione apre solo i mesi di scuola degli anni che hanno il
+        // calendario: per gli altri (es. settembre, prima di "Prepara il calendario")
+        // le righe non sono link, perche' porterebbero a un altro mese.
+        const annoScol = _annoScolasticoPeriodo();
+        const meseDiScuola = MESI_SCOLASTICI.includes(mese);
+        const apribile = meseDiScuola && (!anniConCalendario || anniConCalendario.includes(annoScol));
 
         const completati = Math.max(totale - daCompletare.length, 0);
         const percent = totale > 0 ? Math.round((completati / totale) * 100) : 0;
 
+        // Mese ancora in corso: 0% e' normale (le ore si registrano a fine mese),
+        // quindi grigio e barra blu; il rosso resta ai mesi gia' finiti.
+        const inCorso = _meseInCorso(anno, mese);
+        let livello = percent >= 100 ? 'success' : percent >= 50 ? 'warning' : 'danger';
+        if (inCorso && percent < 100) livello = null;
         percentEl.textContent = `${percent}%`;
-        percentEl.className = 'badge ' + (percent >= 100 ? 'badge-success' : percent >= 50 ? 'badge-warning' : 'badge-danger');
+        percentEl.className = 'badge ' + (livello ? `badge-${livello}` : 'badge-secondary');
+        percentEl.title = inCorso && percent < 100 ? 'Mese in corso' : '';
         barEl.style.width = `${percent}%`;
-        barEl.style.background = percent >= 100 ? 'var(--success)' : percent >= 50 ? 'var(--warning)' : 'var(--danger)';
+        barEl.style.background = livello ? `var(--${livello})` : 'var(--primary)';
         testoEl.textContent = totale > 0
             ? `${completati} di ${totale} utenti rendicontati — ${daCompletare.length} senza ore`
             : 'Nessun utente attivo nel periodo selezionato';
 
         if (daCompletare.length === 0) {
             listaEl.innerHTML = totale > 0
-                ? `<div class="empty-state" style="padding: 16px;">
-                       <p class="text-muted text-center" style="margin: 0;">✓ Tutti gli utenti hanno le ore registrate</p>
-                   </div>`
+                ? `<p class="da-completare-ok">✓ Tutti gli utenti hanno le ore registrate</p>`
                 : '';
         } else {
-            const utentiToShow = daCompletare.slice(0, 8);
-            let html = utentiToShow.map(u => `
-                <div class="da-completare-item">
-                    <div class="da-completare-info">
-                        <span class="da-completare-nome">${escapeHtml(u.nome)} ${escapeHtml(u.cognome)}</span>
-                        <span class="da-completare-scuola">${escapeHtml(u.commessa)} - ${escapeHtml(u.scuola.substring(0, 40))}${u.scuola.length > 40 ? '...' : ''}</span>
-                    </div>
-                    <span class="badge badge-secondary">${u.monte_ore}h</span>
-                </div>
-            `).join('');
-            if (daCompletare.length > 8) {
-                html += `<div class="da-completare-more"><span class="text-muted">+ altri ${daCompletare.length - 8} utenti</span></div>`;
+            // Ogni riga apre la Rendicontazione del mese gia' filtrata su quell'utente
+            let html = daCompletare.slice(0, DA_COMPLETARE_VISIBILI).map(u => {
+                const nome = `${u.nome} ${u.cognome}`;
+                const scuola = u.scuola || '';
+                const tag = apribile ? 'a' : 'div';
+                const link = apribile
+                    ? ` href="${urlMese}&cerca=${encodeURIComponent(nome)}" title="Apri ${escapeHtml(nome)} in Rendicontazione"`
+                    : '';
+                return `
+                <${tag} class="da-completare-item"${link}>
+                    <span class="da-completare-info">
+                        <span class="da-completare-nome">${escapeHtml(nome)}</span>
+                        <span class="da-completare-scuola" title="${escapeHtml(scuola)}">${escapeHtml(u.commessa)} · ${escapeHtml(scuola)}</span>
+                    </span>
+                    <span class="badge badge-secondary da-completare-monte" title="Monte ore settimanale">${formatNumero(u.monte_ore)} h/sett.</span>
+                </${tag}>`;
+            }).join('');
+            if (apribile) {
+                html += `<a class="da-completare-more" href="${urlMese}&senza_ore=1">${
+                    daCompletare.length > DA_COMPLETARE_VISIBILI
+                        ? `Vedi tutti i ${daCompletare.length} in Rendicontazione`
+                        : 'Apri in Rendicontazione'} →</a>`;
+            } else if (meseDiScuola) {
+                // Al posto di "Vedi tutti": il passo che manca per poter registrare le ore
+                html += `<p class="da-completare-avviso">Per registrare le ore di ${MESI[mese]} ${anno} serve prima
+                    il calendario ${escapeHtml(annoScol)}. <a href="/calendario" data-prepara-anno="${escapeHtml(annoScol)}">Prepara il calendario →</a></p>`;
+            } else {
+                html += `<p class="da-completare-avviso">${MESI[mese]} non è un mese di scuola: in Rendicontazione le ore si registrano da settembre a giugno.</p>`;
             }
             listaEl.innerHTML = html;
+            // Se e' l'anno del riquadro "Prepara il nuovo anno", il passo si fa da qui
+            // (stessa conferma del pulsante "1 · Prepara il calendario"); altrimenti Calendario
+            listaEl.querySelector('[data-prepara-anno]')?.addEventListener('click', (e) => {
+                if (_annoWizard === annoScol) {
+                    e.preventDefault();
+                    preparaNuovoAnno(annoScol);
+                }
+            });
         }
     } catch (error) {
         console.error('Errore caricamento stato mese:', error);
@@ -168,276 +248,205 @@ async function loadStatoMese() {
     }
 }
 
-// ==================== ALERT AUTOMATICI ====================
+// ==================== DA FARE (avvisi + controlli dei dati) ====================
 
-async function loadAlerts() {
-    try {
-        const { anno, mese } = getPeriodoCorrente();
+// Gia' detti dallo Stato del mese: non si ripetono qui
+const DA_FARE_ESCLUSI = new Set(['senza_ore', 'completamento', 'ore_mancanti',
+    // stessi utenti degli avvisi "sotto il 50%" / "sopra il 150%" della media
+    'differenze_elevate']);
+const LIVELLI = { danger: 0, warning: 1, info: 2 };
+// Avvisi senza un collegamento proprio: dove si vedono tutti gli utenti citati
+const AZIONI_PREDEFINITE = { budget: ['/utenti', 'Apri gli utenti'], documenti: ['/utenti', 'Apri gli utenti'] };
+const ICONE_LIVELLO = {
+    warning: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />',
+    danger: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />',
+    info: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />'
+};
 
-        const data = await apiCall(`/api/alerts?anno=${anno}&mese=${mese}`);
-        const panel = document.getElementById('alerts-panel');
-        const list = document.getElementById('alerts-list');
-        const countBadge = document.getElementById('alerts-count');
-
-        if (data.total_alerts > 0) {
-            panel.style.display = '';
-            countBadge.style.display = '';
-            countBadge.textContent = data.total_alerts;
-
-            const iconMap = {
-                warning: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />',
-                danger: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />',
-                info: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />',
-                success: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />'
-            };
-
-            list.innerHTML = data.alerts.slice(0, 10).map(a => `
-                <div class="alert-item alert-${a.type}" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: 8px; margin-bottom: 8px; background: var(--${a.type === 'danger' ? 'danger' : a.type === 'warning' ? 'warning' : a.type === 'info' ? 'primary' : 'success'}-bg, rgba(var(--${a.type}-rgb), 0.1));">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px; flex-shrink: 0; color: var(--${a.type});">
-                        ${iconMap[a.type] || iconMap.info}
-                    </svg>
-                    <div style="flex: 1; min-width: 0;">
-                        <div style="font-weight: 600; font-size: 0.875rem; color: var(--text-primary);">${escapeHtml(a.title)}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">${escapeHtml(a.message)}</div>
-                        ${a.utenti ? `<div style="font-size: 0.7rem; color: var(--text-tertiary); margin-top: 4px;">${a.utenti.slice(0, 3).map(u => escapeHtml(u)).join(', ')}${a.utenti.length > 3 ? '...' : ''}</div>` : ''}
-                        ${a.progress !== undefined ? `<div style="margin-top: 8px; background: var(--bg-secondary); border-radius: 4px; height: 6px; overflow: hidden;"><div style="width: ${a.progress}%; height: 100%; background: var(--${a.type}); transition: width 0.3s;"></div></div>` : ''}
-                    </div>
-                    ${a.action ? `<a href="${a.action}" class="btn btn-sm btn-${a.type === 'danger' ? 'danger' : 'secondary'}" style="flex-shrink: 0; font-size: 0.7rem; padding: 4px 8px;">${escapeHtml(a.action_label || 'Vai')}</a>` : ''}
-                </div>
-            `).join('');
-
-            if (data.total_alerts > 10) {
-                list.innerHTML += `<p class="text-center text-muted text-xs mt-2">+ altri ${data.total_alerts - 10} alert</p>`;
-            }
-        } else {
-            panel.style.display = 'none';
-        }
-    } catch (e) {
-        console.log('Alerts non disponibili:', e);
-    }
+/** Voce dell'elenco "Da fare" nello stesso formato per avvisi e controlli. */
+function _vocePerDaFare(livello, titolo, messaggio, nomi, totaleNomi, azione, etichettaAzione) {
+    return { livello: LIVELLI[livello] !== undefined ? livello : 'info', titolo, messaggio, nomi: nomi || [], totaleNomi: totaleNomi || 0, azione, etichettaAzione };
 }
 
-// ==================== VALIDAZIONE DATI ====================
+async function loadDaFare(n = _caricamento) {
+    const lista = document.getElementById('da-fare-list');
+    const contatore = document.getElementById('da-fare-count');
+    if (!lista) return;
+    const { anno, mese } = getPeriodoCorrente();
+    const qs = _qsPeriodo();
+    const urlMese = `/rendicontazione?anno=${anno}&mese=${mese}`;
 
-async function loadValidazione() {
-    const container = document.getElementById('validazione-content');
-    const badge = document.getElementById('validazione-badge');
+    const [avvisi, controlli] = await Promise.allSettled([
+        apiCall(`/api/alerts?${qs}`),
+        apiCall(`/api/stats/validazione?${qs}`),
+    ]);
+    if (_superato(n)) return;
 
-    container.innerHTML = '<div class="loading" style="padding: 20px;"><div class="spinner"></div></div>';
-
-    try {
-        const { anno, mese } = getPeriodoCorrente();
-
-        const data = await apiCall(`/api/stats/validazione?anno=${anno}&mese=${mese}`);
-
-        if (data.riepilogo.critiche > 0) {
-            badge.className = 'badge badge-danger';
-            badge.textContent = `${data.riepilogo.critiche} critici`;
-        } else if (data.riepilogo.avvisi > 0) {
-            badge.className = 'badge badge-warning';
-            badge.textContent = `${data.riepilogo.avvisi} avvisi`;
-        } else {
-            badge.className = 'badge badge-success';
-            badge.textContent = 'OK';
-        }
-
-        if (data.anomalie.length === 0) {
-            container.innerHTML = `
-                <div class="validation-success" style="padding: 24px; text-align: center;">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                         style="width: 48px; height: 48px; color: var(--success); margin: 0 auto 12px;">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p style="color: var(--success); font-weight: 600; margin: 0 0 4px;">Nessuna anomalia rilevata</p>
-                    <p style="color: var(--text-tertiary); font-size: 0.8rem; margin: 0;">
-                        ${MESI[mese]} ${anno} - Tutti i dati sono coerenti
-                    </p>
-                </div>
-            `;
-            return;
-        }
-
-        const iconMap = {
-            danger: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />',
-            warning: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />',
-            info: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />'
-        };
-
-        container.innerHTML = data.anomalie.map(a => `
-            <div class="validation-item validation-${a.tipo}" style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border-color);">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                     style="width: 20px; height: 20px; flex-shrink: 0; color: var(--${a.tipo});">
-                    ${iconMap[a.tipo]}
-                </svg>
-                <div style="flex: 1; min-width: 0;">
-                    <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-primary);">${escapeHtml(a.titolo)}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">${escapeHtml(a.messaggio)}</div>
-                    ${a.dettagli && a.dettagli.length > 0 ? `
-                        <div style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 6px;">
-                            ${a.dettagli.slice(0, 3).map(d => escapeHtml(d.nome || d.commessa || '')).filter(Boolean).join(', ')}
-                            ${a.dettagli.length > 3 ? `<span class="text-muted">... e altri ${a.dettagli.length - 3}</span>` : ''}
-                        </div>
-                    ` : ''}
-                </div>
-                <div style="text-align: right; flex-shrink: 0;">
-                    <span class="badge badge-${a.tipo}" style="font-size: 0.7rem;">${a.conteggio}</span>
-                </div>
-            </div>
-        `).join('');
-
-    } catch (e) {
-        console.error('Errore validazione:', e);
-        badge.className = 'badge badge-secondary';
-        badge.textContent = '--';
-        container.innerHTML = '<div class="text-center text-muted py-4">Errore nel caricamento</div>';
-    }
-}
-
-// ==================== GRAFICI ====================
-
-async function updateCharts(utentiPerCommessa) {
-    // Chart Commesse (Doughnut)
-    const ctx1 = document.getElementById('chart-commesse');
-    if (ctx1 && utentiPerCommessa) {
-        const labels = Object.keys(utentiPerCommessa);
-        const data = Object.values(utentiPerCommessa);
-        const colors = ['#0A84FF', '#BF5AF2', '#30D158', '#FF9F0A', '#FF453A', '#64D2FF'];
-
-        if (chartCommesse) chartCommesse.destroy();
-
-        const isDarkDoughnut = document.documentElement.getAttribute('data-theme') !== 'light';
-        const tooltipBgDoughnut = isDarkDoughnut ? 'rgba(28, 28, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)';
-        const tooltipTextDoughnut = isDarkDoughnut ? '#fff' : '#1D1D1F';
-        const tooltipBorderDoughnut = isDarkDoughnut ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
-
-        chartCommesse = new Chart(ctx1, {
-            type: 'doughnut',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: data,
-                    backgroundColor: colors.slice(0, labels.length),
-                    borderWidth: 0,
-                    hoverOffset: 8
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: tooltipBgDoughnut,
-                        titleColor: tooltipTextDoughnut,
-                        bodyColor: isDarkDoughnut ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.7)',
-                        borderColor: tooltipBorderDoughnut,
-                        borderWidth: 1,
-                        cornerRadius: 8,
-                        padding: 12
-                    }
-                },
-                cutout: '65%',
-                animation: {
-                    animateRotate: true,
-                    animateScale: true
-                }
-            }
+    const voci = [];
+    if (avvisi.status === 'fulfilled') {
+        (avvisi.value.alerts || []).filter(a => !DA_FARE_ESCLUSI.has(a.categoria)).forEach(a => {
+            const [azionePred, etichettaPred] = AZIONI_PREDEFINITE[a.categoria] || [];
+            const azione = a.action === '/rendicontazione' ? urlMese : (a.action || azionePred);
+            voci.push(_vocePerDaFare(a.type, a.title, a.message, a.utenti, a.count, azione, a.action_label || etichettaPred));
         });
+    }
+    if (controlli.status === 'fulfilled') {
+        (controlli.value.anomalie || []).filter(a => !DA_FARE_ESCLUSI.has(a.categoria)).forEach(a => {
+            const nomi = (a.dettagli || []).map(d => d.nome || d.commessa || '').filter(Boolean);
+            const azione = a.categoria === 'commesse_vuote' ? '/commesse' : urlMese;
+            voci.push(_vocePerDaFare(a.tipo, a.titolo, a.messaggio, nomi, a.conteggio, azione, 'Verifica'));
+        });
+    }
+    voci.sort((x, y) => LIVELLI[x.livello] - LIVELLI[y.livello]);
 
-        const legendContainer = document.getElementById('legend-commesse');
-        legendContainer.innerHTML = labels.map((label, i) =>
-            `<div class="legend-item">
-                <span class="legend-dot" style="background:${colors[i]}"></span>
-                <span>${escapeHtml(label)} (${data[i]})</span>
-            </div>`
-        ).join('');
+    if (avvisi.status === 'rejected' && controlli.status === 'rejected') {
+        contatore.className = 'badge badge-secondary';
+        contatore.textContent = '--';
+        lista.innerHTML = '<p class="da-fare-vuoto text-muted">Controlli non disponibili</p>';
+        return;
     }
 
-    // Chart Trend (Line)
+    if (voci.length === 0) {
+        contatore.className = 'badge badge-success';
+        contatore.textContent = 'Nessun avviso';
+        lista.innerHTML = `<p class="da-fare-vuoto">✓ Nessun altro avviso per ${MESI[mese]} ${anno}</p>`;
+        return;
+    }
+
+    // Il contatore prende il colore della voce piu' grave (prima era sempre rosso)
+    const piuGrave = voci[0].livello;
+    contatore.className = 'badge ' + (piuGrave === 'info' ? 'badge-secondary' : `badge-${piuGrave}`);
+    contatore.textContent = voci.length;
+
+    lista.innerHTML = voci.map(v => {
+        const nomiVisti = v.nomi.slice(0, 3);
+        const altri = Math.max(v.totaleNomi, v.nomi.length) - nomiVisti.length;
+        const nomi = nomiVisti.length ? `
+            <div class="da-fare-nomi">${nomiVisti.map(n => escapeHtml(n)).join(', ')}${
+                altri > 0 ? ` … e altri ${altri}${v.azione ? ` · <a href="${escapeHtml(v.azione)}">vedi tutti</a>` : ''}` : ''}</div>` : '';
+        return `
+        <div class="validation-item da-fare-item da-fare-${v.livello}">
+            <svg class="da-fare-icona" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                ${ICONE_LIVELLO[v.livello]}
+            </svg>
+            <div class="da-fare-testo">
+                <div class="da-fare-titolo">${escapeHtml(v.titolo)}</div>
+                <div class="da-fare-messaggio">${escapeHtml(v.messaggio || '')}</div>
+                ${nomi}
+            </div>
+            ${v.azione ? `<a href="${escapeHtml(v.azione)}" class="btn btn-sm btn-secondary da-fare-azione">${escapeHtml(v.etichettaAzione || 'Vai')}</a>` : ''}
+        </div>`;
+    }).join('');
+}
+
+// ==================== TREND ====================
+
+/** Anno scolastico del periodo mostrato (es. '2026-2027'). */
+function _annoScolasticoPeriodo() {
+    const { anno, mese } = getPeriodoCorrente();
+    return mese >= 9 ? `${anno}-${anno + 1}` : `${anno - 1}-${anno}`;
+}
+
+async function loadTrend(n = _caricamento) {
+    const annoScolastico = _annoScolasticoPeriodo();
+    const titolo = document.getElementById('trend-titolo');
+    if (titolo) titolo.textContent = `Trend ore erogate ${annoScolastico}`;
     try {
-        const filters = getActiveFilters();
-        const trendQs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}` : '';
-        const trendData = await apiCall(`/api/stats/trend${trendQs}`);
-        const ctx2 = document.getElementById('chart-trend');
-
-        if (ctx2 && trendData && trendData.length > 0) {
-            if (chartTrend) chartTrend.destroy();
-
-            const labels = trendData.map(d => d.mese_nome);
-            const oreData = trendData.map(d => d.ore_erogate || 0);
-
-            const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-            const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)';
-            const tickColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.6)';
-            const tooltipBg = isDark ? 'rgba(28, 28, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)';
-            const tooltipText = isDark ? '#fff' : '#1D1D1F';
-            const tooltipBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
-
-            const gradient = ctx2.getContext('2d').createLinearGradient(0, 0, 0, 200);
-            gradient.addColorStop(0, 'rgba(10, 132, 255, 0.3)');
-            gradient.addColorStop(1, 'rgba(10, 132, 255, 0)');
-
-            chartTrend = new Chart(ctx2, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Ore Erogate',
-                        data: oreData,
-                        borderColor: '#0A84FF',
-                        backgroundColor: gradient,
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.4,
-                        pointBackgroundColor: '#0A84FF',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2,
-                        pointRadius: 5,
-                        pointHoverRadius: 8
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: tooltipBg,
-                            titleColor: tooltipText,
-                            bodyColor: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.7)',
-                            borderColor: tooltipBorder,
-                            borderWidth: 1,
-                            cornerRadius: 8,
-                            padding: 12,
-                            callbacks: {
-                                label: (ctx) => `${ctx.parsed.y.toLocaleString('it-IT')} ore`
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { color: gridColor },
-                            ticks: { color: tickColor }
-                        },
-                        y: {
-                            grid: { color: gridColor },
-                            ticks: {
-                                color: tickColor,
-                                callback: (value) => value.toLocaleString('it-IT')
-                            }
-                        }
-                    },
-                    animation: {
-                        duration: 1000,
-                        easing: 'easeOutQuart'
-                    }
-                }
-            });
-        }
+        const { commessa } = getActiveFilters();
+        const qs = new URLSearchParams({ anno_scolastico: annoScolastico });
+        if (commessa) qs.set('commessa', commessa);
+        const dati = await apiCall(`/api/stats/trend?${qs}`);
+        if (_superato(n)) return;
+        _ultimoTrend = { dati, annoScolastico };
+        disegnaTrend();
     } catch (error) {
-        console.log('Trend data not available:', error);
+        console.error('Errore trend:', error);
     }
+}
+
+function disegnaTrend() {
+    const canvas = document.getElementById('chart-trend');
+    const vuoto = document.getElementById('trend-vuoto');
+    if (!canvas || !_ultimoTrend) return;
+    const { dati, annoScolastico } = _ultimoTrend;
+
+    // Libera la tela prima di ridisegnare: un secondo 'new Chart' sulla stessa
+    // tela va in errore e fermava tutto il resto della pagina
+    Chart.getChart(canvas)?.destroy();
+
+    const oggi = new Date();
+    const chiaveOggi = oggi.getFullYear() * 12 + oggi.getMonth() + 1;
+    // I mesi futuri restano vuoti: niente linea che "crolla" a zero
+    const valori = dati.map(d => (d.anno * 12 + d.mese > chiaveOggi ? null : (d.ore_erogate || 0)));
+    const nessunaOra = !valori.some(v => v > 0);
+    canvas.hidden = nessunaOra;
+    if (vuoto) {
+        vuoto.hidden = !nessunaOra;
+        vuoto.textContent = `Nessuna ora ancora registrata per il ${annoScolastico}`;
+    }
+    if (nessunaOra) return;
+
+    const colors = ChartManager.getColors();
+    const gradient = canvas.getContext('2d').createLinearGradient(0, 0, 0, 200);
+    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.25)');
+    gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
+
+    new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: dati.map(d => d.mese_nome),
+            datasets: [{
+                label: 'Ore erogate',
+                data: valori,
+                borderColor: colors.primary,
+                backgroundColor: gradient,
+                borderWidth: 3,
+                fill: true,
+                tension: 0.3,
+                spanGaps: false,
+                pointBackgroundColor: colors.primary,
+                pointBorderColor: colors.fondo,
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 7
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: ChartManager.tooltip(colors, {
+                    callbacks: {
+                        title: (items) => {
+                            const d = dati[items[0].dataIndex];
+                            return `${MESI[d.mese]} ${d.anno}`;
+                        },
+                        label: (ctx) => `${ctx.parsed.y.toLocaleString('it-IT', { maximumFractionDigits: 2 })} ore`
+                    }
+                })
+            },
+            scales: {
+                x: {
+                    grid: { color: colors.grid },
+                    ticks: { color: colors.text }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: colors.grid },
+                    ticks: {
+                        color: colors.text,
+                        callback: (value) => value.toLocaleString('it-IT')
+                    },
+                    title: { display: true, text: 'ore', color: colors.text }
+                }
+            },
+            animation: {
+                duration: 800,
+                easing: 'easeOutQuart'
+            }
+        }
+    });
 }
 
 function updateLastRefresh() {
@@ -448,6 +457,14 @@ function updateLastRefresh() {
 }
 
 // ==================== QUICK EXPORT ====================
+
+/** Nei report rapidi il mese che si scarica e' scritto sulla scheda. */
+function aggiornaSottotitoliReport() {
+    const { anno, mese } = getPeriodoCorrente();
+    document.querySelectorAll('.report-quick-periodo').forEach(el => {
+        el.textContent = `${MESI[mese]} ${anno}`;
+    });
+}
 
 function quickExportExcel() {
     const { anno, mese } = getPeriodoCorrente();
@@ -467,19 +484,22 @@ function quickExportDipartimentale() {
     showToast('Download Report Dipartimentale in corso...', 'success');
 }
 
-// Aggiorna grafici al cambio tema
-window.addEventListener('themechange', async () => {
+// Al cambio di tema il trend si ridisegna con i colori nuovi (prima numeri e
+// griglia restavano bianchi e sparivano sul fondo chiaro)
+window.addEventListener('themechange', () => {
     try {
-        const stats = await apiCall('/api/stats');
-        await updateCharts(stats.utenti_per_commessa);
+        disegnaTrend();
     } catch (error) {
-        console.log('Chart refresh on theme change failed:', error);
+        console.error('Trend non ridisegnato al cambio tema:', error);
     }
 });
 
 // ==================== BANNER NUOVO ANNO SCOLASTICO ====================
 
 let _bannerAnnoInit = false;
+let _annoWizard = null;
+let _wizardUtenti = [];
+let _wizardStato = {};   // id utente -> { nuovo, archivia }: modifiche fatte nella tabella
 
 async function loadBannerNuovoAnno() {
     const card = document.getElementById('nuovo-anno-card');
@@ -487,64 +507,238 @@ async function loadBannerNuovoAnno() {
     try {
         const stato = await apiCall('/api/anno-scolastico/prossimo');
         if (!stato.mostra_banner) {
+            // Ultimo passo appena fatto: il riquadro resta con l'esito ("2 di 2 fatti")
+            // finche' non si cambia pagina (prima spariva subito, esito compreso, sia
+            // dopo il passo 1 sia dopo il passo 2); al prossimo caricamento non c'e' piu'
+            if (stato.prossimo && document.getElementById('nuovo-anno-esito')?.innerHTML.trim()) {
+                renderPassiNuovoAnno(stato);
+                return;
+            }
             card.style.display = 'none';
             return;
         }
+        _annoWizard = stato.prossimo;
         document.getElementById('nuovo-anno-label').textContent = stato.prossimo;
         card.style.display = '';
+        renderPassiNuovoAnno(stato);
 
         if (!_bannerAnnoInit) {
             _bannerAnnoInit = true;
-            document.getElementById('btn-prepara-anno').addEventListener('click',
-                () => preparaNuovoAnno(stato.prossimo));
+            document.getElementById('btn-prepara-anno').addEventListener('click', () => preparaNuovoAnno(_annoWizard));
+            // "Dettagli": apre e chiude la spiegazione dei due passi
+            document.getElementById('btn-nuovo-anno-dettagli')?.addEventListener('click', (e) => {
+                const body = document.getElementById('nuovo-anno-body');
+                body.hidden = !body.hidden;
+                e.currentTarget.setAttribute('aria-expanded', String(!body.hidden));
+            });
+            document.getElementById('btn-wizard-utenti').addEventListener('click', () => apriWizardUtenti(_annoWizard));
+            document.getElementById('btn-wizard-utenti-applica').addEventListener('click', applicaWizardUtenti);
+            document.getElementById('wizard-utenti-cerca').addEventListener('input', renderWizardUtenti);
+            document.getElementById('wizard-chiudi-variazioni').addEventListener('change', aggiornaRiepilogoWizard);
+            // Le modifiche nella tabella restano anche se si filtra/rirenderizza
+            const tbody = document.getElementById('wizard-utenti-tbody');
+            tbody.addEventListener('input', (e) => {
+                if (e.target.classList.contains('wizard-nuovo-mo')) {
+                    _statoWizard(e.target.dataset.id).nuovo = e.target.value;
+                    aggiornaRiepilogoWizard();
+                }
+            });
+            tbody.addEventListener('change', (e) => {
+                if (e.target.classList.contains('wizard-archivia')) {
+                    _statoWizard(e.target.dataset.id).archivia = e.target.checked;
+                    e.target.closest('tr')?.classList.toggle('wizard-riga-archivia', e.target.checked);
+                    aggiornaRiepilogoWizard();
+                }
+            });
         }
     } catch (e) { console.error(e); }
 }
 
-async function preparaNuovoAnno(annoScolastico) {
-    if (!confirm(`Preparare l'anno scolastico ${annoScolastico}?\n\n` +
-                 'Verrà creato il calendario con i giorni lavorativi calcolati ' +
-                 'automaticamente (regole Regione Lazio). Potrai rivederlo e ' +
-                 'correggerlo dalla pagina Calendario.')) {
+function _statoWizard(id) {
+    if (!_wizardStato[id]) _wizardStato[id] = {};
+    return _wizardStato[id];
+}
+
+function renderPassiNuovoAnno(stato) {
+    const mostra = (id, visibile) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = visibile ? '' : 'none';
+    };
+    document.getElementById('passo-calendario')?.classList.toggle('fatto', !!stato.pronto);
+    document.getElementById('passo-utenti')?.classList.toggle('fatto', !!stato.utenti_pronti);
+    mostra('btn-prepara-anno', !stato.pronto);
+    mostra('passo-calendario-ok', stato.pronto);
+    mostra('btn-wizard-utenti', !stato.utenti_pronti);
+    mostra('passo-utenti-ok', stato.utenti_pronti);
+    const fatti = (stato.pronto ? 1 : 0) + (stato.utenti_pronti ? 1 : 0);
+    const progresso = document.getElementById('nuovo-anno-progresso');
+    if (progresso) progresso.textContent = `${fatti} di 2 ${fatti === 1 ? 'fatto' : 'fatti'}`;
+}
+
+function preparaNuovoAnno(annoScolastico) {
+    showConfirmDialog(
+        `Preparare il calendario ${annoScolastico}?`,
+        'Verranno creati i giorni lavorativi di ogni mese, calcolati automaticamente ' +
+        '(regole Regione Lazio). Potrai rivederli e correggerli dalla pagina Calendario.',
+        async () => {
+            const btn = document.getElementById('btn-prepara-anno');
+            btn.disabled = true;
+            try {
+                const data = await apiCall('/api/anno-scolastico/prepara', {
+                    method: 'POST',
+                    body: JSON.stringify({ anno_scolastico: annoScolastico })
+                });
+                const MESI_BREVI = ['','Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+                const righe = data.mesi.map(m =>
+                    `<tr><td>${MESI_BREVI[m.mese]} ${m.anno}</td>` +
+                    `<td class="text-right">${m.giorni}${m.giorni_altri != null ? ` (non-infanzia: ${m.giorni_altri})` : ''}</td></tr>`
+                ).join('');
+                // Passo 2 gia' fatto: il nuovo anno e' pronto (l'esito resta visibile)
+                const utentiFatti = document.getElementById('passo-utenti')?.classList.contains('fatto');
+                document.getElementById('nuovo-anno-esito').innerHTML = `
+                    <div class="alert alert-success">
+                        <div><strong>Calendario ${escapeHtml(data.anno_scolastico)} creato</strong> per ${data.mesi.length} mesi.
+                        ${utentiFatti ? 'Il nuovo anno è pronto.' : 'Ora puoi passare al punto 2 (utenti e monte ore).'}</div>
+                    </div>
+                    <div class="table-responsive mt-2" style="max-width:420px;">
+                        <table class="table">
+                            <thead><tr><th>Mese</th><th class="text-right">Giorni lavorativi</th></tr></thead>
+                            <tbody>${righe}</tbody>
+                        </table>
+                    </div>`;
+                showToast('Calendario del nuovo anno preparato', 'success');
+                // Tutta la dashboard: lo Stato del mese diventa apribile e l'avviso
+                // "Calendario incompleto" in Da fare sparisce (poi il banner)
+                loadDashboardData();
+            } catch (e) {
+                showToast(e.message || 'Errore nella preparazione', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        },
+        { confirmText: 'Prepara', type: 'info' }
+    );
+}
+
+async function apriWizardUtenti(annoScolastico) {
+    _wizardStato = {};
+    document.getElementById('wizard-utenti-anno').textContent = annoScolastico;
+    document.getElementById('wizard-utenti-cerca').value = '';
+    const tbody = document.getElementById('wizard-utenti-tbody');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner"></div></td></tr>';
+    openModal('modal-nuovo-anno-utenti');
+    try {
+        const data = await apiCall(`/api/anno-scolastico/utenti-anteprima?anno_scolastico=${encodeURIComponent(annoScolastico)}`);
+        _wizardUtenti = data.utenti || [];
+        document.getElementById('wizard-variazioni-n').textContent = data.variazioni_da_chiudere;
+        document.getElementById('wizard-chiudi-variazioni').checked = data.variazioni_da_chiudere > 0;
+        renderWizardUtenti();
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">${escapeHtml(e.message || 'Errore nel caricamento')}</td></tr>`;
+    }
+}
+
+function renderWizardUtenti() {
+    const tbody = document.getElementById('wizard-utenti-tbody');
+    const q = (document.getElementById('wizard-utenti-cerca').value || '').toLowerCase().trim();
+    const righe = _wizardUtenti.filter(u => !q || `${u.nome} ${u.cognome || ''} ${u.scuola || ''}`.toLowerCase().includes(q));
+    if (!righe.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Nessun utente</td></tr>';
+        aggiornaRiepilogoWizard();
         return;
     }
-    const btn = document.getElementById('btn-prepara-anno');
-    btn.disabled = true;
-    try {
-        const res = await fetch('/api/anno-scolastico/prepara', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ anno_scolastico: annoScolastico })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Errore');
+    tbody.innerHTML = righe.map(u => {
+        const st = _wizardStato[u.id] || {};
+        const nuovo = st.nuovo !== undefined ? st.nuovo : u.monte_ore_base;
+        // Mai spuntato in partenza: chi e' uscito ha gia' la data di fine, che lo
+        // esclude dal nuovo anno; qui c'e' solo l'indicazione "uscito a mm/aaaa"
+        const archivia = st.archivia !== undefined ? st.archivia : false;
+        const diverso = Number(u.effettivo_giugno) !== Number(u.monte_ore_base);
+        const [aFine, mFine] = String(u.data_fine || '').split('-');
+        const fine = u.data_fine
+            ? `<span class="text-muted" style="font-size:0.75rem;">${u.uscito ? 'uscito a' : 'fine'} ${escapeHtml(mFine && aFine ? `${mFine}/${aFine}` : u.data_fine)}</span>`
+            : '';
+        return `<tr class="${archivia ? 'wizard-riga-archivia' : ''}">
+            <td><strong>${escapeHtml(u.nome)} ${escapeHtml(u.cognome || '')}</strong>
+                <div class="text-muted" style="font-size:0.8rem;">${escapeHtml(u.scuola || '')}</div></td>
+            <td class="text-center">${formatNumero(u.monte_ore_base)}</td>
+            <td class="text-center ${diverso ? 'wizard-diff' : ''}" title="${u.variazioni_aperte} variazione/i ancora aperta/e">${formatNumero(u.effettivo_giugno)}${diverso ? ' ⚠' : ''}</td>
+            <td><input type="number" class="form-control wizard-nuovo-mo" data-id="${u.id}" value="${nuovo}" step="0.5" min="0" max="40" style="width:100px;" aria-label="Nuovo monte ore"></td>
+            <td class="text-center wizard-cella-archivia"><label class="wizard-archivia-label">
+                <input type="checkbox" class="wizard-archivia" data-id="${u.id}" ${archivia ? 'checked' : ''} aria-label="Archivia ${escapeHtml(u.nome)} ${escapeHtml(u.cognome || '')}">
+                ${fine}</label></td>
+        </tr>`;
+    }).join('');
+    aggiornaRiepilogoWizard();
+}
 
-        const MESI_BREVI = ['','Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
-        const righe = data.mesi.map(m =>
-            `<tr><td>${MESI_BREVI[m.mese]} ${m.anno}</td>` +
-            `<td class="text-right">${m.giorni}${m.giorni_altri != null ? ` (non-infanzia: ${m.giorni_altri})` : ''}</td></tr>`
-        ).join('');
-        document.getElementById('nuovo-anno-body').innerHTML = `
-            <div class="alert alert-success">
-                <div><strong>Anno ${escapeHtml(data.anno_scolastico)} preparato!</strong>
-                Calendario creato per ${data.mesi.length} mesi.</div>
-            </div>
-            <div class="table-responsive mt-3" style="max-width:420px;">
-                <table class="table">
-                    <thead><tr><th>Mese</th><th class="text-right">Giorni lavorativi</th></tr></thead>
-                    <tbody>${righe}</tbody>
-                </table>
-            </div>
-            <p class="text-muted mt-2" style="font-size:0.9rem;">
-                Prossimi passi consigliati:
-                <a href="/calendario"><strong>rivedi il calendario</strong></a> (chiusure locali, scioperi…)
-                e <a href="/utenti"><strong>controlla i monte ore</strong></a> degli assistiti
-                (${data.utenti_attivi} attivi in anagrafica).
-            </p>
-        `;
-        showToast('Nuovo anno scolastico preparato', 'success');
-    } catch (e) {
-        showToast(e.message || 'Errore nella preparazione', 'error');
-        btn.disabled = false;
+function _modificheWizard() {
+    const monte_ore = {};
+    const archivia = [];
+    _wizardUtenti.forEach(u => {
+        const st = _wizardStato[u.id] || {};
+        const nuovo = (st.nuovo !== undefined && st.nuovo !== '') ? Number(st.nuovo) : Number(u.monte_ore_base);
+        if (nuovo !== Number(u.monte_ore_base)) monte_ore[u.id] = nuovo;
+        if (st.archivia) archivia.push(u.id);
+    });
+    return { monte_ore, archivia };
+}
+
+function aggiornaRiepilogoWizard() {
+    const el = document.getElementById('wizard-utenti-riepilogo');
+    if (!el) return;
+    const { monte_ore, archivia } = _modificheWizard();
+    const chiudi = document.getElementById('wizard-chiudi-variazioni').checked;
+    const nVar = chiudi ? Number(document.getElementById('wizard-variazioni-n').textContent || 0) : 0;
+    el.textContent = `${nVar} variazioni da chiudere · ${Object.keys(monte_ore).length} monte ore da aggiornare · ${archivia.length} da archiviare`;
+}
+
+function applicaWizardUtenti() {
+    const { monte_ore, archivia } = _modificheWizard();
+    const chiudi = document.getElementById('wizard-chiudi-variazioni').checked;
+    const nVar = chiudi ? Number(document.getElementById('wizard-variazioni-n').textContent || 0) : 0;
+    const righe = [];
+    if (chiudi) righe.push(`${nVar} variazioni monte ore chiuse al 31 agosto`);
+    righe.push(`${Object.keys(monte_ore).length} monte ore di partenza aggiornati`);
+    righe.push(`${archivia.length} utenti archiviati`);
+    // Testo vero: niente cambia nei mesi gia' rendicontati (monte ore e archiviati)
+    let spiegazione = '.';
+    if (Object.keys(monte_ore).length) {
+        spiegazione += ' Il nuovo monte ore vale da settembre: i mesi passati tengono quello di prima ' +
+            '(resta come variazione chiusa ad agosto) e ogni cambio resta nello storico dell\'utente.';
     }
+    if (archivia.length) {
+        spiegazione += ' Gli archiviati non compariranno nei mesi futuri; i mesi già rendicontati restano ' +
+            'invariati. Si ritrovano nel filtro "Archiviati" della pagina Utenti.';
+    }
+    showConfirmDialog(
+        `Applicare le modifiche per il ${_annoWizard}?`,
+        righe.join(' · ') + spiegazione,
+        async () => {
+            const btn = document.getElementById('btn-wizard-utenti-applica');
+            btn.disabled = true;
+            try {
+                const res = await apiCall('/api/anno-scolastico/prepara-utenti', {
+                    method: 'POST',
+                    body: JSON.stringify({ anno_scolastico: _annoWizard, chiudi_variazioni: chiudi, monte_ore, archivia })
+                });
+                closeModal('modal-nuovo-anno-utenti');
+                document.getElementById('nuovo-anno-esito').innerHTML = `
+                    <div class="alert alert-success">
+                        <div><strong>Utenti pronti per il ${escapeHtml(_annoWizard)}.</strong>
+                        ${res.variazioni_chiuse} variazioni chiuse, ${res.monte_ore_modificati} monte ore aggiornati
+                        (per ${res.variazioni_conservate || 0} i mesi passati tengono il valore di prima),
+                        ${res.archiviati} utenti archiviati. I mesi già rendicontati non cambiano.</div>
+                    </div>`;
+                showToast('Utenti preparati per il nuovo anno', 'success');
+                loadBannerNuovoAnno();
+                if (typeof loadDashboardData === 'function') loadDashboardData();
+            } catch (e) {
+                showToast(e.message || 'Errore nell\'applicazione delle modifiche', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        },
+        { confirmText: 'Applica', type: 'info' }
+    );
 }

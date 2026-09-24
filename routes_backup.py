@@ -75,7 +75,17 @@ def api_restore_backup():
     if not backup_name:
         return jsonify({'error': 'Nome backup richiesto'}), 400
 
+    backup_path = db.percorso_backup_valido(backup_name)
+    if not backup_path:
+        return jsonify({'error': 'Backup non trovato'}), 404
+    # Controllo del file PRIMA di toccare il database attuale (vuoto, estraneo, danneggiato)
+    motivo = db.verifica_file_database(backup_path)
+    if motivo:
+        return jsonify({'error': f"Questo file non si può ripristinare: {motivo}. "
+                                 "I dati attuali non sono stati toccati."}), 400
+
     if db.restore_backup(backup_name):
         db.log_audit('ripristino', 'sistema', dettagli=f'Ripristinato backup: {backup_name}')
         return jsonify({'success': True, 'message': f'Backup {backup_name} ripristinato'})
-    return jsonify({'error': 'Backup non trovato o errore nel ripristino'}), 400
+    return jsonify({'error': "Ripristino non riuscito (i dettagli sono nel registro del programma). "
+                             "Prima di ogni ripristino viene fatto un backup dei dati attuali."}), 500

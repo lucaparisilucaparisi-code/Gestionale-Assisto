@@ -88,9 +88,9 @@
         </div>
     </div>
     <div class="card-body" style="border-top: 1px solid var(--border-color);">
-        <div class="flex justify-between items-center mb-4">
+        <div class="flex justify-between items-center gap-3 flex-wrap mb-4">
             <p class="text-muted mb-0" style="font-size: 0.85rem;">Seleziona il tipo di report da generare:</p>
-            <button class="btn btn-secondary btn-sm" onclick="mostraAnteprima()">
+            <button class="btn btn-secondary btn-sm" style="flex-shrink: 0;" onclick="mostraAnteprima()">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -99,69 +99,69 @@
             </button>
         </div>
         <div class="report-cards-grid">
-            <div class="report-card excel" onclick="downloadExcel()">
-                <div class="report-card-icon">
+            <button type="button" class="report-card excel" onclick="downloadExcel()">
+                <span class="report-card-icon" aria-hidden="true">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                </div>
-                <h3 class="report-card-title">Report Completo</h3>
-                <p class="report-card-desc">Report dettagliato con riepilogo, dettaglio utenti e statistiche per commessa. Formato Excel.</p>
-                <div class="report-card-action">
+                </span>
+                <span class="report-card-title">Report Completo</span>
+                <span class="report-card-desc">Report dettagliato con riepilogo, dettaglio utenti e statistiche per commessa. Formato Excel.</span>
+                <span class="report-card-action">
                     <span>Scarica Excel</span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
-                </div>
-            </div>
+                </span>
+            </button>
 
-            <div class="report-card municipale" onclick="downloadMunicipale()">
-                <div class="report-card-icon">
+            <button type="button" class="report-card municipale" onclick="downloadMunicipale()">
+                <span class="report-card-icon" aria-hidden="true">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                     </svg>
-                </div>
-                <h3 class="report-card-title">Riepilogo Municipale</h3>
-                <p class="report-card-desc">Report per il Municipio: ore erogate per scuola, tariffa 24,07€, IVA 5%, totali e riepilogo utenti.</p>
-                <div class="report-card-action">
+                </span>
+                <span class="report-card-title">Riepilogo Municipale</span>
+                <span class="report-card-desc">Report per il Municipio: ore erogate per scuola, tariffa {{ ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') }}€, IVA {{ (app_config.iva_percentuale * 100)|round|int }}%, totali e riepilogo utenti.</span>
+                <span class="report-card-action">
                     <span>Scarica Excel</span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
-                </div>
-            </div>
+                </span>
+            </button>
 
-            <div class="report-card dipartimentale" onclick="downloadDipartimentale()">
-                <div class="report-card-icon">
+            <button type="button" class="report-card dipartimentale" onclick="downloadDipartimentale()">
+                <span class="report-card-icon" aria-hidden="true">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
-                </div>
-                <h3 class="report-card-title">Monitoraggio Dipartimentale</h3>
-                <p class="report-card-desc">Report aggregato per livello scolastico con tariffa 25,27€ (IVA inclusa).</p>
-                <div class="report-card-action">
+                </span>
+                <span class="report-card-title">Monitoraggio Dipartimentale</span>
+                <span class="report-card-desc">Report aggregato per livello scolastico con tariffa {{ ('%.2f' % (app_config.tariffa_oraria * (1 + app_config.iva_percentuale)))|replace('.', ',') }}€ (IVA inclusa).</span>
+                <span class="report-card-action">
                     <span>Scarica Excel</span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
-                </div>
-            </div>
+                </span>
+            </button>
 
-            <div class="report-card word" onclick="downloadWord()">
-                <div class="report-card-icon">
+            <button type="button" class="report-card word" onclick="downloadWord()">
+                <span class="report-card-icon" aria-hidden="true">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                </div>
-                <h3 class="report-card-title">Relazione Mensile</h3>
-                <p class="report-card-desc">Documento Word con relazione mensile dettagliata delle attività svolte.</p>
-                <div class="report-card-action">
+                </span>
+                <span class="report-card-title">Relazione Mensile</span>
+                <span class="report-card-desc">Documento Word con relazione mensile dettagliata delle attività svolte.</span>
+                <span class="report-card-action">
                     <span>Scarica Word</span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
-                </div>
-            </div>
+                </span>
+            </button>
         </div>
     </div>
 </div>
@@ -243,13 +243,14 @@
         </div>
 
         <div class="form-group">
-            <label class="form-label">Opzioni Privacy</label>
-            <div class="flex gap-4">
+            <label class="form-label">Opzioni</label>
+            <div class="flex gap-4 flex-wrap">
                 <label class="flex items-center gap-2 pointer">
                     <input type="checkbox" id="annual-privacy">
-                    <span>Mostra nomi puntati (privacy)</span>
+                    <span>Nomi puntati (privacy)</span>
                 </label>
             </div>
+            <p class="form-help">Se selezionato, i nomi saranno in formato M. R.</p>
         </div>
     </div>
     <div class="card-footer">
@@ -262,13 +263,14 @@
     </div>
 </div>
 
-<!-- Info Report -->
-<div class="card mt-4">
-    <div class="card-header">
-        <h2 class="card-title">Descrizione Report</h2>
-    </div>
+<!-- Guida ai report: chiusa, si apre con un clic (erano due tabelle di
+     riferimento sempre aperte, circa 600px in fondo alla pagina) -->
+<details class="section report-guida">
+    <summary>Cosa contiene ogni report</summary>
+    <div class="card mt-2">
     <div class="card-body">
         <h3 style="margin-bottom: 1rem; font-size: 1rem;">Report Disponibili</h3>
+        <div class="table-responsive">
         <table class="table mb-4">
             <thead>
                 <tr>
@@ -283,11 +285,11 @@
                 </tr>
                 <tr>
                     <td><strong>Riepilogo Municipale</strong></td>
-                    <td>Report per il Municipio: ore erogate per scuola, tariffa 24,07€, IVA 5%, totali e riepilogo utenti</td>
+                    <td>Report per il Municipio: ore erogate per scuola, tariffa {{ ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') }}€, IVA {{ (app_config.iva_percentuale * 100)|round|int }}%, totali e riepilogo utenti</td>
                 </tr>
                 <tr>
                     <td><strong>Monitoraggio Dipartimentale</strong></td>
-                    <td>Report aggregato per livello scolastico (Infanzia Capitolina/Statale/Paritaria, Primaria/Secondaria Statale/Paritaria) con tariffa 25,27€ (IVA inclusa)</td>
+                    <td>Report aggregato per livello scolastico (Infanzia Capitolina/Statale/Paritaria, Primaria/Secondaria Statale/Paritaria) con tariffa {{ ('%.2f' % (app_config.tariffa_oraria * (1 + app_config.iva_percentuale)))|replace('.', ',') }}€ (IVA inclusa)</td>
                 </tr>
                 <tr>
                     <td><strong>Report Annuale</strong></td>
@@ -299,8 +301,10 @@
                 </tr>
             </tbody>
         </table>
+        </div>
 
         <h3 style="margin-bottom: 1rem; font-size: 1rem;">Colonne Report Completo</h3>
+        <div class="table-responsive">
         <table class="table">
             <thead>
                 <tr>
@@ -310,8 +314,12 @@
             </thead>
             <tbody>
                 <tr>
-                    <td><strong>Media -11%</strong></td>
-                    <td>Ore richieste = Media mensile ridotta dell'11% (tasso assenza)</td>
+                    {% set pct_assenza = (app_config.tasso_assenza * 100)|round|int %}
+                    {% set pct_iva = (app_config.iva_percentuale * 100)|round|int %}
+                    {% set tariffa = ('%.2f' % app_config.tariffa_oraria)|replace('.', ',') %}
+                    {% set tariffa_iva = ('%.2f' % (app_config.tariffa_oraria * (1 + app_config.iva_percentuale)))|replace('.', ',') %}
+                    <td><strong>Media -{{ pct_assenza }}%</strong></td>
+                    <td>Ore richieste = Media mensile ridotta del {{ pct_assenza }}% (tasso assenza)</td>
                 </tr>
                 <tr>
                     <td><strong>Ore Lavorate (100')</strong></td>
@@ -319,20 +327,22 @@
                 </tr>
                 <tr>
                     <td><strong>Imponibile</strong></td>
-                    <td>Ore (100') × 24,07 EUR (tariffa senza IVA)</td>
+                    <td>Ore (100') × {{ tariffa }} EUR (tariffa senza IVA)</td>
                 </tr>
                 <tr>
                     <td><strong>Totale</strong></td>
-                    <td>Imponibile + IVA 5% = Ore × 25,27 EUR</td>
+                    <td>Imponibile + IVA {{ pct_iva }}% = Ore × {{ tariffa_iva }} EUR</td>
                 </tr>
                 <tr>
                     <td><strong>Credito/Debito</strong></td>
-                    <td>Media -11% - Ore lavorate (positivo = credito, negativo = debito)</td>
+                    <td>Media -{{ pct_assenza }}% - Ore lavorate (positivo = credito, negativo = debito)</td>
                 </tr>
             </tbody>
         </table>
+        </div>
     </div>
-</div>
+    </div>
+</details>
 {% endblock %}
 
 {% block scripts %}
@@ -439,7 +449,31 @@ function getReportParams() {
         params += `&commessa=${encodeURIComponent(commessa)}`;
     }
 
-    return { mese, anno, params };
+    // Filtri avanzati: valgono per tutti i download mensili e per l'anteprima
+    // (prima erano una UI collegata a niente)
+    const filtri = {
+        scuola: document.getElementById('report-scuola')?.value || '',
+        search: (document.getElementById('report-search-utente')?.value || '').trim(),
+        ore: document.getElementById('report-filtro-ore')?.value || ''
+    };
+    if (filtri.scuola) params += `&scuola=${encodeURIComponent(filtri.scuola)}`;
+    if (filtri.search) params += `&search=${encodeURIComponent(filtri.search)}`;
+    if (filtri.ore) params += `&ore=${encodeURIComponent(filtri.ore)}`;
+
+    return { mese, anno, params, filtri };
+}
+
+function applicaFiltriAnteprima(dati, f) {
+    let righe = dati || [];
+    if (f.scuola) righe = righe.filter(d => (d.scuola || '') === f.scuola);
+    if (f.search) {
+        const q = f.search.toLowerCase();
+        righe = righe.filter(d => `${d.nome || ''} ${d.cognome || ''} ${d.scuola || ''}`.toLowerCase().includes(q));
+    }
+    if (f.ore === 'zero') righe = righe.filter(d => !(d.ore_lavorate_60 || 0));
+    else if (f.ore === 'sotto') righe = righe.filter(d => (d.ore_lavorate_60 || 0) < (d.media_con_assenza_60 || 0));
+    else if (f.ore === 'sopra') righe = righe.filter(d => (d.ore_lavorate_60 || 0) > (d.media_con_assenza_60 || 0));
+    return righe;
 }
 
 function downloadExcel() {
@@ -455,13 +489,8 @@ function downloadMunicipale() {
     const p = getReportParams();
     if (!p) return;
 
-    const commessa = document.getElementById('report-commessa').value;
-    let params = '';
-    if (commessa) {
-        params = `?commessa=${encodeURIComponent(commessa)}`;
-    }
-
-    const url = `/api/export/municipale/${p.anno}/${p.mese}${params}`;
+    // p.params include commessa e la spunta "Nomi puntati (privacy)"
+    const url = `/api/export/municipale/${p.anno}/${p.mese}${p.params}`;
     window.location.href = url;
     showToast('Download Riepilogo Municipale in corso...', 'success');
 }
@@ -470,13 +499,7 @@ function downloadDipartimentale() {
     const p = getReportParams();
     if (!p) return;
 
-    const commessa = document.getElementById('report-commessa').value;
-    let params = '';
-    if (commessa) {
-        params = `?commessa=${encodeURIComponent(commessa)}`;
-    }
-
-    const url = `/api/export/dipartimentale/${p.anno}/${p.mese}${params}`;
+    const url = `/api/export/dipartimentale/${p.anno}/${p.mese}${p.params}`;
     window.location.href = url;
     showToast('Download Monitoraggio Dipartimentale in corso...', 'success');
 }
@@ -485,13 +508,8 @@ function downloadWord() {
     const p = getReportParams();
     if (!p) return;
 
-    const commessa = document.getElementById('report-commessa').value;
-    let params = '';
-    if (commessa) {
-        params = `?commessa=${encodeURIComponent(commessa)}`;
-    }
-
-    const url = `/api/export/word/${p.anno}/${p.mese}${params}`;
+    // p.params include commessa e la spunta "Nomi puntati (privacy)"
+    const url = `/api/export/word/${p.anno}/${p.mese}${p.params}`;
     window.location.href = url;
     showToast('Download Relazione Word in corso...', 'success');
 }
@@ -532,32 +550,40 @@ async function mostraAnteprima() {
         if (commessa) url += `?commessa=${encodeURIComponent(commessa)}`;
 
         const data = await apiCall(url);
+        const righe = applicaFiltriAnteprima(data.dati, p.filtri);
+        const filtrata = righe.length !== data.dati.length;
 
-        let html = '<table class="table" style="font-size: 0.8rem;"><thead><tr>';
-        html += '<th>Utente</th><th>Scuola</th><th>Monte Ore</th><th>Ore (60\')</th><th>Imponibile</th><th>Totale</th>';
+        let html = '<div class="table-responsive"><table class="table" style="font-size: 0.8rem;"><thead><tr>';
+        html += '<th>Utente</th><th>Scuola</th><th class="text-right">Monte Ore</th><th class="text-right">Ore (60\')</th><th class="text-right">Imponibile</th><th class="text-right">Totale</th>';
         html += '</tr></thead><tbody>';
 
-        data.dati.slice(0, 20).forEach(d => {
+        righe.slice(0, 20).forEach(d => {
             html += `<tr>
                 <td>${escapeHtml(d.nome)} ${escapeHtml(d.cognome || '')}</td>
-                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml((d.scuola || '').substring(0, 30))}</td>
-                <td class="text-right">${d.monte_ore_settimanale}</td>
-                <td class="text-right">${(d.ore_lavorate_60 || 0).toFixed(2)}</td>
+                <td class="cella-scuola" title="${escapeHtml(d.scuola || '')}">${escapeHtml(d.scuola || '')}</td>
+                <td class="text-right">${formatNumero(d.monte_ore_settimanale)}</td>
+                <td class="text-right">${decimalToSessagesimal(d.ore_lavorate_60) || '0:00'}</td>
                 <td class="text-right">${formatCurrency(d.imponibile_100 || 0)}</td>
                 <td class="text-right">${formatCurrency(d.totale_100 || 0)}</td>
             </tr>`;
         });
 
-        if (data.dati.length > 20) {
-            html += `<tr><td colspan="6" class="text-center text-muted">... e altri ${data.dati.length - 20} utenti</td></tr>`;
+        if (righe.length > 20) {
+            html += `<tr><td colspan="6" class="text-center text-muted">... e altri ${righe.length - 20} utenti</td></tr>`;
+        }
+        if (righe.length === 0) {
+            html += '<tr><td colspan="6" class="text-center text-muted">Nessun utente corrisponde ai filtri</td></tr>';
         }
 
-        html += '</tbody></table>';
+        html += '</tbody></table></div>';
 
+        // Totali: quelli ufficiali del server se non ci sono filtri, altrimenti sulle righe filtrate
+        const totUtenti = filtrata ? righe.length : data.totale_generale.num_utenti;
+        const totOre = filtrata ? righe.reduce((s, d) => s + (d.ore_lavorate_60 || 0), 0) : (data.totale_generale.ore_lavorate_60 || 0);
+        const totEuro = filtrata ? righe.reduce((s, d) => s + (d.totale_100 || 0), 0) : (data.totale_generale.totale_100 || 0);
         html += `<div style="margin-top: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
-            <strong>Totali:</strong> ${data.totale_generale.num_utenti} utenti,
-            ${data.totale_generale.ore_lavorate_60?.toFixed(2) || 0} ore,
-            ${formatCurrency(data.totale_generale.totale_100 || 0)}
+            <strong>Totali:</strong> ${totUtenti} utenti, ${decimalToSessagesimal(totOre) || '0:00'} ore (60'), ${formatCurrency(totEuro)}
+            ${filtrata ? `<span class="text-muted">(filtrati da ${data.dati.length} utenti)</span>` : ''}
         </div>`;
 
         previewContent.innerHTML = html;
@@ -586,7 +612,7 @@ async function generaConfrontoAnnuale() {
         const anni = await apiCall('/api/anni-scolastici');
 
         let html = '<h4 class="mb-4">Confronto ' + MESI[mese] + ' negli anni</h4>';
-        html += '<table class="table"><thead><tr><th>Anno Scolastico</th><th class="text-right">Ore Erogate</th><th class="text-right">Utenti</th><th class="text-right">Variazione</th></tr></thead><tbody>';
+        html += '<div class="table-responsive"><table class="table"><thead><tr><th>Anno Scolastico</th><th class="text-right">Ore Erogate</th><th class="text-right">Utenti</th><th class="text-right">Variazione</th></tr></thead><tbody>';
 
         let datiAnni = [];
 
@@ -611,19 +637,19 @@ async function generaConfrontoAnnuale() {
         datiAnni.forEach((d, i) => {
             let variazione = '-';
             if (i > 0 && datiAnni[i-1].oreTotal > 0) {
-                const diff = ((d.oreTotal - datiAnni[i-1].oreTotal) / datiAnni[i-1].oreTotal * 100).toFixed(1);
+                const diff = (d.oreTotal - datiAnni[i-1].oreTotal) / datiAnni[i-1].oreTotal * 100;
                 const color = diff >= 0 ? 'var(--success)' : 'var(--danger)';
-                variazione = `<span style="color: ${color}">${diff >= 0 ? '+' : ''}${diff}%</span>`;
+                variazione = `<span style="color: ${color}">${diff >= 0 ? '+' : ''}${formatNumber(diff, 1)}%</span>`;
             }
             html += `<tr>
                 <td><strong>${d.annoScolastico}</strong></td>
-                <td class="text-right">${d.oreTotal.toFixed(2)}</td>
+                <td class="text-right">${formatNumber(d.oreTotal)}</td>
                 <td class="text-right">${d.numUtenti}</td>
                 <td class="text-right">${variazione}</td>
             </tr>`;
         });
 
-        html += '</tbody></table>';
+        html += '</tbody></table></div>';
         previewContent.innerHTML = html;
         previewCard.scrollIntoView({ behavior: 'smooth' });
     } catch (err) {

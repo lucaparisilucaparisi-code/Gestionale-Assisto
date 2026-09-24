@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block title %}Assenze e Sostituzioni - Gestionale OEPAC{% endblock %}
 
@@ -59,7 +60,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Scegli il sostituto</h3>
-            <button class="modal-close" onclick="closeModal('modal-cand')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            {{ modal_close("closeModal('modal-cand')") }}
         </div>
         <div class="modal-body">
             <p class="text-muted text-sm mb-3" id="cand-info"></p>
@@ -115,7 +116,7 @@ async function caricaSostituzioni() {
         c.innerHTML = '<div class="empty-state"><h3 class="empty-state-title">Nessun turno da coprire</h3><p class="empty-state-text">Registra un\'assenza per generare i turni scoperti.</p></div>';
         return;
     }
-    c.innerHTML = `<table class="table"><thead><tr>
+    c.innerHTML = `<div class="table-responsive"><table class="table"><thead><tr>
         <th>Data</th><th>Orario</th><th>Scuola</th><th>Operatore assente</th><th>Sostituto</th><th></th>
         </tr></thead><tbody>
         ${sost.map(s => {
@@ -123,18 +124,18 @@ async function caricaSostituzioni() {
             const orario = (s.ora_inizio) ? `${s.ora_inizio}–${s.ora_fine}` : '—';
             const coperta = s.stato === 'coperta' && s.sost_cognome;
             return `<tr>
-                <td>${escapeHtml(s.data)}<div class="text-xs text-muted">${giorno}</div></td>
+                <td>${escapeHtml(formatDataIT(s.data))}<div class="text-xs text-muted">${giorno}</div></td>
                 <td class="font-mono">${orario}</td>
-                <td class="text-sm text-muted">${escapeHtml((s.scuola||'—').substring(0,32))}</td>
-                <td>${escapeHtml((s.assente_cognome||'')+' '+(s.assente_nome||''))}</td>
+                <td class="text-sm text-muted cella-scuola" title="${escapeHtml(s.scuola || '')}">${escapeHtml(s.scuola || '—')}</td>
+                <td class="cella-nome">${escapeHtml((s.assente_cognome||'')+' '+(s.assente_nome||''))}</td>
                 <td>${coperta ? `<span class="badge badge-success">${escapeHtml(s.sost_cognome+' '+s.sost_nome)}</span>` : '<span class="badge badge-warning">da coprire</span>'}</td>
                 <td class="text-right">
                     ${coperta
-                        ? `<button class="btn btn-sm btn-secondary" onclick="annulla(${s.id})">Cambia</button>`
+                        ? `<button class="btn btn-sm btn-secondary" onclick="annulla(${s.id})" title="Toglie il sostituto: il turno torna da coprire">Rimuovi sostituto</button>`
                         : `<button class="btn btn-sm btn-primary" onclick="trovaSostituto(${s.id})">Trova sostituto</button>`}
                 </td></tr>`;
         }).join('')}
-        </tbody></table>`;
+        </tbody></table></div>`;
 }
 
 async function trovaSostituto(id) {
@@ -165,9 +166,17 @@ async function assegna(sostitutoId) {
     } catch (e) { showToast('Errore', 'error'); }
 }
 
-async function annulla(id) {
-    await apiCall(`/api/sostituzioni/${id}/annulla`, { method: 'POST', body: JSON.stringify({}) });
-    caricaSostituzioni();
+function annulla(id) {
+    // Prima il pulsante si chiamava "Cambia" e scopriva il turno senza conferma ne' messaggio
+    showConfirmDialog('Rimuovi sostituto', 'Togliere il sostituto da questo turno? Il turno tornera\' "da coprire" e potrai assegnarne un altro.', async () => {
+        try {
+            await apiCall(`/api/sostituzioni/${id}/annulla`, { method: 'POST', body: JSON.stringify({}) });
+            showToast('Sostituto rimosso: turno da coprire', 'success');
+            caricaSostituzioni();
+        } catch (e) {
+            showToast('Errore: ' + (e.message || 'operazione non riuscita'), 'error');
+        }
+    }, { type: 'warning', confirmText: 'Rimuovi' });
 }
 </script>
 {% endblock %}

@@ -62,16 +62,28 @@ const SidebarManager = {
         // Mobile menu only
         this.mobileBtn?.addEventListener('click', () => this.toggleMobile());
 
-        // Close on mobile when clicking outside
+        // Menu a pannello (fino a 1024px, come nel CSS): si chiude toccando fuori,
+        // cioe' sul velo scuro, oppure con Esc. Prima valeva solo fino a 768px e con
+        // la finestra a meta' schermo (960px) il menu restava aperto sopra la pagina.
         document.addEventListener('click', (e) => {
-            if (window.innerWidth <= 768 &&
+            if (this._aPannello() &&
                 this.sidebar?.classList.contains('open') &&
                 !this.sidebar.contains(e.target) &&
                 !this.mobileBtn?.contains(e.target)) {
-                this.sidebar.classList.remove('open');
-                this._syncExpanded();
+                this.chiudi();
             }
         });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.sidebar?.classList.contains('open') &&
+                !document.querySelector('.modal-overlay.active')) {
+                this.chiudi();
+                this.mobileBtn?.focus();
+            }
+        });
+    },
+
+    _aPannello() {
+        return window.matchMedia('(max-width: 1024px)').matches;
     },
 
     toggleMobile() {
@@ -79,203 +91,17 @@ const SidebarManager = {
         this._syncExpanded();
     },
 
+    chiudi() {
+        this.sidebar?.classList.remove('open');
+        this._syncExpanded();
+    },
+
     _syncExpanded() {
-        // Mantiene aria-expanded del bottone allineato allo stato della sidebar
-        const open = this.sidebar?.classList.contains('open') ? 'true' : 'false';
-        this.mobileBtn?.setAttribute('aria-expanded', open);
-    }
-};
-
-// ==================== SEARCH ====================
-
-const SearchManager = {
-    init() {
-        this.modal = document.getElementById('search-modal');
-        this.input = document.getElementById('global-search-input');
-        this.results = document.getElementById('search-results');
-        this.trigger = document.getElementById('search-trigger');
-        this.selectedIndex = -1;
-
-        if (!this.modal || !this.input) return;
-
-        // Open search
-        this.trigger?.addEventListener('click', () => this.open());
-
-        // Close on overlay click
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) this.close();
-        });
-
-        // Search input
-        this.input.addEventListener('input', () => this.search());
-
-        // Keyboard navigation in results
-        this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
-    },
-
-    open() {
-        // Il markup #search-modal non esiste in nessun template: senza guardia
-        // Ctrl+K lanciava un TypeError su null
-        if (!this.modal || !this.input) return;
-        this.modal.classList.add('active');
-        this.input.focus();
-        this.input.value = '';
-        this.selectedIndex = -1;
-        this.resetResults();
-    },
-
-    close() {
-        this.modal?.classList.remove('active');
-        this.selectedIndex = -1;
-    },
-
-    resetResults() {
-        this.results.innerHTML = `
-            <div class="search-empty">
-                <p>Inizia a digitare per cercare...</p>
-                <p class="text-xs mt-2">Premi ESC per chiudere</p>
-            </div>
-        `;
-    },
-
-    async search() {
-        const query = this.input.value.trim();
-        if (query.length < 2) {
-            this.resetResults();
-            return;
-        }
-
-        try {
-            const response = await apiCall(`/api/search?q=${encodeURIComponent(query)}`);
-            this.renderResults(response);
-        } catch (error) {
-            console.error('Search error:', error);
-        }
-    },
-
-    renderResults(data) {
-        const totalResults = (data.pages?.length || 0) + (data.utenti?.length || 0) +
-                           (data.scuole?.length || 0) + (data.commesse?.length || 0);
-
-        if (totalResults === 0) {
-            this.results.innerHTML = `
-                <div class="search-empty">
-                    <p>Nessun risultato trovato</p>
-                </div>
-            `;
-            return;
-        }
-
-        let html = '';
-        let globalIdx = 0;
-
-        // Pages
-        if (data.pages?.length) {
-            html += '<div class="search-section-label" style="padding: 8px 16px; font-size: 0.7rem; text-transform: uppercase; color: var(--text-quaternary); font-weight: 600;">Pagine</div>';
-            data.pages.forEach((page) => {
-                html += `
-                    <a href="${page.url}" class="search-result-item" data-index="${globalIdx++}">
-                        <div class="search-result-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                        </div>
-                        <div class="search-result-content">
-                            <div class="search-result-title">${page.title}</div>
-                            <div class="search-result-subtitle">Pagina</div>
-                        </div>
-                    </a>
-                `;
-            });
-        }
-
-        // Commesse
-        if (data.commesse?.length) {
-            html += '<div class="search-section-label" style="padding: 8px 16px; font-size: 0.7rem; text-transform: uppercase; color: var(--text-quaternary); font-weight: 600;">Commesse</div>';
-            data.commesse.forEach((c) => {
-                html += `
-                    <a href="/commesse" class="search-result-item" data-index="${globalIdx++}">
-                        <div class="search-result-icon" style="color: ${c.colore || 'var(--primary)'}">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                            </svg>
-                        </div>
-                        <div class="search-result-content">
-                            <div class="search-result-title">${c.nome}</div>
-                            <div class="search-result-subtitle">${c.num_scuole || 0} scuole${c.descrizione ? ' - ' + c.descrizione.substring(0, 30) : ''}</div>
-                        </div>
-                    </a>
-                `;
-            });
-        }
-
-        // Utenti
-        if (data.utenti?.length) {
-            html += '<div class="search-section-label" style="padding: 8px 16px; font-size: 0.7rem; text-transform: uppercase; color: var(--text-quaternary); font-weight: 600;">Utenti</div>';
-            data.utenti.forEach((u) => {
-                html += `
-                    <a href="/utenti?search=${encodeURIComponent(u.nome + ' ' + u.cognome)}" class="search-result-item" data-index="${globalIdx++}">
-                        <div class="search-result-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                        </div>
-                        <div class="search-result-content">
-                            <div class="search-result-title">${u.nome} ${u.cognome}</div>
-                            <div class="search-result-subtitle">${u.commessa} - ${(u.scuola || '').substring(0, 40)}...</div>
-                        </div>
-                    </a>
-                `;
-            });
-        }
-
-        // Scuole
-        if (data.scuole?.length) {
-            html += '<div class="search-section-label" style="padding: 8px 16px; font-size: 0.7rem; text-transform: uppercase; color: var(--text-quaternary); font-weight: 600;">Scuole</div>';
-            data.scuole.forEach((s) => {
-                html += `
-                    <a href="/utenti?scuola=${s.id}" class="search-result-item" data-index="${globalIdx++}">
-                        <div class="search-result-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                            </svg>
-                        </div>
-                        <div class="search-result-content">
-                            <div class="search-result-title">${(s.nome_completo || '').substring(0, 50)}...</div>
-                            <div class="search-result-subtitle">${s.commessa}</div>
-                        </div>
-                    </a>
-                `;
-            });
-        }
-
-        // Result count footer
-        html += `<div style="padding: 8px 16px; font-size: 0.75rem; color: var(--text-quaternary); text-align: center; border-top: 1px solid var(--border-color);">${totalResults} risultati trovati</div>`;
-
-        this.results.innerHTML = html;
-    },
-
-    handleKeydown(e) {
-        const items = this.results.querySelectorAll('.search-result-item');
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            this.selectedIndex = Math.min(this.selectedIndex + 1, items.length - 1);
-            this.updateSelection(items);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
-            this.updateSelection(items);
-        } else if (e.key === 'Enter' && this.selectedIndex >= 0) {
-            e.preventDefault();
-            items[this.selectedIndex]?.click();
-        }
-    },
-
-    updateSelection(items) {
-        items.forEach((item, index) => {
-            item.classList.toggle('active', index === this.selectedIndex);
-        });
+        // Mantiene aria-expanded del bottone allineato allo stato della sidebar e
+        // mette 'sidebar-open' sul body, che disegna il velo scuro (refine.css)
+        const aperto = !!this.sidebar?.classList.contains('open');
+        this.mobileBtn?.setAttribute('aria-expanded', aperto ? 'true' : 'false');
+        document.body.classList.toggle('sidebar-open', aperto);
     }
 };
 
@@ -298,8 +124,7 @@ const KeyboardShortcuts = {
             // Skip se siamo in un input
             const isInput = e.target.matches('input, textarea, select');
 
-            // Cmd/Ctrl + K: gestito dalla CommandPalette (listener dedicato);
-            // il vecchio SearchManager puntava a un modale inesistente.
+            // Cmd/Ctrl + K: gestito dalla CommandPalette (listener dedicato)
 
             // Cmd/Ctrl + S - Save (if there's a save button)
             if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -335,9 +160,7 @@ const KeyboardShortcuts = {
             if (e.key === 'Escape') {
                 const activeModal = document.querySelector('.modal-overlay.active');
                 if (activeModal) {
-                    if (activeModal.id === 'search-modal') {
-                        SearchManager.close();
-                    } else if (activeModal.id === 'shortcuts-help-modal') {
+                    if (activeModal.id === 'shortcuts-help-modal') {
                         activeModal.remove();
                     } else {
                         activeModal.classList.remove('active');
@@ -358,67 +181,43 @@ const KeyboardShortcuts = {
         // Rimuovi se esiste
         document.getElementById('shortcuts-help-modal')?.remove();
 
+        // Finestra normale (.modal, come le altre): prima era una terza versione con
+        // stili scritti qui, angoli da 16px e fondo nero pieno
+        const riga = (nome, tasti) => `<div class="scorciatoia-riga"><span>${nome}</span><kbd class="command-kbd">${tasti}</kbd></div>`;
+        const pagine = [['1', 'Dashboard'], ['2', 'Rendicontazione'], ['3', 'Utenti'], ['4', 'Commesse'],
+            ['5', 'Import'], ['6', 'Report'], ['7', 'Calendario']];
+
         const modal = document.createElement('div');
         modal.id = 'shortcuts-help-modal';
         modal.className = 'modal-overlay active';
-        modal.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9999;';
-
         modal.innerHTML = `
-            <div style="background: var(--bg-primary); border-radius: 16px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);">
-                <h3 style="margin: 0 0 16px; font-size: 1.1rem; font-weight: 600;">Scorciatoie da tastiera</h3>
-                <div style="display: grid; gap: 8px;">
-                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
-                        <span>Ricerca globale</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Ctrl/Cmd + K</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
-                        <span>Salva modifiche</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Ctrl/Cmd + S</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
-                        <span>Annulla</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Ctrl/Cmd + Z</kbd>
-                    </div>
-                    <div style="font-weight: 600; margin-top: 12px; margin-bottom: 4px;">Navigazione rapida</div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Dashboard</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 1</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Rendicontazione</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 2</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Utenti</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 3</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Commesse</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 4</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Import</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 5</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Report</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 6</kbd>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                        <span>Calendario</span>
-                        <kbd style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Alt + 7</kbd>
-                    </div>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="shortcuts-help-titolo" style="max-width: 420px;">
+                <div class="modal-header">
+                    <h3 class="modal-title" id="shortcuts-help-titolo">Scorciatoie da tastiera</h3>
+                    <button type="button" class="modal-close" data-chiudi aria-label="Chiudi" title="Chiudi">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
                 </div>
-                <button onclick="this.closest('.modal-overlay').remove()" style="margin-top: 20px; width: 100%; padding: 10px; border: none; background: var(--primary); color: white; border-radius: 8px; cursor: pointer; font-weight: 500;">Chiudi</button>
-                <p style="text-align: center; margin-top: 12px; font-size: 0.75rem; color: var(--text-tertiary);">Premi <kbd style="background: var(--bg-secondary); padding: 1px 4px; border-radius: 3px;">?</kbd> per mostrare questa guida</p>
+                <div class="modal-body">
+                    ${riga('Ricerca rapida', 'Ctrl+K')}
+                    ${riga('Salva modifiche', 'Ctrl+S')}
+                    ${riga('Annulla', 'Ctrl+Z')}
+                    <div class="scorciatoie-sezione">Navigazione rapida</div>
+                    ${pagine.map(([n, nome]) => riga(nome, `Alt+${n}`)).join('')}
+                    <p class="scorciatoie-nota">Premi <kbd class="command-kbd">?</kbd> per mostrare questa guida</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-chiudi>Chiudi</button>
+                </div>
             </div>
         `;
 
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.remove();
+            if (e.target === modal || e.target.closest('[data-chiudi]')) modal.remove();
         });
 
         document.body.appendChild(modal);
+        modal.querySelector('.modal-footer .btn')?.focus();
     }
 };
 
@@ -485,8 +284,14 @@ function decimalToSessagesimal(decimal) {
     return `${hours}:${minutes.toString().padStart(2, '0')}`;
 }
 
+// ==================== FORMATI ITALIANI (numeri, ore, date) ====================
+// Un solo modo di scrivere numeri e date in tutta l'app: '61,94', '5.963,00',
+// '28/09/2026', 'settembre 2025'. Prima convivevano '61.94' (toFixed, all'inglese)
+// e '1.490,90 €' nella stessa riga, e date tecniche come '2026-09-28'.
+// Solo per il testo mostrato: il valore di un <input type="number"> vuole il punto.
+
 function formatHours(value) {
-    return (value || 0).toFixed(2);
+    return formatNumber(value, 2);
 }
 
 function formatCurrency(value) {
@@ -499,7 +304,77 @@ function formatCurrency(value) {
 }
 
 function formatNumber(value, decimals = 2) {
-    return (value || 0).toFixed(decimals);
+    let n = Number(value);
+    if (!isFinite(n)) n = 0;
+    // arrotonda prima, cosi' -0,001 non diventa '-0,00'
+    const f = Math.pow(10, decimals);
+    n = Math.round(n * f) / f + 0;
+    return n.toLocaleString('it-IT', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+/**
+ * Ore decimali all'italiana: 61.94 -> '61,94'. Con segno=true i valori positivi
+ * hanno il '+' davanti (crediti/saldi: '+56,67', '-19,25').
+ */
+function formatOre(value, segno = false, decimals = 2) {
+    const testo = formatNumber(value, decimals);
+    return segno && Number(value) > 0 && testo !== formatNumber(0, decimals) ? `+${testo}` : testo;
+}
+
+/** Numero senza zeri inutili: 12 -> '12', 12.5 -> '12,5' (monte ore, giorni). */
+function formatNumero(value, maxDecimali = 2) {
+    const n = Number(value);
+    if (value === null || value === undefined || value === '' || !isFinite(n)) return value == null ? '' : String(value);
+    return (n + 0).toLocaleString('it-IT', { maximumFractionDigits: maxDecimali });
+}
+
+const _GIORNI_BREVI = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
+
+/** '2026-09-28' (anche con l'ora dopo) -> Date locale, senza slittamenti di fuso. */
+function _dataDaIso(valore) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(valore || ''));
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+
+/**
+ * Data all'italiana: '2026-09-28' -> '28/09/2026'; con conGiorno 'lun 28/09/2026'.
+ * Un solo mese ('2025-09') diventa 'settembre 2025'. Un valore che non e' una
+ * data resta com'e'; vuoto -> ''.
+ */
+function formatDataIT(valore, conGiorno = false) {
+    if (!valore) return '';
+    const d = _dataDaIso(valore);
+    if (!d) return /^\d{4}-\d{2}$/.test(String(valore)) ? formatMeseIT(valore) : String(valore);
+    const testo = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    return conGiorno ? `${_GIORNI_BREVI[d.getDay()]} ${testo}` : testo;
+}
+
+/**
+ * Periodo tra due date: '28/09 → 02/10/2026' (stesso anno) o '28/12/2025 → 02/01/2026';
+ * senza fine: '28/09/2026 → sempre' (il testo finale si puo' cambiare).
+ */
+function formatPeriodoIT(da, a, senzaFine = 'sempre') {
+    if (!a) return `${formatDataIT(da)} → ${senzaFine}`;
+    const d1 = _dataDaIso(da), d2 = _dataDaIso(a);
+    if (d1 && d2 && d1.getFullYear() === d2.getFullYear()) {
+        return `${formatDataIT(da).slice(0, 5)} → ${formatDataIT(a)}`;
+    }
+    return `${formatDataIT(da)} → ${formatDataIT(a)}`;
+}
+
+/** Mese all'italiana: '2025-09' (o '2025-09-01') -> 'settembre 2025'. */
+function formatMeseIT(valore) {
+    const m = /^(\d{4})-(\d{2})/.exec(String(valore || ''));
+    if (!m) return valore ? String(valore) : '';
+    return `${MESI[Number(m[2])].toLowerCase()} ${m[1]}`;
+}
+
+/** Data e ora senza secondi: '23/09/2026, 08:43'. */
+function formatDataOraIT(valore) {
+    if (!valore) return '';
+    const d = new Date(String(valore).replace(' ', 'T'));
+    if (isNaN(d)) return String(valore);
+    return d.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 // ==================== TOAST NOTIFICATIONS ====================
@@ -546,18 +421,24 @@ function showToast(message, type = 'success', duration = 5000) {
 function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
-    return div.innerHTML;
+    // anche le virgolette: il risultato finisce spesso dentro title="..." e
+    // aria-label="..." (nomi delle scuole, delle persone)
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // ==================== CONFIRM DIALOG ====================
 
 function showConfirmDialog(title, message, onConfirm, options = {}) {
+    // extraText/onExtra: terzo pulsante facoltativo (es. "Apri le Variazioni"),
+    // che chiude la conferma senza confermare e fa un'altra cosa
     const {
         confirmText = 'Conferma',
         cancelText = 'Annulla',
         type = 'warning',
         requireInput = false,
-        inputPlaceholder = ''
+        inputPlaceholder = '',
+        extraText = '',
+        onExtra = null
     } = options;
 
     // Rimuovi dialog precedente se presente
@@ -592,6 +473,7 @@ function showConfirmDialog(title, message, onConfirm, options = {}) {
             <p class="confirm-dialog-message">${escapeHtml(message)}</p>
             ${requireInput ? `<input type="text" class="confirm-dialog-input" id="confirm-dialog-input" placeholder="${escapeHtml(inputPlaceholder)}" autocomplete="off">` : ''}
             <div class="confirm-dialog-actions">
+                ${extraText ? `<button class="btn btn-secondary" id="confirm-dialog-extra">${escapeHtml(extraText)}</button>` : ''}
                 <button class="btn btn-secondary" id="confirm-dialog-cancel">${escapeHtml(cancelText)}</button>
                 <button class="btn btn-${type === 'danger' ? 'danger' : 'primary'}" id="confirm-dialog-confirm">${escapeHtml(confirmText)}</button>
             </div>
@@ -604,9 +486,9 @@ function showConfirmDialog(title, message, onConfirm, options = {}) {
     requestAnimationFrame(() => {
         overlay.classList.add('active');
         if (requireInput) {
-            document.getElementById('confirm-dialog-input')?.focus();
+            focusInFinestra(document.getElementById('confirm-dialog-input'));
         } else {
-            document.getElementById('confirm-dialog-cancel')?.focus();
+            focusInFinestra(document.getElementById('confirm-dialog-cancel'));
         }
     });
 
@@ -616,6 +498,10 @@ function showConfirmDialog(title, message, onConfirm, options = {}) {
     };
 
     document.getElementById('confirm-dialog-cancel').addEventListener('click', closeDialog);
+    document.getElementById('confirm-dialog-extra')?.addEventListener('click', () => {
+        closeDialog();
+        if (typeof onExtra === 'function') onExtra();
+    });
 
     document.getElementById('confirm-dialog-confirm').addEventListener('click', () => {
         if (requireInput) {
@@ -722,18 +608,26 @@ const FormValidator = {
 
 async function apiCall(url, options = {}) {
     try {
+        // Le opzioni vanno prima degli header: cosi' un chiamante che passa
+        // options.headers li integra invece di perdere il Content-Type JSON
         const response = await fetch(url, {
+            ...options,
             headers: {
                 'Content-Type': 'application/json',
-                ...options.headers
-            },
-            ...options
+                ...(options.headers || {})
+            }
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            throw new Error(data.error || 'Errore sconosciuto');
+            // Errore "ricco": chi chiama puo' reagire al codice (es. UTENTE_DUPLICATO,
+            // MESE_CHIUSO) e non solo al testo del messaggio
+            const err = new Error(data.error || 'Errore sconosciuto');
+            err.status = response.status;
+            err.code = data.code || null;
+            err.data = data;
+            throw err;
         }
 
         return data;
@@ -800,6 +694,10 @@ function populateMesiScolastici(selectId, annoScolastico) {
     const option = select.querySelector(`option[value="${currentValue}"]`);
     if (option) {
         select.value = currentValue;
+    } else if (current.anno * 12 + current.mese > annoFine * 12 + 6) {
+        // Anno scolastico gia' finito (o luglio/agosto): il mese piu' utile e' giugno,
+        // non settembre dell'anno prima
+        select.value = select.options[select.options.length - 1].value;
     }
 }
 
@@ -907,10 +805,146 @@ function showEmptyState(containerId, title, message, actionText = null, actionCa
     }
 }
 
+// ==================== ICONE E MENU AZIONI DELLE RIGHE ====================
+
+// Icone a linea dello stesso set del menu laterale: prendono il colore del testo
+// (stroke=currentColor), al posto delle emoji e dei caratteri ✎ e ×.
+const ICONE = {
+    matita: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
+    cestino: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+    altro: 'M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z',
+    storico: 'M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z',
+    archivia: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4',
+    ripristina: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
+};
+
+/** SVG di un'icona di ICONE, decorativa (il nome lo danno title/aria-label del pulsante). */
+function icona(nome, px = 16) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="${px}" height="${px}" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${ICONE[nome]}"/></svg>`;
+}
+
+/**
+ * Riga etichetta/valore delle schede Utente e Dipendente (stesso componente nelle
+ * due pagine). Il valore arriva gia' in HTML sicuro; se manca compare un trattino
+ * grigio, non in grassetto come se fosse un dato vero ('Non specificato').
+ */
+function rigaDati(etichetta, valore) {
+    const vuoto = valore === null || valore === undefined || String(valore).trim() === '';
+    return `<div class="dati-riga"><span class="dati-etichetta">${etichetta}</span>` +
+        `<span class="dati-valore${vuoto ? ' vuoto' : ''}">${vuoto ? '—' : valore}</span></div>`;
+}
+
+/**
+ * Menu '⋯' delle azioni secondarie di una riga (Storico, Archivia, Elimina...).
+ * voci: [{ testo, icona, azione, pericolo }] oppure 'separatore'.
+ * Il menu sta sopra la pagina (position:fixed), cosi' le tabelle che scorrono
+ * non lo tagliano; si chiude scegliendo una voce, cliccando fuori o con Esc.
+ * Frecce su/giu' per spostarsi tra le voci.
+ */
+const MenuAzioni = {
+    el: null,
+    trigger: null,
+
+    apri(trigger, voci) {
+        const giaAperto = this.trigger === trigger;
+        this.chiudi(false);
+        if (giaAperto) return;   // secondo clic sullo stesso pulsante: chiude
+        const menu = document.createElement('div');
+        menu.className = 'menu-azioni';
+        menu.setAttribute('role', 'menu');
+        voci.forEach(v => {
+            if (v === 'separatore') {
+                menu.insertAdjacentHTML('beforeend', '<div class="menu-azioni-sep" role="separator"></div>');
+                return;
+            }
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'menu-azioni-voce' + (v.pericolo ? ' pericolo' : '');
+            b.setAttribute('role', 'menuitem');
+            b.innerHTML = (v.icona ? icona(v.icona) : '') + `<span>${escapeHtml(v.testo)}</span>`;
+            b.addEventListener('click', () => { this.chiudi(false); v.azione(); });
+            menu.appendChild(b);
+        });
+        document.body.appendChild(menu);
+        this.el = menu;
+        this.trigger = trigger;
+        trigger.setAttribute('aria-expanded', 'true');
+
+        this._posiziona();
+        if (!this.el) return;   // pulsante fuori vista: niente menu
+        menu.querySelector('.menu-azioni-voce')?.focus({ preventScroll: true });
+
+        this._fuori = (e) => { if (!menu.contains(e.target) && !trigger.contains(e.target)) this.chiudi(false); };
+        this._tasti = (e) => {
+            const voci = [...menu.querySelectorAll('.menu-azioni-voce')];
+            const i = voci.indexOf(document.activeElement);
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.chiudi(true); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); voci[(i + 1) % voci.length].focus(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); voci[(i - 1 + voci.length) % voci.length].focus(); }
+            else if (e.key === 'Tab') { this.chiudi(true); }   // Tab riparte dal pulsante '⋯'
+        };
+        // se la pagina o la tabella scorrono il menu segue il pulsante (si chiude
+        // quando il pulsante esce dalla vista)
+        this._scorri = () => this._posiziona();
+        document.addEventListener('click', this._fuori, true);
+        document.addEventListener('keydown', this._tasti, true);
+        window.addEventListener('scroll', this._scorri, true);
+        window.addEventListener('resize', this._scorri);
+    },
+
+    _posiziona() {
+        const menu = this.el, trigger = this.trigger;
+        if (!menu || !trigger) return;
+        const r = trigger.getBoundingClientRect();
+        if (r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth || !r.width) {
+            this.chiudi(false);
+            return;
+        }
+        // sotto il pulsante, allineato al suo bordo destro; sopra se in basso non c'e' posto
+        const w = menu.offsetWidth, h = menu.offsetHeight;
+        const left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+        const top = (r.bottom + 4 + h > window.innerHeight - 8 && r.top - 4 - h > 8) ? r.top - 4 - h : r.bottom + 4;
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+    },
+
+    chiudi(rimettiFocus) {
+        if (!this.el) return;
+        document.removeEventListener('click', this._fuori, true);
+        document.removeEventListener('keydown', this._tasti, true);
+        window.removeEventListener('scroll', this._scorri, true);
+        window.removeEventListener('resize', this._scorri);
+        this.el.remove();
+        this.el = null;
+        const t = this.trigger;
+        this.trigger = null;
+        if (t) {
+            t.setAttribute('aria-expanded', 'false');
+            if (rimettiFocus) t.focus();
+        }
+    }
+};
+
 // ==================== MODALS ====================
 
 // Elemento che aveva il focus prima dell'apertura, per ripristinarlo alla chiusura
 let _modalFocusPrecedente = null;
+
+/**
+ * Mette il focus su un elemento di una finestra appena aperta. Le finestre passano
+ * da visibility:hidden a visible con una transizione: nell'istante dell'apertura
+ * sono ancora 'hidden' e focus() non ha effetto (con Ctrl+K si scriveva nel vuoto).
+ * Se il primo tentativo non riesce, si riprova appena la finestra e' visibile.
+ */
+function focusInFinestra(el) {
+    if (!el || !el.focus) return;
+    el.focus();
+    if (document.activeElement === el) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (document.activeElement !== el) el.focus();
+    }));
+    setTimeout(() => { if (document.activeElement !== el && el.offsetParent !== null) el.focus(); }, 120);
+}
 
 const _FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), ' +
                    'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -927,7 +961,7 @@ function openModal(modalId) {
         dialog.setAttribute('aria-modal', 'true');
         _modalFocusPrecedente = document.activeElement;
         const primo = dialog.querySelector(_FOCUSABLE);
-        (primo || dialog).focus?.();
+        focusInFinestra(primo || dialog);
 
         // Trap del Tab: il focus cicla dentro la modale
         modal.addEventListener('keydown', _modalTrapTab);
@@ -963,7 +997,7 @@ function closeModal(modalId) {
 
 // Close modal clicking outside
 document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('modal-overlay') && e.target.id !== 'search-modal') {
+    if (e.target.classList.contains('modal-overlay')) {
         e.target.classList.remove('active');
         document.body.style.overflow = '';
         _modalFocusPrecedente?.focus?.();
@@ -980,6 +1014,18 @@ function initFileUpload(uploadId, inputId, onFileSelect) {
     if (!uploadArea || !fileInput) return;
 
     uploadArea.addEventListener('click', () => fileInput.click());
+
+    // Raggiungibile anche con la tastiera (Tab, poi Invio o Spazio): il campo file
+    // vero e' nascosto con display:none e prima la zona si poteva usare solo col mouse.
+    if (!uploadArea.hasAttribute('tabindex')) uploadArea.setAttribute('tabindex', '0');
+    uploadArea.setAttribute('role', 'button');
+    uploadArea.addEventListener('keydown', (e) => {
+        if (e.target !== uploadArea) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInput.click();
+        }
+    });
 
     uploadArea.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -1011,76 +1057,147 @@ function initFileUpload(uploadId, inputId, onFileSelect) {
 
 const ChartManager = {
     charts: {},
+    // Come ridisegnare ogni grafico: al cambio di tema si rifanno tutti con i
+    // colori nuovi (prima assi e griglia restavano bianchi sul fondo chiaro).
+    _ricette: {},
 
+    /**
+     * Colori dei grafici presi dai token CSS del tema attivo: un solo blu
+     * (--primary) per le ore erogate, grigio neutro per i riferimenti (ore
+     * previste), le tinte di stato per il resto. Prima era una tavolozza scritta
+     * a mano (#0A84FF, un azzurro diverso dai pulsanti, e il viola #BF5AF2).
+     */
     getColors() {
-        const isDark = ThemeManager.current === 'dark';
+        const css = getComputedStyle(document.documentElement);
+        const token = (nome, riserva) => (css.getPropertyValue(nome) || '').trim() || riserva;
+        const isDark = ThemeManager.current !== 'light';
+        const c = {
+            primary: token('--primary', '#3B82F6'),
+            neutro: isDark ? '#6B7280' : '#CBD5E1',
+            success: token('--success', '#30D158'),
+            warning: token('--warning', '#FF9F0A'),
+            danger: token('--danger', '#FF453A'),
+            cyan: token('--cyan', '#64D2FF'),
+            text: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.68)',
+            grid: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+            fondo: token('--bg-card-solid', isDark ? '#1C1C1E' : '#FFFFFF'),
+            testo: token('--text-primary', isDark ? '#FFFFFF' : '#000000'),
+            tooltipBg: isDark ? 'rgba(28, 28, 30, 0.95)' : 'rgba(255, 255, 255, 0.97)',
+            tooltipText: isDark ? '#FFFFFF' : '#1D1D1F',
+            tooltipBody: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.72)',
+            tooltipBorder: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.12)'
+        };
+        // ripiego per le serie senza un colore proprio
+        c.serie = [c.primary, c.neutro, c.success, c.warning, c.danger, c.cyan];
+        return c;
+    },
+
+    /** Riquadro del suggerimento coerente col tema (stesso aspetto in tutte le pagine). */
+    tooltip(colors, extra = {}) {
         return {
-            primary: '#0A84FF',
-            secondary: '#BF5AF2',
-            success: '#30D158',
-            warning: '#FF9F0A',
-            danger: '#FF453A',
-            cyan: '#64D2FF',
-            text: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)',
-            grid: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+            backgroundColor: colors.tooltipBg,
+            titleColor: colors.tooltipText,
+            bodyColor: colors.tooltipBody,
+            borderColor: colors.tooltipBorder,
+            borderWidth: 1,
+            cornerRadius: 8,
+            padding: 12,
+            ...extra
         };
     },
 
-    createPieChart(canvasId, data, labels) {
-        const ctx = document.getElementById(canvasId)?.getContext('2d');
-        if (!ctx) return null;
+    /** Libera la tela: un secondo 'new Chart' sulla stessa tela va in errore. */
+    _libera(canvasId) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return null;
+        Chart.getChart(canvas)?.destroy();
+        delete this.charts[canvasId];
+        return canvas;
+    },
+
+    /**
+     * Ciambella. `colori` (facoltativo): un colore per fetta, per esempio il
+     * colore scelto per ogni commessa in Impostazioni > Commesse. Al centro il
+     * totale con `etichettaTotale` (es. 'utenti').
+     */
+    createPieChart(canvasId, data, labels, colori = null, etichettaTotale = '') {
+        this._ricette[canvasId] = () => this.createPieChart(canvasId, data, labels, colori, etichettaTotale);
+        const canvas = this._libera(canvasId);
+        if (!canvas) return null;
 
         const colors = this.getColors();
+        const totale = data.reduce((a, b) => a + (Number(b) || 0), 0);
+        const testoCentrale = {
+            id: 'testoCentrale',
+            afterDraw(chart) {
+                if (!etichettaTotale) return;
+                const meta = chart.getDatasetMeta(0);
+                const arco = meta && meta.data && meta.data[0];
+                if (!arco) return;
+                const { ctx } = chart;
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = colors.testo;
+                ctx.font = '700 22px -apple-system, "Segoe UI", Roboto, sans-serif';
+                ctx.fillText(totale.toLocaleString('it-IT'), arco.x, arco.y - 7);
+                ctx.fillStyle = colors.text;
+                ctx.font = '500 12px -apple-system, "Segoe UI", Roboto, sans-serif';
+                ctx.fillText(etichettaTotale, arco.x, arco.y + 14);
+                ctx.restore();
+            }
+        };
 
-        if (this.charts[canvasId]) {
-            this.charts[canvasId].destroy();
-        }
-
-        this.charts[canvasId] = new Chart(ctx, {
+        this.charts[canvasId] = new Chart(canvas, {
             type: 'doughnut',
             data: {
                 labels: labels,
                 datasets: [{
                     data: data,
-                    backgroundColor: [colors.primary, colors.secondary, colors.success, colors.warning, colors.danger, colors.cyan],
-                    borderWidth: 0,
-                    hoverOffset: 8
+                    backgroundColor: labels.map((_, i) => (colori && colori[i]) || colors.serie[i % colors.serie.length]),
+                    borderColor: colors.fondo,
+                    borderWidth: 2,
+                    hoverOffset: 6
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                cutout: '65%',
+                cutout: '68%',
                 plugins: {
-                    legend: {
-                        display: false
-                    }
+                    legend: { display: false },
+                    tooltip: this.tooltip(colors)
                 }
-            }
+            },
+            plugins: [testoCentrale]
         });
 
         return this.charts[canvasId];
     },
 
-    createBarChart(canvasId, labels, datasets) {
-        const ctx = document.getElementById(canvasId)?.getContext('2d');
-        if (!ctx) return null;
+    /**
+     * Barre. Ogni serie puo' portare il suo colore (backgroundColor) oppure un
+     * `ruolo` della tavolozza del tema ('primary', 'neutro', ...): prima il colore
+     * veniva sempre sostituito, per questo le "ore previste" uscivano viola pieno.
+     * `unita` (es. 'ore') compare nel suggerimento e sull'asse.
+     */
+    createBarChart(canvasId, labels, datasets, unita = '') {
+        this._ricette[canvasId] = () => this.createBarChart(canvasId, labels, datasets, unita);
+        const canvas = this._libera(canvasId);
+        if (!canvas) return null;
 
         const colors = this.getColors();
+        const conUnita = (v) => `${formatNumber(v)}${unita ? ' ' + unita : ''}`;
 
-        if (this.charts[canvasId]) {
-            this.charts[canvasId].destroy();
-        }
-
-        this.charts[canvasId] = new Chart(ctx, {
+        this.charts[canvasId] = new Chart(canvas, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: datasets.map((ds, i) => ({
                     ...ds,
-                    backgroundColor: [colors.primary, colors.secondary, colors.success][i] || colors.primary,
-                    borderRadius: 6,
-                    barThickness: 24
+                    backgroundColor: ds.backgroundColor ?? colors[ds.ruolo] ?? colors.serie[i] ?? colors.primary,
+                    borderRadius: 4,
+                    maxBarThickness: 24
                 }))
             },
             options: {
@@ -1094,9 +1211,12 @@ const ChartManager = {
                             color: colors.text,
                             padding: 20,
                             usePointStyle: true,
-                            pointStyle: 'circle'
+                            pointStyle: 'rectRounded'
                         }
-                    }
+                    },
+                    tooltip: this.tooltip(colors, {
+                        callbacks: { label: (ctx) => `${ctx.dataset.label}: ${conUnita(ctx.parsed.y)}` }
+                    })
                 },
                 scales: {
                     x: {
@@ -1105,7 +1225,8 @@ const ChartManager = {
                     },
                     y: {
                         grid: { color: colors.grid },
-                        ticks: { color: colors.text },
+                        ticks: { color: colors.text, callback: (v) => Number(v).toLocaleString('it-IT') },
+                        title: { display: !!unita, text: unita, color: colors.text },
                         beginAtZero: true
                     }
                 }
@@ -1115,29 +1236,31 @@ const ChartManager = {
         return this.charts[canvasId];
     },
 
-    createLineChart(canvasId, labels, datasets) {
-        const ctx = document.getElementById(canvasId)?.getContext('2d');
-        if (!ctx) return null;
+    createLineChart(canvasId, labels, datasets, unita = '') {
+        this._ricette[canvasId] = () => this.createLineChart(canvasId, labels, datasets, unita);
+        const canvas = this._libera(canvasId);
+        if (!canvas) return null;
 
         const colors = this.getColors();
+        const conUnita = (v) => `${formatNumber(v)}${unita ? ' ' + unita : ''}`;
 
-        if (this.charts[canvasId]) {
-            this.charts[canvasId].destroy();
-        }
-
-        this.charts[canvasId] = new Chart(ctx, {
+        this.charts[canvasId] = new Chart(canvas, {
             type: 'line',
             data: {
                 labels: labels,
-                datasets: datasets.map((ds, i) => ({
-                    ...ds,
-                    borderColor: [colors.primary, colors.secondary, colors.success][i] || colors.primary,
-                    backgroundColor: 'transparent',
-                    tension: 0.4,
-                    pointRadius: 4,
-                    pointHoverRadius: 6,
-                    borderWidth: 3
-                }))
+                datasets: datasets.map((ds, i) => {
+                    const colore = ds.borderColor ?? colors[ds.ruolo] ?? colors.serie[i] ?? colors.primary;
+                    return {
+                        ...ds,
+                        borderColor: colore,
+                        backgroundColor: ds.backgroundColor ?? 'transparent',
+                        pointBackgroundColor: colore,
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 3
+                    };
+                })
             },
             options: {
                 responsive: true,
@@ -1156,7 +1279,10 @@ const ChartManager = {
                             usePointStyle: true,
                             pointStyle: 'circle'
                         }
-                    }
+                    },
+                    tooltip: this.tooltip(colors, {
+                        callbacks: { label: (ctx) => conUnita(ctx.parsed.y) }
+                    })
                 },
                 scales: {
                     x: {
@@ -1165,7 +1291,8 @@ const ChartManager = {
                     },
                     y: {
                         grid: { color: colors.grid },
-                        ticks: { color: colors.text },
+                        ticks: { color: colors.text, callback: (v) => Number(v).toLocaleString('it-IT') },
+                        title: { display: !!unita, text: unita, color: colors.text },
                         beginAtZero: true
                     }
                 }
@@ -1173,53 +1300,47 @@ const ChartManager = {
         });
 
         return this.charts[canvasId];
+    },
+
+    /** Ridisegna i grafici ancora presenti nella pagina con i colori del tema attivo. */
+    aggiornaTema() {
+        Object.entries(this._ricette).forEach(([canvasId, ridisegna]) => {
+            if (document.getElementById(canvasId)) ridisegna();
+            else delete this._ricette[canvasId];
+        });
     }
 };
 
-// ==================== DASHBOARD STATS ====================
+window.addEventListener('themechange', () => ChartManager.aggiornaTema());
 
-async function loadDashboardStats() {
-    try {
-        const stats = await apiCall('/api/stats/advanced');
+// Tavolozza di Impostazioni > Commesse (stessi campioni della pagina Commesse)
+const TAVOLOZZA_COMMESSE = ['#3B82F6', '#BF5AF2', '#30D158', '#FF9F0A', '#FF453A', '#64D2FF'];
 
-        // Update stat cards
-        animateCounter(document.getElementById('stat-utenti'), stats.num_utenti || 0);
-        animateCounter(document.getElementById('stat-scuole'), stats.num_scuole || 0);
-        animateCounter(document.getElementById('stat-commesse'), stats.num_commesse || 0);
-        animateCounter(document.getElementById('stat-monte-ore'), stats.monte_ore_totale || 0);
-
-        // Create pie chart for commesse distribution
-        if (stats.utenti_per_commessa?.length) {
-            const labels = stats.utenti_per_commessa.map(c => c.nome);
-            const data = stats.utenti_per_commessa.map(c => c.count);
-            ChartManager.createPieChart('chart-commesse', data, labels);
-
-            // Update legend
-            const legendContainer = document.getElementById('legend-commesse');
-            if (legendContainer) {
-                const colors = ['#0A84FF', '#BF5AF2', '#30D158', '#FF9F0A', '#FF453A', '#64D2FF'];
-                legendContainer.innerHTML = stats.utenti_per_commessa.map((c, i) => `
-                    <div class="legend-item">
-                        <span class="legend-dot" style="background: ${colors[i % colors.length]}"></span>
-                        <span>${c.nome}: ${c.count}</span>
-                    </div>
-                `).join('');
-            }
-        }
-
-        // Create trend chart
-        if (stats.trend_mensile?.length) {
-            const labels = stats.trend_mensile.map(t => MESI[t.mese]?.substring(0, 3));
-            const data = stats.trend_mensile.map(t => t.ore_totali || 0);
-            ChartManager.createLineChart('chart-trend', labels, [{
-                label: 'Ore Erogate',
-                data: data
-            }]);
-        }
-
-    } catch (error) {
-        console.error('Errore caricamento statistiche:', error);
-    }
+/**
+ * Un colore DIVERSO per ogni commessa, per grafici e Dashboard. Chi ha un colore
+ * suo, non usato da altre commesse prima di lei, lo tiene; le altre (colore
+ * ripetuto o mancante) prendono il primo libero della tavolozza. Non cambia i dati
+ * salvati: nel database di una versione precedente tutte le commesse avevano lo
+ * stesso indaco e la torta "Utenti per commessa" era di un colore solo.
+ * voci: elenco di oggetti con `colore`; ritorna i colori nello stesso ordine.
+ */
+function coloriCommesseDistinti(voci) {
+    const norm = c => (c || '').trim().toLowerCase();
+    const scelti = new Array(voci.length).fill(null);
+    const usati = new Set();
+    // prima i colori propri non ripetuti: una scelta voluta non si sposta
+    voci.forEach((v, i) => {
+        const c = norm(v && v.colore);
+        if (c && !usati.has(c)) { usati.add(c); scelti[i] = v.colore.trim(); }
+    });
+    const riserva = [...TAVOLOZZA_COMMESSE, ...ChartManager.getColors().serie];
+    voci.forEach((v, i) => {
+        if (scelti[i]) return;
+        const libero = riserva.find(c => !usati.has(norm(c))) || riserva[i % riserva.length];
+        usati.add(norm(libero));
+        scelti[i] = libero;
+    });
+    return scelti;
 }
 
 function animateCounter(element, targetValue, duration = 1000) {
@@ -1311,14 +1432,9 @@ const CommandPalette = {
             return;
         }
 
-        // Shortcuts numerici ⌘1-5
-        if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '5') {
-            e.preventDefault();
-            const urls = ['/', '/rendicontazione', '/utenti', '/report', '/commesse'];
-            const index = parseInt(e.key) - 1;
-            if (urls[index]) window.location.href = urls[index];
-            return;
-        }
+        // Niente Ctrl+1..5 qui: in Chrome ed Edge passano da una scheda del browser
+        // all'altra. Le scorciatoie di pagina sono Alt+numero (KeyboardShortcuts.navMap),
+        // le stesse indicate nella ricerca.
 
         if (!this.isOpen) return;
 
@@ -1350,7 +1466,7 @@ const CommandPalette = {
         this.isOpen = true;
         this.overlay.classList.add('active');
         this.input.value = '';
-        this.input.focus();
+        focusInFinestra(this.input);
         this.resetSearch();
         this.selectedIndex = 0;
         this.updateSelection();
@@ -1455,14 +1571,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize managers
     ThemeManager.init();
     SidebarManager.init();
-    SearchManager.init();
     KeyboardShortcuts.init();
     CommandPalette.init();
-
-    // Load dashboard stats if on dashboard
-    if (document.getElementById('stat-utenti')) {
-        loadDashboardStats();
-    }
 
     // Add entrance animations with stagger
     document.querySelectorAll('.card, .stat-card').forEach((el, index) => {
@@ -1478,18 +1588,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ==================== UNDO ====================
 
+// Ctrl+Z: prima si chiede, mostrando cosa verra' annullato e quando era stato fatto
+// (prima annullava subito, anche modifiche di mesi prima ereditate dalla versione
+// precedente). Le azioni piu' vecchie di config.UNDO_VALIDITA_ORE non si annullano.
 async function undoLastAction() {
+    if (document.getElementById('confirm-dialog-overlay')) return;   // conferma gia' aperta
+    let info;
     try {
-        const result = await apiCall('/api/undo', { method: 'POST' });
-        if (result.success) {
-            showToast(result.message || 'Azione annullata', 'info');
-            // Ricarica la pagina corrente per aggiornare i dati
-            if (typeof loadUtenti === 'function') loadUtenti();
-            if (typeof loadDashboardData === 'function') loadDashboardData();
-        }
+        info = await apiCall('/api/undo/ultima');
     } catch (e) {
-        showToast(e.message || 'Nessuna azione da annullare', 'warning');
+        showToast(e.message || 'Annulla non disponibile', 'warning');
+        return;
     }
+    const azione = info.azione;
+    if (!azione) {
+        showToast(info.scadute
+            ? `Niente da annullare: le modifiche di più di ${info.ore_validita} ore fa non si possono più annullare`
+            : 'Nessuna azione da annullare', 'info');
+        return;
+    }
+    showConfirmDialog(
+        'Annullare questa modifica?',
+        `${azione.descrizione}. Modifica fatta il ${azione.quando}.`,
+        async () => {
+            try {
+                const result = await apiCall('/api/undo', { method: 'POST', body: JSON.stringify({ id: azione.id }) });
+                showToast(result.message || 'Azione annullata', 'success');
+                ricaricaVistaDopoAnnulla();
+            } catch (e) {
+                showToast(e.message || 'Annullamento non riuscito', 'error');
+            }
+        },
+        { confirmText: 'Annulla la modifica', cancelText: 'Lascia com\'è', type: 'warning' }
+    );
+}
+
+// Dopo un annullamento si ricarica la vista aperta: la pagina puo' dire come
+// (window.ricaricaDopoAnnulla, es. Rendicontazione), altrimenti si ricarica tutto
+function ricaricaVistaDopoAnnulla() {
+    if (typeof window.ricaricaDopoAnnulla === 'function') window.ricaricaDopoAnnulla();
+    else if (typeof window.loadUtenti === 'function') window.loadUtenti();
+    else if (typeof window.loadDashboardData === 'function') window.loadDashboardData();
+    else window.location.reload();
 }
 
 // ==================== GLOBAL EXPORTS ====================
@@ -1499,6 +1639,12 @@ window.decimalToSessagesimal = decimalToSessagesimal;
 window.formatHours = formatHours;
 window.formatCurrency = formatCurrency;
 window.formatNumber = formatNumber;
+window.formatOre = formatOre;
+window.formatNumero = formatNumero;
+window.formatDataIT = formatDataIT;
+window.formatPeriodoIT = formatPeriodoIT;
+window.formatMeseIT = formatMeseIT;
+window.formatDataOraIT = formatDataOraIT;
 window.showToast = showToast;
 window.escapeHtml = escapeHtml;
 window.showConfirmDialog = showConfirmDialog;
@@ -1510,6 +1656,9 @@ window.showGlobalLoading = showGlobalLoading;
 window.hideGlobalLoading = hideGlobalLoading;
 window.setButtonLoading = setButtonLoading;
 window.showEmptyState = showEmptyState;
+window.icona = icona;
+window.rigaDati = rigaDati;
+window.MenuAzioni = MenuAzioni;
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.populateAnniScolastici = populateAnniScolastici;
@@ -1518,6 +1667,7 @@ window.populateCommesseSelect = populateCommesseSelect;
 window.initFileUpload = initFileUpload;
 window.animateCounter = animateCounter;
 window.ChartManager = ChartManager;
+window.coloriCommesseDistinti = coloriCommesseDistinti;
 window.CommandPalette = CommandPalette;
 window.triggerConfetti = triggerConfetti;
 window.undoLastAction = undoLastAction;

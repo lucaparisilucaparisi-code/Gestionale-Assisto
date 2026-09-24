@@ -1,4 +1,9 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
+
+{% block head %}
+<script src="{{ static_url('js/vendor/chart.umd.min.js') }}"></script>
+{% endblock %}
 
 {% block title %}Dettaglio Utente - Gestionale OEPAC{% endblock %}
 
@@ -8,23 +13,25 @@
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
     <span id="breadcrumb-nome">Dettaglio</span>
 </nav>
+{# Come la scheda dipendente: freccia e nome a sinistra, anno a destra #}
 <div class="page-header">
-    <div class="flex items-center gap-3">
-        <a href="/utenti" class="btn btn-ghost btn-sm" title="Torna alla lista">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-        </a>
-        <div>
-            <h1 class="page-title" id="page-title">Dettaglio Utente</h1>
-            <p class="page-subtitle" id="page-subtitle">Caricamento...</p>
+    <div class="page-header-row">
+        <div class="scheda-titolo">
+            <a href="/utenti" class="btn btn-ghost btn-sm btn-solo-icona" title="Torna all'elenco" aria-label="Torna all'elenco utenti">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+            </a>
+            <div class="scheda-titolo-testo">
+                <h1 class="page-title" id="page-title">Dettaglio Utente</h1>
+                <p class="page-subtitle" id="page-subtitle">Caricamento...</p>
+            </div>
         </div>
-    </div>
-    <div class="header-actions">
-        <select id="anno-scolastico" aria-label="Anno scolastico" class="form-control" style="width: 150px;">
-            <option value="2025-2026">2025-2026</option>
-            <option value="2024-2025">2024-2025</option>
-        </select>
+        <div class="header-actions">
+            <select id="anno-scolastico" aria-label="Anno scolastico" class="form-control" style="width: 150px;">
+                {# popolato da populateAnniScolastici(): niente anni scritti a mano #}
+            </select>
+        </div>
     </div>
 </div>
 
@@ -32,9 +39,10 @@
 <div class="tabs-container">
     <div class="tabs">
         <button class="tab active" data-tab="anagrafica">Anagrafica</button>
-        <button class="tab" data-tab="assegnazioni">Assegnazioni OEPAC <span class="badge badge-sm" id="badge-assegnazioni">0</span></button>
-        <button class="tab" data-tab="documenti">Documenti <span class="badge badge-sm" id="badge-documenti">0</span></button>
-        <button class="tab" data-tab="note">Note <span class="badge badge-sm" id="badge-note">0</span></button>
+        {# contatori con il fondino grigio anche nel tema scuro, nascosti quando valgono 0 #}
+        <button class="tab" data-tab="assegnazioni">Assegnazioni OEPAC <span class="badge badge-secondary badge-sm" id="badge-assegnazioni" style="display:none">0</span></button>
+        <button class="tab" data-tab="documenti">Documenti <span class="badge badge-secondary badge-sm" id="badge-documenti" style="display:none">0</span></button>
+        <button class="tab" data-tab="note">Note <span class="badge badge-secondary badge-sm" id="badge-note" style="display:none">0</span></button>
         <button class="tab" data-tab="assenze">Assenze</button>
         <button class="tab" data-tab="storico">Storico Ore</button>
         <button class="tab" data-tab="budget">Budget</button>
@@ -66,7 +74,9 @@
             <h2 class="card-title">Andamento Mensile</h2>
         </div>
         <div class="card-body">
-            <canvas id="chart-andamento" height="200"></canvas>
+            <div class="chart-container" style="height: 240px;">
+                <canvas id="chart-andamento"></canvas>
+            </div>
         </div>
     </div>
 </div>
@@ -107,9 +117,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title" id="ass-titolo">Assegna operatore</h3>
-            <button class="modal-close" onclick="closeModal('modal-assegnazione')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
+            {{ modal_close("closeModal('modal-assegnazione')") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="ass-id">
@@ -251,7 +259,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Carica Documento</h3>
-            <button class="modal-close" onclick="closeModal('modal-documento')">×</button>
+            {{ modal_close("closeModal('modal-documento')") }}
         </div>
         <div class="modal-body">
             <div class="form-group">
@@ -289,7 +297,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Aggiungi Nota</h3>
-            <button class="modal-close" onclick="closeModal('modal-nota')">×</button>
+            {{ modal_close("closeModal('modal-nota')") }}
         </div>
         <div class="modal-body">
             <div class="form-group">
@@ -326,7 +334,7 @@
     <div class="modal">
         <div class="modal-header">
             <h3 class="modal-title">Registra Assenza</h3>
-            <button class="modal-close" onclick="closeModal('modal-assenza')">×</button>
+            {{ modal_close("closeModal('modal-assenza')") }}
         </div>
         <div class="modal-body">
             <div class="form-group">
@@ -365,42 +373,11 @@
 </div>
 
 <style>
-.info-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
-}
-.info-item {
-    padding: 12px;
-    background: var(--bg-tertiary);
-    border-radius: 8px;
-}
-.info-label {
-    font-size: 12px;
-    color: var(--text-tertiary);
-    margin-bottom: 4px;
-}
-.info-value {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-.stat-card {
-    text-align: center;
-    padding: 20px;
-    background: var(--bg-tertiary);
-    border-radius: 12px;
-}
-.stat-value {
-    font-size: 32px;
-    font-weight: 700;
-    color: var(--primary);
-}
-.stat-label {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin-top: 4px;
-}
+/* Stato budget: riquadro .ud-kpi come il Riepilogo ore, con la barra comune
+   .progress-bar (refine.css). Qui c'erano .stat-card/.stat-value/.stat-label,
+   .progress-bar ed .empty-state ridefinite: numero, etichetta, barra e nota finivano
+   su una riga sola, il binario della barra spariva nel tema chiaro e i riquadri
+   vuoti delle schede avevano margini diversi dal resto dell'app. */
 .note-card {
     background: var(--bg-tertiary);
     border-radius: 12px;
@@ -439,38 +416,23 @@
     display: flex;
     gap: 8px;
 }
-.progress-bar {
-    height: 12px;
-    background: var(--bg-secondary);
-    border-radius: 6px;
-    overflow: hidden;
-    margin-top: 8px;
-}
-.progress-fill {
-    height: 100%;
-    background: var(--primary);
-    border-radius: 6px;
-    transition: width 0.3s;
-}
-.progress-fill.warning {
-    background: var(--warning);
-}
-.progress-fill.danger {
-    background: var(--danger);
-}
-.empty-state {
-    text-align: center;
-    padding: 40px;
-    color: var(--text-secondary);
-}
 </style>
 
 <script>
 const utenteId = {{ utente_id }};
+
+// Contatore di una scheda: il numero, oppure niente quando vale 0
+function contatoreScheda(id, n) {
+    const el = document.getElementById(id);
+    el.textContent = n;
+    el.style.display = n ? '' : 'none';
+}
 let utenteData = null;
 let chartAndamento = null;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    // Anni scolastici dall'API (prima erano fissi e l'anno corrente mancava)
+    await populateAnniScolastici('anno-scolastico');
     loadUtenteDettaglio();
     loadAssegnazioni();
 
@@ -526,16 +488,16 @@ async function loadAssegnazioni() {
 
 function renderAssegnazioni() {
     const b = assegnazioniData.bilancio || { monte_ore: 0, assegnate: 0, differenza: 0, stato: 'ok' };
-    document.getElementById('badge-assegnazioni').textContent = assegnazioniData.assegnazioni.length;
-    document.getElementById('bil-monte').textContent = b.monte_ore + 'h';
-    document.getElementById('bil-assegnate').textContent = b.assegnate + 'h';
+    contatoreScheda('badge-assegnazioni', assegnazioniData.assegnazioni.length);
+    document.getElementById('bil-monte').textContent = formatNumero(b.monte_ore) + 'h';
+    document.getElementById('bil-assegnate').textContent = formatNumero(b.assegnate) + 'h';
     const stato = document.getElementById('bil-stato');
     if (b.stato === 'ok') {
         stato.innerHTML = '<span class="badge badge-success">Bilanciato</span>';
     } else if (b.stato === 'sotto') {
-        stato.innerHTML = `<span class="badge badge-warning">Mancano ${Math.abs(b.differenza)}h da assegnare</span>`;
+        stato.innerHTML = `<span class="badge badge-warning">Mancano ${formatNumero(Math.abs(b.differenza))}h da assegnare</span>`;
     } else {
-        stato.innerHTML = `<span class="badge badge-danger">${b.differenza}h oltre il monte ore</span>`;
+        stato.innerHTML = `<span class="badge badge-danger">${formatNumero(b.differenza)}h oltre il monte ore</span>`;
     }
 
     const c = document.getElementById('lista-assegnazioni');
@@ -543,21 +505,21 @@ function renderAssegnazioni() {
         c.innerHTML = '<div class="empty-state"><p class="empty-state-text">Nessun operatore assegnato. Assegna gli operatori fino a coprire il monte ore.</p></div>';
         return;
     }
-    c.innerHTML = `<table class="table"><thead><tr>
-        <th>Operatore</th><th class="text-right">Ore/sett.</th><th>Validità</th><th></th></tr></thead><tbody>
+    c.innerHTML = `<div class="table-responsive"><table class="table"><thead><tr>
+        <th>Operatore</th><th class="text-right">Ore/sett.</th><th>Validità</th><th class="text-right">Azioni</th></tr></thead><tbody>
         ${assegnazioniData.assegnazioni.map(a => {
-            const periodo = (a.valido_da || a.valido_a)
-                ? `${a.valido_da || '…'} → ${a.valido_a || 'sempre'}` : 'Sempre';
+            const periodo = !(a.valido_da || a.valido_a) ? 'Sempre'
+                : (a.valido_da ? formatPeriodoIT(a.valido_da, a.valido_a) : `… → ${formatDataIT(a.valido_a)}`);
             return `<tr ${a.dip_attivo ? '' : 'style="opacity:.55"'}>
                 <td><a href="/dipendente/${a.dipendente_id}">${escapeHtml(a.dip_cognome)} ${escapeHtml(a.dip_nome)}</a></td>
-                <td class="text-right font-mono">${a.ore_settimanali}</td>
+                <td class="text-right">${formatNumero(a.ore_settimanali)}</td>
                 <td class="text-muted text-sm">${escapeHtml(periodo)}${a.note ? ' · ' + escapeHtml(a.note) : ''}</td>
-                <td class="text-right">
-                    <button class="btn btn-sm btn-secondary" onclick='apriAssegnazione(${a.id})'>Modifica</button>
-                    <button class="btn btn-sm btn-danger" onclick='rimuoviAssegnazione(${a.id})'>×</button>
-                </td></tr>`;
+                <td class="text-right"><span class="azioni-riga">
+                    <button type="button" class="btn btn-sm btn-secondary" onclick='apriAssegnazione(${a.id})' aria-label="Modifica l'assegnazione di ${escapeHtml(a.dip_cognome)} ${escapeHtml(a.dip_nome)}" title="Modifica">${icona('matita')}<span class="azione-testo">Modifica</span></button>
+                    <button type="button" class="btn btn-sm btn-icon-danger btn-solo-icona" onclick='rimuoviAssegnazione(${a.id})' title="Rimuovi assegnazione" aria-label="Rimuovi l'assegnazione di ${escapeHtml(a.dip_cognome)} ${escapeHtml(a.dip_nome)}">${icona('cestino')}</button>
+                </span></td></tr>`;
         }).join('')}
-        </tbody></table>`;
+        </tbody></table></div>`;
 }
 
 async function apriAssegnazione(id) {
@@ -611,12 +573,14 @@ async function salvaAssegnazione() {
     }
 }
 
-async function rimuoviAssegnazione(id) {
-    if (!confirm('Rimuovere questa assegnazione?')) return;
-    try {
-        await apiCall(`/api/assegnazioni/${id}`, { method: 'DELETE' });
-        loadAssegnazioni();
-    } catch (e) { showToast('Errore nella rimozione', 'error'); }
+function rimuoviAssegnazione(id) {
+    showConfirmDialog('Rimuovi assegnazione', 'Rimuovere questa assegnazione dell\'operatore?', async () => {
+        try {
+            await apiCall(`/api/assegnazioni/${id}`, { method: 'DELETE' });
+            showToast('Assegnazione rimossa', 'success');
+            loadAssegnazioni();
+        } catch (e) { showToast('Errore nella rimozione', 'error'); }
+    }, { type: 'danger', confirmText: 'Rimuovi' });
 }
 
 async function loadVariazioniBadge() {
@@ -630,7 +594,7 @@ async function loadVariazioniBadge() {
                 var parts = v.mese_inizio.split('-');
                 return v.monte_ore + 'h da ' + MESI[parseInt(parts[1])] + ' ' + parts[0];
             }).join(', ');
-            badge.innerHTML = '<span class="badge badge-warning" title="' + detail + '" style="font-size:0.75rem;cursor:help;">' + data.variazioni.length + ' variaz.</span>';
+            badge.innerHTML = '<span class="badge badge-warning ud-badge-variazioni" title="' + detail + '">' + data.variazioni.length + ' variaz.</span>';
         } else if (badge) {
             badge.innerHTML = '';
         }
@@ -639,113 +603,72 @@ async function loadVariazioniBadge() {
 
 function renderAnagrafica(data) {
     const u = data.utente;
-    document.getElementById('page-title').textContent = `${u.nome} ${u.cognome}`;
+    // Sempre 'Cognome Nome', come in Utenti, Dipendenti e Turni
+    const nome = `${u.cognome || ''} ${u.nome || ''}`.trim();
+    document.getElementById('page-title').textContent = nome;
     document.getElementById('page-subtitle').textContent = `${u.commessa} - ${u.scuola}`;
-    document.getElementById('breadcrumb-nome').textContent = `${u.nome} ${u.cognome}`;
+    document.getElementById('breadcrumb-nome').textContent = nome;
 
-    document.getElementById('info-personali').innerHTML = `
-        <div class="info-grid">
-            <div class="info-item">
-                <div class="info-label">Nome Completo</div>
-                <div class="info-value">${escapeHtml(u.nome)} ${escapeHtml(u.cognome)}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Nome Puntato</div>
-                <div class="info-value">${escapeHtml(u.nome_puntato)}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Scuola</div>
-                <div class="info-value">${escapeHtml(u.scuola)}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Commessa</div>
-                <div class="info-value">${escapeHtml(u.commessa)}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Monte Ore Settimanale (base)</div>
-                <div class="info-value">${u.monte_ore_settimanale}h <span id="variazioni-badge"></span></div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Stato</div>
-                <div class="info-value">
-                    ${u.lista_attesa ? '<span class="badge badge-warning">Lista Attesa: ' + escapeHtml(u.lista_attesa) + '</span>' :
-                      u.attivo ? '<span class="badge badge-success">Attivo</span>' : '<span class="badge badge-secondary">Inattivo</span>'}
-                </div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Attivo Da</div>
-                <div class="info-value">${u.data_inizio || 'Non specificato'}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Attivo Fino A</div>
-                <div class="info-value">${u.data_fine || 'Non specificato'}</div>
-            </div>
-        </div>
-    `;
+    // Lista d'attesa di quest'anno in evidenza; quella di un anno passato attenuata e
+    // con l'anno ("Marzo 25/26"): nei report di quest'anno non conta
+    const statoBase = u.attivo ? '<span class="badge badge-success">Attivo</span>' : '<span class="badge badge-secondary">Archiviato</span>';
+    const stato = u.lista_attesa_corrente
+        ? '<span class="badge badge-warning">Lista attesa: ' + escapeHtml(u.lista_attesa) + '</span>'
+        : statoBase + (u.lista_attesa
+            ? ' <span class="badge badge-secondary lista-anno-passato" title="Conta solo nei report dell\'anno ' + escapeHtml(u.lista_attesa_anno_breve) + '">Lista attesa: '
+              + escapeHtml(u.lista_attesa) + ' ' + escapeHtml(u.lista_attesa_anno_breve) + '</span>'
+            : '');
+    // Stesso componente della scheda dipendente: righe etichetta/valore
+    document.getElementById('info-personali').innerHTML =
+        rigaDati('Cognome e nome', escapeHtml(nome)) +
+        rigaDati('Nome puntato', escapeHtml(u.nome_puntato)) +
+        rigaDati('Scuola', escapeHtml(u.scuola)) +
+        rigaDati('Commessa', escapeHtml(u.commessa)) +
+        rigaDati('Monte ore settimanale (base)', `${formatNumero(u.monte_ore_settimanale)}h <span id="variazioni-badge"></span>`) +
+        rigaDati('Stato', stato) +
+        rigaDati('Attivo da', u.data_inizio ? escapeHtml(formatDataIT(u.data_inizio)) : '') +
+        rigaDati('Attivo fino a', u.data_fine ? escapeHtml(formatDataIT(u.data_fine)) : '');
 
+    // Riquadri del riepilogo: numero grande sopra, etichetta sotto, due per riga
+    // (prima numero ed etichetta affiancati, etichette spezzate su due righe e, sul
+    // telefono, riquadri tagliati: '63 PAST')
     const t = data.totali;
-    document.getElementById('riepilogo-ore').innerHTML = `
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
-            <div class="stat-card">
-                <div class="stat-value">${t.totale_ore}</div>
-                <div class="stat-label">Ore Totali</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">${t.totale_pasti}</div>
-                <div class="stat-label">Pasti Totali</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">${t.mesi_attivi}</div>
-                <div class="stat-label">Mesi Attivi</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">${t.media_ore_mese}</div>
-                <div class="stat-label">Media Ore/Mese</div>
-            </div>
-        </div>
-    `;
+    const kpi = (valore, etichetta) => `<div class="ud-kpi"><div class="ud-kpi-valore">${valore}</div><div class="ud-kpi-etichetta">${etichetta}</div></div>`;
+    document.getElementById('riepilogo-ore').innerHTML = '<div class="ud-kpi-griglia">' +
+        kpi(formatNumber(t.totale_ore), 'Ore totali') +
+        kpi(formatNumero(t.totale_pasti), 'Pasti totali') +
+        kpi(formatNumero(t.mesi_attivi), 'Mesi attivi') +
+        kpi(formatNumber(t.media_ore_mese), 'Media ore al mese') +
+        '</div>';
 
     renderChartAndamento(data.storico);
 }
 
 function renderChartAndamento(storico) {
-    const ctx = document.getElementById('chart-andamento').getContext('2d');
-    const MESI = ['', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+    const MESI_BREVI = ['', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+    // Lo storico arriva dal mese piu' recente (come la tabella Storico): il grafico
+    // va da sinistra a destra nel tempo, da settembre a giugno (prima era al contrario)
+    const serie = [...storico].reverse();
 
-    const labels = storico.map(s => `${MESI[s.mese]} ${s.anno}`);
-    const oreData = storico.map(s => s.ore_lavorate_60 || 0);
-
-    if (chartAndamento) chartAndamento.destroy();
-
-    chartAndamento = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Ore Erogate',
-                data: oreData,
-                borderColor: '#6366f1',
-                backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                fill: true,
-                tension: 0.3
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true }
-            }
-        }
-    });
+    // ChartManager: blu dell'app (non indaco), colori del tema e unita' "ore";
+    // si ridisegna da solo al cambio di tema
+    chartAndamento = ChartManager.createLineChart('chart-andamento',
+        serie.map(s => `${MESI_BREVI[s.mese]} ${s.anno}`),
+        [{
+            label: 'Ore erogate',
+            data: serie.map(s => s.ore_lavorate_60 || 0),
+            ruolo: 'primary',
+            backgroundColor: 'rgba(59, 130, 246, 0.10)',
+            fill: true
+        }],
+        'ore');
 }
 
 function renderDocumenti(documenti) {
-    document.getElementById('badge-documenti').textContent = documenti.length;
+    contatoreScheda('badge-documenti', documenti.length);
 
     if (documenti.length === 0) {
-        document.getElementById('table-documenti').innerHTML = '<div class="empty-state">Nessun documento caricato</div>';
+        showEmptyState('table-documenti', 'Nessun documento', 'Carica PEI, relazioni e verbali con «Carica Documento».', null, null, 'document');
         return;
     }
 
@@ -763,15 +686,15 @@ function renderDocumenti(documenti) {
             <td><span class="badge">${escapeHtml(d.tipo_documento)}</span></td>
             <td>${escapeHtml(d.nome_originale)}</td>
             <td>${escapeHtml(d.descrizione || '-')}</td>
-            <td class="${scadenzaClass}">${d.data_scadenza || '-'}</td>
-            <td>${new Date(d.data_caricamento).toLocaleDateString('it')}</td>
+            <td class="${scadenzaClass}">${d.data_scadenza ? escapeHtml(formatDataIT(d.data_scadenza)) : '-'}</td>
+            <td>${escapeHtml(formatDataIT(d.data_caricamento))}</td>
             <td>
                 <button class="btn btn-ghost btn-sm" onclick="downloadDocumento(${d.id})" title="Scarica">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
                 </button>
-                <button class="btn btn-ghost btn-sm text-danger" onclick="deleteDocumento(${d.id})" title="Elimina">
+                <button class="btn btn-sm btn-icon-danger btn-solo-icona" onclick="deleteDocumento(${d.id})" title="Elimina" aria-label="Elimina il documento ${escapeHtml(d.nome_originale)}">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
@@ -784,10 +707,10 @@ function renderDocumenti(documenti) {
 }
 
 function renderNote(note) {
-    document.getElementById('badge-note').textContent = note.length;
+    contatoreScheda('badge-note', note.length);
 
     if (note.length === 0) {
-        document.getElementById('lista-note').innerHTML = '<div class="empty-state">Nessuna nota presente</div>';
+        showEmptyState('lista-note', 'Nessuna nota', 'Annota osservazioni, progressi e criticità con «Aggiungi Nota».', null, null, 'inbox');
         return;
     }
 
@@ -796,11 +719,11 @@ function renderNote(note) {
         html += `<div class="note-card priorita-${n.priorita}">
             <div class="note-header">
                 <span class="note-tipo">${escapeHtml(n.tipo)}</span>
-                <span class="note-data">${new Date(n.data_creazione).toLocaleString('it')}</span>
+                <span class="note-data">${escapeHtml(formatDataOraIT(n.data_creazione))}</span>
             </div>
             <div class="note-contenuto">${escapeHtml(n.contenuto)}</div>
             <div class="note-actions">
-                <button class="btn btn-ghost btn-sm text-danger" onclick="deleteNota(${n.id})">Elimina</button>
+                <button class="btn btn-sm btn-icon-danger" onclick="deleteNota(${n.id})" aria-label="Elimina questa nota">${icona('cestino')}Elimina</button>
             </div>
         </div>`;
     });
@@ -809,7 +732,7 @@ function renderNote(note) {
 
 function renderAssenze(assenze) {
     if (assenze.length === 0) {
-        document.getElementById('table-assenze').innerHTML = '<div class="empty-state">Nessuna assenza registrata</div>';
+        showEmptyState('table-assenze', 'Nessuna assenza registrata', 'Registra malattie, permessi e ferie con «Registra Assenza».', null, null, 'calendar');
         return;
     }
 
@@ -821,12 +744,12 @@ function renderAssenze(assenze) {
     assenze.forEach(a => {
         html += `<tr>
             <td><span class="badge">${escapeHtml(a.tipo)}</span></td>
-            <td>${escapeHtml(a.data_inizio)}</td>
-            <td>${escapeHtml(a.data_fine || '-')}</td>
+            <td>${escapeHtml(formatDataIT(a.data_inizio))}</td>
+            <td>${a.data_fine ? escapeHtml(formatDataIT(a.data_fine)) : '-'}</td>
             <td>${escapeHtml(a.motivazione || '-')}</td>
             <td>${escapeHtml(a.note || '-')}</td>
             <td>
-                <button class="btn btn-ghost btn-sm text-danger" onclick="deleteAssenza(${a.id})">
+                <button class="btn btn-sm btn-icon-danger btn-solo-icona" onclick="deleteAssenza(${a.id})" title="Elimina" aria-label="Elimina l'assenza del ${escapeHtml(formatDataIT(a.data_inizio))}">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
@@ -840,7 +763,7 @@ function renderAssenze(assenze) {
 
 function renderStorico(storico) {
     if (storico.length === 0) {
-        document.getElementById('table-storico').innerHTML = '<div class="empty-state">Nessun dato storico</div>';
+        showEmptyState('table-storico', 'Nessun dato storico', 'Qui compaiono le ore dei mesi rendicontati nell\'anno scelto.', null, null, 'chart');
         return;
     }
 
@@ -854,7 +777,7 @@ function renderStorico(storico) {
     storico.forEach(s => {
         html += `<tr>
             <td>${MESI[s.mese]} ${s.anno}</td>
-            <td><strong>${s.ore_lavorate_60 || 0}h</strong></td>
+            <td><strong>${formatNumber(s.ore_lavorate_60)} h</strong></td>
             <td>${s.pasti || 0}</td>
             <td>${s.giorni_lavorativi || '-'}</td>
             <td>${escapeHtml(s.note || '-')}</td>
@@ -864,9 +787,12 @@ function renderStorico(storico) {
     document.getElementById('table-storico').innerHTML = html;
 }
 
+// Riquadro vuoto dello Stato budget, come quelli delle altre schede
+const AIUTO_BUDGET = 'Inserisci il budget ore annuale in «Configurazione Budget» e premi «Salva Budget».';
+
 function renderBudget(budget) {
     if (!budget) {
-        document.getElementById('stato-budget').innerHTML = '<div class="empty-state">Budget non configurato</div>';
+        showEmptyState('stato-budget', 'Budget non configurato', AIUTO_BUDGET, null, null, 'chart');
         return;
     }
 
@@ -878,19 +804,19 @@ function renderBudget(budget) {
         const progressClass = percentuale > 90 ? 'danger' : percentuale > 70 ? 'warning' : '';
 
         document.getElementById('stato-budget').innerHTML = `
-            <div class="stat-card mb-4">
-                <div class="stat-value">${budget.ore_erogate}h</div>
-                <div class="stat-label">Ore Utilizzate su ${budget.budget_annuale}h</div>
+            <div class="ud-kpi ud-budget mb-4">
+                <div class="ud-kpi-valore">${formatNumber(budget.ore_erogate)} h</div>
+                <div class="ud-kpi-etichetta">Ore utilizzate su ${formatNumber(budget.budget_annuale)} h</div>
                 <div class="progress-bar">
                     <div class="progress-fill ${progressClass}" style="width: ${Math.min(percentuale, 100)}%"></div>
                 </div>
-                <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary);">
-                    ${percentuale}% utilizzato - ${budget.ore_rimanenti}h rimanenti
+                <div class="ud-budget-nota">
+                    ${formatNumero(percentuale, 1)}% utilizzato · ${formatNumber(budget.ore_rimanenti)} h rimanenti
                 </div>
             </div>
         `;
     } else {
-        document.getElementById('stato-budget').innerHTML = '<div class="empty-state">Budget annuale non configurato</div>';
+        showEmptyState('stato-budget', 'Budget annuale non configurato', AIUTO_BUDGET, null, null, 'chart');
     }
 }
 
@@ -908,20 +834,14 @@ async function uploadDocumento() {
     formData.append('data_scadenza', document.getElementById('doc-scadenza').value);
 
     try {
-        const response = await fetch(`/api/utente/${utenteId}/documenti`, {
-            method: 'POST',
-            body: formData
-        });
-        const data = await response.json();
-        if (data.success) {
-            showToast('Documento caricato');
-            closeModal('modal-documento');
-            loadUtenteDettaglio();
-        } else {
-            showToast(data.error, 'error');
-        }
+        const response = await fetch(`/api/utente/${utenteId}/documenti`, { method: 'POST', body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) throw new Error(data.error || 'caricamento non riuscito');
+        showToast('Documento caricato', 'success');
+        closeModal('modal-documento');
+        loadUtenteDettaglio();
     } catch (error) {
-        showToast('Errore upload', 'error');
+        showToast('Errore: ' + error.message, 'error');
     }
 }
 
@@ -929,18 +849,17 @@ function downloadDocumento(id) {
     window.open(`/api/documento/${id}`, '_blank');
 }
 
-async function deleteDocumento(id) {
-    if (!confirm('Eliminare questo documento?')) return;
-    try {
-        const response = await fetch(`/api/documento/${id}`, { method: 'DELETE' });
-        const data = await response.json();
-        if (data.success) {
-            showToast('Documento eliminato');
+function deleteDocumento(id) {
+    showConfirmDialog('Elimina documento', 'Eliminare questo documento? Il file verrà rimosso.', async () => {
+        try {
+            const data = await apiCall(`/api/documento/${id}`, { method: 'DELETE' });
+            if (data && data.success === false) throw new Error(data.error || 'eliminazione non riuscita');
+            showToast('Documento eliminato', 'success');
             loadUtenteDettaglio();
+        } catch (error) {
+            showToast('Errore: ' + error.message, 'error');
         }
-    } catch (error) {
-        showToast('Errore eliminazione', 'error');
-    }
+    }, { type: 'danger', confirmText: 'Elimina' });
 }
 
 async function aggiungiNota() {
@@ -951,36 +870,34 @@ async function aggiungiNota() {
     }
 
     try {
-        const response = await fetch(`/api/utente/${utenteId}/note`, {
+        const data = await apiCall(`/api/utente/${utenteId}/note`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 contenuto: contenuto,
                 tipo: document.getElementById('nota-tipo').value,
                 priorita: document.getElementById('nota-priorita').value
             })
         });
-        const data = await response.json();
-        if (data.success) {
-            showToast('Nota aggiunta');
-            closeModal('modal-nota');
-            document.getElementById('nota-contenuto').value = '';
-            loadUtenteDettaglio();
-        }
+        if (data && data.success === false) throw new Error(data.error || 'salvataggio non riuscito');
+        showToast('Nota aggiunta', 'success');
+        closeModal('modal-nota');
+        document.getElementById('nota-contenuto').value = '';
+        loadUtenteDettaglio();
     } catch (error) {
-        showToast('Errore', 'error');
+        showToast('Errore: ' + error.message, 'error');
     }
 }
 
-async function deleteNota(id) {
-    if (!confirm('Eliminare questa nota?')) return;
-    try {
-        await fetch(`/api/nota/${id}`, { method: 'DELETE' });
-        showToast('Nota eliminata');
-        loadUtenteDettaglio();
-    } catch (error) {
-        showToast('Errore', 'error');
-    }
+function deleteNota(id) {
+    showConfirmDialog('Elimina nota', 'Eliminare questa nota?', async () => {
+        try {
+            await apiCall(`/api/nota/${id}`, { method: 'DELETE' });
+            showToast('Nota eliminata', 'success');
+            loadUtenteDettaglio();
+        } catch (error) {
+            showToast('Errore: ' + error.message, 'error');
+        }
+    }, { type: 'danger', confirmText: 'Elimina' });
 }
 
 async function registraAssenza() {
@@ -991,9 +908,8 @@ async function registraAssenza() {
     }
 
     try {
-        const response = await fetch(`/api/utente/${utenteId}/assenze`, {
+        const data = await apiCall(`/api/utente/${utenteId}/assenze`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 data_inizio: dataInizio,
                 data_fine: document.getElementById('assenza-fine').value || null,
@@ -1002,45 +918,41 @@ async function registraAssenza() {
                 note: document.getElementById('assenza-note').value
             })
         });
-        const data = await response.json();
-        if (data.success) {
-            showToast('Assenza registrata');
-            closeModal('modal-assenza');
-            loadUtenteDettaglio();
-        }
+        if (data && data.success === false) throw new Error(data.error || 'salvataggio non riuscito');
+        showToast('Assenza registrata', 'success');
+        closeModal('modal-assenza');
+        loadUtenteDettaglio();
     } catch (error) {
-        showToast('Errore', 'error');
+        showToast('Errore: ' + error.message, 'error');
     }
 }
 
-async function deleteAssenza(id) {
-    if (!confirm('Eliminare questa assenza?')) return;
-    try {
-        await fetch(`/api/assenza/${id}`, { method: 'DELETE' });
-        showToast('Assenza eliminata');
-        loadUtenteDettaglio();
-    } catch (error) {
-        showToast('Errore', 'error');
-    }
+function deleteAssenza(id) {
+    showConfirmDialog('Elimina assenza', 'Eliminare questa assenza?', async () => {
+        try {
+            await apiCall(`/api/assenza/${id}`, { method: 'DELETE' });
+            showToast('Assenza eliminata', 'success');
+            loadUtenteDettaglio();
+        } catch (error) {
+            showToast('Errore: ' + error.message, 'error');
+        }
+    }, { type: 'danger', confirmText: 'Elimina' });
 }
 
 async function salvaBudget() {
     try {
-        const response = await fetch(`/api/utente/${utenteId}/budget`, {
+        const data = await apiCall(`/api/utente/${utenteId}/budget`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 budget_mensile: parseFloat(document.getElementById('budget-mensile').value) || null,
                 budget_annuale: parseFloat(document.getElementById('budget-annuale').value) || null
             })
         });
-        const data = await response.json();
-        if (data.success) {
-            showToast('Budget salvato');
-            loadUtenteDettaglio();
-        }
+        if (data && data.success === false) throw new Error(data.error || 'salvataggio non riuscito');
+        showToast('Budget salvato', 'success');
+        loadUtenteDettaglio();
     } catch (error) {
-        showToast('Errore', 'error');
+        showToast('Errore: ' + error.message, 'error');
     }
 }
 
