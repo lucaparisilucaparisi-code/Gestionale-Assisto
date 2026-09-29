@@ -2596,9 +2596,12 @@ a:hover {
 /* ==================== ANIMAZIONI AVANZATE ==================== */
 
 /* Entrata elementi */
+/* Niente 'opacity: 0' fisso: e' la animazione (fill 'both') a far partire l'elemento
+   trasparente. Con le animazioni di Windows spente (prefers-reduced-motion) l'animazione
+   non parte e l'elemento deve restare visibile: con opacity:0 fisso card e tabelle
+   restavano invisibili (Dashboard e Rendicontazione vuote). */
 .animate-in {
-    animation: animateIn 0.5s ease forwards;
-    opacity: 0;
+    animation: animateIn 0.5s ease both;
 }
 
 @keyframes animateIn {
