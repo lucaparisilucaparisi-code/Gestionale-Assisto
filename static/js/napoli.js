@@ -16,6 +16,7 @@
 'use strict';
 
 const NAPOLI_CHIAVE_LOTTO = 'napoli.lotto';
+const NAPOLI_MODELLO_NOME = 'NAPOLI LOTTO {numero}';   // come config_napoli.LOTTO_PROPOSTO['nome']
 const NAPOLI_NOMI_GRADO = { inferiore: 'Grado inferiore', superiore: 'Grado superiore', '': 'Tutti e due i gradi' };
 const NAPOLI_ICONE_STATO = {
     ok: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
@@ -62,6 +63,24 @@ function napoliDescrizioneDiversa(f) {
 /** Sostituisce i segnaposto {nome} conosciuti (come napoli_calcoli.riempi_modello). */
 function napoliRiempiModello(modello, valori) {
     return String(modello || '').replace(/\{(\w+)\}/g, (tutto, nome) => (nome in valori ? String(valori[nome]) : tutto));
+}
+
+/** Il nome di un lotto segue il suo numero finche' e' quello proposto (o vuoto): cambiando
+ *  "Lotto 2" in "Lotto 3", "NAPOLI LOTTO 2" diventa "NAPOLI LOTTO 3"; un nome scritto a
+ *  mano resta com'e'. modello: una funzione che da' il modello del nome proposto. */
+function napoliNomeSegueNumero(nome, numero, modello) {
+    numero.addEventListener('change', () => {
+        const m = modello() || NAPOLI_MODELLO_NOME;
+        const scritto = nome.value.trim();
+        const proposti = [...numero.options].map(o => napoliRiempiModello(m, { numero: o.value }));
+        if (!scritto || proposti.includes(scritto)) nome.value = napoliRiempiModello(m, { numero: numero.value });
+    });
+}
+
+/** Il nome dice un numero di lotto diverso da quello scelto ("NAPOLI LOTTO 2", Lotto 3)? */
+function napoliNomeENumeroDiversi(nome, numero) {
+    const m = /\blotto\s*(\d+)\b/i.exec(nome || '');
+    return !!m && Number(m[1]) !== Number(numero);
 }
 
 /** Valori dei campi [data-campo] di un contenitore: {campo: testo}. */
@@ -224,6 +243,7 @@ const NapoliProcedura = {
     prepara() {
         if (this.pronta) return;
         this.pronta = true;
+        napoliNomeSegueNumero(this.el('proc-nome'), this.el('proc-numero'), () => this.proposta && this.proposta.modello_nome);
         this.el('proc-avanti').addEventListener('click', () => this.avanti());
         this.el('proc-indietro').addEventListener('click', () => this.vai(Math.max(1, this.passo - 1)));
         this.el('napoli-modal-procedura').addEventListener('keydown', (e) => {
@@ -333,7 +353,9 @@ const NapoliProcedura = {
         const tariffe = this.tariffe().filter(t => t.tariffa);
         const senza = this.tariffe().filter(t => !t.tariffa).map(t => NapoliComune.nomeFigura(t.figura));
         const al = this.el('proc-al').value;
+        const diversi = napoliNomeENumeroDiversi(l.nome, l.numero_lotto);
         this.el('proc-riepilogo').innerHTML = [
+            diversi ? `<div class="alert alert-warning napoli-avviso-nome">Il nome "${escapeHtml(l.nome)}" non corrisponde al numero scelto (Lotto ${l.numero_lotto}): controlla che sia giusto, oppure torna indietro e correggilo.</div>` : '',
             rigaDati('Nome', escapeHtml(l.nome)),
             rigaDati('Numero', `Lotto ${l.numero_lotto}`),
             rigaDati('Municipalità', escapeHtml(l.municipalita)),
@@ -542,6 +564,8 @@ const NapoliImpostazioni = {
         ]));
         this.el('form-lotto').addEventListener('submit', (e) => { e.preventDefault(); this.salvaLotto(); });
         this.el('lotto-oggetto').addEventListener('input', () => this.esempioOggetto());
+        this.el('lotto-numero').addEventListener('change', () => this.esempioOggetto());
+        napoliNomeSegueNumero(this.el('lotto-nome'), this.el('lotto-numero'), () => NAPOLI_MODELLO_NOME);
         this.el('btn-nuovo-contratto').addEventListener('click', () => this.apriContratto(null));
         this.el('form-contratto').addEventListener('submit', (e) => { e.preventDefault(); this.salvaContratto(); });
         this.el('btn-nuova-tariffa').addEventListener('click', () => this.apriTariffa(null));
@@ -581,8 +605,8 @@ const NapoliImpostazioni = {
         if (azioni[azione]) azioni[azione]();
     },
 
-    pulsantiRiga(tipo, id, etichetta, conElimina = true, extra = '') {
-        return `<td class="napoli-azioni">
+    pulsantiRiga(tipo, id, etichetta, conElimina = true, extra = '', colonne = 1) {
+        return `<td class="napoli-azioni"${colonne > 1 ? ` colspan="${colonne}"` : ''}>
             <button type="button" class="btn btn-sm btn-secondary" data-azione="modifica-${tipo}" data-id="${escapeHtml(String(id))}" ${extra} aria-label="Modifica ${escapeHtml(etichetta)}">${icona('matita')} Modifica</button>
             ${conElimina ? `<button type="button" class="btn btn-sm btn-icon-danger btn-solo-icona" data-azione="elimina-${tipo}" data-id="${escapeHtml(String(id))}" ${extra} title="Elimina" aria-label="Elimina ${escapeHtml(etichetta)}">${icona('cestino')}</button>` : ''}
         </td>`;
@@ -844,7 +868,7 @@ const NapoliImpostazioni = {
         try {
             const r = await this.inviaModulo(url, id ? 'PUT' : 'POST', dati, form, this.pulsanteDi(form));
             closeModal('napoli-modal-tariffa');
-            showToast(r.messaggio, 'success');
+            showToast(r.messaggio, 'success', r.messaggio.length > 40 ? 9000 : 5000);
             await this.carica_tariffe();
         } catch (e) {
             if (e.code === 'TARIFFE_SOVRAPPOSTE' && e.data.chiudibili && e.data.chiudibili.length && !chiudiPrecedenti) {
@@ -855,10 +879,13 @@ const NapoliImpostazioni = {
         }
     },
 
-    /** Date sovrapposte a un valore che comincia prima: si puo' chiudere quello il giorno prima. */
+    /** Date sovrapposte a un valore che comincia prima: quello finisce il giorno prima e, se
+     *  andava oltre la fine del nuovo, riprende il giorno dopo (il server lo divide in due:
+     *  nessun giorno resta senza valore). Il messaggio del server dice le date. */
     proponiChiusura(e, riprova, testo) {
+        const divide = (e.data.chiudibili || []).some(c => c.riprende_da);
         showConfirmDialog('Le date si sovrappongono', e.message,
-            riprova, { confirmText: testo, cancelText: 'Correggo le date', type: 'warning' });
+            riprova, { confirmText: divide ? 'Salva solo per questi giorni' : testo, cancelText: 'Correggo le date', type: 'warning' });
     },
 
     eliminaTariffa(t) {
@@ -887,6 +914,8 @@ const NapoliImpostazioni = {
             lotto: '<span class="badge badge-success badge-sm">questo lotto</span>',
         })[r.origine];
         const lunga = (r) => (r.tipo === 'testo' ? 'lungo' : '');   // i testi lunghi in piccolo
+        // righe dei valori salvati: "Modifica" e il cestino non entrano nella sola colonna dei
+        // pulsanti (stretta, la tabella ha le colonne fisse), quindi prendono anche "Da dove"
         const tabella = (regole) => `
             <div class="table-container">
                 <table class="table napoli-tabella-regole">
@@ -903,8 +932,8 @@ const NapoliImpostazioni = {
                         ${r.salvate.map(s => `
                         <tr class="napoli-storico">
                             <td>${escapeHtml(s.valore_testo)} · ${s.lotto_id ? 'questo lotto' : 'tutti i lotti'}${s.fonte ? ` · <span class="text-muted">${escapeHtml(s.fonte)}</span>` : ''}</td>
-                            <td colspan="2">${escapeHtml(napoliPeriodo(s.valido_da, s.valido_a))}</td>
-                            ${this.pulsantiRiga('regola', s.id, `il valore ${s.valore_testo}`, true, `data-chiave="${escapeHtml(r.chiave)}"`)}
+                            <td>${escapeHtml(napoliPeriodo(s.valido_da, s.valido_a))}</td>
+                            ${this.pulsantiRiga('regola', s.id, `il valore ${s.valore_testo}`, true, `data-chiave="${escapeHtml(r.chiave)}"`, 2)}
                         </tr>`).join('')}`).join('')}
                     </tbody>
                 </table>
@@ -940,6 +969,11 @@ const NapoliImpostazioni = {
             const base = r.tipo === 'giorni' ? 0 : 1;
             box.innerHTML = `<div class="napoli-giorni" role="group" aria-label="${escapeHtml(r.etichetta)}">${nomi.map((n, i) =>
                 `<label class="napoli-scelta"><input type="checkbox" value="${i + base}"${(valore || []).includes(i + base) ? ' checked' : ''}> ${n}</label>`).join('')}</div>`;
+        } else if (r.tipo === 'elenco' && r.voci.length) {
+            // codici fissi (gli usi A, B, D): una casella per ciascuno, niente da scrivere
+            etichetta.removeAttribute('for');
+            box.innerHTML = `<div class="napoli-giorni" role="group" aria-label="${escapeHtml(r.etichetta)}">${r.voci.map(v =>
+                `<label class="napoli-scelta"><input type="checkbox" value="${escapeHtml(v.valore)}"${(valore || []).includes(v.valore) ? ' checked' : ''}> ${escapeHtml(v.testo)}</label>`).join('')}</div>`;
         } else if (r.tipo === 'testo') {
             box.innerHTML = `<textarea id="regola-valore" class="form-control" rows="3" maxlength="500">${escapeHtml(valore || '')}</textarea>`;
         } else if (r.tipo === 'elenco') {
@@ -958,11 +992,15 @@ const NapoliImpostazioni = {
         if (r.tipo === 'giorni' || r.tipo === 'mesi') {
             return [...box.querySelectorAll('input:checked')].map(i => Number(i.value));
         }
+        if (r.tipo === 'elenco' && r.voci.length) {
+            return [...box.querySelectorAll('input:checked')].map(i => i.value);
+        }
         const testo = this.el('regola-valore').value.trim();
         if (r.tipo === 'elenco') return testo.split(',').map(x => x.trim()).filter(Boolean);
         if (r.unita === 'minuti') {
-            const ore = Number(testo.replace(',', '.'));
-            return testo && isFinite(ore) ? Math.round(ore * 60) : testo;
+            // solo numeri scritti per esteso (1,5 o 1.5): altrimenti il server risponde "scrivi un numero"
+            if (!/^-?(\d+([.,]\d*)?|[.,]\d+)$/.test(testo)) return testo;
+            return Math.round(Number(testo.replace(',', '.')) * 60);
         }
         return testo;
     },
@@ -1010,7 +1048,7 @@ const NapoliImpostazioni = {
             const res = await this.inviaModulo(id ? `/api/napoli/regole/${id}` : '/api/napoli/regole', id ? 'PUT' : 'POST',
                 dati, form, this.pulsanteDi(form));
             closeModal('napoli-modal-regola');
-            showToast(res.messaggio, 'success');
+            showToast(res.messaggio, 'success', res.messaggio.length > 40 ? 9000 : 5000);
             await this.carica_regole();
         } catch (e) {
             if (e.code === 'REGOLE_SOVRAPPOSTE' && e.data.chiudibili && e.data.chiudibili.length && !chiudiPrecedenti) {

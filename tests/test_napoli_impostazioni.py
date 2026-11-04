@@ -204,6 +204,75 @@ def test_tariffe_con_date_sovrapposte_rifiutate(napoli, database_isolato):
     _errore(napoli.post(url, json={'figura': '', 'tariffa': '10', 'valido_da': '2030-01-01'}), 400, None, 'figura')
 
 
+def test_una_tariffa_o_una_regola_per_pochi_mesi_non_lascia_giorni_scoperti(napoli, database_isolato):
+    """La nuova finisce prima della precedente: la proposta non chiude soltanto la
+    precedente (dopo la nuova non varrebbe piu' niente: una tariffa che manca, una regola
+    che torna in silenzio al valore predefinito) ma la divide, prima e dopo la nuova.
+    Un solo Ctrl+Z rimette tutto com'era."""
+    lotto = crea_lotto_proposto(napoli)['id']
+    url = f'/api/napoli/lotti/{lotto}/tariffe'
+    sql = "SELECT valido_da, valido_a, tariffa_cent, fonte FROM napoli_tariffe WHERE figura = 'ASACOM' ORDER BY valido_da"
+    breve = {'figura': 'ASACOM', 'tariffa': '24', 'valido_da': '2026-01-01', 'valido_a': '2026-03-31'}
+    errore = _errore(napoli.post(url, json=breve), 409, 'TARIFFE_SOVRAPPOSTE', 'valido_da')
+    assert [(c['nuova_fine'], c['riprende_da'], c['riprende_a']) for c in errore['chiudibili']] == [
+        ('2025-12-31', '2026-04-01', '2027-01-31')]
+    assert 'chiudi la tariffa precedente' not in errore['error']
+    assert ('fai valere la nuova tariffa solo in questi giorni: la tariffa precedente varrà dal 01/09/2025 al '
+            '31/12/2025 e di nuovo dal 01/04/2026 al 31/01/2027') in errore['error']
+    assert _righe(database_isolato, sql)[0]['valido_a'] == '2027-01-31'       # il rifiuto non cambia niente
+    r = _ok(napoli.post(url, json=dict(breve, chiudi_precedenti=True)))
+    assert r['messaggio'] == ('Tariffa aggiunta. La tariffa precedente ora vale dal 01/09/2025 al 31/12/2025 e di '
+                              'nuovo dal 01/04/2026 al 31/01/2027.')
+    assert 'nota' not in r['tariffa']
+    asacom = _righe(database_isolato, sql)
+    assert [(a['valido_da'], a['valido_a'], a['tariffa_cent']) for a in asacom] == [
+        ('2025-09-01', '2025-12-31', 2344), ('2026-01-01', '2026-03-31', 2400), ('2026-04-01', '2027-01-31', 2344)]
+    assert asacom[2]['fonte'] == asacom[0]['fonte'] and asacom[0]['fonte']
+    controlli = {c['codice']: c for c in _ok(napoli.get(f'/api/napoli/lotti/{lotto}/controlli?giorno=2026-06-15'))}
+    assert controlli['tariffa_ASACOM']['stato'] == 'ok' and '23,44' in controlli['tariffa_ASACOM']['testo']
+    _ok(napoli.post('/api/napoli/annulla', json={}))
+    assert [(a['valido_da'], a['valido_a'], a['tariffa_cent']) for a in _righe(database_isolato, sql)] == [
+        ('2025-09-01', '2027-01-31', 2344)]
+    # la nuova arriva fino alla fine della precedente (o oltre, o senza fine): la si chiude e basta
+    for fine in ('2027-01-31', '2027-06-30', ''):
+        errore = _errore(napoli.post(url, json=dict(breve, valido_a=fine)), 409, 'TARIFFE_SOVRAPPOSTE')
+        assert errore['chiudibili'] == [{'id': errore['chiudibili'][0]['id'], 'valido_da': '2025-09-01',
+                                         'nuova_fine': '2025-12-31'}]
+        assert 'chiudi la tariffa precedente al 31/12/2025' in errore['error']
+
+    # regole: la ritenuta cambiata per un solo mese, su un valore senza fine
+    _ok(napoli.post('/api/napoli/regole', json={'chiave': 'ritenuta_percento', 'valore': '0,5',
+                                                'valido_da': '2025-09-01'}))
+    mese = {'chiave': 'ritenuta_percento', 'valore': '1', 'valido_da': '2026-02-01', 'valido_a': '2026-02-28'}
+    errore = _errore(napoli.post('/api/napoli/regole', json=mese), 409, 'REGOLE_SOVRAPPOSTE')
+    assert [(c['nuova_fine'], c['riprende_da'], c['riprende_a']) for c in errore['chiudibili']] == [
+        ('2026-01-31', '2026-03-01', None)]
+    assert 'di nuovo dal 01/03/2026 (senza data di fine)' in errore['error']
+    r = _ok(napoli.post('/api/napoli/regole', json=dict(mese, chiudi_precedenti=True)))
+    assert 'Il valore precedente ora vale dal 01/09/2025 al 31/01/2026 e di nuovo dal 01/03/2026' in r['messaggio']
+    for giorno, atteso in (('2026-01-31', '0,5'), ('2026-02-15', '1'), ('2026-03-01', '0,5'), ('2030-01-01', '0,5')):
+        elenco = {x['chiave']: x for x in _ok(napoli.get(f'/api/napoli/regole?giorno={giorno}'))['regole']}
+        assert (elenco['ritenuta_percento']['valore'], elenco['ritenuta_percento']['origine']) == (atteso, 'tutti'), giorno
+    marzo = _righe(database_isolato, "SELECT id FROM napoli_regole WHERE valido_da = '2026-03-01'")[0]['id']
+    _ok(napoli.post('/api/napoli/annulla', json={}))
+    sql = "SELECT valore, valido_da, valido_a FROM napoli_regole ORDER BY valido_da"
+    assert _righe(database_isolato, sql) == [{'valore': '0.5', 'valido_da': '2025-09-01', 'valido_a': None}]
+    _errore(napoli.delete(f'/api/napoli/regole/{marzo}'), 404, 'NON_TROVATO')     # la copia se n'e' andata
+    # anche la modifica di un valore salvato: una regola dal 2040 spostata a febbraio 2026
+    dal_2040 = _ok(napoli.post('/api/napoli/regole', json={'chiave': 'ritenuta_percento', 'valore': '2',
+                                                           'valido_da': '2040-01-01', 'chiudi_precedenti': True}))
+    assert dal_2040['messaggio'] == 'Regola salvata. Il valore precedente ora vale dal 01/09/2025 al 31/12/2039.'
+    _ok(napoli.put(f'/api/napoli/regole/{dal_2040["regola"]["id"]}', json=dict(mese, chiudi_precedenti=True)))
+    assert _righe(database_isolato, sql) == [
+        {'valore': '0.5', 'valido_da': '2025-09-01', 'valido_a': '2026-01-31'},
+        {'valore': '1', 'valido_da': '2026-02-01', 'valido_a': '2026-02-28'},
+        {'valore': '0.5', 'valido_da': '2026-03-01', 'valido_a': '2039-12-31'}]
+    # una nuova che comincia lo stesso giorno della precedente: niente da proporre
+    errore = _errore(napoli.post('/api/napoli/regole', json={'chiave': 'ritenuta_percento', 'valore': '2',
+                                                             'valido_da': '2025-09-01', 'chiudi_precedenti': True}), 409)
+    assert errore['chiudibili'] == [] and errore['error'].endswith('cambia le date.')
+
+
 # ==================== contratti applicativi ====================
 
 def test_contratti_sovrapposti_dello_stesso_lotto_e_grado_rifiutati(napoli, database_isolato):
@@ -365,6 +434,64 @@ def test_regole_con_data_controllate_e_senza_sovrapposizioni(napoli, database_is
     assert elenco['quota_assenza_alunno']['origine'] == 'tutti'
 
 
+def test_le_api_rifiutano_i_valori_non_validi_invece_di_indovinarli(napoli, database_isolato):
+    """Un si'/no che non e' ne' si' ne' no, un uso che non esiste, un elenco vuoto, un numero
+    scritto come 1e2: 400 con un messaggio chiaro sul campo, niente di salvato."""
+    lotto = crea_lotto_proposto(napoli)['id']
+    casi = ((dict(chiave='split_payment', valore='forse'), 'scegli sì o no'),
+            (dict(chiave='split_payment', valore=2), 'scegli sì o no'),
+            (dict(chiave='split_payment', valore=[True]), 'scegli sì o no'),
+            (dict(chiave='split_payment', valore=None), 'scegli sì o no'),
+            (dict(chiave='usi_fatturabili', valore=['A', 'Z']), '"Z" non c\'è (si possono scegliere: A, B, D)'),
+            (dict(chiave='usi_fatturabili', valore=['C']), '"C" non c\'è'),
+            (dict(chiave='usi_fatturabili', valore=[]), 'scegli almeno un uso'),
+            (dict(chiave='usi_fatturabili', valore=[' ', '']), 'scegli almeno un uso'),
+            (dict(chiave='usi_fatturabili', valore=[1]), 'non è tra quelli ammessi'),
+            (dict(chiave='giorni_pagamento', valore='1e1'), 'scrivi un numero intero'),
+            (dict(chiave='quota_assenza_alunno', valore='5e-1'), 'scrivi un numero'),
+            (dict(chiave='iva_percento', valore='Infinity'), 'scrivi un numero'),
+            (dict(chiave='max_minuti_giorno_avviso', valore='3e2'), 'scrivi un numero intero'))
+    for dati, testo in casi:
+        errore = _errore(napoli.post('/api/napoli/regole', json=dict(dati, valido_da='2030-01-01')), 400,
+                         'DATI_NON_VALIDI', 'valore')
+        assert testo in errore['error'], (dati, errore)
+    errore = _errore(napoli.post('/api/napoli/regole', json={'chiave': 'iva_percento', 'valore': '5',
+                                                             'valido_da': '2030-01-01', 'chiudi_precedenti': 'boh'}),
+                     400, 'DATI_NON_VALIDI', 'chiudi_precedenti')
+    assert _righe(database_isolato, 'SELECT * FROM napoli_regole') == []
+    # i modi giusti di dire si' o no, e gli usi in qualunque ordine e grafia
+    for i, (chiave, valore, atteso) in enumerate((('split_payment', 'Sì', 'true'), ('split_payment', ' no ', 'false'),
+                                                  ('split_payment', 0, 'false'), ('split_payment', True, 'true'),
+                                                  ('usi_fatturabili', ['d', 'A', 'a'], '["A", "D"]'),
+                                                  ('usi_fatturabili', 'B, a', '["A", "B"]'),
+                                                  ('quota_assenza_alunno', ',5', '0.5'),
+                                                  ('giorni_pagamento', ' 45 ', '45'))):
+        anno = 2030 + i
+        regola = _ok(napoli.post('/api/napoli/regole', json={'chiave': chiave, 'valore': valore,
+                                                             'valido_da': f'{anno}-01-01',
+                                                             'valido_a': f'{anno}-12-31'}))['regola']
+        assert regola['valore'] == atteso, (chiave, valore)
+    elenco = {r['chiave']: r for r in _ok(napoli.get('/api/napoli/regole?giorno=2034-06-01'))['regole']}
+    assert elenco['usi_fatturabili']['valore_testo'] == 'A, D'
+    assert [v['valore'] for v in elenco['usi_fatturabili']['voci']] == ['A', 'B', 'D']
+    # numeri delle tariffe, dei contratti e della procedura; lo stato del lotto
+    url = f'/api/napoli/lotti/{lotto}/tariffe'
+    for scritto in ('1e2', '2E1', 'inf', 'NaN', '0x10', '24,28,1'):
+        errore = _errore(napoli.post(url, json={'figura': 'LIS', 'tariffa': scritto, 'valido_da': '2030-01-01'}),
+                         400, 'DATI_NON_VALIDI', 'tariffa')
+        assert 'non è un numero' in errore['error'], scritto
+    _errore(napoli.post(f'/api/napoli/lotti/{lotto}/contratti', json={
+        'numero': 'XI', 'valido_da': '2025-09-01', 'valido_a': '2026-06-30', 'importo': '1e6'}), 400, None, 'importo')
+    _errore(napoli.put(f'/api/napoli/lotti/{lotto}', json={'attivo': 'forse'}), 400, 'DATI_NON_VALIDI', 'attivo')
+    assert _ok(napoli.put(f'/api/napoli/lotti/{lotto}', json={'attivo': False}))['lotto']['attivo'] == 0
+    proposta = _ok(napoli.get('/api/napoli/lotti/proposta'))
+    _errore(napoli.post('/api/napoli/lotti/procedura', json={
+        'lotto': dict(proposta['lotto'], municipalita='3'), 'valido_da': '2025-09-01',
+        'tariffe': [{'figura': 'ASACOM', 'tariffa': '2.3e1'}]}), 400, 'DATI_NON_VALIDI', 'tariffe.0')
+    assert _righe(database_isolato, 'SELECT COUNT(*) AS n FROM napoli_lotti') == [{'n': 1}]
+    assert _righe(database_isolato, "SELECT COUNT(*) AS n FROM napoli_tariffe WHERE figura = 'LIS'") == [{'n': 0}]
+
+
 # ==================== qualifiche ====================
 
 def test_qualifiche_aggiunte_cambiate_e_predefinite(napoli, database_isolato):
@@ -401,15 +528,32 @@ def test_ctrl_z_di_napoli_separato_da_roma(napoli, database_isolato, monkeypatch
     assert _righe(database_isolato, 'SELECT * FROM napoli_impostazioni') == []
     assert _ok(napoli.get('/api/napoli/annulla/ultima'))['azione']['descrizione'].startswith('Nuovo lotto')
 
-    # le azioni piu' vecchie di 24 ore non si annullano piu'
+    # le azioni piu' vecchie di 24 ore non si annullano piu', e i valori di prima (qui un IBAN
+    # tolto) non restano nel database: resta solo la descrizione, per il messaggio
+    _ok(napoli.put('/api/napoli/impostazioni/cooperativa', json={'cooperativa_iban': IBAN_DI_PROVA}))
+    _ok(napoli.put('/api/napoli/impostazioni/cooperativa', json={'cooperativa_iban': ''}))
+    assert any(IBAN_DI_PROVA in r['dati'] for r in _righe(database_isolato, 'SELECT dati FROM napoli_annullamenti'))
     conn = sqlite3.connect(database_isolato)
     with conn:
         vecchia = (datetime.datetime.now() - datetime.timedelta(hours=25)).isoformat(timespec='seconds')
         conn.execute('UPDATE napoli_annullamenti SET timestamp = ?', (vecchia,))
     conn.close()
-    assert _ok(napoli.get('/api/napoli/annulla/ultima')) == {'azione': None, 'scadute': 1, 'ore_validita': 24}
+    assert _ok(napoli.get('/api/napoli/annulla/ultima')) == {'azione': None, 'scadute': 3, 'ore_validita': 24}
+    rimaste = _righe(database_isolato, 'SELECT descrizione, dati FROM napoli_annullamenti ORDER BY id')
+    assert [r['dati'] for r in rimaste] == ['{}'] * 3 and rimaste[-1]['descrizione'] == 'Dati della cooperativa: IBAN'
     _errore(napoli.post('/api/napoli/annulla', json={}), 400, 'NIENTE_DA_ANNULLARE')
     assert _ok(napoli.get(f'/api/napoli/lotti/{lotto["id"]}'))['nome'] == 'NAPOLI LOTTO 1'
+    # anche aprire una pagina di Napoli svuota le scadute; quelle recenti restano intere
+    _ok(napoli.put('/api/napoli/impostazioni/cooperativa', json={'cooperativa_iban': IBAN_DI_PROVA}))
+    conn = sqlite3.connect(database_isolato)
+    with conn:
+        conn.execute("UPDATE napoli_annullamenti SET timestamp = ? WHERE dati <> '{}'", (vecchia,))
+    conn.close()
+    assert napoli.get('/napoli/impostazioni').status_code == 200
+    assert _righe(database_isolato, "SELECT COUNT(*) AS n FROM napoli_annullamenti WHERE dati <> '{}'") == [{'n': 0}]
+    _ok(napoli.put('/api/napoli/impostazioni/cooperativa', json={'cooperativa_iban': ''}))
+    assert napoli.get('/napoli').status_code == 200
+    assert IBAN_DI_PROVA in _righe(database_isolato, 'SELECT dati FROM napoli_annullamenti ORDER BY id DESC')[0]['dati']
 
     # un formato che questa versione non conosce non si annulla e non si perde
     conn = sqlite3.connect(database_isolato)
@@ -420,7 +564,7 @@ def test_ctrl_z_di_napoli_separato_da_roma(napoli, database_isolato, monkeypatch
     conn.close()
     _errore(napoli.post('/api/napoli/annulla', json={}), 400, 'NON_ANNULLABILE')
     assert [r['tipo'] for r in _righe(database_isolato, 'SELECT tipo FROM napoli_annullamenti ORDER BY id')] == [
-        'lotto', 'griglia']
+        'lotto', 'impostazioni', 'impostazioni', 'impostazioni', 'impostazioni', 'griglia']
 
 
 # ==================== controlli del lotto (scheda Mese) ====================

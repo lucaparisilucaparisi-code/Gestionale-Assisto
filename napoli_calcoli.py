@@ -288,6 +288,8 @@ def valida_euro(valore, nome='La tariffa', minimo=Decimal('0.01'), massimo=Decim
     if re.fullmatch(r'\d{1,3}(\.\d{3})+,\d+', scritto):        # 1.234,56: punto delle migliaia
         scritto = scritto.replace('.', '')
     try:
+        if not re.fullmatch(r'-?(\d+([.,]\d*)?|[.,]\d+)', scritto):    # niente 1e2, inf, 0x10...
+            raise ValueError(scritto)
         euro = decimale(scritto)
     except ValueError:
         raise ValueError(f'{nome} "{scritto}" non è un numero: scrivere per esempio 23,44.') from None

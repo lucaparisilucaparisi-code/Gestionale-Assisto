@@ -187,7 +187,7 @@ Gestionale-Assisto-<versione>/
 
 ### Organizzazione del menu
 
-- **Principale**: Dashboard
+- **Principale**: Dashboard · Napoli (assistenza specialistica del Comune di Napoli, sezione a parte)
 - **Lavoro mensile**: Rendicontazione · Utenti (assistiti) · Chiusura Mese
 - **Personale**: Dipendenti (operatori OEPAC, con assegnazione agli assistiti)
 - **Analisi**: Report e Statistiche (tab: Export report, Reportistica DD, Statistiche)

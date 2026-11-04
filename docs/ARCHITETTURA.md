@@ -413,7 +413,11 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     Tutto in `Decimal` con ROUND_HALF_UP; le tariffe sono sempre quelle del lotto
     (`napoli_tariffe`): `config_napoli.TARIFFE_PROPOSTE` servono solo a precompilare.
 - **Pagine e API** (`routes_napoli.py`, blueprint registrato in `app.py`; dati da
-  `napoli_db.py`). Il menu ha la voce "Napoli" (Alt+8) che porta a `/napoli`; le schede
+  `napoli_db.py`). Il menu ha la voce "Napoli" (Alt+8) che porta a `/napoli`, nella
+  sezione "Principale" sotto la Dashboard e senza una sezione sua (PROGETTO §4.5
+  prevedeva una sezione "Napoli" con una voce: con l'intestazione in piu' a 1366x768 il
+  menu scorreva e "Impostazioni" restava tagliata a meta' su tutte le pagine di Roma);
+  le schede
   comuni (`templates/_napoli_tabs.html`, con il lotto scelto ricordato nel browser) per
   ora sono **Mese** (`/napoli`: senza lotti la procedura "Crea il primo lotto", poi cosa
   manca per le fatture, `GET /api/napoli/lotti/<id>/controlli`) e **Impostazioni**
@@ -438,9 +442,20 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   - tariffe (IVA esclusa, `valida_euro`) e regole con data: date sovrapposte della
     stessa figura e livello (della stessa regola e dello stesso ambito, lotto o tutti i
     lotti) rifiutate (409 `TARIFFE_SOVRAPPOSTE` / `REGOLE_SOVRAPPOSTE`); se quelle di
-    prima cominciano prima, la risposta dice dove si possono chiudere (`chiudibili`) e
-    con `chiudi_precedenti` si chiudono il giorno prima nella stessa azione. Le regole
-    hanno spiegazione, gruppo e limiti in `config_napoli.ETICHETTE_REGOLE`;
+    prima cominciano prima, la risposta propone come fare posto alla nuova senza
+    lasciare giorni scoperti (`chiudibili`): quella di prima finisce il giorno prima
+    della nuova (`nuova_fine`) e, se andava oltre la fine della nuova, riprende il giorno
+    dopo (`riprende_da`, `riprende_a`: la riga si divide in due, con la stessa fonte);
+    con `chiudi_precedenti` la proposta si applica nella stessa azione (un solo Ctrl+Z)
+    e il messaggio dice le date nuove della precedente. Senza la divisione, una tariffa
+    nuova per tre mesi avrebbe lasciato senza tariffa i mesi dopo, e una regola sarebbe
+    tornata in silenzio al valore predefinito. Le regole hanno spiegazione, gruppo,
+    limiti e (per gli elenchi di codici, come gli usi A, B, D) le voci ammesse in
+    `config_napoli.ETICHETTE_REGOLE`;
+  - valori stretti: un si'/no accetta solo si'/no, vero/falso, 1/0 (ogni altro valore e'
+    400, non un "no"); i numeri si scrivono per esteso (23,44 o 23.44): 1e2, Infinity e
+    simili sono rifiutati (`valida_euro`, `NUMERO_SCRITTO`); un elenco vuoto o con un
+    codice che non esiste e' rifiutato con il suo messaggio;
   - cooperativa: partita IVA e codice fiscale con la cifra di controllo, IBAN con le
     cifre di controllo e la lunghezza del paese (`valida_iban`), salvato senza spazi e
     mostrato solo mascherato (`maschera_iban`: alla pagina non torna mai intero); un
@@ -450,7 +465,10 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   - **Ctrl+Z di Napoli** (`/api/napoli/annulla/ultima`, `POST /api/napoli/annulla`):
     `napoli_annullamenti`, separato da quello di Roma; ogni azione salva le righe
     toccate com'erano (`{"versione": 1, "righe": [{tabella, chiave, prima}]}`), si
-    annulla solo l'ultima, entro 24 ore, con l'id mostrato nella conferma. In `app.js`
+    annulla solo l'ultima, entro 24 ore, con l'id mostrato nella conferma. Le azioni
+    scadute restano solo con la descrizione (senza valori): le righe di prima, IBAN
+    compreso, si tolgono (`dati = '{}'`) a ogni nuova azione, a Ctrl+Z e all'apertura
+    delle pagine di Napoli (`napoli_db.pulisci_annullamenti`). In `app.js`
     Ctrl+Z chiama `window.annullaPagina` se la pagina lo definisce (solo le pagine di
     Napoli), altrimenti l'annulla di Roma;
   - registro attivita': voci `napoli_*` senza valori (mai IBAN o codici fiscali).

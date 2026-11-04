@@ -996,10 +996,13 @@ def test_valida_euro():
     assert nc.valida_euro('1.234,56', massimo=D('9999')) == 123456
     for sbagliato, messaggio in (('23,445', 'due decimali'), ('0', 'fra 0,01'), ('-1', 'fra 0,01'),
                                  ('mille', 'non è un numero'), ('', 'manca'), ('NaN', 'non è un numero'),
-                                 ('1000', 'fra 0,01 e 999,99')):
+                                 ('1000', 'fra 0,01 e 999,99'), ('1e2', 'non è un numero'),
+                                 ('2.3E1', 'non è un numero'), ('Infinity', 'non è un numero'),
+                                 (D('1E+1'), 'non è un numero'), ('1_0', 'non è un numero')):
         with pytest.raises(ValueError, match=messaggio):
             nc.valida_euro(sbagliato)
     assert nc.valida_euro('0', minimo=D('0')) == 0
+    assert [nc.valida_euro(x, massimo=D('9999')) for x in (',5', '23,', '1234', 10)] == [50, 2300, 123400, 1000]
 
 
 def test_segnaposto_sconosciuti():

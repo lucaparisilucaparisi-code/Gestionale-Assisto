@@ -94,6 +94,13 @@
 
 /* ---------- moduli ---------- */
 .napoli-modal-larga { max-width: 680px; }
+/* tariffa e qualifica: la figura per esteso ("Asacom (Assistente all'autonomia e alla
+   comunicazione)") entra nella tendina senza tagli */
+.napoli-modal-media { max-width: 580px; }
+/* tre campi corti su una riga (servizio, numero e data della determina) */
+.napoli-riga-tre { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 640px) { .napoli-riga-tre { grid-template-columns: 1fr; } }
+.napoli-avviso-nome { margin-bottom: 12px; }
 .napoli-riga-indirizzo { grid-template-columns: minmax(0, 2fr) 96px minmax(0, 1.2fr) 80px; }
 @media (max-width: 900px) { .napoli-riga-indirizzo { grid-template-columns: minmax(0, 1fr) 96px; } }
 @media (max-width: 640px) { .napoli-riga-indirizzo { grid-template-columns: 1fr; } }

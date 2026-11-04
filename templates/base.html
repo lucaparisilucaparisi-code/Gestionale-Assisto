@@ -57,6 +57,16 @@
                     <span>Dashboard</span>
                 </a>
 
+                {# Voce Napoli (PROGETTO §4.5): ogni suo elemento ha data-sezione="napoli", l'unica
+                   parte delle pagine di Roma che la fotografia di Roma non guarda. Sta qui, senza
+                   una sezione sua, perche' a 1366x768 il menu entri ancora tutto. #}
+                <a href="/napoli" class="nav-link {% if request.path[:7] == '/napoli' %}active{% endif %}" title="Assistenza specialistica del Comune di Napoli" data-sezione="napoli">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" data-sezione="napoli">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" data-sezione="napoli" />
+                    </svg>
+                    <span data-sezione="napoli">Napoli</span>
+                </a>
+
                 <div class="nav-section">
                     <div class="nav-section-title">Lavoro mensile</div>
                 </div>
@@ -127,19 +137,6 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                     <span>Import Excel</span>
-                </a>
-
-                {# Sezione Napoli (PROGETTO §4.5): ogni elemento del blocco ha data-sezione="napoli",
-                   l'unica parte delle pagine di Roma che la fotografia di Roma non guarda. #}
-                <div class="nav-section" data-sezione="napoli">
-                    <div class="nav-section-title">Napoli</div>
-                </div>
-
-                <a href="/napoli" class="nav-link {% if request.path[:7] == '/napoli' %}active{% endif %}" data-sezione="napoli">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" data-sezione="napoli">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" data-sezione="napoli" />
-                    </svg>
-                    <span data-sezione="napoli">Assistenza specialistica</span>
                 </a>
 
                 <div class="nav-section">

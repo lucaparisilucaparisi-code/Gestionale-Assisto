@@ -286,11 +286,12 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label" for="contratto-grado">Grado di scuola *</label>
-                    <select id="contratto-grado" class="form-control" data-campo="grado">
-                        <option value="inferiore">Grado inferiore (infanzia, primaria, secondaria di I grado)</option>
-                        <option value="superiore">Grado superiore (secondaria di II grado)</option>
+                    <select id="contratto-grado" class="form-control" data-campo="grado" aria-describedby="contratto-grado-aiuto">
+                        <option value="inferiore">Grado inferiore</option>
+                        <option value="superiore">Grado superiore</option>
                         <option value="">Tutti e due i gradi</option>
                     </select>
+                    <p class="form-help" id="contratto-grado-aiuto">Inferiore: infanzia, primaria e secondaria di I grado (medie). Superiore: secondaria di II grado.</p>
                 </div>
             </div>
             <div class="form-row">
@@ -305,7 +306,7 @@
             </div>
             <fieldset class="napoli-gruppo">
                 <legend>Determina di impegno (D.D.)</legend>
-                <div class="form-row">
+                <div class="form-row napoli-riga-tre">
                     <div class="form-group">
                         <label class="form-label" for="contratto-dd-servizio">Servizio</label>
                         <input type="text" id="contratto-dd-servizio" class="form-control" data-campo="dd_servizio" maxlength="30" autocomplete="off">
@@ -358,7 +359,7 @@
 
 <!-- Finestra: tariffa -->
 <div class="modal-overlay" id="napoli-modal-tariffa">
-    <div class="modal" aria-labelledby="tariffa-titolo">
+    <div class="modal napoli-modal-media" aria-labelledby="tariffa-titolo">
         <div class="modal-header">
             <h3 class="modal-title" id="tariffa-titolo">Tariffa</h3>
             {{ modal_close("closeModal('napoli-modal-tariffa')") }}
@@ -447,7 +448,7 @@
 
 <!-- Finestra: qualifica -->
 <div class="modal-overlay" id="napoli-modal-qualifica">
-    <div class="modal" aria-labelledby="qualifica-titolo">
+    <div class="modal napoli-modal-media" aria-labelledby="qualifica-titolo">
         <div class="modal-header">
             <h3 class="modal-title" id="qualifica-titolo">Qualifica</h3>
             {{ modal_close("closeModal('napoli-modal-qualifica')") }}

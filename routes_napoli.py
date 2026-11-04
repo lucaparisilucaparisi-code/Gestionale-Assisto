@@ -55,16 +55,34 @@ def _ok(**valori):
     return jsonify(dict(success=True, **valori))
 
 
+def _con_nota(messaggio, riga):
+    """Il messaggio dopo un salvataggio, piu' come sono cambiate le date della riga
+    precedente (la nota di napoli_db, tolta dalla riga)."""
+    nota = riga.pop('nota', '')
+    return f'{messaggio}.{nota}' if nota else messaggio
+
+
 # ==================== pagine ====================
+
+def _pulisci_annullamenti():
+    """Ad ogni pagina di Napoli si svuotano le azioni di Ctrl+Z scadute (i valori di prima,
+    IBAN compreso, non restano nel database); se il database e' occupato, la prossima volta."""
+    try:
+        napoli_db.pulisci_annullamenti()
+    except sqlite3.OperationalError as e:
+        logger.warning('Napoli: azioni scadute di Ctrl+Z non svuotate: %s', e)
+
 
 @napoli_bp.route('/napoli')
 def mese_page():
     """Scheda Mese: con un lotto i controlli per la fattura; senza, "Crea il primo lotto"."""
+    _pulisci_annullamenti()
     return render_template('napoli_mese.html')
 
 
 @napoli_bp.route('/napoli/impostazioni')
 def impostazioni_page():
+    _pulisci_annullamenti()
     return render_template('napoli_impostazioni.html')
 
 
@@ -165,12 +183,14 @@ def api_tariffe(lotto_id):
 
 @napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/tariffe', methods=['POST'])
 def api_crea_tariffa(lotto_id):
-    return _ok(tariffa=napoli_db.crea_tariffa(lotto_id, _dati()), messaggio='Tariffa aggiunta')
+    nuova = napoli_db.crea_tariffa(lotto_id, _dati())
+    return _ok(messaggio=_con_nota('Tariffa aggiunta', nuova), tariffa=nuova)
 
 
 @napoli_bp.route('/api/napoli/tariffe/<int:tariffa_id>', methods=['PUT'])
 def api_aggiorna_tariffa(tariffa_id):
-    return _ok(tariffa=napoli_db.aggiorna_tariffa(tariffa_id, _dati()), messaggio='Tariffa salvata')
+    salvata = napoli_db.aggiorna_tariffa(tariffa_id, _dati())
+    return _ok(messaggio=_con_nota('Tariffa salvata', salvata), tariffa=salvata)
 
 
 @napoli_bp.route('/api/napoli/tariffe/<int:tariffa_id>', methods=['DELETE'])
@@ -197,12 +217,14 @@ def api_regole():
 
 @napoli_bp.route('/api/napoli/regole', methods=['POST'])
 def api_crea_regola():
-    return _ok(regola=napoli_db.crea_regola(_dati()), messaggio='Regola salvata')
+    nuova = napoli_db.crea_regola(_dati())
+    return _ok(messaggio=_con_nota('Regola salvata', nuova), regola=nuova)
 
 
 @napoli_bp.route('/api/napoli/regole/<int:regola_id>', methods=['PUT'])
 def api_aggiorna_regola(regola_id):
-    return _ok(regola=napoli_db.aggiorna_regola(regola_id, _dati()), messaggio='Regola salvata')
+    salvata = napoli_db.aggiorna_regola(regola_id, _dati())
+    return _ok(messaggio=_con_nota('Regola salvata', salvata), regola=salvata)
 
 
 @napoli_bp.route('/api/napoli/regole/<int:regola_id>', methods=['DELETE'])

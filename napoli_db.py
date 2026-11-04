@@ -157,12 +157,28 @@ def _intero(dati, campo, etichetta, minimo, massimo):
     return valore
 
 
-def _booleano(valore, predefinito=True):
-    if valore in (None, ''):
+VERI = frozenset({'1', 'true', 'si', 'sì', 'on'})
+FALSI = frozenset({'0', 'false', 'no', 'off'})
+# Numeri scritti come li scrive una persona (23,44 o 23.44, anche ,5): niente 1e2 o simili.
+NUMERO_SCRITTO = re.compile(r'\s*-?(?:\d+(?:[.,]\d*)?|[.,]\d+)\s*')
+
+
+def _booleano(valore, predefinito=True, campo=None, messaggio='La scelta non è valida: ricarica la pagina e riprova.'):
+    """Si' o no: True/False, 1/0 o i testi di VERI e FALSI; vuoto = predefinito. Ogni
+    altro valore e' un errore (DatiNonValidi sul campo), non un "no" in silenzio."""
+    if valore is None or (isinstance(valore, str) and not valore.strip()):
         return predefinito
-    if isinstance(valore, str):
-        return valore.strip().lower() in ('1', 'true', 'si', 'sì', 'on')
-    return bool(valore)
+    if isinstance(valore, bool):
+        return valore
+    if isinstance(valore, int) and valore in (0, 1):
+        return bool(valore)
+    if isinstance(valore, str) and valore.strip().lower() in VERI | FALSI:
+        return valore.strip().lower() in VERI
+    raise DatiNonValidi(messaggio, campo)
+
+
+def _chiudi_precedenti(dati):
+    return _booleano(dati.get('chiudi_precedenti'), False, 'chiudi_precedenti')
 
 
 def _euro_it(cent):
@@ -184,6 +200,10 @@ def _giorno(valore):
 
 def _giorno_prima(giorno):
     return (calc.data(giorno) - datetime.timedelta(days=1)).isoformat()
+
+
+def _giorno_dopo(giorno):
+    return (calc.data(giorno) + datetime.timedelta(days=1)).isoformat()
 
 
 # ==================== memoria di Ctrl+Z (napoli_annullamenti) ====================
@@ -214,7 +234,24 @@ class _Modifiche:
                                                    default=str)))
         self.conn.execute('DELETE FROM napoli_annullamenti WHERE id NOT IN '
                           '(SELECT id FROM napoli_annullamenti ORDER BY id DESC LIMIT ?)', (MAX_ANNULLAMENTI,))
+        _svuota_scadute(self.conn)
         return cur.lastrowid
+
+
+def _svuota_scadute(conn, adesso=None):
+    """Le azioni troppo vecchie per Ctrl+Z (piu' di ANNULLA_VALIDITA_ORE) restano con la
+    loro descrizione, che non ha valori e serve al messaggio "non si possono piu'
+    annullare", ma senza le righe com'erano: i valori di prima (l'IBAN, per esempio) non
+    restano nel database piu' del necessario."""
+    limite = (adesso or datetime.datetime.now()) - datetime.timedelta(hours=ANNULLA_VALIDITA_ORE)
+    conn.execute("UPDATE napoli_annullamenti SET dati = '{}' WHERE timestamp < ? AND dati <> '{}'",
+                 (limite.isoformat(timespec='seconds'),))
+
+
+def pulisci_annullamenti():
+    """All'apertura delle pagine di Napoli: svuota le azioni scadute (vedi _svuota_scadute)."""
+    with db.get_db_context() as conn:
+        _svuota_scadute(conn)
 
 
 def _ripristina(conn, voce):
@@ -256,6 +293,7 @@ def ultima_annullabile():
     """Cosa annullerebbe Ctrl+Z su una pagina di Napoli: {'azione': {id, descrizione,
     quando} o None, 'scadute': azioni troppo vecchie ancora in memoria, 'ore_validita'}."""
     with db.get_db_context() as conn:
+        _svuota_scadute(conn)
         ultima = _riga(conn, 'SELECT id, timestamp, tipo, descrizione FROM napoli_annullamenti '
                              'ORDER BY id DESC LIMIT 1')
         totale = conn.execute('SELECT COUNT(*) FROM napoli_annullamenti').fetchone()[0]
@@ -481,7 +519,8 @@ def _valida_lotto(conn, dati, lotto_id=None):
         'destinatario': _testo(dati, 'destinatario', 'Il destinatario del lotto', massimo=300),
         'intestazione_foglio': _testo(dati, 'intestazione_foglio', 'L\'intestazione del foglio firma', massimo=200),
         'colore': None,
-        'attivo': 1 if _booleano(dati.get('attivo')) else 0,
+        'attivo': 1 if _booleano(dati.get('attivo'), True, 'attivo',
+                                 'Lo stato del lotto non è valido: scegli "Attivo" o "Non più attivo".') else 0,
     }
     colore = str(dati.get('colore') or '').strip()
     if colore:
@@ -570,7 +609,7 @@ def proposta_lotto(conn=None):
         proposto['nome'] = ''
     tariffe = {t['figura']: t for t in config_napoli.tariffe_proposte()}
     return {
-        'lotto': proposto, 'numeri_liberi': liberi,
+        'lotto': proposto, 'numeri_liberi': liberi, 'modello_nome': config_napoli.LOTTO_PROPOSTO['nome'],
         'valido_da': config_napoli.INIZIO_CONTRATTO_ATTUALE, 'valido_a': config_napoli.FINE_TARIFFE_ATTUALI,
         'tariffe': [{'figura': f['codice'], 'descrizione': f['descrizione'],
                      'tariffa': _euro_it(tariffe[f['codice']]['tariffa_cent']) if f['codice'] in tariffe else ''}
@@ -760,16 +799,60 @@ def elenco_tariffe(lotto_id, conn=None):
 
 
 def _chiudibili(nuovo, sovrapposti):
-    """Righe sovrapposte che si possono chiudere il giorno prima dell'inizio della nuova
-    (cominciano prima): la proposta "chiudi la precedente"."""
+    """Come fare posto alla riga nuova senza lasciare giorni scoperti, se si puo' (solo
+    quando le righe sovrapposte cominciano prima della nuova): ognuna finisce il giorno
+    prima della nuova ('nuova_fine'); se andava oltre la fine della nuova, il suo valore
+    riprende il giorno dopo ('riprende_da', fino a 'riprende_a', None = senza fine: la
+    riga si divide in due). Altrimenti dopo la nuova non varrebbe piu' niente (una
+    tariffa che manca, una regola che torna in silenzio al valore predefinito)."""
     if not sovrapposti or any(calc.data(s['valido_da']) >= calc.data(nuovo['valido_da']) for s in sovrapposti):
         return []
-    return [{'id': s['id'], 'nuova_fine': _giorno_prima(nuovo['valido_da'])} for s in sovrapposti]
+    fine_nuova = nuovo.get('valido_a')
+    out = []
+    for s in sovrapposti:
+        voce = {'id': s['id'], 'valido_da': s['valido_da'], 'nuova_fine': _giorno_prima(nuovo['valido_da'])}
+        if fine_nuova and (not s.get('valido_a') or calc.data(s['valido_a']) > calc.data(fine_nuova)):
+            voce.update(riprende_da=_giorno_dopo(fine_nuova), riprende_a=s.get('valido_a'))
+        out.append(voce)
+    return out
+
+
+def _testo_chiudibile(c):
+    """Quando varra' la riga precedente dopo la proposta: 'dal ... al ...' (e di nuovo ...)."""
+    testo = _periodo_it(c['valido_da'], c['nuova_fine'])
+    if c.get('riprende_da'):
+        testo += ' e di nuovo ' + _periodo_it(c['riprende_da'], c.get('riprende_a'))
+    return testo
+
+
+def _proposta_sovrapposte(chiudibili, cosa, nuovo):
+    """Seconda parte del messaggio delle date sovrapposte: cosa propone il programma."""
+    if not chiudibili:
+        return '.'
+    if any(c.get('riprende_da') for c in chiudibili):
+        return (f', oppure fai valere {nuovo} solo in questi giorni: {cosa} varrà '
+                + '; '.join(_testo_chiudibile(c) for c in chiudibili) + '.')
+    return f', oppure chiudi {cosa} al {calc.data_it(chiudibili[0]["nuova_fine"])}.'
+
+
+def nota_chiusure(chiusure, cosa):
+    """Per il messaggio dopo il salvataggio: come e' cambiata la riga precedente."""
+    return ''.join(f' {cosa[0].upper()}{cosa[1:]} ora vale {_testo_chiudibile(c)}.' for c in chiusure)
 
 
 def _chiudi(conn, tabella, chiudibili, modifiche):
+    """Applica la proposta di _chiudibili: la riga precedente finisce il giorno prima della
+    nuova e, se serve, una sua copia riprende dopo la fine della nuova (stessa azione,
+    quindi un solo Ctrl+Z rimette tutto)."""
     for c in chiudibili:
         modifiche.prima(tabella, c['id'])
+        if c.get('riprende_da'):
+            riga = _riga(conn, f'SELECT * FROM napoli_{tabella} WHERE id = ?', (c['id'],))
+            copia = {k: v for k, v in riga.items() if k != 'id'}
+            copia.update(valido_da=c['riprende_da'], valido_a=c.get('riprende_a'), data_inserimento=_ora())
+            cur = conn.execute(f'INSERT INTO napoli_{tabella} ({", ".join(copia)}) VALUES '
+                               f'({", ".join("?" * len(copia))})', tuple(copia.values()))
+            modifiche.nuova(tabella, cur.lastrowid)
         conn.execute(f'UPDATE napoli_{tabella} SET valido_a = ? WHERE id = ?', (c['nuova_fine'], c['id']))
 
 
@@ -793,9 +876,8 @@ def _valida_tariffa(conn, lotto_id, dati, tariffa_id=None, chiudi_precedenti=Fal
     if sovrapposte and not (chiudi_precedenti and chiudibili):
         testo = ('In questi giorni vale già la tariffa ' + _descrivi_tariffa(sovrapposte[0])
                  + ': due tariffe della stessa figura negli stessi giorni non si possono avere (la fattura non '
-                 'saprebbe quale usare). Cambia le date')
-        testo += (f', oppure chiudi la tariffa precedente al {calc.data_it(chiudibili[0]["nuova_fine"])}.'
-                  if chiudibili else '.')
+                 'saprebbe quale usare). Cambia le date'
+                 + _proposta_sovrapposte(chiudibili, 'la tariffa precedente', 'la nuova tariffa'))
         raise Conflitto(testo, 'valido_da', codice='TARIFFE_SOVRAPPOSTE', chiudibili=chiudibili,
                         sovrapposte=[_descrivi_tariffa(t) for t in sovrapposte])
     return out, (chiudibili if sovrapposte else [])
@@ -812,11 +894,13 @@ def tariffa(tariffa_id, conn=None):
 
 
 def crea_tariffa(lotto_id, dati):
-    """Nuova tariffa del lotto. Con dati['chiudi_precedenti'] le tariffe della stessa figura
-    che cominciano prima e valgono ancora si chiudono il giorno prima (stessa azione)."""
+    """Nuova tariffa del lotto. Con dati['chiudi_precedenti'] la tariffa della stessa figura
+    che comincia prima e vale ancora si chiude il giorno prima e, se andava oltre la fine
+    della nuova, riprende il giorno dopo (_chiudibili; stessa azione). La riga tornata ha
+    'nota': come sono cambiate le date della precedente, per il messaggio."""
     with db.get_db_context() as conn:
         lotto(lotto_id, conn)
-        valori, chiudere = _valida_tariffa(conn, lotto_id, dati, None, _booleano(dati.get('chiudi_precedenti'), False))
+        valori, chiudere = _valida_tariffa(conn, lotto_id, dati, None, _chiudi_precedenti(dati))
         modifiche = _Modifiche(conn)
         _chiudi(conn, 'tariffe', chiudere, modifiche)
         nomi = ', '.join(valori) + ', lotto_id, data_inserimento'
@@ -827,15 +911,14 @@ def crea_tariffa(lotto_id, dati):
         descrizione = _descrivi_tariffa(valori)
         modifiche.salva('tariffa', f'Nuova tariffa {descrizione}')
     db.log_audit('creazione', 'napoli_tariffa', cur.lastrowid, dettagli=f'Napoli: nuova tariffa {descrizione}'
-                 + (f' (chiuse {len(chiudere)} tariffe precedenti)' if chiudere else ''))
-    return tariffa(cur.lastrowid)
+                 + (f' (cambiate le date di {len(chiudere)} tariffe precedenti)' if chiudere else ''))
+    return dict(tariffa(cur.lastrowid), nota=nota_chiusure(chiudere, 'la tariffa precedente'))
 
 
 def aggiorna_tariffa(tariffa_id, dati):
     with db.get_db_context() as conn:
         attuale = tariffa(tariffa_id, conn)
-        valori, chiudere = _valida_tariffa(conn, attuale['lotto_id'], dati, tariffa_id,
-                                           _booleano(dati.get('chiudi_precedenti'), False))
+        valori, chiudere = _valida_tariffa(conn, attuale['lotto_id'], dati, tariffa_id, _chiudi_precedenti(dati))
         modifiche = _Modifiche(conn)
         _chiudi(conn, 'tariffe', chiudere, modifiche)
         modifiche.prima('tariffe', tariffa_id)
@@ -843,8 +926,9 @@ def aggiorna_tariffa(tariffa_id, dati):
         conn.execute(f'UPDATE napoli_tariffe SET {assegna} WHERE id = ?', tuple(valori.values()) + (tariffa_id,))
         descrizione = _descrivi_tariffa(valori)
         modifiche.salva('tariffa', f'Modifica della tariffa {descrizione}')
-    db.log_audit('modifica', 'napoli_tariffa', tariffa_id, dettagli=f'Napoli: modificata la tariffa {descrizione}')
-    return tariffa(tariffa_id)
+    db.log_audit('modifica', 'napoli_tariffa', tariffa_id, dettagli=f'Napoli: modificata la tariffa {descrizione}'
+                 + (f' (cambiate le date di {len(chiudere)} tariffe precedenti)' if chiudere else ''))
+    return dict(tariffa(tariffa_id), nota=nota_chiusure(chiudere, 'la tariffa precedente'))
 
 
 def elimina_tariffa(tariffa_id):
@@ -911,7 +995,7 @@ def _valore_regola(chiave, valore):
     nome = etichetta['etichetta']
     if tipo in ('decimale', 'intero'):
         try:
-            letto = calc.decimale(valore)
+            letto = None if isinstance(valore, str) and not NUMERO_SCRITTO.fullmatch(valore) else calc.decimale(valore)
         except ValueError:
             letto = None
         if letto is None or not letto.is_finite() or (tipo == 'intero' and letto != letto.to_integral_value()):
@@ -933,16 +1017,42 @@ def _valore_regola(chiave, valore):
             raise DatiNonValidi(f'"{nome}": {{{sconosciuti[0]}}} non si può usare (si possono usare: {ammessi}).',
                                 'valore')
     elif tipo == 'booleano':
-        valore = _booleano(valore, None)
+        valore = _booleano(valore, None, 'valore', f'"{nome}": scegli sì o no.')
         if valore is None:
             raise DatiNonValidi(f'"{nome}": scegli sì o no.', 'valore')
     elif tipo in ('giorni', 'mesi'):
         if not isinstance(valore, list) or not valore:
             raise DatiNonValidi(f'"{nome}": scegli almeno un {"giorno" if tipo == "giorni" else "mese"}.', 'valore')
+    elif tipo == 'elenco':
+        valore = _valore_elenco(nome, etichetta, valore)
     try:
         return calc.valore_regola(chiave, valore)
     except ValueError:
         raise DatiNonValidi(f'"{nome}": il valore non è tra quelli ammessi.', 'valore') from None
+
+
+def _valore_elenco(nome, etichetta, valore):
+    """Elenco di codici (per esempio gli usi A, B, D): una lista o un testo con le virgole;
+    almeno uno, ciascuno fra quelli di etichetta['voci'] (se ci sono), senza doppi."""
+    if isinstance(valore, str):
+        valore = valore.split(',')
+    if not isinstance(valore, list) or not all(isinstance(x, str) for x in valore):
+        raise DatiNonValidi(f'"{nome}": il valore non è tra quelli ammessi.', 'valore')
+    codici = []
+    for x in valore:
+        codice = x.strip().upper() if etichetta.get('voci') else ' '.join(x.split())
+        if codice and codice not in codici:
+            codici.append(codice)
+    if not codici:
+        raise DatiNonValidi(f'"{nome}": {etichetta.get("manca", "scegli almeno una voce")}.', 'valore')
+    voci = etichetta.get('voci')
+    if voci:
+        sconosciuti = [c for c in codici if c not in voci]
+        if sconosciuti:
+            raise DatiNonValidi(f'"{nome}": "{sconosciuti[0]}" non c\'è (si possono scegliere: '
+                                f'{", ".join(voci)}).', 'valore')
+        codici.sort(key=list(voci).index)
+    return codici
 
 
 def _descrivi_regola(r):
@@ -979,6 +1089,7 @@ def elenco_regole(lotto_id=None, giorno=None):
             'chiave': chiave, 'etichetta': etichetta['etichetta'], 'spiegazione': etichetta.get('spiegazione', ''),
             'gruppo': etichetta['gruppo'], 'tipo': definizione['tipo'], 'unita': etichetta.get('unita'),
             'scelte': [{'valore': k, 'testo': t} for k, t in etichetta.get('scelte', {}).items()],
+            'voci': [{'valore': k, 'testo': t} for k, t in etichetta.get('voci', {}).items()],
             'min': etichetta.get('min'), 'max': etichetta.get('max'),
             'predefinito': _valore_pagina(definizione['valore']),
             'predefinito_testo': testo_valore_regola(chiave, definizione['valore']),
@@ -1032,9 +1143,8 @@ def _valida_regola(conn, dati, regola_id=None, chiudi_precedenti=False):
     chiudibili = _chiudibili(nuova, sovrapposte)
     if sovrapposte and not (chiudi_precedenti and chiudibili):
         testo = ('In questi giorni vale già ' + _descrivi_regola(sovrapposte[0])
-                 + '. Due valori della stessa regola negli stessi giorni non si possono avere: cambia le date')
-        testo += (f', oppure chiudi il valore precedente al {calc.data_it(chiudibili[0]["nuova_fine"])}.'
-                  if chiudibili else '.')
+                 + '. Due valori della stessa regola negli stessi giorni non si possono avere: cambia le date'
+                 + _proposta_sovrapposte(chiudibili, 'il valore precedente', 'il nuovo valore'))
         raise Conflitto(testo, 'valido_da', codice='REGOLE_SOVRAPPOSTE', chiudibili=chiudibili,
                         sovrapposte=[_descrivi_regola(r) for r in sovrapposte])
     return out, (chiudibili if sovrapposte else [])
@@ -1042,7 +1152,7 @@ def _valida_regola(conn, dati, regola_id=None, chiudi_precedenti=False):
 
 def crea_regola(dati):
     with db.get_db_context() as conn:
-        valori, chiudere = _valida_regola(conn, dati, None, _booleano(dati.get('chiudi_precedenti'), False))
+        valori, chiudere = _valida_regola(conn, dati, None, _chiudi_precedenti(dati))
         modifiche = _Modifiche(conn)
         _chiudi(conn, 'regole', chiudere, modifiche)
         nomi = ', '.join(valori) + ', data_inserimento'
@@ -1052,15 +1162,16 @@ def crea_regola(dati):
         modifiche.nuova('regole', cur.lastrowid)
         descrizione = _descrivi_regola(valori)
         modifiche.salva('regola', f'Regola {descrizione}')
-    db.log_audit('creazione', 'napoli_regola', cur.lastrowid, dettagli=f'Napoli: regola {descrizione}')
-    return regola_salvata(cur.lastrowid)
+    db.log_audit('creazione', 'napoli_regola', cur.lastrowid, dettagli=f'Napoli: regola {descrizione}'
+                 + (f' (cambiate le date di {len(chiudere)} valori precedenti)' if chiudere else ''))
+    return dict(regola_salvata(cur.lastrowid), nota=nota_chiusure(chiudere, 'il valore precedente'))
 
 
 def aggiorna_regola(regola_id, dati):
     with db.get_db_context() as conn:
         attuale = regola_salvata(regola_id, conn)
         unito = dict(dati, chiave=attuale['chiave'], lotto_id=attuale['lotto_id'])
-        valori, chiudere = _valida_regola(conn, unito, regola_id, _booleano(dati.get('chiudi_precedenti'), False))
+        valori, chiudere = _valida_regola(conn, unito, regola_id, _chiudi_precedenti(dati))
         modifiche = _Modifiche(conn)
         _chiudi(conn, 'regole', chiudere, modifiche)
         modifiche.prima('regole', regola_id)
@@ -1068,8 +1179,9 @@ def aggiorna_regola(regola_id, dati):
         conn.execute(f'UPDATE napoli_regole SET {assegna} WHERE id = ?', tuple(valori.values()) + (regola_id,))
         descrizione = _descrivi_regola(valori)
         modifiche.salva('regola', f'Modifica della regola {descrizione}')
-    db.log_audit('modifica', 'napoli_regola', regola_id, dettagli=f'Napoli: modificata la regola {descrizione}')
-    return regola_salvata(regola_id)
+    db.log_audit('modifica', 'napoli_regola', regola_id, dettagli=f'Napoli: modificata la regola {descrizione}'
+                 + (f' (cambiate le date di {len(chiudere)} valori precedenti)' if chiudere else ''))
+    return dict(regola_salvata(regola_id), nota=nota_chiusure(chiudere, 'il valore precedente'))
 
 
 def elimina_regola(regola_id):

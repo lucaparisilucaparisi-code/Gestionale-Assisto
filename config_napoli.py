@@ -233,7 +233,7 @@ ETICHETTE_REGOLE = {
         'gruppo': 'fattura', 'unita': 'percento', 'min': 0, 'max': 100},
     'split_payment': {
         'etichetta': 'Scissione dei pagamenti (split payment)',
-        'spiegazione': 'Si: l\'IVA la versa l\'ente e alla cooperativa si paga l\'imponibile.',
+        'spiegazione': 'Sì: l\'IVA la versa l\'ente e alla cooperativa si paga l\'imponibile.',
         'gruppo': 'fattura', 'unita': None},
     'split_payment_testo': {
         'etichetta': 'Testo dello split payment nella nota della fattura', 'spiegazione': '',
@@ -283,7 +283,10 @@ ETICHETTE_REGOLE = {
     'mesi_uso_D': {
         'etichetta': 'Mesi dell\'uso D', 'spiegazione': '', 'gruppo': 'fase_2', 'unita': None},
     'usi_fatturabili': {
-        'etichetta': 'Usi della banca ore che si fatturano', 'spiegazione': '', 'gruppo': 'fase_2', 'unita': None},
+        'etichetta': 'Usi della banca ore che si fatturano', 'spiegazione': '', 'gruppo': 'fase_2', 'unita': None,
+        'voci': {'A': 'A (GLO e raccordo con la scuola)', 'B': 'B (progettazione e materiali)',
+                 'D': 'D (operatore di plesso)'},
+        'manca': 'scegli almeno un uso'},
     'scadenza_banca': {
         'etichetta': 'Scadenza della banca ore', 'spiegazione': '', 'gruppo': 'fase_2', 'unita': None,
         'scelte': {'fine_contratto_applicativo': 'alla fine del contratto applicativo'}},
