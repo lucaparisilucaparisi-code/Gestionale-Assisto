@@ -9,6 +9,8 @@ Nota tecnica per chi sviluppa. Per l'uso e l'installazione vedi il `README.md`.
 | `app.py` | Applicazione Flask: route pagine e molte API, autenticazione (sessione + WebAuthn), import. Registra i blueprint sotto. |
 | `database.py` | Tutto l'accesso ai dati SQLite: schema/migrazioni, CRUD, calcoli di dominio. |
 | `napoli_schema.py` | Solo lo schema della sezione Napoli (tabelle `napoli_*`): la migrazione 2 di `database.py` (vedi "Sezione Napoli"). |
+| `napoli_calcoli.py` | Calcoli di Napoli, solo funzioni pure (niente database, Flask o `config` di Roma): letture delle ore, ore riconosciute, settimane e PEI, regole con data, fattura. |
+| `config_napoli.py` | Valori predefiniti di Napoli: regole con data (`REGOLE_PREDEFINITE`), modelli dei testi della fattura, tariffe solo *proposte*. |
 | `routes_export.py` | Blueprint export (Excel, PDF, Word). |
 | `routes_backup.py` | Blueprint backup/ripristino (`/api/backup...`). |
 | `routes_migrazione.py` | Blueprint migrazione dati JSON e audit log (`/api/migrazione`, `/api/audit`). Formato v3.0: tutte le tabelle di dominio (`TABELLE_DOMINIO`), import merge/skip/replace con rimappatura delle FK (`TABELLE_MERGE`). |
@@ -312,9 +314,35 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   ore del coordinatore in centesimi di ora; tariffe sempre IVA esclusa. La
   municipalita' e' quella della scuola: lo stesso codice meccanografico in due
   municipalita' sono due plessi.
+- **Calcoli** (`napoli_calcoli.py`, funzioni pure: ricevono righe gia' lette come
+  dict e non importano `database`, Flask o `config`):
+  - letture: `leggi_ore_griglia` (ore decimali; "1,30" e gli altri decimali che non
+    sono quarti d'ora vanno confermati: si rilegge con `conferma`), `leggi_ore_foglio`
+    (totale scritto sul foglio firma: ",15/,30/,45" ore e minuti, ",25/,5/,75"
+    decimali), `leggi_cella_master`; sigle F, M, F perm (e varianti), A;
+  - `esito_giorno` / `minuti_riconosciuti`: tabella del PROGETTO §5.2 (precedenza
+    calendario > evento > operatore > alunno; meta' del programmato per l'alunno
+    assente col contratto attuale, niente meta' se l'assenza e' recuperata; mezzo
+    minuto per eccesso); `stato='programmato'` vale 0, mai "come programmato";
+  - `settimane_mese` (lun-sab tagliate al mese), `verifica_settimane` (oltre il PEI
+    giallo, oltre il tetto PEI x 1,2 rosso), `tetto_settimanale`;
+  - `regola` / `regole_alla_data`: riga del lotto, poi di tutti i lotti, poi il
+    predefinito di `config_napoli.REGOLE_PREDEFINITE` (che ha le sue date: fuori da
+    queste vale lo stesso ma `regola_dettaglio` lo segnala);
+  - fattura: `periodo_fattura` (mese tagliato al contratto applicativo),
+    `tariffa_alla_data` (livello dell'operatore, poi senza livello), `righe_fattura`
+    (per figura e tariffa: ore = minuti / 60 al centesimo; il coordinatore dalle sue
+    ore; una riga per tariffa se cambia nel periodo), `totali_fattura` (importo di riga
+    al centesimo, ritenuta 0,50% sulla somma, IVA 5% sull'imponibile, split payment:
+    si paga l'imponibile), `prospetto_fattura` (con testi, scadenza e bloccanti).
+    Tutto in `Decimal` con ROUND_HALF_UP; le tariffe sono sempre quelle del lotto
+    (`napoli_tariffe`): `config_napoli.TARIFFE_PROPOSTE` servono solo a precompilare.
 - **Test**: `tests/test_napoli_schema.py` (migrazione su un database v1.20.1 con
   l'archivio Roma inventato confrontato con il gemello riaperto dalla versione
-  vecchia, rieseguibilita', interruzione, ripristino, vincoli).
+  vecchia, rieseguibilita', interruzione, ripristino, vincoli);
+  `tests/test_napoli_calcoli.py` (con soli dati inventati: le quantita' e le tariffe
+  della fattura reale di giugno ricalcolate al centesimo, i due fogli firma ricostruiti
+  con orari equivalenti, letture ambigue, regole, tariffe, bloccanti).
 
 ## Refactoring pianificati (da fare come interventi dedicati e revisionati)
 
