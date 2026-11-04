@@ -47,7 +47,11 @@ reimplementarla inline (a schermo, in SQL o negli export).
   l'ultima variazione iniziata entro il mese e non terminata (`mese_fine` NULL o ≥ mese).
   Il wizard di nuovo anno chiude al 31/8 quelle aperte (`prepara_utenti_nuovo_anno`).
   Le colonne "Monte Ore" di tutti gli export mostrano `monte_ore_effettivo` del mese
-  (l'annuale: la media dei mesi attivi), mai la base di oggi.
+  (l'annuale: la media dei mesi attivi), mai la base di oggi. Lo stesso nelle pagine:
+  tabella e storico dell'utente in Rendicontazione (con la base tra parentesi se e'
+  diversa), elenco "senza ore" di Chiusura mese, anteprima dei Report e Dashboard
+  (lo "Stato del mese" e la somma "monte ore a settimana", che usa il mese di oggi),
+  tutte da `monte_ore_effettivo` di `/api/rendicontazione/<anno>/<mese>`.
 - **Variazioni del wizard (monte ore nuovo anno)** → quando il passo Utenti cambia il
   monte ore BASE di chi ha ore nei mesi passati, `_conserva_monte_ore_passato` registra
   prima una variazione CHIUSA ad agosto con il valore vecchio: inizio = il piu' vecchio tra
@@ -278,6 +282,13 @@ dati inventati:
   codice di riferimento (la v1.20.1 e' il commit a0249a2), e la parte che c'era
   gia' deve restare uguale:
   `python strumenti/fotografa_roma.py --sintetico --codice CARTELLA_VERSIONE --uscita tests/golden/roma_v1_20_1.json`.
+  Un cambiamento di Roma voluto si fotografa invece sul codice nuovo, dichiarandolo
+  nel commit e confrontando la fotografia vecchia con la nuova: nessun numero e
+  nessuna struttura (chiavi, righe) diversi, solo i testi attesi. Cambiamenti voluti
+  finora (stessi numeri della v1.20.1): **passo roma-visualizzazione**, testi al
+  singolare con 1 (titoli di `/api/alerts`, messaggi di `/api/stats/validazione`,
+  tre frasi della Relazione Word), impronte della cornice di otto pagine (script:
+  monte ore del mese, plurali, etichette dei confronti) e di `dashboard.js`.
 - **Invarianza** (`tests/test_roma_invariata.py`): fotografia, poi i dati di Napoli
   (`tests/seme_napoli.py`, `carica_seme_napoli`: riempie tutte le tabelle `napoli_*`;
   con un client i dati che hanno gia' le loro API passano da li', dal passo 1.3

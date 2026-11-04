@@ -519,7 +519,7 @@ async function loadHeatmap(annoScolastico, totaleUtenti, tutti = false) {
         // Prima ne mostrava 30 su 35 senza dirlo
         if (data.heatmap.length < totaleUtenti) {
             altri.hidden = false;
-            altri.innerHTML = `Mostrati ${data.heatmap.length} utenti su ${totaleUtenti} ·
+            altri.innerHTML = `${data.heatmap.length === 1 ? 'Mostrato 1 utente' : `Mostrati ${data.heatmap.length} utenti`} su ${totaleUtenti} ·
                 <button type="button" class="btn btn-sm btn-secondary" id="btn-heatmap-tutti">Mostra tutti</button>`;
             document.getElementById('btn-heatmap-tutti').addEventListener('click', () => loadHeatmap(annoScolastico, totaleUtenti, true));
         }
@@ -560,10 +560,10 @@ async function loadConfrontoAnnualeDettaglio() {
                     <thead>
                         <tr>
                             <th>Anno Scolastico</th>
-                            <th class="text-right">Utenti</th>
+                            <th class="text-right" title="Solo gli utenti con le ore del mese registrate">Utenti con ore</th>
                             <th class="text-right">Ore Erogate</th>
                             <th class="text-right">Imponibile</th>
-                            <th class="text-right">Variazione</th>
+                            <th class="text-right" title="Ore erogate rispetto all'anno prima, nella riga dell'anno più recente">Variazione</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -588,6 +588,10 @@ async function loadConfrontoAnnualeDettaglio() {
         });
 
         html += '</tbody></table></div>';
+        // Report > Confronto annuale conta invece tutti gli utenti in servizio nel mese
+        html += '<p class="confronto-nota mt-3 mb-0" style="text-align: left;">Utenti con ore: solo quelli con le ore del mese registrate '
+            + '(Report › Confronto annuale conta tutti gli utenti in servizio, anche senza ore). '
+            + 'La variazione di ogni anno è sulle ore erogate, rispetto all\'anno prima.</p>';
         container.innerHTML = html;
 
     } catch (e) {
@@ -670,7 +674,8 @@ async function loadConfrontoMese() {
             <div class="confronto-colonna">
                 <div class="confronto-etichetta">${escapeHtml(etichetta)}</div>
                 <div class="confronto-ore">${formatNumber(m.ore)} h</div>
-                <div class="confronto-dettaglio">${m.utenti_attivi} utenti${m.ore ? ` · ${formatNumero(m.giorni_lavorativi, 0)} giorni lav.` : ''}</div>
+                <div class="confronto-dettaglio">${m.utenti_attivi} ${m.utenti_attivi === 1 ? 'utente' : 'utenti'} con ore${m.ore ? ` · ${formatNumero(m.giorni_lavorativi, 0)} giorni di scuola` : ''}</div>
+                ${m.ore && m.ore_giorno !== null && m.ore_giorno !== undefined ? `<div class="confronto-dettaglio">${formatNumber(m.ore_giorno)} h al giorno</div>` : ''}
             </div>`;
 
         let principale;
@@ -679,24 +684,28 @@ async function loadConfrontoMese() {
         } else if (perGiorno === null || perGiorno === undefined) {
             principale = `<div class="confronto-vuoto">Nessun dato a ${escapeHtml(prec.mese_nome)} ${prec.anno} da confrontare</div>`;
         } else {
-            // Si confrontano le ore PER GIORNO LAVORATIVO: giugno ha pochi giorni
-            // di scuola e sulle ore totali sembrava sempre un crollo
+            // Si confrontano le ore PER GIORNO DI SCUOLA: giugno ha pochi giorni
+            // di scuola e sulle ore totali sembrava sempre un crollo. La pagina lo
+            // scrive sopra e sotto la percentuale (prima '▼ 0,6%' accanto a ore
+            // salite da 975 a 1777 sembrava un errore)
             const colore = perGiorno >= 0 ? 'var(--success)' : 'var(--danger)';
             const icona = perGiorno >= 0 ? '&#9650;' : '&#9660;';
             principale = `
+                <div class="confronto-etichetta">Ore per giorno di scuola</div>
                 <div class="confronto-variazione" style="color: ${colore};">${icona} ${formatNumero(Math.abs(perGiorno), 1)}%</div>
-                <div class="confronto-nota">ore per giorno lavorativo, rispetto a ${escapeHtml(prec.mese_nome)}</div>`;
+                <div class="confronto-nota">rispetto a ${escapeHtml(prec.mese_nome)} ${prec.anno}</div>`;
         }
 
-        const giorniDiversi = perGiorno !== null && perGiorno !== undefined &&
-            Math.abs(corr.giorni_lavorativi - prec.giorni_lavorativi) >= 3;
+        // La variazione sulle ore totali si scrive sempre sotto quella per giorno di scuola
+        const haVariazione = perGiorno !== null && perGiorno !== undefined;
+        const giorniDiversi = haVariazione && Math.abs(corr.giorni_lavorativi - prec.giorni_lavorativi) >= 3;
         container.innerHTML = `
             <div class="text-center mb-4">${principale}</div>
             <div class="flex justify-between gap-4">
                 ${colonna(corr, `${MESI[mese]} ${anno}`)}
                 ${colonna(prec, `${prec.mese_nome} ${prec.anno}`)}
             </div>
-            ${giorniDiversi && corr.ore ? `<p class="confronto-nota mt-3 mb-0">Sulle ore totali: ${data.variazione.percentuale > 0 ? '+' : ''}${formatNumero(data.variazione.percentuale, 1)}% (mesi con giorni di scuola diversi)</p>` : ''}
+            ${haVariazione && corr.ore ? `<p class="confronto-nota mt-3 mb-0">Sulle ore totali: ${data.variazione.percentuale > 0 ? '+' : ''}${formatNumero(data.variazione.percentuale, 1)}%${giorniDiversi ? ' (mesi con giorni di scuola diversi)' : ''}</p>` : ''}
         `;
     } catch (e) {
         container.innerHTML = '<div class="text-center text-muted py-4">Dati non disponibili</div>';
@@ -720,7 +729,7 @@ async function loadTopScuole() {
                 <div class="top-scuola-pos" style="${i < 3 ? `background: ${colori[i]}; color: #1C1C1E;` : ''}">${i + 1}</div>
                 <div class="top-scuola-info">
                     <div class="top-scuola-nome" title="${escapeHtml(s.scuola_full || s.scuola)}">${escapeHtml(s.scuola)}</div>
-                    <div class="top-scuola-dettaglio">${s.num_utenti} utenti · ${escapeHtml(s.commessa)}</div>
+                    <div class="top-scuola-dettaglio">${s.num_utenti} ${s.num_utenti === 1 ? 'utente' : 'utenti'} · ${escapeHtml(s.commessa)}</div>
                 </div>
                 <div class="top-scuola-ore">${formatNumber(s.ore_erogate)} h</div>
             </div>

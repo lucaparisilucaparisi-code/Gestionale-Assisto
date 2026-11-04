@@ -203,7 +203,7 @@ function copiaAnnoPrecedente() {
             btn.disabled = true;
             try {
                 const result = await apiCall(`/api/calendario/${currentAnno}/copia-precedente`, { method: 'POST' });
-                showToast(`Copiati ${result.copiati} mesi dall'anno precedente`, 'success');
+                showToast(`${result.copiati === 1 ? 'Copiato 1 mese' : `Copiati ${result.copiati} mesi`} dall'anno precedente`, 'success');
                 loadCalendario();
             } catch (error) {
                 showToast('Errore: ' + error.message, 'error');
@@ -228,7 +228,7 @@ function calcolaAutomatico() {
             btn.disabled = true;
             try {
                 const result = await apiCall(`/api/calendario/${currentAnno}/calcola-auto`, { method: 'POST' });
-                showToast(`Calcolati i giorni lavorativi di ${result.mesi_calcolati} mesi`, 'success');
+                showToast(`Calcolati i giorni lavorativi di ${result.mesi_calcolati === 1 ? '1 mese' : `${result.mesi_calcolati} mesi`}`, 'success');
                 loadCalendario();
             } catch (error) {
                 showToast('Errore: ' + error.message, 'error');
@@ -433,9 +433,9 @@ async function salvaTutto() {
         }
     }
     if (errori.length === 0) {
-        showToast(`Salvati ${salvati} mesi`, 'success');
+        showToast(salvati === 1 ? 'Salvato 1 mese' : `Salvati ${salvati} mesi`, 'success');
     } else {
-        showToast(`Salvati ${salvati} mesi, ${errori.length} non riusciti: ${errori.join('; ')}`, 'error', 8000);
+        showToast(`${salvati === 1 ? 'Salvato 1 mese' : `Salvati ${salvati} mesi`}, ${errori.length} ${errori.length === 1 ? 'non riuscito' : 'non riusciti'}: ${errori.join('; ')}`, 'error', 8000);
     }
     aggiornaStatoModifiche();
 }

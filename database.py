@@ -2494,11 +2494,12 @@ def genera_notifiche_automatiche():
                     WHERE entita = 'rendicontazione_incompleta' AND entita_id = ? AND archiviata = 0
                 ''', (entita_id,))
                 if not cursor.fetchone():
+                    n = len(senza_ore)
                     notifica_id = create_notifica(
                         tipo='rendicontazione_incompleta',
-                        titolo=f"Rendicontazione incompleta: {len(senza_ore)} utenti senza ore",
-                        messaggio=f"Il mese sta per chiudersi e {len(senza_ore)} utenti "
-                                  f"non hanno ancora ore registrate ({oggi.strftime('%m/%Y')})",
+                        titolo=f"Rendicontazione incompleta: {n} {'utente' if n == 1 else 'utenti'} senza ore",
+                        messaggio=f"Il mese sta per chiudersi e {n} {'utente non ha' if n == 1 else 'utenti non hanno'} "
+                                  f"ancora ore registrate ({oggi.strftime('%m/%Y')})",
                         entita='rendicontazione_incompleta',
                         entita_id=entita_id,
                         priorita='alta'

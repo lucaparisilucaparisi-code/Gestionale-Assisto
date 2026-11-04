@@ -359,7 +359,7 @@ async function loadStep1() {
 
         bar.style.width = `${perc}%`;
         bar.style.background = perc >= 100 ? 'var(--success)' : 'var(--warning)';
-        testo.textContent = `${completati} di ${tutti.length} utenti rendicontati (${perc}%)`;
+        testo.textContent = `${completati} di ${tutti.length} ${tutti.length === 1 ? 'utente rendicontato' : 'utenti rendicontati'} (${perc}%)`;
 
         if (senzaOre.length === 0) {
             badge.className = 'badge badge-success';
@@ -370,16 +370,22 @@ async function loadStep1() {
             badge.textContent = `${senzaOre.length} senza ore`;
             // I primi 8 nomi; gli altri si vedono in Rendicontazione (filtro "senza ore").
             // Il badge e' il monte ore SETTIMANALE: '15h' si leggeva come '15 ore mancanti'.
+            // E' quello DEL MESE (variazioni comprese), come in Rendicontazione e Dashboard.
             const MAX_NOMI = 8;
-            lista.innerHTML = senzaOre.slice(0, MAX_NOMI).map(u => `
+            lista.innerHTML = senzaOre.slice(0, MAX_NOMI).map(u => {
+                const monte = u.monte_ore_effettivo ?? u.monte_ore_settimanale;
+                const titolo = u.monte_ore_variato
+                    ? `Monte ore settimanale di ${nomePeriodo()}, con una variazione (base: ${formatNumero(u.monte_ore_settimanale)} h)`
+                    : `Monte ore settimanale di ${nomePeriodo()}`;
+                return `
                 <div class="da-completare-item">
                     <div class="da-completare-info">
                         <span class="da-completare-nome">${escapeHtml(u.nome)} ${escapeHtml(u.cognome)}</span>
                         <span class="da-completare-scuola" title="${escapeHtml(u.scuola || '')}">${escapeHtml(u.commessa)} - ${escapeHtml(u.scuola || '')}</span>
                     </div>
-                    <span class="badge badge-secondary" title="Monte ore settimanale">${formatNumero(u.monte_ore_settimanale)} h/sett.</span>
-                </div>
-            `).join('') + (senzaOre.length > MAX_NOMI
+                    <span class="badge badge-secondary" title="${escapeHtml(titolo)}">${formatNumero(monte)} h/sett.</span>
+                </div>`;
+            }).join('') + (senzaOre.length > MAX_NOMI
                 ? `<a class="chiusura-vedi-tutti" href="${urlRendicontazione(p, true)}">Vedi tutti i ${senzaOre.length} in Rendicontazione →</a>`
                 : '');
         }
@@ -402,7 +408,7 @@ function compilaConMedia() {
                     method: 'POST',
                     body: JSON.stringify({})
                 });
-                showToast(`${res.compilati} utenti compilati con la media`, 'success');
+                showToast(`${res.compilati} ${res.compilati === 1 ? 'utente compilato' : 'utenti compilati'} con la media`, 'success');
                 loadStep1(); loadStep2(); loadStep3();
             } catch (e) {
                 showToast('Errore: ' + (e.message || 'compilazione non riuscita'), 'error');
@@ -424,7 +430,7 @@ function copiaMesePrecedente() {
                     method: 'POST',
                     body: JSON.stringify({ solo_vuoti: true })
                 });
-                showToast(`${res.copiati} utenti copiati da ${res.mese_origine}`, 'success');
+                showToast(`${res.copiati} ${res.copiati === 1 ? 'utente copiato' : 'utenti copiati'} da ${res.mese_origine}`, 'success');
                 loadStep1(); loadStep2(); loadStep3();
             } catch (e) {
                 showToast('Errore: ' + (e.message || 'copia non riuscita'), 'error');

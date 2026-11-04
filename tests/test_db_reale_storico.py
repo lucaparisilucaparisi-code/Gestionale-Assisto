@@ -600,8 +600,8 @@ def test_municipale_e_word_contano_la_lista_solo_nel_suo_anno(client, db_mod):
     def testo_word(anno, mese):
         d = docx.Document(io.BytesIO(client.get(f'/api/export/word/{anno}/{mese}?commessa={_q(commessa)}').data))
         return '\n'.join(p.text for p in d.paragraphs)
-    assert 'Di questi, 1 utenti risultano in lista di attesa' in testo_word(2025, 11)
-    assert 'risultano in lista di attesa' not in testo_word(2026, 10)
+    assert 'Di questi, 1 utente risulta in lista di attesa' in testo_word(2025, 11)   # al singolare
+    assert 'in lista di attesa.' not in testo_word(2026, 10)
 
     # nel dettaglio dell'Excel mensile la colonna Lista Attesa segue la stessa regola
     celle = _celle_xlsx(client.get(f'/api/export/excel/2026/10?commessa={_q(commessa)}').data)['Dettaglio']

@@ -241,7 +241,7 @@ async function loadCommesse() {
 
 function renderCommesse(commesse) {
     const container = document.getElementById('commesse-container');
-    document.getElementById('count-badge').textContent = `${commesse.length} commesse`;
+    document.getElementById('count-badge').textContent = commesse.length === 1 ? '1 commessa' : `${commesse.length} commesse`;
 
     if (commesse.length === 0) {
         showEmptyState('commesse-container', 'Nessuna commessa',

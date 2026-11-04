@@ -561,7 +561,9 @@ async function mostraAnteprima() {
             html += `<tr>
                 <td>${escapeHtml(d.nome)} ${escapeHtml(d.cognome || '')}</td>
                 <td class="cella-scuola" title="${escapeHtml(d.scuola || '')}">${escapeHtml(d.scuola || '')}</td>
-                <td class="text-right">${formatNumero(d.monte_ore_settimanale)}</td>
+                <td class="text-right">${d.monte_ore_variato
+                    ? `<span class="badge-var" title="Monte ore del mese con una variazione (base: ${formatNumero(d.monte_ore_settimanale)} h)">var.</span> ${formatNumero(d.monte_ore_effettivo)}`
+                    : formatNumero(d.monte_ore_effettivo ?? d.monte_ore_settimanale)}</td>
                 <td class="text-right">${decimalToSessagesimal(d.ore_lavorate_60) || '0:00'}</td>
                 <td class="text-right">${formatCurrency(d.imponibile_100 || 0)}</td>
                 <td class="text-right">${formatCurrency(d.totale_100 || 0)}</td>
@@ -569,7 +571,7 @@ async function mostraAnteprima() {
         });
 
         if (righe.length > 20) {
-            html += `<tr><td colspan="6" class="text-center text-muted">... e altri ${righe.length - 20} utenti</td></tr>`;
+            html += `<tr><td colspan="6" class="text-center text-muted">... e ${righe.length - 20 === 1 ? 'un altro utente' : `altri ${righe.length - 20} utenti`}</td></tr>`;
         }
         if (righe.length === 0) {
             html += '<tr><td colspan="6" class="text-center text-muted">Nessun utente corrisponde ai filtri</td></tr>';
@@ -582,8 +584,8 @@ async function mostraAnteprima() {
         const totOre = filtrata ? righe.reduce((s, d) => s + (d.ore_lavorate_60 || 0), 0) : (data.totale_generale.ore_lavorate_60 || 0);
         const totEuro = filtrata ? righe.reduce((s, d) => s + (d.totale_100 || 0), 0) : (data.totale_generale.totale_100 || 0);
         html += `<div style="margin-top: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
-            <strong>Totali:</strong> ${totUtenti} utenti, ${decimalToSessagesimal(totOre) || '0:00'} ore (60'), ${formatCurrency(totEuro)}
-            ${filtrata ? `<span class="text-muted">(filtrati da ${data.dati.length} utenti)</span>` : ''}
+            <strong>Totali:</strong> ${totUtenti} ${totUtenti === 1 ? 'utente' : 'utenti'}, ${decimalToSessagesimal(totOre) || '0:00'} ore (60'), ${formatCurrency(totEuro)}
+            ${filtrata ? `<span class="text-muted">(filtrati da ${data.dati.length} ${data.dati.length === 1 ? 'utente' : 'utenti'})</span>` : ''}
         </div>`;
 
         previewContent.innerHTML = html;
@@ -612,7 +614,9 @@ async function generaConfrontoAnnuale() {
         const anni = await apiCall('/api/anni-scolastici');
 
         let html = '<h4 class="mb-4">Confronto ' + MESI[mese] + ' negli anni</h4>';
-        html += '<div class="table-responsive"><table class="table"><thead><tr><th>Anno Scolastico</th><th class="text-right">Ore Erogate</th><th class="text-right">Utenti</th><th class="text-right">Variazione</th></tr></thead><tbody>';
+        html += '<div class="table-responsive"><table class="table"><thead><tr><th>Anno Scolastico</th><th class="text-right">Ore Erogate</th>'
+            + '<th class="text-right" title="Tutti gli utenti in servizio nel mese, anche senza ore">Utenti in servizio</th>'
+            + '<th class="text-right" title="Ore erogate rispetto all\'anno prima, nella riga dell\'anno più recente">Variazione</th></tr></thead><tbody>';
 
         let datiAnni = [];
 
@@ -634,10 +638,22 @@ async function generaConfrontoAnnuale() {
             }
         }
 
+        // Gli anni vanno dal piu' recente: come in Statistiche > Confronto annuale la
+        // variazione sta nella riga dell'anno piu' recente ed e' rispetto all'anno
+        // prima (la riga sotto). Prima stava nella riga dell'anno prima, calcolata
+        // al contrario: -1,3% qui e +1,3% in Statistiche per gli stessi due anni.
+        // Niente variazione se il mese non ha ancora ore o non e' ancora finito.
+        const oggi = new Date();
+        const meseOggi = oggi.getFullYear() * 12 + oggi.getMonth() + 1;
         datiAnni.forEach((d, i) => {
             let variazione = '-';
-            if (i > 0 && datiAnni[i-1].oreTotal > 0) {
-                const diff = (d.oreTotal - datiAnni[i-1].oreTotal) / datiAnni[i-1].oreTotal * 100;
+            const prima = datiAnni[i + 1];
+            if (!(d.oreTotal > 0)) {
+                variazione = '-<br><span class="text-muted text-xs">dati non ancora inseriti</span>';
+            } else if (d.anno * 12 + parseInt(mese) >= meseOggi) {
+                variazione = '-<br><span class="text-muted text-xs">mese non ancora concluso</span>';
+            } else if (prima && prima.oreTotal > 0) {
+                const diff = (d.oreTotal - prima.oreTotal) / prima.oreTotal * 100;
                 const color = diff >= 0 ? 'var(--success)' : 'var(--danger)';
                 variazione = `<span style="color: ${color}">${diff >= 0 ? '+' : ''}${formatNumber(diff, 1)}%</span>`;
             }
@@ -650,6 +666,9 @@ async function generaConfrontoAnnuale() {
         });
 
         html += '</tbody></table></div>';
+        html += '<p class="text-muted text-xs mt-2 mb-0">Utenti in servizio: tutti quelli del mese, anche senza ore '
+            + '(Statistiche › Confronto annuale conta solo quelli con ore). '
+            + 'La variazione di ogni anno è sulle ore erogate, rispetto all\'anno prima.</p>';
         previewContent.innerHTML = html;
         previewCard.scrollIntoView({ behavior: 'smooth' });
     } catch (err) {

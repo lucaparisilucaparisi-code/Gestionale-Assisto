@@ -797,7 +797,7 @@ async function compilaConMedia() {
 
     showConfirmDialog(
         'Compila con Media',
-        `Vuoi compilare le ore di ${senzaOre} utenti senza ore con la loro media prevista (con assenza ${PCT(CFG.tasso_assenza)})?`,
+        `Vuoi compilare le ore di ${senzaOre === 1 ? '1 utente' : `${senzaOre} utenti`} senza ore con la loro media prevista (con assenza ${PCT(CFG.tasso_assenza)})?`,
         async () => {
             const btn = document.getElementById('btn-compila-media');
             setButtonLoading(btn, true);
@@ -809,7 +809,7 @@ async function compilaConMedia() {
                 });
 
                 if (response.compilati > 0) {
-                    showToast(`Compilate le ore di ${response.compilati} utenti con la media prevista`, 'success');
+                    showToast(`Compilate le ore di ${response.compilati === 1 ? '1 utente' : `${response.compilati} utenti`} con la media prevista`, 'success');
                     await loadData();
                 } else {
                     showToast('Nessun utente da compilare', 'info');
@@ -899,7 +899,7 @@ function updateDifferenzeIndicators() {
         indicator.textContent = `${perc > 0 ? '▲' : '▼'} ${formatNumero(Math.abs(perc), 0)}%`;
         indicator.title = `${perc > 0 ? 'In aumento' : 'In calo'} rispetto a ${nomePrec}: `
             + `${formatNumber(diff.ore_giorno_corrente)} ore per giorno lavorativo contro ${formatNumber(diff.ore_giorno_precedente)} `
-            + `(${nomePrec}: ${formatNumber(diff.ore_precedente)} ore in ${diff.giorni_precedente} giorni)`;
+            + `(${nomePrec}: ${formatNumber(diff.ore_precedente)} ore in ${diff.giorni_precedente} ${diff.giorni_precedente === 1 ? 'giorno' : 'giorni'})`;
         oreInput.parentElement.appendChild(indicator);
     });
 }
@@ -912,6 +912,16 @@ async function showStoricoUtente(utenteId) {
     try {
         const data = await apiCall(`/api/utente/${utenteId}/storico`);
         const u = data.utente;
+        // Monte ore del mese della tabella (variazioni comprese), come nella colonna
+        // "Monte Ore": la base dell'anagrafica si mostra tra parentesi se e' diversa
+        const riga = allData.find(d => d.utente_id === utenteId);
+        let monteOre = `Monte ore settimanale: <strong>${formatNumero(u.monte_ore_settimanale || 0)} h</strong>`;
+        if (riga && periodoCaricato && riga.monte_ore_variato) {
+            monteOre = `Monte ore settimanale di ${MESI[periodoCaricato.mese]} ${periodoCaricato.anno}: `
+                + `<strong>${formatNumero(riga.monte_ore_effettivo)} h</strong>`
+                + (Number(riga.monte_ore_effettivo) !== Number(u.monte_ore_settimanale || 0)
+                    ? ` (base: ${formatNumero(u.monte_ore_settimanale || 0)} h)` : '');
+        }
 
         let html = `
             <div style="background: var(--bg-secondary); padding: 16px; border-radius: 12px; margin-bottom: 16px;">
@@ -920,7 +930,7 @@ async function showStoricoUtente(utenteId) {
                     ${escapeHtml(u.scuola || 'Nessuna scuola')} - ${escapeHtml(u.commessa || '')}
                 </div>
                 <div style="font-size: 0.8rem; color: var(--text-tertiary); margin-top: 4px;">
-                    Monte ore settimanale: <strong>${u.monte_ore_settimanale || 0}h</strong>
+                    ${monteOre}
                 </div>
             </div>
         `;
@@ -1283,7 +1293,7 @@ function gestisciIncollaTabella(e) {
         input = _inputAdiacente(input, 1);
         n++;
     }
-    showToast(`Incollati ${n} valori in colonna`, 'info');
+    showToast(n === 1 ? 'Incollato 1 valore in colonna' : `Incollati ${n} valori in colonna`, 'info');
 }
 
 /**

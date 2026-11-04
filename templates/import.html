@@ -571,7 +571,7 @@ async function importDipendenti() {
             <div class="alert alert-success">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 <div><strong>Import completato:</strong> ${d.creati} creati, ${d.aggiornati} aggiornati.
-                    ${d.errori_count ? `<br>${d.errori_count} righe con errori.` : ''}
+                    ${d.errori_count ? `<br>${d.errori_count === 1 ? '1 riga con errori' : `${d.errori_count} righe con errori`}.` : ''}
                     <br><a href="/dipendenti">Vai all'anagrafica dipendenti →</a></div>
             </div>`;
         document.getElementById('dip-result').classList.remove('hidden');
@@ -751,7 +751,7 @@ async function previewFile() {
             errorsDiv.innerHTML = `
                 <div class="alert alert-warning mb-3">
                     <div>
-                        <strong>${data.errors.length} righe con problemi:</strong>
+                        <strong>${data.errors.length === 1 ? '1 riga con problemi' : `${data.errors.length} righe con problemi`}:</strong>
                         <ul style="margin: 8px 0 0 20px; list-style: disc;">
                             ${data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
                         </ul>
@@ -767,7 +767,7 @@ async function previewFile() {
         document.getElementById('btn-upload').disabled = false;
         previewDone = true;
 
-        showToast(`Anteprima: ${data.righe_valide} righe valide (${nuovi} nuovi, ${aggiorna} da aggiornare)`, 'info');
+        showToast(`Anteprima: ${data.righe_valide === 1 ? '1 riga valida' : `${data.righe_valide} righe valide`} (${nuovi} nuovi, ${aggiorna} da aggiornare)`, 'info');
 
     } catch (error) {
         showToast('Errore durante l\'anteprima: ' + error.message, 'error');
@@ -856,7 +856,7 @@ async function uploadFile() {
                         <strong>Attenzione:</strong> Alcune righe non sono state importate<br>
                         <ul class="mt-2" style="list-style: disc; padding-left: 20px;">
                             ${data.errors.slice(0, 5).map(e => `<li>${escapeHtml(e)}</li>`).join('')}
-                            ${data.errors.length > 5 ? `<li>... e altri ${data.errors.length - 5} errori</li>` : ''}
+                            ${data.errors.length > 5 ? `<li>... e ${data.errors.length - 5 === 1 ? 'un altro errore' : `altri ${data.errors.length - 5} errori`}</li>` : ''}
                         </ul>
                     </div>
                 </div>
@@ -865,7 +865,7 @@ async function uploadFile() {
 
         result.innerHTML = resultHtml;
         result.classList.remove('hidden');
-        showToast(`${data.imported} utenti importati con successo`, 'success');
+        showToast(`${data.imported === 1 ? '1 utente importato' : `${data.imported} utenti importati`} con successo`, 'success');
 
         // Reset
         selectedFile = null;
@@ -957,7 +957,7 @@ function renderRendPreview(data) {
             </svg>
             <div>
                 <strong>${data.totale_match}</strong> rendicontazioni pronte da importare.
-                ${data.totale_non_trovati > 0 ? `<span class="text-warning">${data.totale_non_trovati} righe non abbinate</span> (utenti non in anagrafica, saltate).` : ''}
+                ${data.totale_non_trovati > 0 ? `<span class="text-warning">${data.totale_non_trovati === 1 ? '1 riga non abbinata' : `${data.totale_non_trovati} righe non abbinate`}</span> (utenti non in anagrafica, ${data.totale_non_trovati === 1 ? 'saltata' : 'saltate'}).` : ''}
                 ${data.totale_ambigui > 0 ? ` <span class="text-warning">${data.totale_ambigui} ambigue</span> (omonimi non risolti).` : ''}
                 ${data.totale_fuori_limite > 0 ? ` <span class="text-danger">${data.totale_fuori_limite} fuori limite</span> (ore oltre ${CFG_IMPORT.max_ore_mensili} o pasti oltre ${CFG_IMPORT.max_pasti_mensili}: non verranno importate).` : ''}
             </div>
@@ -1007,7 +1007,7 @@ function renderRendPreview(data) {
                                         <td style="text-align:right;">${m.ore}</td>
                                         <td style="text-align:right;">${m.pasti}</td>
                                     </tr>`).join('')}
-                                ${f.n_match > f.anteprima_match.length ? `<tr><td colspan="4" class="text-muted text-center">… e altri ${f.n_match - f.anteprima_match.length} utenti</td></tr>` : ''}
+                                ${f.n_match > f.anteprima_match.length ? `<tr><td colspan="4" class="text-muted text-center">… e ${f.n_match - f.anteprima_match.length === 1 ? 'un altro utente' : `altri ${f.n_match - f.anteprima_match.length} utenti`}</td></tr>` : ''}
                             </tbody>
                         </table>
                     </div>
@@ -1047,7 +1047,7 @@ async function importRendicontazione() {
                 <div>
                     <strong>Import completato:</strong> ${data.totale_scritti} rendicontazioni salvate.
                     ${data.totale_saltati_gia_pieni > 0 ? `<br>${data.totale_saltati_gia_pieni} saltate (mese già compilato).` : ''}
-                    ${data.totale_non_trovati > 0 ? `<br>${data.totale_non_trovati} righe non abbinate (utenti non in anagrafica).` : ''}
+                    ${data.totale_non_trovati > 0 ? `<br>${data.totale_non_trovati === 1 ? '1 riga non abbinata' : `${data.totale_non_trovati} righe non abbinate`} (utenti non in anagrafica).` : ''}
                     ${data.totale_fuori_limite > 0 ? `<br><span class="text-danger">${data.totale_fuori_limite === 1 ? '1 riga NON importata' : `${data.totale_fuori_limite} righe NON importate`} perché fuori limite:</span> ` +
                         data.dettaglio.flatMap(d => d.fuori_limite || []).map(v => `${escapeHtml(v.nome)} (${escapeHtml(v.motivo)})`).join(', ') : ''}
                 </div>

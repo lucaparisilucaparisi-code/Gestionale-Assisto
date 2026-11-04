@@ -624,6 +624,11 @@ from validators import validate_string, validate_number, validate_integer  # noq
 
 # ==================== HELPER CONDIVISI (audit, periodo, mese chiuso) ====================
 
+def _quanti(n, singolare, plurale):
+    """Il numero con la parola giusta: '1 utente', '2 utenti' (avvisi e controlli)."""
+    return f"{n} {singolare if n == 1 else plurale}"
+
+
 def _parse_dati_audit(raw):
     """Decodifica i dati salvati nell'audit log: JSON (formato attuale) con
     fallback al repr Python delle righe storiche (venivano salvate con str(dict),
@@ -3107,7 +3112,7 @@ def api_get_alerts():
         alerts.append({
             'type': 'warning',
             'categoria': 'senza_ore',
-            'title': f'{len(senza_ore)} utenti senza ore registrate',
+            'title': f"{_quanti(len(senza_ore), 'utente', 'utenti')} senza ore registrate",
             'message': f'Nel mese di {MESI_NOME.get(mese, "")} {anno}',
             'action': '/rendicontazione',
             'action_label': 'Vai a Rendicontazione',
@@ -3123,7 +3128,7 @@ def api_get_alerts():
         alerts.append({
             'type': 'danger',
             'categoria': 'sotto_media',
-            'title': f'{len(sotto_media)} utenti con ore < 50% della media',
+            'title': f"{_quanti(len(sotto_media), 'utente', 'utenti')} con ore < 50% della media",
             'message': 'Ore erogate significativamente sotto la media prevista',
             'action': '/rendicontazione',
             'action_label': 'Verifica',
@@ -3140,7 +3145,7 @@ def api_get_alerts():
         alerts.append({
             'type': 'info',
             'categoria': 'sopra_media',
-            'title': f'{len(sopra_media)} utenti con ore > 150% della media',
+            'title': f"{_quanti(len(sopra_media), 'utente', 'utenti')} con ore > 150% della media",
             'message': 'Verificare se le ore extra sono corrette',
             'action': '/rendicontazione',
             'action_label': 'Verifica',
@@ -3178,7 +3183,7 @@ def api_get_alerts():
                 'type': 'info',
                 'categoria': 'completamento',
                 'title': f'Completamento mese: {perc}%',
-                'message': f'{completati}/{len(dati)} utenti rendicontati',
+                'message': f"{completati}/{_quanti(len(dati), 'utente rendicontato', 'utenti rendicontati')}",
                 'action': '/rendicontazione',
                 'action_label': 'Completa',
                 'progress': perc
@@ -3205,7 +3210,7 @@ def api_get_alerts():
             alerts.append({
                 'type': 'warning',
                 'categoria': 'documenti',
-                'title': f'{len(docs)} documenti in scadenza',
+                'title': f"{_quanti(len(docs), 'documento', 'documenti')} in scadenza",
                 'message': 'Documenti utente in scadenza nei prossimi 30 giorni',
                 'count': len(docs),
                 'utenti': [f"{d['nome']} {d['cognome']}" for d in docs[:5]]
@@ -3222,7 +3227,7 @@ def api_get_alerts():
             alerts.append({
                 'type': 'danger',
                 'categoria': 'budget',
-                'title': f"{len(critici)} utenti oltre l'80% del budget ore",
+                'title': f"{_quanti(len(critici), 'utente', 'utenti')} oltre l'80% del budget ore",
                 'message': f'Budget annuale quasi esaurito ({anno_scolastico})',
                 'count': len(critici),
                 'utenti': [f"{u['nome']} {u['cognome']}" for u in critici[:5]]
@@ -3762,7 +3767,8 @@ def _descrivi_azione_undo(action):
         return f"Eliminazione di {u.get('nome', '')} {u.get('cognome', '')}".strip() + \
             ": l'utente torna con le sue ore, note e variazioni"
     if tipo == 'bulk_update_utenti':
-        return f"Modifica di {len(dati.get('items', []))} utenti insieme (monte ore e lista d'attesa)"
+        return (f"Modifica di {_quanti(len(dati.get('items', [])), 'utente', 'utenti')} insieme "
+                "(monte ore e lista d'attesa)")
     if tipo == 'update_utente':
         old = dati.get('dati_precedenti', {})
         attuale = db.get_utente_by_id(dati.get('id')) or {}
@@ -3985,8 +3991,8 @@ def api_undo():
                 db.completa_anno_liste_attesa(
                     cursor, [item.get('id') for item in action['data'].get('items', []) if item.get('id')])
                 cursor.execute('DELETE FROM undo_actions WHERE id = ?', (action['id'],))
-                esito = ('utenti', None, f'Annullata modifica massiva ({n} utenti)',
-                         {'success': True, 'message': f'Modifica massiva annullata ({n} utenti)'})
+                esito = ('utenti', None, f"Annullata modifica massiva ({_quanti(n, 'utente', 'utenti')})",
+                         {'success': True, 'message': f"Modifica massiva annullata ({_quanti(n, 'utente', 'utenti')})"})
 
             else:
                 # Tipo non supportato: scarta l'azione per non bloccare lo stack
@@ -4327,7 +4333,8 @@ def api_stats_validazione():
                     'tipo': 'warning',
                     'categoria': 'ore_mancanti',
                     'titolo': 'Utenti senza ore registrate',
-                    'messaggio': f'{len(utenti_senza_ore)} utenti non hanno ore registrate questo mese',
+                    'messaggio': (f"{_quanti(len(utenti_senza_ore), 'utente non ha', 'utenti non hanno')} "
+                                  "ore registrate questo mese"),
                     'conteggio': len(utenti_senza_ore),
                     'dettagli': [{'id': u['id'], 'nome': f"{u['nome']} {u['cognome']}", 'commessa': u['commessa']}
                                 for u in utenti_senza_ore[:10]]
@@ -4350,7 +4357,8 @@ def api_stats_validazione():
                     'tipo': 'danger',
                     'categoria': 'ore_anomale',
                     'titolo': 'Ore con valori anomali',
-                    'messaggio': f'{len(ore_anomale)} registrazioni hanno valori sospetti',
+                    'messaggio': (f"{_quanti(len(ore_anomale), 'registrazione ha', 'registrazioni hanno')} "
+                                  "valori sospetti"),
                     'conteggio': len(ore_anomale),
                     'dettagli': [{'id': u['id'], 'nome': f"{u['nome']} {u['cognome']}", 'ore': u['ore_lavorate_60']}
                                 for u in ore_anomale]
@@ -4375,7 +4383,8 @@ def api_stats_validazione():
                     'tipo': 'info',
                     'categoria': 'monte_ore_zero',
                     'titolo': 'Utenti con monte ore non configurato',
-                    'messaggio': f'{len(monte_ore_zero)} utenti hanno ore lavorate ma monte ore = 0',
+                    'messaggio': (f"{_quanti(len(monte_ore_zero), 'utente ha', 'utenti hanno')} "
+                                  "ore lavorate ma monte ore = 0"),
                     'conteggio': len(monte_ore_zero),
                     'dettagli': [{'id': u['id'], 'nome': f"{u['nome']} {u['cognome']}", 'ore': u['ore_lavorate_60']}
                                 for u in monte_ore_zero]
@@ -4431,7 +4440,8 @@ def api_stats_validazione():
                     'tipo': 'warning',
                     'categoria': 'differenze_elevate',
                     'titolo': 'Differenze significative ore',
-                    'messaggio': f'{len(differenze_anomale)} utenti con differenza >50% tra ore erogate e previste',
+                    'messaggio': (f"{_quanti(len(differenze_anomale), 'utente', 'utenti')} con differenza >50% "
+                                  "tra ore erogate e previste"),
                     'conteggio': len(differenze_anomale),
                     'dettagli': differenze_anomale[:10]
                 })
@@ -4467,7 +4477,7 @@ def api_stats_validazione():
                     'tipo': 'warning',
                     'categoria': 'pasti_oltre_giorni',
                     'titolo': 'Pasti più dei giorni di scuola',
-                    'messaggio': (f"{n} utent{'e ha' if n == 1 else 'i hanno'} più pasti dei giorni di "
+                    'messaggio': (f"{_quanti(n, 'utente ha', 'utenti hanno')} più pasti dei giorni di "
                                   "scuola del mese: controlla che non ci siano finite le ore"),
                     'conteggio': n,
                     'dettagli': pasti_troppi[:10]
@@ -4491,7 +4501,8 @@ def api_stats_validazione():
                     'tipo': 'info',
                     'categoria': 'commesse_vuote',
                     'titolo': 'Commesse senza utenti',
-                    'messaggio': f'{len(commesse_vuote)} commesse attive non hanno utenti associati',
+                    'messaggio': (f"{_quanti(len(commesse_vuote), 'commessa attiva non ha', 'commesse attive non hanno')} "
+                                  "utenti associati"),
                     'conteggio': len(commesse_vuote),
                     'dettagli': [{'nome': c['nome']} for c in commesse_vuote]
                 })

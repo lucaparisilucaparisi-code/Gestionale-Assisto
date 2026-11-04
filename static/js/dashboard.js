@@ -7,6 +7,8 @@ let _ultimoTrend = null;   // dati del trend, per ridisegnarlo al cambio di tema
 // risposte di un caricamento vecchio non devono sovrascrivere quelle nuove.
 let _caricamento = 0;
 const _superato = (n) => n !== _caricamento;
+// '1 utente archiviato', '2 utenti archiviati': il numero con la parola giusta
+const _quanti = (n, uno, tanti) => `${n} ${n === 1 ? uno : tanti}`;
 
 document.addEventListener('DOMContentLoaded', async () => {
     await initDashboardFilters();
@@ -93,11 +95,16 @@ async function loadNumeri(filters, n = _caricamento) {
     try {
         const qs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}` : '';
         const urlUtenti = filters.commessa ? `/api/utenti?commessa=${encodeURIComponent(filters.commessa)}` : '/api/utenti';
-        const [stats, commesse, base, utenti] = await Promise.all([
+        // Monte ore di QUESTO mese (variazioni comprese), dalla vista mensile: la
+        // somma usava la base dell'anagrafica anche per chi ha una variazione in corso
+        const oggi = new Date();
+        const annoOggi = oggi.getFullYear(), meseOggi = oggi.getMonth() + 1;
+        const [stats, commesse, base, utenti, meseOggiDati] = await Promise.all([
             apiCall(`/api/stats/filtered${qs}`),
             apiCall('/api/commesse'),
             apiCall('/api/stats'),
             apiCall(urlUtenti),
+            apiCall(`/api/rendicontazione/${annoOggi}/${meseOggi}${qs}`).catch(() => null),
         ]);
         if (_superato(n)) return;
         animateCounter(document.getElementById('stat-utenti'), stats.num_utenti || 0, 800);
@@ -129,8 +136,17 @@ async function loadNumeri(filters, n = _caricamento) {
             dettaglio.innerHTML = voci.length > 1 ? voci.join('') : '';
         }
 
-        const monteOreTotale = utenti.reduce((sum, u) => sum + (u.monte_ore_settimanale || 0), 0);
+        // Per ogni utente attivo il monte ore del mese calcolato dal server; chi non e'
+        // nella vista del mese (es. comincia piu' avanti) resta con la base
+        const delMese = new Map(((meseOggiDati && meseOggiDati.dati) || [])
+            .map(d => [d.utente_id, d.monte_ore_effettivo]));
+        const monteOreTotale = utenti.reduce((sum, u) =>
+            sum + ((delMese.has(u.id) ? delMese.get(u.id) : u.monte_ore_settimanale) || 0), 0);
         animateCounter(document.getElementById('stat-monte-ore'), Math.round(monteOreTotale), 1000);
+        const monteLink = document.getElementById('stat-monte-ore')?.closest('.dash-numero');
+        if (monteLink && meseOggiDati) {
+            monteLink.title = `Somma del monte ore settimanale degli utenti attivi a ${MESI[meseOggi]} ${annoOggi}, variazioni comprese`;
+        }
     } catch (error) {
         console.error('Errore caricamento numeri dashboard:', error);
     }
@@ -195,7 +211,7 @@ async function loadStatoMese(n = _caricamento) {
         barEl.style.width = `${percent}%`;
         barEl.style.background = livello ? `var(--${livello})` : 'var(--primary)';
         testoEl.textContent = totale > 0
-            ? `${completati} di ${totale} utenti rendicontati — ${daCompletare.length} senza ore`
+            ? `${completati} di ${_quanti(totale, 'utente rendicontato', 'utenti rendicontati')} — ${daCompletare.length} senza ore`
             : 'Nessun utente attivo nel periodo selezionato';
 
         if (daCompletare.length === 0) {
@@ -597,7 +613,7 @@ function preparaNuovoAnno(annoScolastico) {
                 const utentiFatti = document.getElementById('passo-utenti')?.classList.contains('fatto');
                 document.getElementById('nuovo-anno-esito').innerHTML = `
                     <div class="alert alert-success">
-                        <div><strong>Calendario ${escapeHtml(data.anno_scolastico)} creato</strong> per ${data.mesi.length} mesi.
+                        <div><strong>Calendario ${escapeHtml(data.anno_scolastico)} creato</strong> per ${_quanti(data.mesi.length, 'mese', 'mesi')}.
                         ${utentiFatti ? 'Il nuovo anno è pronto.' : 'Ora puoi passare al punto 2 (utenti e monte ore).'}</div>
                     </div>
                     <div class="table-responsive mt-2" style="max-width:420px;">
@@ -690,7 +706,7 @@ function aggiornaRiepilogoWizard() {
     const { monte_ore, archivia } = _modificheWizard();
     const chiudi = document.getElementById('wizard-chiudi-variazioni').checked;
     const nVar = chiudi ? Number(document.getElementById('wizard-variazioni-n').textContent || 0) : 0;
-    el.textContent = `${nVar} variazioni da chiudere · ${Object.keys(monte_ore).length} monte ore da aggiornare · ${archivia.length} da archiviare`;
+    el.textContent = `${_quanti(nVar, 'variazione', 'variazioni')} da chiudere · ${Object.keys(monte_ore).length} monte ore da aggiornare · ${archivia.length} da archiviare`;
 }
 
 function applicaWizardUtenti() {
@@ -698,9 +714,9 @@ function applicaWizardUtenti() {
     const chiudi = document.getElementById('wizard-chiudi-variazioni').checked;
     const nVar = chiudi ? Number(document.getElementById('wizard-variazioni-n').textContent || 0) : 0;
     const righe = [];
-    if (chiudi) righe.push(`${nVar} variazioni monte ore chiuse al 31 agosto`);
-    righe.push(`${Object.keys(monte_ore).length} monte ore di partenza aggiornati`);
-    righe.push(`${archivia.length} utenti archiviati`);
+    if (chiudi) righe.push(`${_quanti(nVar, 'variazione monte ore chiusa', 'variazioni monte ore chiuse')} al 31 agosto`);
+    righe.push(_quanti(Object.keys(monte_ore).length, 'monte ore di partenza aggiornato', 'monte ore di partenza aggiornati'));
+    righe.push(_quanti(archivia.length, 'utente archiviato', 'utenti archiviati'));
     // Testo vero: niente cambia nei mesi gia' rendicontati (monte ore e archiviati)
     let spiegazione = '.';
     if (Object.keys(monte_ore).length) {
@@ -726,9 +742,9 @@ function applicaWizardUtenti() {
                 document.getElementById('nuovo-anno-esito').innerHTML = `
                     <div class="alert alert-success">
                         <div><strong>Utenti pronti per il ${escapeHtml(_annoWizard)}.</strong>
-                        ${res.variazioni_chiuse} variazioni chiuse, ${res.monte_ore_modificati} monte ore aggiornati
+                        ${_quanti(res.variazioni_chiuse, 'variazione chiusa', 'variazioni chiuse')}, ${_quanti(res.monte_ore_modificati, 'monte ore aggiornato', 'monte ore aggiornati')}
                         (per ${res.variazioni_conservate || 0} i mesi passati tengono il valore di prima),
-                        ${res.archiviati} utenti archiviati. I mesi già rendicontati non cambiano.</div>
+                        ${_quanti(res.archiviati, 'utente archiviato', 'utenti archiviati')}. I mesi già rendicontati non cambiano.</div>
                     </div>`;
                 showToast('Utenti preparati per il nuovo anno', 'success');
                 loadBannerNuovoAnno();

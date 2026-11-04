@@ -2196,14 +2196,16 @@ def api_export_word(anno, mese):
     intro = doc.add_paragraph()
     intro.add_run(f"Nel mese di {MESI_NOME[mese]} {anno}, relativo all'anno scolastico {anno_scolastico}, "
                   f"il servizio OEPAC ha assistito un totale di ").bold = False
-    intro.add_run(f"{len(dati)} utenti").bold = True
-    intro.add_run(" distribuiti su ")
-    intro.add_run(f"{len(totali_scuola)} scuole").bold = True
+    intro.add_run(f"{len(dati)} {'utente' if len(dati) == 1 else 'utenti'}").bold = True
+    intro.add_run(" distribuito su " if len(dati) == 1 else " distribuiti su ")
+    intro.add_run(f"{len(totali_scuola)} {'scuola' if len(totali_scuola) == 1 else 'scuole'}").bold = True
     intro.add_run(".")
 
     if utenti_lista_attesa > 0:
         lista_para = doc.add_paragraph()
-        lista_para.add_run(f"Di questi, {utenti_lista_attesa} utenti risultano in lista di attesa.").italic = True
+        lista_para.add_run(f"Di questi, {utenti_lista_attesa} "
+                           f"{'utente risulta' if utenti_lista_attesa == 1 else 'utenti risultano'} "
+                           "in lista di attesa.").italic = True
 
     # Sezione 2: Dati Quantitativi
     h2 = doc.add_heading('2. DATI QUANTITATIVI', level=1)
@@ -2470,7 +2472,9 @@ def api_export_word(anno, mese):
             run.font.color.rgb = RGBColor.from_string('EF4444')
 
         alert_para = doc.add_paragraph()
-        alert_para.add_run(f"Si segnalano {len(utenti_bassa_erogazione)} utenti con un tasso di erogazione "
+        n_bassa = len(utenti_bassa_erogazione)
+        alert_para.add_run(f"{'Si segnala 1 utente' if n_bassa == 1 else f'Si segnalano {n_bassa} utenti'} "
+                          "con un tasso di erogazione "
                           f"inferiore al 50% rispetto alle ore previste:")
 
         table_alert = doc.add_table(rows=1, cols=5)
@@ -2505,7 +2509,8 @@ def api_export_word(anno, mese):
 
     concl = doc.add_paragraph()
     concl.add_run(f"In sintesi, nel mese di {MESI_NOME[mese]} {anno} il servizio OEPAC ha erogato "
-                  f"complessivamente {ore_totali_60:.2f} ore di assistenza a {utenti_con_ore} utenti, "
+                  f"complessivamente {ore_totali_60:.2f} ore di assistenza a {utenti_con_ore} "
+                  f"{'utente' if utenti_con_ore == 1 else 'utenti'}, "
                   f"per un importo totale da fatturare pari a {_fmt_euro_it(totale_lordo)}.")
 
     # Data e firma

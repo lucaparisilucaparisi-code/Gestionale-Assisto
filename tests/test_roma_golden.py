@@ -4,8 +4,9 @@ L'archivio Roma inventato (tests/roma_sintetico.py) si fotografa con
 strumenti/fotografa_roma.py: tutte le rotte GET di Roma (pagine, con il contenuto,
 la cornice senza il blocco di Napoli del menu e i file caricati; API, statistiche,
 report, export Excel e Word, trasloco JSON). La fotografia deve coincidere con
-tests/golden/roma_v1_20_1.json, creata sul codice della v1.20.1 (commit a0249a2).
-Una differenza qualsiasi (un numero, una colonna, un foglio, un id di pagina, una
+tests/golden/roma_v1_20_1.json, creata sul codice della v1.20.1 (commit a0249a2) con
+i soli cambiamenti di Roma voluti e dichiarati (docs/ARCHITETTURA.md: per ora i testi
+e le impronte del passo roma-visualizzazione, nessun numero). Una differenza qualsiasi (un numero, una colonna, un foglio, un id di pagina, una
 voce del menu, un foglio di stile) fa fallire il test: o e' un errore, o e' un
 cambiamento di Roma voluto e allora il file si rigenera di proposito
 (docs/ARCHITETTURA.md, "Protezioni per Roma"). La fotografia non deve contenere

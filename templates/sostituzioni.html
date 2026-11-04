@@ -95,7 +95,7 @@ async function registraAssenza() {
     };
     try {
         const r = await apiCall(`/api/dipendenti/${op}/assenze`, { method: 'POST', body: JSON.stringify(payload) });
-        showToast(`Assenza registrata: ${r.turni_da_coprire} turni da coprire`, 'success');
+        showToast(`Assenza registrata: ${r.turni_da_coprire === 1 ? '1 turno' : `${r.turni_da_coprire} turni`} da coprire`, 'success');
         document.getElementById('ass-da').value = ''; document.getElementById('ass-a').value = '';
         caricaSostituzioni();
     } catch (e) { showToast('Errore: ' + (e.message || ''), 'error'); }
