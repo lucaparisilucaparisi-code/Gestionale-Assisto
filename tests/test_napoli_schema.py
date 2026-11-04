@@ -681,7 +681,8 @@ def test_il_seme_napoli_riempie_tutte_le_tabelle(database_isolato, app_module, d
         codici = [r[0] for r in conn.execute('SELECT codice_fiscale FROM napoli_alunni')]
     finally:
         conn.close()
-    # codici fiscali inventati: carattere di controllo corretto, comune Z999 inesistente
-    assert len(codici) == 4
+    # codici fiscali inventati: carattere di controllo corretto, comune Z999 inesistente (4 alunni
+    # scritti dal seme e 34 dall'import del master inventato, passi 1.4-1.5)
+    assert len(codici) == 4 + 34
     for cf in codici:
         assert len(cf) == 16 and cf[11:15] == 'Z999' and cf[15] == seme_napoli.carattere_di_controllo(cf[:15]), cf

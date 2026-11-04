@@ -228,14 +228,20 @@ class _Modifiche:
         """Registra l'azione (senza nominativi nella descrizione) e tiene le ultime."""
         if not self.righe:
             return None
-        cur = self.conn.execute(
-            'INSERT INTO napoli_annullamenti (timestamp, tipo, descrizione, dati) VALUES (?, ?, ?, ?)',
-            (_ora(), tipo, descrizione, json.dumps({'versione': 1, 'righe': self.righe}, ensure_ascii=False,
-                                                   default=str)))
-        self.conn.execute('DELETE FROM napoli_annullamenti WHERE id NOT IN '
-                          '(SELECT id FROM napoli_annullamenti ORDER BY id DESC LIMIT ?)', (MAX_ANNULLAMENTI,))
-        _svuota_scadute(self.conn)
-        return cur.lastrowid
+        return registra_azione(self.conn, tipo, descrizione, {'versione': 1, 'righe': self.righe})
+
+
+def registra_azione(conn, tipo, descrizione, dati):
+    """Un'azione nella memoria di Ctrl+Z di Napoli (dentro la transazione di chi chiama):
+    le righe com'erano ({'versione': 1, 'righe': [...]}) oppure, per un import del
+    foglio presenze, solo il suo numero ({'versione': 1, 'import_id': n}: lo annulla
+    import_napoli.annulla_import). Tiene le ultime MAX_ANNULLAMENTI."""
+    cur = conn.execute('INSERT INTO napoli_annullamenti (timestamp, tipo, descrizione, dati) VALUES (?, ?, ?, ?)',
+                       (_ora(), tipo, descrizione, json.dumps(dati, ensure_ascii=False, default=str)))
+    conn.execute('DELETE FROM napoli_annullamenti WHERE id NOT IN '
+                 '(SELECT id FROM napoli_annullamenti ORDER BY id DESC LIMIT ?)', (MAX_ANNULLAMENTI,))
+    _svuota_scadute(conn)
+    return cur.lastrowid
 
 
 def _svuota_scadute(conn, adesso=None):
@@ -320,17 +326,26 @@ def annulla(atteso=None):
                                 codice='ANNULLA_CAMBIATO')
             try:
                 dati = json.loads(ultima['dati'])
-                voci = dati['righe'] if dati.get('versione') == 1 else None
-            except (TypeError, ValueError, KeyError, AttributeError):
-                voci = None
-            if not isinstance(voci, list):
-                raise DatiNonValidi('Questa modifica non si può annullare da qui.', codice='NON_ANNULLABILE')
-            for voce in reversed(voci):
-                _ripristina(conn, voce)
-            conn.execute('DELETE FROM napoli_annullamenti WHERE id = ?', (ultima['id'],))
+                import_id = dati.get('import_id') if dati.get('versione') == 1 else None
+                voci = dati.get('righe') if dati.get('versione') == 1 else None
+            except (TypeError, ValueError, AttributeError):
+                import_id = voci = None
+            if import_id is None:
+                if not isinstance(voci, list):
+                    raise DatiNonValidi('Questa modifica non si può annullare da qui.', codice='NON_ANNULLABILE')
+                for voce in reversed(voci):
+                    _ripristina(conn, voce)
+                conn.execute('DELETE FROM napoli_annullamenti WHERE id = ?', (ultima['id'],))
     except sqlite3.IntegrityError:
         raise Conflitto('Non si può annullare: nel frattempo sono stati aggiunti dati collegati a questa '
                         'modifica.', codice='ANNULLA_IMPOSSIBILE') from None
+    if import_id is not None:
+        # Un import del foglio presenze: lo annulla import_napoli (stesse regole del pulsante
+        # "Annulla import"), che toglie anche questa voce. Importato qui e non in testa al
+        # modulo perche' import_napoli usa napoli_db.
+        import import_napoli
+        import_napoli.annulla_import(import_id)
+        return {'descrizione': ultima['descrizione']}
     db.log_audit('annullamento', 'napoli_annullamento', ultima['id'],
                  dettagli=f'Napoli: annullata la modifica "{ultima["descrizione"]}"')
     return {'descrizione': ultima['descrizione']}

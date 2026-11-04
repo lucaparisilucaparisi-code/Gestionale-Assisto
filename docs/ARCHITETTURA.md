@@ -11,6 +11,7 @@ Nota tecnica per chi sviluppa. Per l'uso e l'installazione vedi il `README.md`.
 | `napoli_schema.py` | Solo lo schema della sezione Napoli (tabelle `napoli_*`): le migrazioni 2, 3 e 4 di `database.py` (vedi "Sezione Napoli"). |
 | `napoli_db.py` | Accesso ai dati di Napoli (solo tabelle `napoli_*`): Impostazioni, controlli che guardano il database (nomi doppi, date sovrapposte), Ctrl+Z di Napoli (`napoli_annullamenti`). |
 | `routes_napoli.py` | Blueprint della sezione Napoli: pagine `/napoli` e API `/api/napoli/...`. |
+| `import_napoli.py` | Import del foglio presenze mensile di Napoli (master del coordinatore): lettura del file, anteprima senza scritture, conferma, reimport, annulla import, solo confronto (vedi "Sezione Napoli"). |
 | `napoli_calcoli.py` | Calcoli di Napoli, solo funzioni pure (niente database, Flask o `config` di Roma): letture delle ore, ore riconosciute, settimane e PEI, regole con data, fattura. |
 | `config_napoli.py` | Valori predefiniti di Napoli: regole con data (`REGOLE_PREDEFINITE`), modelli dei testi della fattura, tariffe solo *proposte*. |
 | `routes_export.py` | Blueprint export (Excel, PDF, Word). |
@@ -281,7 +282,9 @@ dati inventati:
   (`tests/seme_napoli.py`, `carica_seme_napoli`: riempie tutte le tabelle `napoli_*`;
   con un client i dati che hanno gia' le loro API passano da li', dal passo 1.3
   cooperativa, destinatario, lotto con le tariffe dalla procedura guidata,
-  contratti, regole e qualifiche, il resto si scrive direttamente; ogni passo di
+  contratti, regole e qualifiche, il resto si scrive direttamente; dai passi 1.4-1.5,
+  dopo le righe scritte direttamente, l'import con anteprima e conferma del master di
+  marzo 2026 inventato con alunni e un operatore omonimi di quelli di Roma; ogni passo di
   Napoli sposta i suoi dati sulle sue API), poi di nuovo la fotografia, che deve
   essere uguale; tabelle di Roma (schema e righe; del registro attivita' le voci non
   `napoli%`, nel loro ordine e senza il loro `id`, che le voci di Napoli scritte prima
@@ -420,7 +423,8 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   le schede
   comuni (`templates/_napoli_tabs.html`, con il lotto scelto ricordato nel browser) per
   ora sono **Mese** (`/napoli`: senza lotti la procedura "Crea il primo lotto", poi cosa
-  manca per le fatture, `GET /api/napoli/lotti/<id>/controlli`) e **Impostazioni**
+  manca per le fatture, `GET /api/napoli/lotti/<id>/controlli`), **Importa**
+  (`/napoli/import`, il foglio presenze del mese) e **Impostazioni**
   (`/napoli/impostazioni`, una parte alla volta, `#lotto`, `#contratti`...): dati della
   cooperativa e destinatario (`napoli_impostazioni`), lotti, contratti applicativi per
   lotto e grado, tariffe e regole con data, qualifiche. Pagine e script
@@ -471,7 +475,72 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     delle pagine di Napoli (`napoli_db.pulisci_annullamenti`). In `app.js`
     Ctrl+Z chiama `window.annullaPagina` se la pagina lo definisce (solo le pagine di
     Napoli), altrimenti l'annulla di Roma;
-  - registro attivita': voci `napoli_*` senza valori (mai IBAN o codici fiscali).
+  - registro attivita': voci `napoli_*` senza valori (mai IBAN o codici fiscali);
+  - **import del foglio presenze** (scheda **Importa**, `/napoli/import`; passi 1.4-1.5,
+    `import_napoli.py`): vedi il punto seguente.
+- **Import del foglio presenze mensile** (master del coordinatore, PROGETTO §7.1):
+  - lettura (`import_napoli.leggi_master`, solo il file): colonne riconosciute
+    dall'intestazione, giorni dalla data, scuola per posizione (nel file del Comune
+    l'intestazione e' "2"), foglio "master" o il primo con le colonne giuste, mese e anno
+    dalle date. **Le ore si ricalcolano dalle celle dei giorni** con
+    `napoli_calcoli.leggi_cella_master`: la VERIFICA e il foglio "riepilogo" servono solo da
+    controllo (nel file vero la VERIFICA perde ore). Un numero con la virgola che non e'
+    un quarto d'ora e le cui cifre possono essere minuti ("1,30") e' **da confermare**
+    nell'anteprima (`napoli_calcoli.letture_possibili`; proposta: ore e minuti per ,15
+    ,30 ,45, come sui fogli firma, altrimenti decimale). Le note "Alunno assente: ..." e
+    le celle colorate sono solo promemoria (proposte nella fase 2). Ogni interpretazione
+    e' un avviso con riga, colonna e un dettaglio che non e' mai un dato personale.
+    Messaggi semplici per file vuoto, file temporaneo di Excel (`~$...`), formato .xls o
+    file con password, file che non e' Excel, foglio sbagliato (con i fogli trovati); se il
+    file e' aperto in Excel su Windows il browser non lo legge e la pagina lo dice
+    (il file si legge appena scelto). Le righe vuote dopo 200 di fila non si leggono;
+  - anteprima (`POST /api/napoli/import/anteprima`, multipart: file, lotto, modo,
+    scelte): **non scrive nulla**. Abbina solo dentro Napoli: scuole per codice
+    meccanografico e **municipalita' della scuola** (stesso codice in due municipalita' =
+    due plessi, da confermare con "Ho controllato"; municipalita' mancante presa dalla
+    stessa scuola se ne ha una sola), alunni per codice fiscale (mancante o di forma
+    sbagliata = bloccante), operatori per codice fiscale o, se non e' valido, per lo stesso
+    codice scritto uguale e poi per nome (da confermare), qualifiche con
+    `napoli_alias_qualifiche` (una nuova si sceglie nella pagina, con la figura proposta da
+    `figura_proposta`, e si salva come grafia 'utente'), coppie per alunno, operatore,
+    figura e ruolo (SI = sostituto, collegato al titolare; un sostituto con la data di
+    inizio nel mese propone il **subentro**: il titolare finisce il giorno prima). Grado
+    delle scuole nuove proposto dal codice (`napoli_calcoli.grado_da_codice_meccanografico`,
+    PROGETTO §4.2) e scelto nella pagina. Le coppie del mese prima che nel file non ci
+    sono si possono chiudere (proposta non spuntata). Bloccanti (`SPIEGAZIONI`, livello
+    'bloccante'): mese chiuso, righe di un altro lotto, qualifica senza figura, codice
+    fiscale dell'alunno, scritte che non sono ore, piu' di 12 ore, stessa coppia su due
+    righe. Risponde con conteggi, ore per figura e per grado, cosa cambia, avvisi
+    raggruppati e spiegati, codici fiscali solo mascherati (`maschera_codice_fiscale`),
+    `sha256` del file e `versione_dati` (impronta dei dati di Napoli guardati);
+  - conferma (`POST /api/napoli/import/conferma`): stesso file (sha256, 409
+    `FILE_CAMBIATO`), stessi dati (409 `ANTEPRIMA_SUPERATA`), mese aperto (409
+    `MESE_CHIUSO_LOTTO`), nessun bloccante (400 `IMPORT_BLOCCATO`), conferme date (400
+    `DA_CONFERMARE`); se il file non cambia niente non scrive nulla. Poi
+    `database.create_backup()` (senza copia niente import, 503) e **un'unica transazione**
+    (`BEGIN IMMEDIATE`, dati riletti e confrontati di nuovo): anagrafiche nuove, coppie,
+    PEI del mese per alunno e figura (dalle righe NO), fogli del mese con la nota della
+    riga, e ogni cella con ore o sigla diventa un giorno registrato con calcolo
+    'manuale', origine 'import_excel', testo originale e il numero dell'import (sigle:
+    causale dell'operatore, 0 ore);
+  - reimport dello stesso mese: si sostituiscono solo le ore importate (cambiate o tolte
+    se nel file non ci sono piu'); i giorni registrati a mano diversi dal file si mostrano
+    e restano, salvo la scelta "Sostituisci anche queste ore"; i giorni solo programmati
+    si completano;
+  - annulla import (`POST /api/napoli/import/<id>/annulla`, e Ctrl+Z subito dopo:
+    `napoli_annullamenti` ha solo `{"versione": 1, "import_id": n}` e `napoli_db.annulla`
+    passa a `import_napoli.annulla_import`): solo l'ultimo import del lotto, mese aperto,
+    nessun giorno dell'import cambiato a mano dopo; copia di sicurezza, poi in una
+    transazione si tolgono le righe create e tornano le righe cambiate o tolte
+    (`napoli_import.sostituite_json`: id e valori di prima; delle anagrafiche si cambiano
+    solo campi vuoti come le ore di contratto, quindi mai codici fiscali);
+  - solo confronto (modo 'confronto'): differenze coppia per coppia e giorno per giorno
+    con i giorni registrati, righe del file che in Assisto non ci sono e coppie solo in
+    Assisto, senza scrivere;
+  - elenco degli import del lotto (`GET /api/napoli/lotti/<id>/import`): solo conteggi;
+  - privacy: codici fiscali solo nelle anagrafiche; mai nelle risposte (mascherati), nel
+    registro attivita', in `napoli_import` (esito e registro dell'annullamento), in
+    `napoli_annullamenti` o nel log.
 - **Test**: `tests/test_napoli_schema.py` (migrazione su un database v1.20.1 con
   l'archivio Roma inventato confrontato con il gemello riaperto dalla versione
   vecchia; da un database gia' alla v2 con dati alla v3 e alla v4, da uno alla v3
@@ -484,7 +553,13 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   testi congelati, bloccanti; IBAN, partita IVA, codici fiscali, euro, destinatario e
   servizio della determina); `tests/test_napoli_impostazioni.py` (procedura guidata,
   controlli lato server, sovrapposizioni, IBAN mascherato, Ctrl+Z separato, Roma intatta,
-  voce di menu marcata).
+  voce di menu marcata); `tests/test_napoli_import.py` e `tests/test_napoli_privacy.py`
+  (passi 1.4-1.5, sul master inventato di `tests/napoli_sintetico.py`, generato durante
+  i test: 41 righe, 1.554 ore, codici fiscali con il comune Z999; totali per figura,
+  VERIFICA ignorata, ore da confermare, grado, plessi, sostituti e subentro, reimport,
+  ore scritte a mano, annullamento anche con Ctrl+Z, solo confronto, mese chiuso, errori
+  del file, copia di sicurezza, Roma intatta con alunni omonimi; nessun codice fiscale in
+  risposte, registro, import, Ctrl+Z e log).
 
 ## Refactoring pianificati (da fare come interventi dedicati e revisionati)
 

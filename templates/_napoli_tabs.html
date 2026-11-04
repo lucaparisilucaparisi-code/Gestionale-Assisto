@@ -1,6 +1,7 @@
 {# Testata comune delle pagine di Napoli: titolo, lotto scelto (ricordato nel browser,
-   napoli.js) e schede. Si mostrano solo le schede che ci sono gia': Presenze,
-   Programmazione, Anagrafiche, Fattura e Calendario arrivano con i passi successivi. #}
+   napoli.js) e schede. Si mostrano solo le schede che ci sono gia' (Mese, Importa,
+   Impostazioni): Presenze, Programmazione, Anagrafiche, Fattura e Calendario arrivano
+   con i passi successivi. #}
 <div class="page-header">
     <div class="page-header-row">
         <div>
@@ -21,6 +22,12 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             Mese
+        </a>
+        <a href="/napoli/import" class="tab {% if request.path == '/napoli/import' %}active{% endif %}" {% if request.path == '/napoli/import' %}aria-current="page"{% endif %}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Importa
         </a>
         <a href="/napoli/impostazioni" class="tab {% if request.path == '/napoli/impostazioni' %}active{% endif %}" {% if request.path == '/napoli/impostazioni' %}aria-current="page"{% endif %}>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">

@@ -79,6 +79,8 @@
 .napoli-parte tr.napoli-stessa-figura td { border-top: 0; }
 .napoli-vuoto { color: var(--text-tertiary); font-style: italic; }
 .napoli-numero { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* .table th/td { text-align: left } di style.css e' piu' specifica di .napoli-numero da sola */
+.table td.napoli-numero, .table th.napoli-numero { text-align: right; }
 .napoli-badge-riga { margin-left: 6px; vertical-align: 1px; }
 .napoli-tabella-compatta td, .napoli-tabella-compatta th { padding: 4px 12px; }
 .napoli-tabella-compatta input.form-control { max-width: 130px; margin-left: auto; padding: 6px 10px; text-align: right; }
@@ -158,3 +160,113 @@ details.napoli-controlli-ok > summary { padding: 12px 16px; }
 .napoli-controlli-ok .da-fare-item { padding: 8px 16px; border-bottom: 0; }
 .napoli-controlli-ok .da-fare-titolo { font-weight: 400; color: var(--text-secondary); }
 .napoli-nota { color: var(--text-tertiary); font-size: 0.85rem; margin: 16px 2px 0; }
+
+/* ---------- scheda Importa (foglio presenze del mese) ---------- */
+.napoli-import { display: flex; flex-direction: column; gap: 20px; }
+.napoli-import > .card, .napoli-import > div > .card { margin-bottom: 0; }
+.napoli-file { padding: 28px 24px; }
+.napoli-file .file-upload-icon { width: 44px; height: 44px; margin-bottom: 10px; }
+.napoli-file:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.napoli-aiuto { margin: 8px 0 0; font-size: 0.82rem; color: var(--text-tertiary); }
+.napoli-file-scelto {
+    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-secondary);
+}
+.napoli-file-scelto > svg { color: var(--success); flex-shrink: 0; }
+.napoli-file-nome { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.napoli-file-nome strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.napoli-file-nome span { font-size: 0.82rem; color: var(--text-tertiary); }
+.napoli-attesa { text-align: center; color: var(--text-secondary); margin: 0 0 24px; }
+.napoli-esito { padding: 16px; }
+.napoli-esito .alert, .napoli-alert { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 16px; }
+.napoli-esito .alert > svg, .napoli-alert > svg { flex-shrink: 0; margin-top: 1px; }
+.napoli-esito .napoli-azioni-modulo { margin-top: 0; }
+.napoli-sottotitolo { margin: 4px 0 0; font-size: 0.85rem; color: var(--text-secondary); }
+
+/* l'anteprima si sta ricalcolando dopo una scelta; overflow visibile (le card lo
+   nascondono) perche' la barra con "Importa" resti in fondo allo schermo scorrendo */
+.napoli-anteprima { transition: opacity var(--transition-fast); overflow: visible; }
+.napoli-in-aggiornamento { opacity: 0.6; pointer-events: none; }
+
+/* numeri principali */
+.napoli-numeri { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 20px; }
+.napoli-numero-box {
+    display: flex; flex-direction: column; gap: 2px; padding: 12px 16px;
+    border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-secondary);
+}
+.napoli-numero-valore { font-size: 1.45rem; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.napoli-numero-etichetta { font-size: 0.82rem; color: var(--text-secondary); }
+@media (max-width: 900px) { .napoli-numeri { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* blocchi dell'anteprima */
+.napoli-blocco { margin-top: 24px; }
+.napoli-blocco:first-child { margin-top: 0; }
+.napoli-blocco > h3 { font-size: 1.02rem; font-weight: 600; margin: 0 0 6px; color: var(--text-primary); }
+.napoli-blocco-danger > h3 { color: var(--danger); }
+.napoli-blocco .napoli-intro { margin-bottom: 10px; }
+.napoli-parte-conferma {
+    border: 1px solid var(--border-color); border-radius: var(--radius); padding: 12px 16px; margin: 10px 0;
+    background: var(--bg-card-solid);
+}
+.napoli-parte-conferma h4 { font-size: 0.95rem; font-weight: 600; margin: 0 0 4px; display: inline-flex; gap: 8px; align-items: center; }
+details.napoli-parte-conferma > summary { cursor: pointer; list-style-position: outside; margin-left: 16px; }
+details.napoli-parte-conferma[open] > summary { margin-bottom: 6px; }
+.napoli-conferma-obbligatoria { border-color: var(--warning); }
+.napoli-ho-controllato { margin-top: 6px; }
+.napoli-scelta-riga { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; }
+.napoli-scelta-riga input { margin-top: 3px; flex-shrink: 0; }
+.napoli-ambigua { border: 0; padding: 6px 0; margin: 0; }
+.napoli-ambigua legend { font-weight: 500; padding: 0; margin-bottom: 4px; }
+.napoli-elenco { margin: 4px 0 8px; padding-left: 20px; }
+.napoli-elenco li { margin: 2px 0; }
+.napoli-import .table td, .napoli-import .table th { padding: 8px 12px; }
+.napoli-import .napoli-tabella-compatta td, .napoli-import .napoli-tabella-compatta th { padding: 5px 12px; }
+.napoli-import .napoli-tabella-compatta select.form-control { min-width: 200px; max-width: 280px; padding: 5px 10px; }
+.napoli-import .table-container { max-height: none; }
+.napoli-import .napoli-tabella-alta { max-height: 320px; overflow-y: auto; }
+.napoli-tabella-ore tfoot th, .napoli-tabella-ore tfoot td { border-top: 2px solid var(--border-color); font-weight: 600; }
+.napoli-da-decidere { color: var(--warning); font-weight: 600; }
+
+/* avvisi raggruppati: titolo, quante volte, righe del file */
+.napoli-gruppo-avviso { border: 1px solid var(--border-color); border-radius: var(--radius-sm); margin: 6px 0; background: var(--bg-card-solid); }
+.napoli-gruppo-avviso > summary {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; list-style: none;
+}
+.napoli-gruppo-avviso > summary::-webkit-details-marker { display: none; }
+.napoli-gruppo-avviso > summary::after { content: '▸'; margin-left: 4px; color: var(--text-tertiary); }
+.napoli-gruppo-avviso[open] > summary::after { content: '▾'; }
+.napoli-gruppo-avviso > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.napoli-icona-livello { flex-shrink: 0; }
+.livello-bloccante { border-color: var(--danger); }
+.livello-bloccante .napoli-icona-livello { color: var(--danger); }
+.livello-avviso .napoli-icona-livello { color: var(--warning); }
+.livello-nota .napoli-icona-livello { color: var(--success); }
+.napoli-avviso-titolo { flex: 1; font-weight: 500; color: var(--text-primary); }
+.napoli-avviso-conta {
+    font-size: 0.8rem; color: var(--text-secondary); background: var(--bg-tertiary); border-radius: 999px;
+    padding: 2px 10px; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.napoli-avviso-spiega { margin: 0 12px 6px 40px; font-size: 0.86rem; color: var(--text-secondary); }
+.napoli-righe-avviso {
+    margin: 0 12px 10px 40px; padding: 0; list-style: none; columns: 3 220px; column-gap: 24px;
+    font-size: 0.84rem; color: var(--text-secondary);
+}
+.napoli-righe-avviso li { break-inside: avoid; padding: 1px 0; }
+.napoli-dettaglio { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.napoli-gruppo-avviso .table-container { margin: 0 12px 10px; }
+.napoli-note-file { margin-top: 12px; }
+.napoli-note-file > summary { cursor: pointer; color: var(--text-secondary); padding: 6px 0; }
+
+/* barra in fondo all'anteprima: resta visibile scorrendo */
+.napoli-barra-import {
+    position: sticky; bottom: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding: 12px 20px; border-top: 1px solid var(--border-color); background: var(--bg-card-solid);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.napoli-barra-testo { margin: 0; font-size: 0.88rem; color: var(--text-secondary); flex: 1; min-width: 220px; }
+.napoli-barra-pulsanti { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* elenco degli import */
+.napoli-riga-annullata td { color: var(--text-tertiary); }
+.napoli-nome-file { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

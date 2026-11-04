@@ -10,12 +10,17 @@ strumenti/fotografa_roma.py (test_inventario_rotte).
 Passo 1.3: scheda Mese (per ora i controlli del lotto e la procedura "Crea il primo
 lotto") e Impostazioni (cooperativa, destinatario, lotti, contratti applicativi,
 tariffe e regole con data, qualifiche), con il loro Ctrl+Z (/api/napoli/annulla).
+Passi 1.4-1.5: scheda Importa (/napoli/import) con anteprima, conferma, solo
+confronto, elenco e annullamento degli import del foglio presenze (import_napoli).
 """
+import json
 import logging
 import sqlite3
 
 from flask import Blueprint, jsonify, render_template, request
+from werkzeug.exceptions import RequestEntityTooLarge
 
+import import_napoli
 import napoli_db
 
 napoli_bp = Blueprint('napoli', __name__)
@@ -41,6 +46,12 @@ def _database_occupato(e):
     logger.error('Napoli: errore del database su %s %s: %s', request.method, request.path, e)
     return jsonify({'error': 'Il programma è occupato in questo momento: riprova tra qualche secondo.',
                     'code': 'DATABASE_OCCUPATO'}), 503
+
+
+@napoli_bp.errorhandler(RequestEntityTooLarge)
+def _file_troppo_grande(e):
+    return jsonify({'error': 'Il file è troppo grande (al massimo 16 MB): controlla di aver scelto il foglio '
+                             'presenze del mese.', 'code': 'FILE_TROPPO_GRANDE', 'campo': 'file'}), 413
 
 
 def _dati():
@@ -84,6 +95,13 @@ def mese_page():
 def impostazioni_page():
     _pulisci_annullamenti()
     return render_template('napoli_impostazioni.html')
+
+
+@napoli_bp.route('/napoli/import')
+def import_page():
+    """Scheda Importa: il foglio presenze del mese (master) con anteprima e conferma."""
+    _pulisci_annullamenti()
+    return render_template('napoli_import.html')
 
 
 # ==================== impostazioni: cooperativa e destinatario ====================
@@ -254,6 +272,56 @@ def api_aggiorna_qualifica():
 def api_elimina_qualifica():
     napoli_db.elimina_qualifica(_dati())
     return _ok(messaggio='Qualifica eliminata')
+
+
+# ==================== import del foglio presenze (master) ====================
+
+def _file_e_lotto():
+    """Il file caricato (bytes, nome) e il lotto scelto, da una richiesta multipart."""
+    file = request.files.get('file')
+    if file is None or not file.filename:
+        raise napoli_db.DatiNonValidi('Scegli il file Excel del foglio presenze.', 'file', codice='FILE_MANCANTE')
+    dati = file.read()
+    valore = str(request.form.get('lotto_id') or '').strip()
+    if not valore.isdigit():
+        raise napoli_db.DatiNonValidi('Scegli il lotto.', 'lotto_id')
+    return dati, file.filename, int(valore)
+
+
+def _scelte_della_richiesta():
+    testo = request.form.get('scelte') or '{}'
+    try:
+        return json.loads(testo)
+    except ValueError:
+        raise napoli_db.DatiNonValidi('Le scelte non sono arrivate bene: rifai l\'anteprima.',
+                                      codice='SCELTE_NON_VALIDE') from None
+
+
+@napoli_bp.route('/api/napoli/import/anteprima', methods=['POST'])
+def api_import_anteprima():
+    """Anteprima (modo 'import') o solo confronto (modo 'confronto'): non scrive nulla."""
+    dati, nome, lotto_id = _file_e_lotto()
+    return jsonify(import_napoli.anteprima(lotto_id, dati, nome, _scelte_della_richiesta(),
+                                           request.form.get('modo') or 'import'))
+
+
+@napoli_bp.route('/api/napoli/import/conferma', methods=['POST'])
+def api_import_conferma():
+    """Importa il file dell'anteprima (stesso sha256, stessi dati), con le scelte fatte."""
+    dati, nome, lotto_id = _file_e_lotto()
+    esito = import_napoli.conferma(lotto_id, dati, nome, request.form.get('sha256'),
+                                   request.form.get('versione_dati'), _scelte_della_richiesta())
+    return _ok(**esito)
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/import', methods=['GET'])
+def api_import_storico(lotto_id):
+    return jsonify(import_napoli.storico(lotto_id))
+
+
+@napoli_bp.route('/api/napoli/import/<int:import_id>/annulla', methods=['POST'])
+def api_import_annulla(import_id):
+    return _ok(**import_napoli.annulla_import(import_id))
 
 
 # ==================== Ctrl+Z delle pagine di Napoli ====================

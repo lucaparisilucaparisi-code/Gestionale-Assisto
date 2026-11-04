@@ -397,6 +397,30 @@ def valida_codice_fiscale(valore, nome='Il codice fiscale'):
     return scritto
 
 
+def esito_codice_fiscale(valore):
+    """Codice fiscale di una persona come e' scritto in un file (senza spazi, in maiuscolo)
+    e l'esito del controllo: 'ok', 'controllo' (16 caratteri nella forma giusta, ma
+    l'ultimo carattere non torna), 'formato' (lunghezza o forma sbagliate) o 'vuoto'.
+    Non solleva errori: serve all'import, che segnala e decide."""
+    scritto = re.sub(r'\s', '', '' if valore is None else str(valore)).upper()
+    if not scritto:
+        return scritto, 'vuoto'
+    if len(scritto) != 16 or not _RX_CF_PERSONA.fullmatch(scritto):
+        return scritto, 'formato'
+    return scritto, ('ok' if carattere_di_controllo_cf(scritto[:15]) == scritto[15] else 'controllo')
+
+
+def maschera_codice_fiscale(cf):
+    """Codice fiscale da mostrare: le prime 3 e le ultime 3 lettere ('RSS••••••••••12X');
+    vuoto se manca. Il codice intero non va mai a schermo, nel registro o nei log."""
+    s = re.sub(r'\s', '', '' if cf is None else str(cf)).upper()
+    if not s:
+        return ''
+    if len(s) <= 6:
+        return '•' * len(s)
+    return s[:3] + '•' * (len(s) - 6) + s[-3:]
+
+
 def segnaposto_sconosciuti(modello, ammessi):
     """Segnaposto {nome} di un modello di testo che non sono fra quelli ammessi (in ordine,
     senza ripetizioni): riempi_modello li lascerebbe scritti cosi' come sono."""
@@ -576,6 +600,18 @@ def _da_confermare(testo, ore, cifre, conferma):
         return _lettura('ore', testo, scelta['minuti'], avvisi=avvisi)
     domanda = ' oppure '.join(a['testo'] for a in alt) + '?'
     return _lettura('da_confermare', testo, codice='ore_ambigue', alternative=alt, domanda=domanda)
+
+
+def letture_possibili(testo):
+    """Le letture di un numero con la virgola che non e' un multiplo di un quarto d'ora e
+    le cui cifre possono essere minuti ('1,30' o '1,3': 1 h 30 min oppure 1,30 ore
+    decimali), come in leggi_ore_griglia: [{'lettura', 'minuti', 'testo'}, ...]. Vuoto
+    se la lettura e' una sola ('1,5', '2', '1,7', '1,333')."""
+    n = _numero(str('' if testo is None else testo).strip())
+    if not n or n[1] is None or Decimal(f'0.{n[1]}') * 4 % 1 == 0:
+        return []
+    alternative = _alternative(*n)
+    return alternative if len(alternative) > 1 else []
 
 
 def leggi_ore_griglia(testo, conferma=None, minuti_programmati=None, regole=None):
@@ -955,6 +991,23 @@ def grado_fattura(valore):
     'misto' (scuola mista con l'alunno senza grado, §4.2) o un valore sconosciuto."""
     g = str(valore or '').strip().lower()
     return g if g in GRADI else None
+
+
+# Grado proposto dal codice meccanografico (caratteri 3-4, PROGETTO §4.2): sempre da
+# confermare. Le paritarie NA1A/NA1E/NA1M sono di grado inferiore; VC (convitti) e gli
+# altri codici restano da decidere. I codici non si correggono.
+TIPI_GRADO_INFERIORE = frozenset({'IC', 'AA', 'EE', 'MM', 'CT', '1A', '1E', '1M'})
+TIPI_GRADO_SUPERIORE = frozenset({'IS', 'PC', 'PS', 'PM', 'TD', 'TF', 'RH', 'RI', 'SD', 'TL'})
+
+
+def grado_da_codice_meccanografico(codice):
+    """'NAIC8ZZ001' -> 'inferiore'; 'NAIS0ZZ003' -> 'superiore'; altrimenti None."""
+    tipo = re.sub(r'\s', '', str(codice or '')).upper()[2:4]
+    if tipo in TIPI_GRADO_INFERIORE:
+        return 'inferiore'
+    if tipo in TIPI_GRADO_SUPERIORE:
+        return 'superiore'
+    return None
 
 
 def _giorni(dal, al):

@@ -139,6 +139,12 @@ ROTTE_NAPOLI = frozenset({
     '/api/napoli/regole',
     '/api/napoli/regole/<int:regola_id>',
     '/api/napoli/tariffe/<int:tariffa_id>',
+    # passi 1.4-1.5: import del foglio presenze (anteprima, conferma, elenco, annulla)
+    '/napoli/import',
+    '/api/napoli/import/anteprima',
+    '/api/napoli/import/conferma',
+    '/api/napoli/import/<int:import_id>/annulla',
+    '/api/napoli/lotti/<int:lotto_id>/import',
 })
 PREFISSI_NAPOLI = ('/napoli', '/api/napoli')
 

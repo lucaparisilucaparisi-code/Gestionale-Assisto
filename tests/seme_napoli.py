@@ -9,7 +9,11 @@ Napoli:
 Con un client (sessione autenticata sullo stesso database) i dati che hanno gia'
 le loro API passano dalle API di Napoli: dal passo 1.3 dati della cooperativa,
 destinatario, il lotto con le tariffe (procedura "Crea il primo lotto"), un'altra
-tariffa, i contratti applicativi, le regole con data e una qualifica (_seme_con_le_api).
+tariffa, i contratti applicativi, le regole con data e una qualifica (_seme_con_le_api);
+dai passi 1.4-1.5 l'import del foglio presenze di marzo 2026 inventato
+(tests/napoli_sintetico.py, con alunni e un operatore omonimi di quelli di Roma:
+anteprima e conferma, _seme_import), dopo le righe scritte direttamente, cosi' l'import
+ritrova un plesso gia' presente.
 Il resto, e tutto senza client o con versione_schema=2 (forma della v2, per provare la
 migrazione 3), si scrive direttamente nelle tabelle napoli_* con una connessione
 SQLite a parte: mai nelle tabelle di Roma. Ogni passo che aggiunge una funzione di
@@ -24,6 +28,7 @@ hanno il carattere di controllo giusto ma il codice comune Z999, che non esiste.
 """
 import datetime
 import hashlib
+import io
 import json
 import pathlib
 import sqlite3
@@ -302,6 +307,24 @@ def _scrivi_seme(ins, versione_schema, ids=None):
         dati=json.dumps({'presenze': [{'id': p_psico, 'minuti_riconosciuti': 120}]}))
 
 
+def _seme_import(client, lotto_id):
+    """Import del master inventato di marzo 2026 con le API (anteprima e conferma)."""
+    import tempfile
+
+    import napoli_sintetico
+    with tempfile.TemporaryDirectory() as cartella:
+        dati = napoli_sintetico.leggi_bytes(cartella, omonimi=True)[0]
+
+    def manda(url, **campi):
+        return _ok(client.post(url, content_type='multipart/form-data', data=dict(
+            campi, file=(io.BytesIO(dati), 'master_prova_marzo.xlsx'), lotto_id=str(lotto_id))))
+
+    a = manda('/api/napoli/import/anteprima', scelte='{}')
+    esito = manda('/api/napoli/import/conferma', sha256=a['file']['sha256'], versione_dati=a['versione_dati'],
+                  scelte=json.dumps({'conferme': a['conferme_richieste']}))
+    assert esito['import_id'], esito
+
+
 def _conteggi_napoli(percorso):
     conn = sqlite3.connect(percorso, timeout=30)
     try:
@@ -328,6 +351,8 @@ def carica_seme_napoli(client, percorso, versione_schema=None):
             _scrivi_seme(ins, versione_schema, ids)
     finally:
         conn.close()
+    if ids is not None:
+        _seme_import(client, ids['lotto'])
     dopo = _conteggi_napoli(percorso)
     return {t: n - prima.get(t, 0) for t, n in dopo.items() if n != prima.get(t, 0)}
 
