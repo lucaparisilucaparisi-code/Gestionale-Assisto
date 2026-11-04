@@ -336,30 +336,45 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   municipalita' sono due plessi.
 - **Calcoli** (`napoli_calcoli.py`, funzioni pure: ricevono righe gia' lette come
   dict e non importano `database`, Flask o `config`):
+  - dati in ingresso: `valida_data` ('AAAA-MM-GG' o 'GG/MM/AAAA', rifiuta le date che
+    non esistono), `valida_orario` (00:00-23:59), `valida_fascia`, `valida_fasce` (niente
+    sovrapposizioni), `valida_periodo`, `valida_mese`: restituiscono il valore nella forma
+    del database e, se sbagliato, un messaggio semplice da mostrare (ValueError);
   - letture: `leggi_ore_griglia` (ore decimali; "1,30", "1,3" e gli altri decimali che
     non sono quarti d'ora vanno confermati: si rilegge con `conferma`; se le cifre non
     possono essere minuti, come "1,7", vale il decimale con un avviso), `leggi_ore_foglio`
     (totale scritto sul foglio firma: ",15/,30/,45" ore e minuti, ",25/,5/,75"
-    decimali), `leggi_cella_master`; sigle F, M, F perm (e varianti), A;
+    decimali), `leggi_cella_master` (anche orari e durate [h]:mm di Excel, con avviso);
+    sigle F, M, F perm (e varianti), A;
   - `esito_giorno` / `minuti_riconosciuti`: tabella del PROGETTO §5.2 (precedenza
-    calendario > evento > operatore > alunno; meta' del programmato per l'alunno
-    assente col contratto attuale, niente meta' se l'assenza e' recuperata; mezzo
-    minuto per eccesso); `stato='programmato'` vale 0, mai "come programmato";
+    calendario > evento/attivita' esterna > operatore > alunno, con la causale che
+    vince riportata; meta' del programmato per l'alunno assente col contratto attuale,
+    niente meta' se l'assenza e' recuperata; mezzo minuto per eccesso);
+    `stato='programmato'` vale 0, mai "come programmato";
   - `settimane_mese` (lun-sab tagliate al mese), `verifica_settimane` (oltre il PEI
-    giallo, oltre il tetto PEI x 1,2 rosso; settimane numerate come le colonne
-    VERIFICA), `tetto_settimanale`;
+    giallo, oltre il tetto PEI x 1,2 rosso; settimane numerate e sommate come le colonne
+    VERIFICA del master, cioe' solo i giorni di servizio: le ore di una domenica sono una
+    voce a parte `ore_in_giorno_non_di_servizio`), `tetto_settimanale`;
   - `regola` / `regole_alla_data`: riga del lotto, poi di tutti i lotti, poi il
     predefinito di `config_napoli.REGOLE_PREDEFINITE` (che ha le sue date: fuori da
     queste vale lo stesso ma `regola_dettaglio` lo segnala);
   - fattura: `periodo_fattura` (mese tagliato al contratto applicativo),
     `tariffa_alla_data` (livello dell'operatore, poi senza livello), `righe_fattura`
-    (per figura e tariffa: ore = minuti / 60 al centesimo; il coordinatore dalle sue
-    ore; una riga per tratto di tariffa se cambia nel periodo; grado vuoto o "misto" =
-    da decidere, blocca le fatture di tutti e due i gradi), `totali_fattura` (importo di riga
-    al centesimo, ritenuta 0,50% sulla somma, IVA 5% sull'imponibile, split payment:
-    si paga l'imponibile), `prospetto_fattura` (con testi, scadenza e bloccanti),
-    `ore_fuori_contratto` (presenze fuori da ogni contratto applicativo: il prospetto
-    guarda un contratto alla volta, questo controllo il mese intero).
+    (solo giorni con stato 'registrato', ogni altro stato blocca; per figura e tariffa:
+    ore = minuti / 60 al centesimo; il coordinatore solo dal totale mensile, al
+    centesimo, e le sue eventuali presenze fuori con l'avviso
+    `ore_coordinatore_nelle_presenze`; una riga per tratto di tariffa se cambia nel
+    periodo, con il sotto-periodo dei giorni in cui vale davvero; grado vuoto o "misto"
+    = da decidere, blocca le fatture di tutti e due i gradi), `totali_fattura` (importo
+    di riga al centesimo, ritenuta 0,50% sulla somma, IVA 5% sull'imponibile, split
+    payment: si paga l'imponibile), `prospetto_fattura` (con testi, destinatario,
+    scadenza, regole usate, bloccanti e avvisi) e `testi_da_congelare` (le colonne dei
+    testi di `napoli_fatture`), `ore_fuori_contratto` e `presenze_in_piu_contratti`
+    (presenze fuori da ogni contratto applicativo o in due contratti: il prospetto
+    guarda un contratto alla volta, questi controlli il mese intero);
+    `tariffe_sovrapposte` e `contratti_sovrapposti` (per le Impostazioni del passo
+    1.3, che le rifiutano: la fattura non saprebbe quale tariffa usare e le stesse ore
+    finirebbero in due fatture).
     Tutto in `Decimal` con ROUND_HALF_UP; le tariffe sono sempre quelle del lotto
     (`napoli_tariffe`): `config_napoli.TARIFFE_PROPOSTE` servono solo a precompilare.
 - **Test**: `tests/test_napoli_schema.py` (migrazione su un database v1.20.1 con
@@ -368,7 +383,9 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   interruzione, ripristino, impronta della migrazione 2, vincoli);
   `tests/test_napoli_calcoli.py` (con soli dati inventati: le quantita' e le tariffe
   della fattura reale di giugno ricalcolate al centesimo, i due fogli firma ricostruiti
-  con orari equivalenti, letture ambigue, regole, tariffe, bloccanti).
+  con orari equivalenti, letture ambigue, date e orari che non esistono, precedenza
+  delle causali, domeniche, regole, tariffe e contratti sovrapposti, coordinatore,
+  testi congelati, bloccanti).
 
 ## Refactoring pianificati (da fare come interventi dedicati e revisionati)
 

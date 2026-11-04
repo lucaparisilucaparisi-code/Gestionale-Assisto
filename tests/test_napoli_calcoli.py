@@ -1,22 +1,28 @@
 """Calcoli puri della sezione Napoli (napoli_calcoli, config_napoli; PROGETTO §5).
 
+- Dati in ingresso: date e orari che non esistono (2025-19-39, 29:59), fasce,
+  periodi e mesi, con messaggi semplici.
 - Letture delle ore: griglia (ore decimali, "1,30" da confermare, sigle), totale
-  scritto sul foglio firma, celle del master.
+  scritto sul foglio firma, celle del master (anche durate [h]:mm).
 - Ore riconosciute di un giorno: gli esempi del §5.2, le 33 righe dei due fogli
   firma ricostruite con orari inventati equivalenti (30 h 30 e 25 h), precedenza
   delle causali, quota 0 e 0,5, "o meta' o recupero", mezzo minuto per eccesso.
-- Settimane lun-sab tagliate al mese, tetto e avvisi del PEI.
+- Settimane lun-sab tagliate al mese e sommate come la VERIFICA del master (le
+  domeniche a parte), tetto e avvisi del PEI.
 - Regole con data e tariffe per data e livello.
 - Fattura: le quantita' e le tariffe della fattura reale di giugno (non sono dati
   personali) ricalcolate al centesimo da presenze inventate; periodo parziale del
   contratto applicativo, cambio di tariffa nel periodo (anche di ritorno al valore di
-  prima), mezzo centesimo per eccesso, split payment, testi, bloccanti (grado 'misto',
-  presenze fuori da ogni contratto); il file sintetico del rapporto excel.
+  prima, e con tariffe sovrapposte), mezzo centesimo per eccesso, split payment, testi
+  congelati, solo giorni registrati, coordinatore solo dal totale mensile, bloccanti
+  (grado 'misto', presenze fuori da ogni contratto o in due contratti); il file
+  sintetico del rapporto excel.
 
 Solo dati inventati: nessun nome, nessun codice fiscale.
 """
 import ast
 import datetime
+import json
 import os
 from decimal import Decimal as D
 
@@ -24,6 +30,7 @@ import pytest
 
 import config_napoli
 import napoli_calcoli as nc
+import napoli_schema
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -49,6 +56,61 @@ def test_minuti_durata_e_forme():
     assert nc.numero_it(D('24743.72')) == '24.743,72' and nc.numero_it(D('0.5')) == '0,50'
     assert nc.minuti_da_ore(D('1.5')) == (90, True) and nc.minuti_da_ore('2,3333') == (140, False)
     assert nc.in_centesimi(D('24620.00')) == 2462000 and nc.da_centesimi(2966) == D('29.66')
+
+
+# ==================== dati in ingresso ====================
+
+@pytest.mark.parametrize('scritto, attesa', [
+    ('2026-06-08', '2026-06-08'), ('2026-6-8', '2026-06-08'), ('08/06/2026', '2026-06-08'), ('8/6/2026', '2026-06-08'),
+    ('08.06.2026', '2026-06-08'), (' 29/02/2028 ', '2028-02-29'), (datetime.date(2026, 6, 8), '2026-06-08'),
+    (datetime.datetime(2026, 6, 8, 10, 30), '2026-06-08')])
+def test_valida_data(scritto, attesa):
+    assert nc.valida_data(scritto) == attesa
+
+
+@pytest.mark.parametrize('scritto, messaggio', [
+    ('2025-19-39', 'non esiste'), ('31/02/2026', 'non esiste'), ('29/02/2026', 'non esiste'), ('2026-06-31', 'non esiste'),
+    ('0202-06-08', 'anno fuori'), ('08/06/26', 'non e\' scritta bene'), ('domani', 'non e\' scritta bene'),
+    ('2026-06-08T10:00', 'non e\' scritta bene'), ('', 'manca'), (None, 'manca')])
+def test_valida_data_rifiuta_le_date_che_non_esistono(scritto, messaggio):
+    with pytest.raises(ValueError, match=messaggio):
+        nc.valida_data(scritto)
+
+
+def test_valida_orari_fasce_periodi_e_mesi():
+    assert [nc.valida_orario(x) for x in ('8:30', '08:30', '08.30', '00:00', '23:59', datetime.time(9, 5))] == [
+        '08:30', '08:30', '08:30', '00:00', '23:59', '09:05']
+    for sbagliato, messaggio in (('29:59', 'non esiste'), ('24:00', 'non esiste'), ('10:75', 'non esiste'),
+                                 ('10:7', 'non e\' scritto bene'), ('8', 'non e\' scritto bene'), ('', 'manca')):
+        with pytest.raises(ValueError, match=messaggio):
+            nc.valida_orario(sbagliato)
+    assert nc.valida_fascia('8:00', '10:00') == ('08:00', '10:00')
+    with pytest.raises(ValueError, match='deve venire dopo'):
+        nc.valida_fascia('10:00', '10:00')
+    assert nc.valida_fasce([('12:00', '14:00'), {'ora_inizio': '8:00', 'ora_fine': '10:00'}]) == [
+        ('08:00', '10:00'), ('12:00', '14:00')]
+    assert nc.valida_fasce([('08:00', '10:00'), ('10:00', '11:00')]) == [('08:00', '10:00'), ('10:00', '11:00')]
+    with pytest.raises(ValueError, match='si sovrappongono'):
+        nc.valida_fasce([('08:00', '10:00'), ('09:30', '11:00')])
+    assert nc.valida_fasce([]) == []
+    assert nc.valida_periodo('01/09/2025', '') == ('2025-09-01', None)
+    assert nc.valida_periodo('2025-09-01', '31/01/2027') == ('2025-09-01', '2027-01-31')
+    assert nc.valida_periodo('2026-06-08', '2026-06-08') == ('2026-06-08', '2026-06-08')
+    with pytest.raises(ValueError, match='viene prima'):
+        nc.valida_periodo('2026-06-08', '2026-06-07')
+    with pytest.raises(ValueError, match='manca'):
+        nc.valida_periodo('2026-06-08', None, fine_obbligatoria=True)
+    with pytest.raises(ValueError, match='non esiste'):
+        nc.valida_periodo('2026-06-08', '2026-13-01')
+    assert nc.valida_mese(2026, 6) == (2026, 6) and nc.valida_mese('2026', ' 10 ') == (2026, 10)
+    for anno, mese in ((2026, 13), (2026, 0), (1999, 5), (2026, 6.5), (2026, True), ('2026', 'giugno'), (None, 1)):
+        with pytest.raises(ValueError):
+            nc.valida_mese(anno, mese)
+    # messaggi per l'utente: niente nomi tecnici
+    try:
+        nc.valida_data('2025-19-39')
+    except ValueError as e:
+        assert 'ValueError' not in str(e) and 'isoformat' not in str(e) and str(e).startswith('La data')
 
 
 # ==================== letture (§5.1) ====================
@@ -141,7 +203,12 @@ def test_totale_scritto_ambiguo_o_illeggibile():
     (1.5, 90, []), (2, 120, []), (D('0.75'), 45, []), ('1,5', 90, ['numero_come_testo']),
     ('2.25', 135, ['numero_come_testo']), ('1:30', 90, ['numero_come_testo']),
     (2.3333333, 140, ['ore_arrotondate_al_minuto', 'ore_non_multiple_di_un_quarto']),
-    (1.3, 78, ['ore_non_multiple_di_un_quarto']), (datetime.time(1, 30), 90, ['cella_in_formato_orario'])])
+    (1.3, 78, ['ore_non_multiple_di_un_quarto']), (datetime.time(1, 30), 90, ['cella_in_formato_orario']),
+    # durata [h]:mm di Excel (openpyxl la legge come timedelta), anche con il rumore della virgola mobile
+    (datetime.timedelta(hours=1, minutes=30), 90, ['cella_in_formato_orario']),
+    (datetime.timedelta(hours=26, minutes=15), 1575, ['cella_in_formato_orario']),
+    (datetime.timedelta(seconds=5399, microseconds=999999), 90, ['cella_in_formato_orario']),
+    (datetime.timedelta(minutes=52, seconds=30), 53, ['cella_in_formato_orario', 'ore_arrotondate_al_minuto'])])
 def test_cella_master_ore(valore, minuti, avvisi):
     esito = nc.leggi_cella_master(valore)
     assert (esito['esito'], esito['minuti'], esito['avvisi']) == ('ore', minuti, avvisi)
@@ -157,7 +224,7 @@ def test_cella_master_sigle_vuoti_ed_errori():
     for valore, codice in (('ZZ', 'sigla_sconosciuta'), ('A', 'sigla_sconosciuta'), (-1, 'ore_negative'),
                            (True, 'cella_non_riconosciuta'), (datetime.date(2026, 3, 2), 'cella_non_riconosciuta'),
                            (float('nan'), 'cella_non_riconosciuta'), (float('inf'), 'cella_non_riconosciuta'),
-                           (D('NaN'), 'cella_non_riconosciuta')):
+                           (D('NaN'), 'cella_non_riconosciuta'), (datetime.timedelta(minutes=-30), 'ore_negative')):
         esito = nc.leggi_cella_master(valore)
         assert (esito['esito'], esito['codice']) == ('errore', codice), valore
 
@@ -233,6 +300,16 @@ def test_precedenza_delle_causali():
         nc.causale_prevalente('sciopero')
     # alunno assente in un giorno di ferie dell'operatore: vale l'operatore (0, non la meta')
     assert nc.minuti_riconosciuti(fasce_p=QUATTRO, causale=['alunno_assente', 'operatore_ferie']) == 0
+    # evento e attivita' esterna vincono sull'operatore: contano le ore svolte e la causale riportata e' la loro
+    assert nc.causale_prevalente(['operatore_ferie', 'evento']) == 'evento'
+    assert nc.causale_prevalente(('operatore_malattia', 'operatore_permesso', 'attivita_esterna')) == 'attivita_esterna'
+    for causali, attesa in ((['operatore_malattia', 'evento'], 'evento'),
+                            (['attivita_esterna', 'operatore_permesso', 'alunno_parziale'], 'attivita_esterna'),
+                            (['alunno_assente', 'operatore_altro'], 'operatore_altro')):
+        esito = nc.esito_giorno(fasce_p=QUATTRO, fasce_e=TRE, causale=causali)
+        assert (esito['causale'], esito['minuti']) == (attesa, 180), causali
+    chiuso = nc.esito_giorno(fasce_p=QUATTRO, fasce_e=TRE, causale=['evento', 'operatore_ferie', 'calendario'])
+    assert (chiuso['causale'], chiuso['minuti']) == ('calendario', 0)
 
 
 def test_quota_meta_o_recupero():
@@ -340,17 +417,34 @@ def test_verifica_settimane_contro_il_pei():
 
 
 def test_verifica_settimane_numerate_come_le_colonne():
-    # marzo 2026 inizia di domenica: con ore il 01/03 la settimana 2-7 marzo resta la VERIFICA 1;
-    # la domenica non ha colonna (settimana None) e la domenica 08/03 va con la sua settimana
+    # marzo 2026 inizia di domenica: la settimana 2-7 marzo resta la VERIFICA 1. Come la VERIFICA
+    # del master (somma da lunedi' a sabato) le domeniche, all'inizio (01/03) o a meta' mese
+    # (08/03), non entrano in nessuna settimana: sono voci a parte da correggere o spiegare
     esito = nc.verifica_settimane({'2026-03-01': 60, '2026-03-02': 120, '2026-03-08': 45, '2026-03-31': 30},
                                   2026, 3, 10)
-    assert [(v['settimana'], v['dal'].day, v['al'].day, v['minuti']) for v in esito] == [
-        (None, 1, 1, 60), (1, 2, 7, 165), (2, 9, 14, 0), (3, 16, 21, 0), (4, 23, 28, 0), (5, 30, 31, 30)]
-    assert esito[0]['giorni'] == []
+    assert [(v['settimana'], v['dal'].day, v['al'].day, v['minuti'], v['codice']) for v in esito] == [
+        (None, 1, 1, 60, 'ore_in_giorno_non_di_servizio'), (1, 2, 7, 120, None),
+        (None, 8, 8, 45, 'ore_in_giorno_non_di_servizio'), (2, 9, 14, 0, None), (3, 16, 21, 0, None),
+        (4, 23, 28, 0, None), (5, 30, 31, 30, None)]
+    assert esito[0]['giorni'] == [] and esito[0]['pei_minuti'] is None
     verifiche = [n for tipo, n in nc.colonne_mese(2026, 3) if tipo == 'verifica']
     assert [v['settimana'] for v in esito if v['settimana'] is not None] == verifiche
-    # senza ore di domenica la settimana senza colonna non compare
+    # la somma di ogni settimana e' quella della colonna VERIFICA: solo i giorni del master
+    colonne = nc.colonne_mese(2026, 3)
+    giorni = {'2026-03-01': 60, '2026-03-02': 120, '2026-03-08': 45, '2026-03-31': 30}
+    for v in esito:
+        if v['settimana'] is not None:
+            assert v['minuti'] == sum(m for d, m in giorni.items()
+                                      if ('giorno', datetime.date.fromisoformat(d)) in colonne
+                                      and datetime.date.fromisoformat(d) in v['giorni'])
+    # 10 h di PEI: con la domenica 08/03 la settimana sarebbe oltre il PEI, senza no
+    oltre = nc.verifica_settimane({'2026-03-02': 600, '2026-03-08': 60}, 2026, 3, 10)
+    assert [v['codice'] for v in oltre][:3] == [None, 'ore_in_giorno_non_di_servizio', None]
+    # senza ore di domenica non compaiono voci a parte
     assert [v['settimana'] for v in nc.verifica_settimane({'2026-03-02': 60}, 2026, 3, 10)] == verifiche
+    # con il servizio da lunedi' a venerdi' anche il sabato e' fuori servizio
+    feriale = nc.verifica_settimane({'2026-06-06': 60}, 2026, 6, 10, {'giorni_servizio': (0, 1, 2, 3, 4)})
+    assert [(v['settimana'], v['codice']) for v in feriale][:2] == [(1, None), (None, 'ore_in_giorno_non_di_servizio')]
 
 
 def test_programmato_diverso_dal_pei():
@@ -715,7 +809,7 @@ def test_bloccanti_della_fattura():
     contratto = dict(CONTRATTO_XI, dd_numero=None)
     p = nc.prospetto_fattura(2026, 6, 'inferiore', contratto, [], TARIFFE, (), lotto)
     assert [b['campo'] for b in p['bloccanti']] == ['cig', 'destinatario', 'dd_numero', 'iban']
-    assert p['avvisi'] == ['nessuna_riga']
+    assert p['avvisi'] == [{'codice': 'nessuna_riga'}]
     assert nc.dati_mancanti_fattura(LOTTO, CONTRATTO_XI, IMPOSTAZIONI, 'oggetto') == []
     assert nc.dati_mancanti_fattura({}, {}, None, ' ') == ['cig', 'destinatario', 'oggetto', 'contratto',
                                                            'dd_numero', 'dd_data', 'iban']
@@ -725,6 +819,104 @@ def test_bloccanti_della_fattura():
     assert fuori['bloccanti'] == [{'codice': 'contratto_fuori_dal_mese'}] and fuori['righe'] == []
     with pytest.raises(ValueError):
         nc.prospetto_fattura(2026, 6, 'misto', CONTRATTO_XI, [], TARIFFE)
+
+
+def test_contano_solo_i_giorni_registrati():
+    # come il §5.4: stato 'registrato'; ogni altro stato, o nessuno, e' un giorno non registrato
+    presenze = [_presenza('2026-06-10', 'ASACOM', 120), _presenza('2026-06-11', 'ASACOM', 60, stato='bozza'),
+                _presenza('2026-06-12', 'ASACOM', 30, stato=None), _presenza('2026-06-13', 'ASACOM', 45)]
+    del presenze[3]['stato']
+    esito = nc.righe_fattura(presenze, TARIFFE, 'inferiore', '2026-06-01', '2026-06-30')
+    assert [(r['figura'], r['minuti']) for r in esito['righe']] == [('ASACOM', 120)]
+    assert esito['bloccanti'] == [{'codice': 'giorni_non_registrati', 'figura': 'ASACOM', 'presenze': 3,
+                                   'minuti': 0}]
+    contratti = [dict(CONTRATTO_XI, valido_da='2026-06-01')]
+    fuori = [dict(p, data='2026-08-03') for p in presenze]
+    assert nc.ore_fuori_contratto(fuori, contratti)[0]['presenze'] == 4
+
+
+def test_ore_del_coordinatore_solo_dal_totale_mensile():
+    # le presenze con la figura del coordinatore non entrano in fattura (sarebbero contate due volte)
+    presenze = [_presenza('2026-06-10', 'ASACOM', 120), _presenza('2026-06-10', 'COORDINATORE', 240),
+                _presenza('2026-06-11', 'COORDINATORE', 60, grado=None),
+                _presenza('2026-06-12', 'COORDINATORE', 90, grado='superiore'),
+                _presenza('2026-06-13', 'COORDINATORE', 0)]
+    esito = nc.righe_fattura(presenze, TARIFFE, 'inferiore', '2026-06-01', '2026-06-30', [{'ore_cent': 1250}])
+    assert [(r['figura'], r['ore']) for r in esito['righe']] == [('COORDINATORE', D('12.50')), ('ASACOM', D('2.00'))]
+    assert esito['bloccanti'] == []         # niente "grado da decidere" per il coordinatore
+    assert esito['avvisi'] == [{'codice': 'ore_coordinatore_nelle_presenze', 'figura': 'COORDINATORE',
+                                'presenze': 2, 'minuti': 300}]
+    # ore del coordinatore al centesimo come quelle degli operatori: 12,5 -> 12,50
+    riga = esito['righe'][0]
+    assert str(riga['ore']) == '12.50' and riga['ore_cent'] == 1250 and riga['importo'] == D('370.75')
+    p = nc.prospetto_fattura(2026, 6, 'inferiore', CONTRATTO_XI, presenze, TARIFFE, [{'ore_cent': 1250}], LOTTO,
+                             impostazioni=IMPOSTAZIONI)
+    assert p['avvisi'] == esito['avvisi']
+    # le figure "di lotto" sono quelle dello schema con ore_di_lotto = 1
+    assert config_napoli.FIGURE_DI_LOTTO == tuple(f[0] for f in napoli_schema.FIGURE if f[3])
+
+
+def test_tariffe_sovrapposte_sotto_periodo_dai_giorni_veri():
+    # A dal 2025 (senza fine) e B dal 15/06: dal 15 vale B (inizia piu' tardi). Il tratto di A e' 08-14,
+    # non "fino al 30" (le date della riga A)
+    sovrapposte = _tariffe_educatore((2428, '2025-09-01', None), (2544, '2026-06-15', None))
+    presenze = [_presenza('2026-06-09', 'EDUCATORE', 60), _presenza('2026-06-20', 'EDUCATORE', 120)]
+    righe = nc.righe_fattura(presenze, sovrapposte, 'inferiore', '2026-06-08', '2026-06-30')['righe']
+    assert [(r['descrizione'], r['minuti'], r['tariffa_cent'], r['dal'].day, r['al'].day) for r in righe] == [
+        ('Educatore (dal 08/06 al 14/06)', 60, 2428, 8, 14), ('Educatore (dal 15/06 al 30/06)', 120, 2544, 15, 30)]
+    # una tariffa di livello per pochi giorni dentro quella generale: il livello ha il suo tratto
+    livello = TARIFFE + [{'figura': 'ASACOM', 'livello_ccnl': 'C3', 'tariffa_cent': 2400, 'valido_da': '2026-06-10',
+                          'valido_a': '2026-06-12'}]
+    righe = nc.righe_fattura([_presenza('2026-06-11', 'ASACOM', 60, livello='C3'),
+                              _presenza('2026-06-20', 'ASACOM', 30, livello='C3')], livello, 'inferiore',
+                             '2026-06-01', '2026-06-30')['righe']
+    assert [(r['descrizione'], r['tariffa_cent'], r['dal'].day, r['al'].day, r['minuti']) for r in righe] == [
+        ('Asacom - livello C3 (dal 10/06 al 12/06)', 2400, 10, 12, 60), ('Asacom (dal 13/06 al 30/06)', 2344, 13, 30, 30)]
+    # le Impostazioni le rifiutano: tariffe_sovrapposte le trova (stesso livello, almeno un giorno in comune)
+    assert [(a['tariffa_cent'], b['tariffa_cent']) for a, b in nc.tariffe_sovrapposte(sovrapposte)] == [(2428, 2544)]
+    assert nc.tariffe_sovrapposte(TARIFFE) == [] and nc.tariffe_sovrapposte(livello) == []
+    contigue = _tariffe_educatore((2428, '2025-09-01', '2026-06-15'), (2544, '2026-06-16', None))
+    assert nc.tariffe_sovrapposte(contigue) == []
+    un_giorno = _tariffe_educatore((2428, '2025-09-01', '2026-06-16'), (2544, '2026-06-16', None))
+    assert len(nc.tariffe_sovrapposte(un_giorno)) == 1
+    altri_lotti = [dict(t, lotto_id=1) for t in sovrapposte[:-1]] + [dict(sovrapposte[-1], lotto_id=2)]
+    assert nc.tariffe_sovrapposte(altri_lotti) == []
+
+
+def test_contratti_sovrapposti_e_presenze_in_due_contratti():
+    x = {'lotto_id': 1, 'numero': 'X', 'grado': 'inferiore', 'valido_da': '2025-09-01', 'valido_a': '2026-06-10'}
+    xi = {'lotto_id': 1, 'numero': 'XI', 'grado': 'inferiore', 'valido_da': '2026-06-08', 'valido_a': '2026-07-31'}
+    sup = {'lotto_id': 1, 'numero': 'S', 'grado': 'superiore', 'valido_da': '2025-09-01', 'valido_a': '2026-07-31'}
+    tutti = {'lotto_id': 1, 'numero': 'T', 'grado': None, 'valido_da': '2026-07-01', 'valido_a': '2026-07-31'}
+    altro_lotto = dict(xi, lotto_id=2)
+    contratti = [x, xi, sup, tutti, altro_lotto]
+    assert [(a['numero'], b['numero']) for a, b in nc.contratti_sovrapposti(contratti)] == [
+        ('X', 'XI'), ('XI', 'T'), ('S', 'T')]
+    # 08-10 giugno: le ore del grado inferiore finirebbero nella fattura del X e in quella dell'XI
+    presenze = [_presenza('2026-06-09', 'ASACOM', 120), _presenza('2026-06-10', 'ASACOM', 0, stato='programmato'),
+                _presenza('2026-06-11', 'ASACOM', 60), _presenza('2026-06-09', 'EDUCATORE', 60, grado='superiore'),
+                _presenza('2026-06-09', 'PSICOLOGO', 30, grado='misto'), _presenza('2026-06-09', 'ASACOM', 0)]
+    assert nc.presenze_in_piu_contratti(presenze, [x, xi, sup]) == [
+        {'codice': 'presenza_in_piu_contratti', 'figura': 'ASACOM', 'presenze': 2, 'minuti': 120}]
+    assert nc.presenze_in_piu_contratti(presenze, [dict(x, valido_a='2026-06-07'), xi, sup]) == []
+    assert nc.contratti_sovrapposti([dict(x, valido_a='2026-06-07'), xi, sup]) == []
+
+
+def test_testi_congelati_del_prospetto():
+    p = nc.prospetto_fattura(2026, 6, 'inferiore', CONTRATTO_XI, _presenze_giugno(), TARIFFE, [{'ore_cent': 7155}],
+                             LOTTO, impostazioni=IMPOSTAZIONI, data_fattura='2026-07-31')
+    assert p['destinatario'] == 'Ente di fantasia'
+    assert p['regole'] == {'ritenuta_percento': D('0.50'), 'iva_percento': D('5'), 'split_payment': True,
+                           'giorni_pagamento': 30}
+    testi = nc.testi_da_congelare(p)
+    assert set(testi) == {c for c, _ in napoli_schema.COLONNE_FATTURE_V3}
+    assert testi['oggetto'] == p['oggetto'] and testi['nota'] == p['nota'] and testi['scadenza'] == '2026-08-30'
+    assert testi['ritenuta_testo'].startswith('RITENUTA dello 0,50%') and testi['destinatario'] == 'Ente di fantasia'
+    assert json.loads(testi['regole_json']) == {'giorni_pagamento': 30, 'iva_percento': '5',
+                                                'ritenuta_percento': '0.50', 'split_payment': True}
+    senza_data = nc.testi_da_congelare(nc.prospetto_fattura(2026, 6, 'inferiore', CONTRATTO_XI, [], TARIFFE, (),
+                                                            LOTTO))
+    assert senza_data['scadenza'] is None
 
 
 def test_testi_e_scadenze():

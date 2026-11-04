@@ -126,6 +126,9 @@ DESCRIZIONI_FATTURA = {
     'TIFLOLOGO': 'Tiflologo', 'LIS': 'Interprete LIS',
 }
 ORDINE_RIGHE_FATTURA = ('COORDINATORE', 'EDUCATORE', 'PSICOLOGO', 'ASACOM', 'TIFLOLOGO', 'LIS')
+# Figure "di lotto" (napoli_schema.FIGURE con ore_di_lotto = 1): si fatturano dal totale
+# mensile di napoli_coordinamento, mai dalle presenze (sarebbero contate due volte).
+FIGURE_DI_LOTTO = ('COORDINATORE',)
 
 # ---- tariffe PROPOSTE alla creazione del lotto (da confermare: NON in vigore finche'
 # l'utente non le salva in napoli_tariffe). Centesimi di euro all'ora, IVA esclusa.
