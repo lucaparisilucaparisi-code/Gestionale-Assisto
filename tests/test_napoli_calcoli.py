@@ -9,8 +9,9 @@
 - Regole con data e tariffe per data e livello.
 - Fattura: le quantita' e le tariffe della fattura reale di giugno (non sono dati
   personali) ricalcolate al centesimo da presenze inventate; periodo parziale del
-  contratto applicativo, cambio di tariffa nel periodo, split payment, testi,
-  bloccanti; il file sintetico del rapporto excel.
+  contratto applicativo, cambio di tariffa nel periodo (anche di ritorno al valore di
+  prima), mezzo centesimo per eccesso, split payment, testi, bloccanti (grado 'misto',
+  presenze fuori da ogni contratto); il file sintetico del rapporto excel.
 
 Solo dati inventati: nessun nome, nessun codice fiscale.
 """
@@ -72,10 +73,18 @@ def test_griglia_decimali_non_quarti_da_confermare(scritto, ore_minuti, decimale
 
 def test_griglia_domanda_e_letture_senza_minuti():
     assert nc.leggi_ore_griglia('1,30')['domanda'] == '1 h 30 min oppure 1,30 ore decimali (1:18)?'
-    # una cifra sola non e' un orario: resta solo la lettura decimale, da confermare
+    # '1,3' e' il tipico "1,30" scritto senza lo zero (PROGETTO §1.4): le stesse due letture
     esito = nc.leggi_ore_griglia('1,3')
-    assert esito['esito'] == 'da_confermare' and [a['minuti'] for a in esito['alternative']] == [78]
-    assert nc.leggi_ore_griglia('1,3', conferma='ore_e_minuti')['esito'] == 'da_confermare'
+    assert esito['esito'] == 'da_confermare' and esito['domanda'] == '1 h 30 min oppure 1,3 ore decimali (1:18)?'
+    assert [(a['lettura'], a['minuti']) for a in esito['alternative']] == [('ore_e_minuti', 90), ('decimale', 78)]
+    assert nc.leggi_ore_griglia('1,3', conferma='ore_e_minuti')['minuti'] == 90
+    assert nc.leggi_ore_griglia('1,3', conferma='decimale')['minuti'] == 78
+    # cifre che non possono essere minuti: una lettura sola, niente domanda ma un avviso
+    for scritto, conferma in (('1,7', None), ('1,7', 'ore_e_minuti'), ('1,70', None)):
+        esito = nc.leggi_ore_griglia(scritto, conferma=conferma)
+        assert (esito['esito'], esito['minuti'], esito['avvisi']) == ('ore', 102, ['letto_come_decimale']), scritto
+    arrotondato = nc.leggi_ore_griglia('1,333')
+    assert (arrotondato['minuti'], arrotondato['avvisi']) == (80, ['letto_come_decimale', 'ore_arrotondate_al_minuto'])
 
 
 @pytest.mark.parametrize('scritto, causale', [
@@ -118,6 +127,12 @@ def test_totale_scritto_ambiguo_o_illeggibile():
     esito = nc.leggi_ore_foglio('1,20')
     assert esito['esito'] == 'da_confermare' and [a['minuti'] for a in esito['alternative']] == [80, 72]
     assert nc.leggi_ore_foglio('1,20', conferma='decimale')['minuti'] == 72
+    # "30,30" scritto senza lo zero: si chiede, con tutte e due le letture
+    trenta = nc.leggi_ore_foglio('30,3')
+    assert [(a['lettura'], a['minuti']) for a in trenta['alternative']] == [('ore_e_minuti', 1830), ('decimale', 1818)]
+    assert nc.leggi_ore_foglio('30,3', conferma='ore_e_minuti')['minuti'] == 1830
+    uno_otto = nc.leggi_ore_foglio('1,8')           # le cifre non possono essere minuti: decimale
+    assert (uno_otto['minuti'], uno_otto['avvisi']) == (108, ['letto_come_decimale'])
     assert nc.leggi_ore_foglio('trenta')['codice'] == 'totale_non_riconosciuto'
     assert nc.leggi_ore_foglio('  ')['esito'] == 'vuoto'
 
@@ -140,7 +155,9 @@ def test_cella_master_sigle_vuoti_ed_errori():
     assert nc.leggi_cella_master('M')['causale'] == 'operatore_malattia'
     assert nc.leggi_cella_master(None)['esito'] == 'vuoto' and nc.leggi_cella_master('  ')['minuti'] == 0
     for valore, codice in (('ZZ', 'sigla_sconosciuta'), ('A', 'sigla_sconosciuta'), (-1, 'ore_negative'),
-                           (True, 'cella_non_riconosciuta'), (datetime.date(2026, 3, 2), 'cella_non_riconosciuta')):
+                           (True, 'cella_non_riconosciuta'), (datetime.date(2026, 3, 2), 'cella_non_riconosciuta'),
+                           (float('nan'), 'cella_non_riconosciuta'), (float('inf'), 'cella_non_riconosciuta'),
+                           (D('NaN'), 'cella_non_riconosciuta')):
         esito = nc.leggi_cella_master(valore)
         assert (esito['esito'], esito['codice']) == ('errore', codice), valore
 
@@ -232,6 +249,11 @@ def test_quota_meta_o_recupero():
                                   regole={'quota_assenza_parziale': D('0')}) == 60
     # giorno di recupero: contano le ore svolte, compresi i minuti di recupero
     assert nc.minuti_riconosciuti(fasce_p=TRE, fasce_e=[('09:00', '13:00')], minuti_extra=60) == 240
+    # ... anche con una causale dell'alunno: S, senza la meta' (altrimenti 180 e 120)
+    assert nc.minuti_riconosciuti(fasce_p=QUATTRO, fasce_e=[('10:00', '12:00')], causale='alunno_parziale',
+                                  minuti_extra=30) == 120
+    assert nc.minuti_riconosciuti(fasce_p=QUATTRO, fasce_e=[('13:00', '14:00')], causale='alunno_assente',
+                                  minuti_extra=60) == 60
     # mezzo minuto per difetto, se la regola cambia
     assert nc.minuti_riconosciuti(fasce_p=[('08:00', '09:45')], causale='alunno_assente',
                                   regole={'arrotondamento_mezzo_minuto': 'difetto'}) == 52
@@ -248,7 +270,7 @@ def test_stato_calcolo_e_avvisi_del_giorno():
     importato = nc.esito_giorno(calcolo='manuale', minuti_scritti=150)          # nessuna formula calcolabile
     assert importato['minuti'] == 150 and importato['avvisi'] == []
     assert nc.esito_giorno(minuti_programmati=240, minuti_svolti=200)['minuti'] == 200
-    dimenticato = nc.esito_giorno(fasce_p=QUATTRO)            # registrato senza orario effettivo: mai "come programmato"
+    dimenticato = nc.esito_giorno(fasce_p=QUATTRO)        # registrato senza orario effettivo: mai "come programmato"
     assert dimenticato['minuti'] == 0 and dimenticato['avvisi'] == ['svolto_mancante']
     chiuso = nc.esito_giorno(fasce_p=QUATTRO, fasce_e=TRE, causale='calendario')
     assert chiuso['minuti'] == 0 and chiuso['avvisi'] == ['ore_in_giorno_di_chiusura']
@@ -286,7 +308,7 @@ def test_settimane_lun_sab_tagliate_al_mese():
 
 
 @pytest.mark.parametrize('pei, vicino, eccesso', [(2, 2, 3), (7, 8, 9), (8, 10, 10), (12, 14, 15), (13, 16, 16),
-                                                  (D('2.5'), 3, 3)])
+                                                  (D('2.5'), 3, 3), (D('3.75'), 5, 5)])   # 4,5: il mezzo va su
 def test_tetto_settimanale(pei, vicino, eccesso):
     assert nc.tetto_settimanale(pei) == vicino
     assert nc.tetto_settimanale(pei, modo='vicino') == vicino and nc.tetto_settimanale(pei, modo='eccesso') == eccesso
@@ -317,6 +339,20 @@ def test_verifica_settimane_contro_il_pei():
         nc.verifica_settimane({'2026-07-01': 60}, 2026, 6, 10)
 
 
+def test_verifica_settimane_numerate_come_le_colonne():
+    # marzo 2026 inizia di domenica: con ore il 01/03 la settimana 2-7 marzo resta la VERIFICA 1;
+    # la domenica non ha colonna (settimana None) e la domenica 08/03 va con la sua settimana
+    esito = nc.verifica_settimane({'2026-03-01': 60, '2026-03-02': 120, '2026-03-08': 45, '2026-03-31': 30},
+                                  2026, 3, 10)
+    assert [(v['settimana'], v['dal'].day, v['al'].day, v['minuti']) for v in esito] == [
+        (None, 1, 1, 60), (1, 2, 7, 165), (2, 9, 14, 0), (3, 16, 21, 0), (4, 23, 28, 0), (5, 30, 31, 30)]
+    assert esito[0]['giorni'] == []
+    verifiche = [n for tipo, n in nc.colonne_mese(2026, 3) if tipo == 'verifica']
+    assert [v['settimana'] for v in esito if v['settimana'] is not None] == verifiche
+    # senza ore di domenica la settimana senza colonna non compare
+    assert [v['settimana'] for v in nc.verifica_settimane({'2026-03-02': 60}, 2026, 3, 10)] == verifiche
+
+
 def test_programmato_diverso_dal_pei():
     assert nc.confronta_programmazione(600, 10) is None
     assert nc.confronta_programmazione(540, D('9.5')) == {'codice': 'programmato_diverso_dal_pei',
@@ -345,6 +381,11 @@ def test_regola_valida_nella_data():
     assert nc.regola('giorni_pagamento', '2025-10-01', REGOLE_DB, lotto_id=3) == 30
     dettaglio = nc.regola_dettaglio('giorni_pagamento', '2026-10-01', REGOLE_DB, lotto_id=3)
     assert (dettaglio['origine'], dettaglio['valido_da']) == ('lotto', '2026-09-01')
+    # lotto come testo (parametro di una richiesta) o righe con l'id come testo: e' lo stesso lotto
+    assert nc.regola_dettaglio('giorni_pagamento', '2026-10-01', REGOLE_DB, lotto_id='3')['origine'] == 'lotto'
+    come_testo = [dict(r, lotto_id=str(r['lotto_id'])) if r['lotto_id'] else r for r in REGOLE_DB]
+    assert nc.regola('giorni_pagamento', '2026-10-01', come_testo, lotto_id=3) == 45
+    assert nc.regola_dettaglio('giorni_pagamento', '2026-06-01', REGOLE_DB, lotto_id='')['origine'] == 'tutti'
     # il predefinito vale anche fuori dalle sue date, ma lo dice
     assert nc.regola_dettaglio('quota_assenza_alunno', '2026-06-15')['fuori_validita'] is False
     oltre = nc.regola_dettaglio('quota_assenza_alunno', datetime.date(2027, 3, 1))
@@ -549,6 +590,29 @@ def test_cambio_di_tariffa_nel_periodo():
                                    'minuti': 0}]
 
 
+def _tariffe_educatore(*periodi):
+    """TARIFFE con l'educatore sostituito da righe (tariffa_cent, valido_da, valido_a)."""
+    return [t for t in TARIFFE if t['figura'] != 'EDUCATORE'] + [
+        {'figura': 'EDUCATORE', 'livello_ccnl': None, 'tariffa_cent': c, 'valido_da': da, 'valido_a': a}
+        for c, da, a in periodi]
+
+
+def test_tariffa_che_torna_al_valore_di_prima():
+    presenze = [_presenza('2026-06-09', 'EDUCATORE', 60), _presenza('2026-06-12', 'EDUCATORE', 120),
+                _presenza('2026-06-22', 'EDUCATORE', 90), _presenza('2026-06-30', 'EDUCATORE', 30)]
+    # A fino al 10, B dall'11 al 20, di nuovo A dal 21: i due tratti di A restano due righe col loro periodo
+    aba = _tariffe_educatore((2428, '2025-09-01', '2026-06-10'), (2544, '2026-06-11', '2026-06-20'),
+                             (2428, '2026-06-21', None))
+    righe = nc.righe_fattura(presenze, aba, 'inferiore', '2026-06-08', '2026-06-30')['righe']
+    assert [(r['descrizione'], r['minuti'], r['tariffa_cent'], r['dal'].day, r['al'].day) for r in righe] == [
+        ('Educatore (dal 08/06 al 10/06)', 60, 2428, 8, 10), ('Educatore (dal 11/06 al 20/06)', 120, 2544, 11, 20),
+        ('Educatore (dal 21/06 al 30/06)', 120, 2428, 21, 30)]
+    # stessa tariffa su due righe una dopo l'altra (un rinnovo allo stesso prezzo): una riga sola
+    rinnovo = _tariffe_educatore((2428, '2025-09-01', '2026-06-15'), (2428, '2026-06-16', None))
+    righe = nc.righe_fattura(presenze, rinnovo, 'inferiore', '2026-06-08', '2026-06-30')['righe']
+    assert [(r['descrizione'], r['minuti'], r['dal'].day, r['al'].day) for r in righe] == [('Educatore', 300, 8, 30)]
+
+
 def test_tariffa_per_livello_fa_righe_separate():
     tariffe = TARIFFE + [{'figura': 'TIFLOLOGO', 'livello_ccnl': 'D2', 'tariffa_cent': 2544,
                           'valido_da': '2025-09-01', 'valido_a': None}]
@@ -578,6 +642,58 @@ def test_ore_al_centesimo_sul_totale_della_figura():
     presenze = [_presenza('2026-06-%02d' % g, 'EDUCATORE', m) for g, m in ((8, 7000), (9, 291))]
     riga = nc.righe_fattura(presenze, TARIFFE, 'inferiore', '2026-06-01', '2026-06-30')['righe'][0]
     assert (riga['minuti'], riga['ore'], riga['importo']) == (7291, D('121.52'), D('2950.51'))
+
+
+def test_mezzo_centesimo_per_eccesso():
+    # arrotondamento commerciale: il mezzo centesimo va su anche dopo una cifra pari (non "al pari")
+    assert nc.arrotonda(D('0.125')) == D('0.13') and nc.arrotonda('2,665') == D('2.67')
+    assert nc.in_centesimi(D('0.005')) == 1
+    # riga: 45 minuti di psicologo = 0,75 x 29,66 = 22,245 -> 22,25
+    psicologo = [_presenza('2026-06-10', 'PSICOLOGO', 45)]
+    riga = nc.righe_fattura(psicologo, TARIFFE, 'inferiore', '2026-06-01', '2026-06-30')['righe'][0]
+    assert (riga['ore'], riga['importo'], riga['importo_cent']) == (D('0.75'), D('22.25'), 2225)
+    # ritenuta: 101,00 x 0,50% = 0,505 -> 0,51; IVA: 0,10 x 5% = 0,005 -> 0,01
+    t = nc.totali_fattura([{'importo': D('101.00')}])
+    assert (t['ritenuta'], t['imponibile'], t['iva'], t['totale']) == (D('0.51'), D('100.49'), D('5.02'), D('105.51'))
+    assert nc.totali_fattura([{'importo': D('0.10')}])['iva'] == D('0.01')
+
+
+def test_grado_misto_o_scritto_diverso():
+    # scuola 'misto' con l'alunno senza grado (§4.2): le ore bloccano le fatture di tutti e due i gradi
+    misto = [_presenza('2026-06-10', 'ASACOM', 120, grado='misto'), _presenza('2026-06-11', 'ASACOM', 60, grado='?')]
+    for grado in nc.GRADI:
+        esito = nc.righe_fattura(misto, TARIFFE, grado, '2026-06-01', '2026-06-30')
+        assert esito['righe'] == [] and esito['bloccanti'] == [
+            {'codice': 'grado_da_decidere', 'figura': 'ASACOM', 'presenze': 2, 'minuti': 180}], grado
+    # maiuscole e spazi non cambiano il grado
+    scritto = nc.righe_fattura([_presenza('2026-06-10', 'ASACOM', 120, grado=' Inferiore')], TARIFFE, 'inferiore',
+                               '2026-06-01', '2026-06-30')
+    assert [r['minuti'] for r in scritto['righe']] == [120] and scritto['bloccanti'] == []
+    assert [nc.grado_fattura(g) for g in ('SUPERIORE', 'inferiore', 'misto', '', None)] == [
+        'superiore', 'inferiore', None, None, None]
+    with pytest.raises(ValueError):
+        nc.righe_fattura([], TARIFFE, 'misto', '2026-06-01', '2026-06-30')
+
+
+def test_presenze_fuori_da_ogni_contratto():
+    contratti = [dict(CONTRATTO_XI, numero='X', valido_da='2025-09-01', valido_a='2026-06-07'), CONTRATTO_XI,
+                 {'numero': 'S1', 'grado': 'superiore', 'valido_da': '2026-06-15', 'valido_a': '2026-07-31'}]
+    presenze = [_presenza('2026-06-05', 'ASACOM', 120),                                  # contratto X
+                _presenza('2026-06-10', 'ASACOM', 90),                                   # contratto XI
+                _presenza('2026-06-10', 'EDUCATORE', 60, grado='superiore'),             # superiore prima di S1
+                _presenza('2026-06-12', 'EDUCATORE', 0, grado='superiore', stato='programmato'),
+                _presenza('2026-06-11', 'EDUCATORE', 0, grado='superiore'),              # zero ore: non conta
+                _presenza('2026-06-16', 'EDUCATORE', 60, grado='superiore'),             # contratto S1
+                _presenza('2026-06-10', 'PSICOLOGO', 45, grado='misto'),                 # da decidere: c'e' XI
+                _presenza('2026-08-03', 'ASACOM', 30)]                                   # dopo tutti i contratti
+    assert nc.ore_fuori_contratto(presenze, contratti) == [
+        {'codice': 'presenza_fuori_contratto', 'figura': 'EDUCATORE', 'presenze': 2, 'minuti': 60},
+        {'codice': 'presenza_fuori_contratto', 'figura': 'ASACOM', 'presenze': 1, 'minuti': 30}]
+    # un contratto senza grado vale per tutti e due i gradi
+    agosto = {'numero': 'XII', 'grado': None, 'valido_da': '2026-08-01', 'valido_a': '2026-08-31'}
+    assert [b['figura'] for b in nc.ore_fuori_contratto(presenze, contratti + [agosto])] == ['EDUCATORE']
+    assert nc.ore_fuori_contratto([], contratti) == []
+    assert len(nc.ore_fuori_contratto(presenze, [])) == 3
 
 
 def test_bloccanti_della_fattura():

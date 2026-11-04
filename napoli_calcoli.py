@@ -225,18 +225,24 @@ def _valida_nella_data(riga, giorno):
     return (dal is None or dal <= giorno) and (al is None or giorno <= al)
 
 
+def _id(valore):
+    """Id di una riga come intero (3 e '3' sono lo stesso lotto); None se vuoto."""
+    return None if valore in (None, '') else int(valore)
+
+
 def regola_dettaglio(chiave, giorno, righe=(), lotto_id=None):
     """Regola valida in una data: prima la riga del lotto, poi quella di tutti i lotti
     (lotto_id vuoto), sempre la piu' recente con valido_da <= data <= valido_a;
     altrimenti il predefinito di config_napoli. Ritorna {'valore', 'origine'
     ('lotto' | 'tutti' | 'predefinita'), 'valido_da', 'valido_a', 'fuori_validita'}:
-    fuori_validita = predefinito usato fuori dalle sue date (da segnalare)."""
+    fuori_validita = predefinito usato fuori dalle sue date (da segnalare).
+    lotto_id puo' arrivare anche come testo (parametro di una richiesta)."""
     if chiave not in config_napoli.REGOLE_PREDEFINITE:
         raise ValueError(f'regola sconosciuta: {chiave}')
-    giorno = data(giorno)
+    giorno, lotto_id = data(giorno), _id(lotto_id)
     gruppi = (('lotto', lotto_id), ('tutti', None)) if lotto_id is not None else (('tutti', None),)
     for origine, lotto in gruppi:
-        valide = [r for r in righe if r.get('chiave') == chiave and r.get('lotto_id') == lotto
+        valide = [r for r in righe if r.get('chiave') == chiave and _id(r.get('lotto_id')) == lotto
                   and _valida_nella_data(r, giorno)]
         if valide:
             r = max(valide, key=lambda x: data(x['valido_da']))
@@ -303,12 +309,15 @@ def _numero(testo):
 
 
 def _alternative(ore, cifre):
-    """Le due letture di 'ore,cifre': ore e minuti (se le cifre sono minuti validi) e
-    ore decimali (arrotondate al minuto)."""
+    """Le letture di 'ore,cifre': ore e minuti, se le cifre possono essere minuti ('1,30'
+    e anche '1,3', il tipico "1,30" scritto senza lo zero: 1 h 30), e ore decimali
+    (arrotondate al minuto)."""
     alt = []
-    if len(cifre) == 2 and int(cifre) < 60:
-        alt.append({'lettura': 'ore_e_minuti', 'minuti': ore * 60 + int(cifre),
-                    'testo': f'{ore} h {int(cifre)} min'})
+    if len(cifre) <= 2:
+        minuti_scritti = int(cifre) * 10 if len(cifre) == 1 else int(cifre)
+        if minuti_scritti < 60:
+            alt.append({'lettura': 'ore_e_minuti', 'minuti': ore * 60 + minuti_scritti,
+                        'testo': f'{ore} h {minuti_scritti} min'})
     m, esatto = minuti_da_ore(Decimal(f'{ore}.{cifre}'))
     alt.append({'lettura': 'decimale', 'minuti': m, 'testo': f'{ore},{cifre} ore decimali ({hhmm(m)})',
                 'arrotondato': not esatto})
@@ -316,10 +325,16 @@ def _alternative(ore, cifre):
 
 
 def _da_confermare(testo, ore, cifre, conferma):
+    """Valore con due letture possibili: si usa quella confermata, altrimenti si chiede.
+    Con una lettura sola ('1,7', '1,333': le cifre non possono essere minuti) non c'e'
+    niente da chiedere: vale come ore decimali, con l'avviso."""
     alt = _alternative(ore, cifre)
-    scelta = next((a for a in alt if a['lettura'] == conferma), None)
+    scelta = alt[0] if len(alt) == 1 else next((a for a in alt if a['lettura'] == conferma), None)
     if scelta:
-        return _lettura('ore', testo, scelta['minuti'], avvisi=['letto_come_' + scelta['lettura']])
+        avvisi = ['letto_come_' + scelta['lettura']]
+        if scelta.get('arrotondato'):
+            avvisi.append('ore_arrotondate_al_minuto')
+        return _lettura('ore', testo, scelta['minuti'], avvisi=avvisi)
     domanda = ' oppure '.join(a['testo'] for a in alt) + '?'
     return _lettura('da_confermare', testo, codice='ore_ambigue', alternative=alt, domanda=domanda)
 
@@ -328,10 +343,12 @@ def leggi_ore_griglia(testo, conferma=None, minuti_programmati=None, regole=None
     """Cella della griglia presenze (convenzione dell'Excel: ore decimali).
 
     '2', '1,5', '1.5', '0,75' -> ore decimali (120, 90, 90, 45); '1:30' -> 90;
-    decimali che non sono un multiplo di 0,25 ('1,30', '1,20'...) -> da confermare
+    decimali che non sono un multiplo di 0,25 ('1,30', '1,20', '1,3'...) -> da confermare
     ("1 h 30 min oppure 1,30 ore decimali?"): si rilegge con conferma='ore_e_minuti'
-    o 'decimale'. F/M/P (e varianti) -> operatore assente, 0. A -> alunno assente:
-    meta' del programmato (servono i minuti programmati). Vuoto -> cancella la cella."""
+    o 'decimale'; se le cifre non possono essere minuti ('1,7') vale la lettura decimale,
+    con l'avviso letto_come_decimale. F/M/P (e varianti) -> operatore assente, 0.
+    A -> alunno assente: meta' del programmato (servono i minuti programmati).
+    Vuoto -> cancella la cella."""
     t = '' if testo is None else str(testo).strip()
     if t == '':
         return _lettura('vuoto', t)
@@ -362,7 +379,8 @@ def leggi_ore_griglia(testo, conferma=None, minuti_programmati=None, regole=None
 def leggi_ore_foglio(testo, conferma=None):
     """"Totale scritto sul foglio" (convenzione del foglio firma): ',15' ',30' ',45'
     -> ore e minuti; ',25' ',5' ',50' ',75' -> ore decimali; '30' -> 30 ore;
-    '30:30' -> 30 h 30 min; altri decimali -> da confermare."""
+    '30:30' -> 30 h 30 min; altri decimali -> da confermare come in leggi_ore_griglia
+    ('30,3': 30 h 30 min oppure 30,3 ore decimali?)."""
     t = '' if testo is None else str(testo).strip()
     if t == '':
         return _lettura('vuoto', t)
@@ -414,6 +432,8 @@ def leggi_cella_master(valore):
                 return _lettura('sigla', valore, 0, causale=causale, sigla=SIGLE[causale],
                                 avvisi=[] if s == SIGLE[causale] else ['sigla_scritta_in_variante'])
             return _lettura('errore', valore, codice='sigla_sconosciuta')
+    if not ore.is_finite():                 # NaN o infinito (float o Decimal)
+        return _lettura('errore', valore, codice='cella_non_riconosciuta')
     if ore < 0:
         return _lettura('errore', valore, codice='ore_negative')
     m_, esatto = minuti_da_ore(ore)
@@ -608,7 +628,9 @@ def verifica_settimane(minuti_giorni, anno, mese, pei, regole=None):
     PEI. minuti_giorni: {data: minuti} o coppie (data, minuti), solo date del mese.
     Per settimana: {'settimana', 'dal', 'al', 'giorni', 'minuti', 'pei_minuti',
     'tetto_minuti', 'codice', 'colore'}: oltre il PEI 'settimana_oltre_pei' (giallo),
-    oltre il tetto 'settimana_oltre_pei_piu_20' (rosso)."""
+    oltre il tetto 'settimana_oltre_pei_piu_20' (rosso). 'settimana' e' il numero della
+    colonna VERIFICA (colonne_mese); None per una settimana senza giorni di servizio nel
+    mese, che compare solo se ha ore (una domenica a inizio mese: non ha la sua colonna)."""
     coppie = minuti_giorni.items() if isinstance(minuti_giorni, dict) else minuti_giorni
     somme = {}
     for giorno, m in coppie:
@@ -618,6 +640,7 @@ def verifica_settimane(minuti_giorni, anno, mese, pei, regole=None):
         k = _chiave_settimana(giorno)
         somme[k] = somme.get(k, 0) + int(m or 0)
     servizio = _r(regole, 'giorni_servizio')
+    numeri = {_chiave_settimana(s[0]): n for n, s in enumerate(settimane_mese(anno, mese, servizio), start=1)}
     tutti = [datetime.date(anno, mese, g) for g in range(1, fine_mese(anno, mese).day + 1)]
     settimane = {}
     for d in tutti:
@@ -629,7 +652,7 @@ def verifica_settimane(minuti_giorni, anno, mese, pei, regole=None):
             continue
         sett = lavorativi or giorni
         ore = pei_della_settimana(pei, sett)
-        voce = {'settimana': len(out) + 1, 'dal': sett[0], 'al': sett[-1], 'giorni': lavorativi,
+        voce = {'settimana': numeri.get(k), 'dal': sett[0], 'al': sett[-1], 'giorni': lavorativi,
                 'minuti': somme.get(k, 0), 'pei_minuti': None, 'tetto_minuti': None, 'codice': None, 'colore': None}
         if ore is not None:
             voce['pei_minuti'] = minuti_pei(ore)
@@ -675,8 +698,31 @@ def tariffa_alla_data(tariffe, figura, giorno, livello=None):
     return None
 
 
+def grado_fattura(valore):
+    """Grado per la fattura ('inferiore' o 'superiore'), o None se e' da decidere: vuoto,
+    'misto' (scuola mista con l'alunno senza grado, §4.2) o un valore sconosciuto."""
+    g = str(valore or '').strip().lower()
+    return g if g in GRADI else None
+
+
 def _giorni(dal, al):
     return [dal + datetime.timedelta(days=i) for i in range((al - dal).days + 1)]
+
+
+def _tratti(voci):
+    """Voci (inizio, fine, livello, minuti) di una figura con la stessa tariffa (inizio e
+    fine = validita' della riga di tariffa nel periodo) -> tratti di date contigui
+    {'dal', 'al', 'livelli', 'minuti'}. Se la tariffa torna a un valore gia' usato (A fino
+    al 10, B dall'11 al 20, di nuovo A dal 21) i due tratti di A restano due righe."""
+    tratti = []
+    for inizio, fine, livello, min_ in sorted(voci, key=lambda v: (v[0], v[1])):
+        if not tratti or inizio > tratti[-1]['al'] + datetime.timedelta(days=1):
+            tratti.append({'dal': inizio, 'al': fine, 'livelli': set(), 'minuti': 0})
+        t = tratti[-1]
+        t['al'] = max(t['al'], fine)
+        t['livelli'].add(livello)
+        t['minuti'] += min_
+    return tratti
 
 
 def _aggiungi_bloccante(bloccanti, codice, figura=None, minuti_=0):
@@ -701,16 +747,19 @@ def righe_fattura(presenze, tariffe, grado, dal, al, coordinamento=()):
     """Righe del prospetto di un lotto per un grado e un periodo (§5.4, passi 1-3).
 
     presenze: righe con 'data', 'figura', 'minuti_riconosciuti', 'stato', 'grado'
-    (dell'alunno o della scuola; None = da decidere) e 'livello_ccnl' dell'operatore;
-    contano quelle registrate del grado con data nel periodo e minuti > 0, raggruppate
-    per (figura, tariffa valida nel giorno): ore = minuti / 60 al centesimo.
+    (dell'alunno o della scuola, vedi grado_fattura: None o 'misto' = da decidere) e
+    'livello_ccnl' dell'operatore; contano quelle registrate del grado con data nel
+    periodo e minuti > 0, raggruppate per (figura, tariffa valida nel giorno) e tratti di
+    date contigui della tariffa: ore = minuti / 60 al centesimo.
     coordinamento: righe di napoli_coordinamento del lotto, grado, contratto e mese
     ('ore_cent', 'livello_ccnl'), con la tariffa COORDINATORE del periodo.
     Importo di riga = ore x tariffa al centesimo. Se la tariffa cambia nel periodo, la
-    figura ha due righe con il loro sotto-periodo nella descrizione.
-    Bloccanti: tariffa_mancante, grado_da_decidere, giorni_non_registrati,
-    tariffa_cambia_nel_periodo (solo coordinatore: le sue ore sono un totale del mese).
-    Ritorna {'righe', 'bloccanti'}."""
+    figura ha piu' righe, ciascuna con il suo sotto-periodo nella descrizione.
+    Bloccanti: tariffa_mancante, grado_da_decidere (blocca le fatture di tutti e due i
+    gradi), giorni_non_registrati, tariffa_cambia_nel_periodo (solo coordinatore: le sue
+    ore sono un totale del mese). Ritorna {'righe', 'bloccanti'}."""
+    if grado not in GRADI:
+        raise ValueError(f'grado non valido: {grado}')
     dal, al = data(dal), data(al)
     gruppi, bloccanti = {}, []
     for p in presenze:
@@ -719,11 +768,12 @@ def righe_fattura(presenze, tariffe, grado, dal, al, coordinamento=()):
             continue
         stato = p.get('stato', 'registrato')
         min_ = int(p.get('minuti_riconosciuti') or 0)
-        if not p.get('grado'):
+        grado_p = grado_fattura(p.get('grado'))
+        if grado_p is None:
             if stato == 'programmato' or min_ > 0:
                 _aggiungi_bloccante(bloccanti, 'grado_da_decidere', p['figura'], min_)
             continue
-        if p['grado'] != grado:
+        if grado_p != grado:
             continue
         if stato == 'programmato':
             _aggiungi_bloccante(bloccanti, 'giorni_non_registrati', p['figura'])
@@ -736,14 +786,10 @@ def righe_fattura(presenze, tariffe, grado, dal, al, coordinamento=()):
             continue
         inizio = max(dal, data(t['valido_da']))
         fine = al if not t.get('valido_a') else min(al, data(t['valido_a']))
-        g = gruppi.setdefault((p['figura'], t['tariffa_cent']),
-                              {'minuti': 0, 'dal': inizio, 'al': fine, 'livelli': set()})
-        g['minuti'] += min_
-        g['dal'], g['al'] = min(g['dal'], inizio), max(g['al'], fine)
-        g['livelli'].add(t.get('livello_ccnl'))
+        gruppi.setdefault((p['figura'], t['tariffa_cent']), []).append((inizio, fine, t.get('livello_ccnl'), min_))
     righe = [_riga(f, cent, next(iter(g['livelli'])) if len(g['livelli']) == 1 else None, g['dal'], g['al'],
                    ore_decimali(g['minuti']), g['minuti'])
-             for (f, cent), g in gruppi.items()]
+             for (f, cent), voci in gruppi.items() for g in _tratti(voci)]
 
     per_livello = {}
     for c in coordinamento:
@@ -844,12 +890,32 @@ def dati_mancanti_fattura(lotto, contratto, impostazioni=None, oggetto=None):
     return [campo for campo, valore in controlli if not str(valore or '').strip()]
 
 
+def ore_fuori_contratto(presenze, contratti):
+    """Bloccante del §5.5 "presenza fuori da ogni contratto applicativo", che il prospetto
+    non vede (guarda un contratto alla volta): presenze registrate con minuti > 0, o
+    preparate e non registrate, la cui data non cade in nessun contratto del lotto
+    (righe di napoli_contratti) del loro grado. Un contratto senza grado vale per tutti e
+    due; con il grado da decidere basta un contratto qualsiasi (blocca gia' il grado).
+    Ritorna i bloccanti {'codice': 'presenza_fuori_contratto', 'figura', 'presenze', 'minuti'}."""
+    bloccanti = []
+    for p in presenze:
+        min_ = int(p.get('minuti_riconosciuti') or 0)
+        if p.get('stato', 'registrato') != 'programmato' and min_ <= 0:
+            continue
+        giorno, grado = data(p['data']), grado_fattura(p.get('grado'))
+        if not any(_valida_nella_data(c, giorno) and (grado is None or c.get('grado') in (None, '', grado))
+                   for c in contratti):
+            _aggiungi_bloccante(bloccanti, 'presenza_fuori_contratto', p['figura'], min_)
+    return bloccanti
+
+
 def prospetto_fattura(anno, mese, grado, contratto, presenze, tariffe, coordinamento=(), lotto=None,
                       righe_regole=(), impostazioni=None, data_fattura=None):
     """Prospetto di un lotto per grado, contratto applicativo e mese (§5.4): periodo,
     righe, totali, testi e controlli. Le regole della fattura (ritenuta, IVA, split
     payment, testi, giorni di pagamento) sono quelle valide il primo giorno del periodo.
-    contratto: riga di napoli_contratti; lotto: riga di napoli_lotti."""
+    contratto: riga di napoli_contratti; lotto: riga di napoli_lotti. Le presenze fuori
+    da ogni contratto si controllano a parte, sul mese intero (ore_fuori_contratto)."""
     if grado not in GRADI:
         raise ValueError(f'grado non valido: {grado}')
     lotto = lotto or {}
