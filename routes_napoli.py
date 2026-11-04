@@ -10,8 +10,9 @@ strumenti/fotografa_roma.py (test_inventario_rotte).
 Passo 1.3: scheda Mese (per ora i controlli del lotto e la procedura "Crea il primo
 lotto") e Impostazioni (cooperativa, destinatario, lotti, contratti applicativi,
 tariffe e regole con data, qualifiche), con il loro Ctrl+Z (/api/napoli/annulla).
-Passi 1.4-1.5: scheda Importa (/napoli/import) con anteprima, conferma, solo
-confronto, elenco e annullamento degli import del foglio presenze (import_napoli).
+Passi 1.4-1.5: scheda Importa (/napoli/import): dal file Excel "master" si carica
+l'anagrafica (azione principale, REGOLE 14) o, come opzione secondaria, anche le ore di
+un mese; anteprima, conferma, solo confronto, elenco e annullamento (import_napoli).
 """
 import json
 import logging
@@ -299,18 +300,21 @@ def _scelte_della_richiesta():
 
 @napoli_bp.route('/api/napoli/import/anteprima', methods=['POST'])
 def api_import_anteprima():
-    """Anteprima (modo 'import') o solo confronto (modo 'confronto'): non scrive nulla."""
+    """Anteprima dell'anagrafica (modo 'anagrafica', predefinito), delle ore del mese
+    (modo 'ore') o solo confronto (modo 'confronto'): non scrive nulla."""
     dati, nome, lotto_id = _file_e_lotto()
     return jsonify(import_napoli.anteprima(lotto_id, dati, nome, _scelte_della_richiesta(),
-                                           request.form.get('modo') or 'import'))
+                                           request.form.get('modo')))
 
 
 @napoli_bp.route('/api/napoli/import/conferma', methods=['POST'])
 def api_import_conferma():
-    """Importa il file dell'anteprima (stesso sha256, stessi dati), con le scelte fatte."""
+    """Importa il file dell'anteprima (stesso sha256, stesso modo, stessi dati), con le
+    scelte fatte: solo l'anagrafica (predefinito) o anche le ore del mese (modo 'ore')."""
     dati, nome, lotto_id = _file_e_lotto()
     esito = import_napoli.conferma(lotto_id, dati, nome, request.form.get('sha256'),
-                                   request.form.get('versione_dati'), _scelte_della_richiesta())
+                                   request.form.get('versione_dati'), _scelte_della_richiesta(),
+                                   request.form.get('modo'))
     return _ok(**esito)
 
 

@@ -10,10 +10,11 @@ Con un client (sessione autenticata sullo stesso database) i dati che hanno gia'
 le loro API passano dalle API di Napoli: dal passo 1.3 dati della cooperativa,
 destinatario, il lotto con le tariffe (procedura "Crea il primo lotto"), un'altra
 tariffa, i contratti applicativi, le regole con data e una qualifica (_seme_con_le_api);
-dai passi 1.4-1.5 l'import del foglio presenze di marzo 2026 inventato
+dai passi 1.4-1.5 il file Excel "master" di marzo 2026 inventato
 (tests/napoli_sintetico.py, con alunni e un operatore omonimi di quelli di Roma:
-anteprima e conferma, _seme_import), dopo le righe scritte direttamente, cosi' l'import
-ritrova un plesso gia' presente.
+anteprima e conferma, _seme_import): prima l'anagrafica (l'azione principale della
+pagina), poi anche le ore del mese (l'opzione secondaria), dopo le righe scritte
+direttamente, cosi' l'import ritrova un plesso gia' presente.
 Il resto, e tutto senza client o con versione_schema=2 (forma della v2, per provare la
 migrazione 3), si scrive direttamente nelle tabelle napoli_* con una connessione
 SQLite a parte: mai nelle tabelle di Roma. Ogni passo che aggiunge una funzione di
@@ -308,7 +309,8 @@ def _scrivi_seme(ins, versione_schema, ids=None):
 
 
 def _seme_import(client, lotto_id):
-    """Import del master inventato di marzo 2026 con le API (anteprima e conferma)."""
+    """Il master inventato di marzo 2026 con le API (anteprima e conferma): prima solo
+    l'anagrafica, poi le ore del mese."""
     import tempfile
 
     import napoli_sintetico
@@ -319,12 +321,16 @@ def _seme_import(client, lotto_id):
         return _ok(client.post(url, content_type='multipart/form-data', data=dict(
             campi, file=(io.BytesIO(dati), 'master_prova_marzo.xlsx'), lotto_id=str(lotto_id))))
 
+    a = manda('/api/napoli/import/anteprima', scelte='{}', modo='anagrafica')
+    esito = manda('/api/napoli/import/conferma', sha256=a['file']['sha256'], versione_dati=a['versione_dati'],
+                  scelte=json.dumps({'conferme': a['conferme_richieste']}), modo='anagrafica')
+    assert esito['import_id'], esito
     # le ore da confermare si scelgono sempre (nel master inventato "1,30" e' 1 h 30 min)
     scelte = {'ore_ambigue': {x['chiave']: 'ore_e_minuti' for x in
-                              manda('/api/napoli/import/anteprima', scelte='{}')['ore_ambigue']}}
-    a = manda('/api/napoli/import/anteprima', scelte=json.dumps(scelte))
+                              manda('/api/napoli/import/anteprima', scelte='{}', modo='ore')['ore_ambigue']}}
+    a = manda('/api/napoli/import/anteprima', scelte=json.dumps(scelte), modo='ore')
     esito = manda('/api/napoli/import/conferma', sha256=a['file']['sha256'], versione_dati=a['versione_dati'],
-                  scelte=json.dumps(dict(scelte, conferme=a['conferme_richieste'])))
+                  scelte=json.dumps(dict(scelte, conferme=a['conferme_richieste'])), modo='ore')
     assert esito['import_id'], esito
 
 

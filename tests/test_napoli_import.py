@@ -78,10 +78,12 @@ def anteprima(client, dati, scelte=None, modo='import', nome='master_marzo.xlsx'
         'scelte': json.dumps(scelte or {})})
 
 
-def conferma(client, dati, a, scelte=None, nome='master_marzo.xlsx', sha=None, versione=None):
+def conferma(client, dati, a, scelte=None, nome='master_marzo.xlsx', sha=None, versione=None, modo=None):
+    """La conferma dell'anteprima `a`, nello stesso modo dell'anteprima (salvo `modo`)."""
     return client.post('/api/napoli/import/conferma', content_type='multipart/form-data', data={
         'file': (io.BytesIO(dati), nome), 'lotto_id': str(client.lotto_id), 'sha256': sha or a['file']['sha256'],
-        'versione_dati': versione or a['versione_dati'], 'scelte': json.dumps(scelte or {})})
+        'versione_dati': versione or a['versione_dati'], 'scelte': json.dumps(scelte or {}),
+        'modo': modo or a['modo']})
 
 
 def con_ore_scelte(client, dati, scelte=None, lettura='ore_e_minuti'):
@@ -102,6 +104,12 @@ def importa(client, dati, scelte=None):
     a, scelte = con_ore_scelte(client, dati, scelte)
     scelte = dict(scelte, conferme=a['conferme_richieste'])
     return a, _ok(conferma(client, dati, a, scelte))
+
+
+def carica_anagrafica(client, dati, scelte=None):
+    """Anteprima e conferma dell'anagrafica (l'azione principale), con le conferme richieste."""
+    a = _ok(anteprima(client, dati, scelte, modo='anagrafica'))
+    return a, _ok(conferma(client, dati, a, dict(scelte or {}, conferme=a['conferme_richieste'])))
 
 
 def righe(percorso, sql, parametri=()):
@@ -257,14 +265,14 @@ def test_la_stessa_scuola_in_due_municipalita_sono_due_plessi_da_confermare(napo
         r[0]['municipalita'] = 1               # NAIC8ZZ001 anche in municipalita' 1 (nelle altre righe e' 2)
     dati = variante(tmp_path, due_municipalita)
     a, scelte = con_ore_scelte(napoli, dati)
-    assert a['conferme_richieste'] == ['plessi']
+    assert a['conferme_richieste'] == ['plessi', 'gradi']
     [conf] = a['conferme']
     testo = conf['voci'][0]['testo']
     assert 'NAIC8ZZ001' in testo and 'nel file municipalità 1 e 2' in testo and 'plessi' in testo
-    assert conf['voci'][0]['righe'][0] == 2
-    _errore(conferma(napoli, dati, a, scelte), 400, 'DA_CONFERMARE')
+    assert conf['voci'][0]['righe'][0] == 2 and not conf['solo_avviso']
+    _errore(conferma(napoli, dati, a, dict(scelte, conferme=['gradi'])), 400, 'DA_CONFERMARE')
     assert righe(napoli.percorso, 'SELECT COUNT(*) AS n FROM napoli_scuole')[0]['n'] == 0
-    _ok(conferma(napoli, dati, a, dict(scelte, conferme=['plessi'])))
+    _ok(conferma(napoli, dati, a, dict(scelte, conferme=['plessi', 'gradi'])))
     plessi = righe(napoli.percorso, "SELECT municipalita FROM napoli_scuole WHERE codice_meccanografico = 'NAIC8ZZ001' "
                                     'ORDER BY municipalita')
     assert [p['municipalita'] for p in plessi] == [1, 2]
@@ -279,6 +287,162 @@ def test_municipalita_mancante_presa_dalla_scuola(napoli, master):
                                  "JOIN napoli_scuole s ON s.id = c.scuola_id JOIN napoli_alunni a ON a.id = c.alunno_id "
                                  "WHERE o.cognome = 'DE PROVA' AND a.cognome = 'NOVIZIO' AND a.nome = 'ZETA'")
     assert c['municipalita'] == 1
+
+
+# ==================== anagrafica (l'azione principale, REGOLE 14) ====================
+
+def test_anteprima_dell_anagrafica_senza_ore_e_senza_scritture(napoli, master):
+    """Senza modo l'anteprima e' quella dell'anagrafica: alunni, operatori, scuole, coppie
+    e PEI, nessun giorno, nessun foglio del mese, nessuna ora da confermare e nessun
+    controllo sulle ore."""
+    dati, atteso = master
+    prima, backup_prima = seme_napoli.impronta_napoli(napoli.percorso), copie()
+    r = napoli.post('/api/napoli/import/anteprima', content_type='multipart/form-data', data={
+        'file': (io.BytesIO(dati), 'master_marzo.xlsx'), 'lotto_id': str(napoli.lotto_id), 'scelte': '{}'})
+    a = _ok(r)
+    assert seme_napoli.impronta_napoli(napoli.percorso) == prima and copie() == backup_prima
+    assert a['modo'] == 'anagrafica' and a['reimport'] is None
+    assert a['ore_ambigue'] == [] and a['ore_ambigue_da_scegliere'] == 0 and a['manuali_diverse'] == []
+    c = a['conteggi']
+    assert (c['righe'], c['operatori'], c['alunni']) == (atteso['righe'], atteso['operatori'], atteso['alunni'])
+    assert {k: c['nuovi'][k] for k in ('scuole', 'alunni', 'operatori', 'coppie', 'pei', 'fogli')} == {
+        'scuole': 6, 'alunni': 34, 'operatori': 22, 'coppie': 41, 'pei': 36, 'fogli': 0}
+    assert not any(c['presenze'].values()) and c['minuti'] == 0 and a['totale_importato']['minuti'] == 0
+    assert c['sigle'] == {} and not any(a['segnalazioni'].values())
+    # niente controlli sulle ore (VERIFICA, piu' di 5 ore, settimane oltre il PEI...)
+    tutti = {g['codice'] for g in a['bloccanti'] + a['avvisi'] + a['note']}
+    assert not tutti & import_napoli.SOLO_ORE
+    assert {'cf_operatore_formato', 'data_inizio_scritta_male', 'municipalita_presa_dalla_scuola'} <= tutti
+    # coppie e PEI per figura e per grado (le ore restano a zero)
+    per_figura = {x['figura']: x for x in a['ore_per_figura']}
+    assert {f: x['righe'] for f, x in per_figura.items()} == {f: v['righe'] for f, v in atteso['per_figura'].items()}
+    assert all(x['minuti'] == 0 for x in per_figura.values())
+    assert per_figura['TIFLOLOGO']['righe_per_grado'] == {'inferiore': 0, 'superiore': per_figura['TIFLOLOGO']['righe'],
+                                                          'da_decidere': 0}
+    assert a['totale_tabella']['pei_ore'] == calc.numero_it(sum(calc.decimale(x['pei_ore'].replace(',', '.'))
+                                                                for x in a['ore_per_figura']))
+    assert a['conferme_richieste'] == ['gradi'] and not a['nessun_cambiamento']
+
+
+def test_l_anagrafica_non_si_blocca_per_le_ore(napoli, tmp_path):
+    """Una cella sbagliata blocca l'import delle ore, non l'anagrafica (le ore non si caricano)."""
+    def problemi(r):
+        r[7]['giorni'][datetime.date(2026, 3, 4)] = 'X'
+        r[8]['giorni'][datetime.date(2026, 3, 6)] = 13
+    dati = variante(tmp_path, problemi)
+    assert {g['codice'] for g in _ok(anteprima(napoli, dati))['bloccanti']} == {'sigla_sconosciuta',
+                                                                               'ore_giorno_oltre_12'}
+    a, esito = carica_anagrafica(napoli, dati)
+    assert a['bloccanti'] == [] and esito['import_id']
+    assert righe(napoli.percorso, 'SELECT COUNT(*) AS n FROM napoli_presenze')[0]['n'] == 0
+
+
+def test_caricare_l_anagrafica_scrive_solo_l_anagrafica(napoli, master, tmp_path):
+    """La conferma dell'anagrafica: scuole, alunni, operatori (qualifica, ore di contratto),
+    coppie con le stesse date dell'import delle ore e PEI; nessun giorno e nessun foglio.
+    Ricaricare lo stesso file non cambia nulla; poi le ore dello stesso mese trovano tutto."""
+    dati, _atteso = master
+    backup_prima = copie()
+    a, esito = carica_anagrafica(napoli, dati)
+    assert esito['modo'] == 'anagrafica' and esito['copia'] and len(copie()) == len(backup_prima) + 1
+    assert esito['messaggio'] == 'Anagrafica caricata dal file di marzo 2026: 41 righe'
+    conteggi = {t: righe(napoli.percorso, f'SELECT COUNT(*) AS n FROM napoli_{t}')[0]['n']
+                for t in ('scuole', 'alunni', 'operatori', 'coppie', 'fogli', 'pei', 'presenze')}
+    assert conteggi == {'scuole': 6, 'alunni': 34, 'operatori': 22, 'coppie': 41, 'fogli': 0, 'pei': 36,
+                        'presenze': 0}
+    ore_contratto = {o['ore_contratto'] for o in righe(napoli.percorso, 'SELECT ore_contratto FROM napoli_operatori')}
+    assert ore_contratto - {None}
+    [imp] = righe(napoli.percorso, 'SELECT * FROM napoli_import')
+    assert json.loads(imp['esito_json'])['modo'] == 'anagrafica'
+    storico = _ok(napoli.get(f'/api/napoli/lotti/{napoli.lotto_id}/import'))
+    assert storico[0]['modo'] == 'anagrafica' and storico[0]['ore'] == '' and storico[0]['annullabile']
+    assert storico[0]['nuovi']['alunni'] == 34
+    ultima = _ok(napoli.get('/api/napoli/annulla/ultima'))['azione']
+    assert ultima['descrizione'].startswith('Anagrafica dal file di marzo 2026: 41 righe')
+    coppie_anagrafica = {k: (c['valido_da'], c['valido_a'], c['scuola_id']) for k, c in
+                         coppie_per_nome(napoli.percorso).items()}
+    # lo stesso file di nuovo: niente da cambiare (senza conferme)
+    b = _ok(anteprima(napoli, dati, modo='anagrafica'))
+    assert b['nessun_cambiamento'] and b['reimport']['stesso_file'] and b['conferme_richieste'] == []
+    r = _ok(conferma(napoli, dati, b))
+    assert r['nessun_cambiamento'] and r['import_id'] is None
+    # poi le ore dello stesso mese: l'anagrafica c'e' gia', si aggiungono giorni e fogli
+    c, scelte = con_ore_scelte(napoli, dati)
+    assert c['reimport'] is None and c['conferme_richieste'] == []
+    assert not any(c['conteggi']['nuovi'][k] for k in ('scuole', 'alunni', 'operatori', 'coppie', 'pei'))
+    assert c['conteggi']['presenze']['nuove'] == 681 and c['conteggi']['nuovi']['fogli'] == 40
+    _ok(conferma(napoli, dati, c, scelte))
+    assert {k: (x['valido_da'], x['valido_a'], x['scuola_id']) for k, x in
+            coppie_per_nome(napoli.percorso).items()} == coppie_anagrafica
+
+
+def test_le_coppie_dell_anagrafica_sono_quelle_dell_import_delle_ore(napoli, master):
+    dati, _atteso = master
+    _a, esito = carica_anagrafica(napoli, dati)
+    anagrafica = {k: (c['valido_da'], c['valido_a']) for k, c in coppie_per_nome(napoli.percorso).items()}
+    _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
+    importa(napoli, dati)
+    assert {k: (c['valido_da'], c['valido_a']) for k, c in coppie_per_nome(napoli.percorso).items()} == anagrafica
+
+
+def test_annullare_l_anagrafica_ripristina_lo_stato_di_prima(napoli, master):
+    dati, _atteso = master
+    prima = impronta_dati(napoli.percorso)
+    _a, esito = carica_anagrafica(napoli, dati)
+    r = _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
+    assert r['messaggio'].startswith('Annullato il caricamento dell\'anagrafica dal file di marzo 2026')
+    assert impronta_dati(napoli.percorso) == prima
+    # anche con Ctrl+Z
+    carica_anagrafica(napoli, dati)
+    ultima = _ok(napoli.get('/api/napoli/annulla/ultima'))['azione']
+    _ok(napoli.post('/api/napoli/annulla', json={'id': ultima['id']}))
+    assert impronta_dati(napoli.percorso) == prima
+
+
+def test_la_conferma_vale_solo_nel_modo_dell_anteprima(napoli, master):
+    """Dopo l'anteprima dell'anagrafica non si importano le ore (e viceversa): l'anteprima
+    va rifatta. Il solo confronto non salva."""
+    dati, _atteso = master
+    a = _ok(anteprima(napoli, dati, modo='anagrafica'))
+    scelte = {'conferme': a['conferme_richieste']}
+    _errore(conferma(napoli, dati, a, scelte, modo='ore'), 409, 'ANTEPRIMA_SUPERATA')
+    _errore(conferma(napoli, dati, a, scelte, modo='confronto'), 400, 'MODO_NON_VALIDO')
+    _errore(conferma(napoli, dati, a, scelte, modo='tutto'), 400, 'MODO_NON_VALIDO')
+    b, scelte_ore = con_ore_scelte(napoli, dati)
+    _errore(conferma(napoli, dati, b, dict(scelte_ore, conferme=b['conferme_richieste']), modo='anagrafica'), 409,
+            'ANTEPRIMA_SUPERATA')
+    assert righe(napoli.percorso, 'SELECT COUNT(*) AS n FROM napoli_import')[0]['n'] == 0
+
+
+def test_il_grado_delle_scuole_nuove_va_confermato(napoli, master):
+    """Il grado proposto dal codice meccanografico decide la fattura (REGOLE 9): si
+    conferma con "Ho controllato i gradi", in tutti e due i modi."""
+    dati, _atteso = master
+    for modo in ('anagrafica', 'import'):
+        a, scelte = con_ore_scelte(napoli, dati) if modo == 'import' else \
+            (_ok(anteprima(napoli, dati, modo=modo)), {})
+        assert a['conferme_richieste'] == ['gradi']
+        paritarie = {s['codice']: s['paritaria'] for s in a['scuole_nuove']}
+        assert paritarie['NA1C8ZZ002'] and not paritarie['NAIC8ZZ001']
+        e = _errore(conferma(napoli, dati, a, scelte), 400, 'DA_CONFERMARE')
+        assert e['mancano'] == ['gradi']
+    assert righe(napoli.percorso, 'SELECT COUNT(*) AS n FROM napoli_scuole')[0]['n'] == 0
+
+
+def test_senza_niente_da_cambiare_le_conferme_sono_solo_avvisi(napoli, master, tmp_path):
+    """Reimport di marzo con I.C. ALFA scritta nella municipalita' 3: le coppie restano nel
+    loro plesso e il file non cambia niente. La stessa scuola in due municipalita' si
+    mostra come avviso, senza la casella "Ho controllato" (l'import non serve)."""
+    dati, _atteso = master
+    importa(napoli, dati)
+    diverso = variante(tmp_path, municipalita_di('I.C. ALFA', 3))
+    for modo in ('import', 'anagrafica'):
+        a = _ok(anteprima(napoli, diverso, modo=modo))
+        assert a['nessun_cambiamento'] and a['conferme_richieste'] == []
+        [conf] = a['conferme']
+        assert conf['codice'] == 'plessi' and conf['solo_avviso']
+        r = _ok(conferma(napoli, diverso, a))
+        assert r['nessun_cambiamento']
 
 
 # ==================== conferma ====================
@@ -413,7 +577,7 @@ def test_senza_copia_di_sicurezza_non_si_scrive(napoli, master, monkeypatch, db_
     a, scelte = con_ore_scelte(napoli, dati)
     prima = seme_napoli.impronta_napoli(napoli.percorso)
     monkeypatch.setattr(db_mod, 'create_backup', lambda *x, **k: None)
-    e = _errore(conferma(napoli, dati, a, scelte), 503, 'COPIA_NON_RIUSCITA')
+    e = _errore(conferma(napoli, dati, a, dict(scelte, conferme=a['conferme_richieste'])), 503, 'COPIA_NON_RIUSCITA')
     assert 'copia di sicurezza' in e['error']
     assert seme_napoli.impronta_napoli(napoli.percorso) == prima
 
@@ -496,7 +660,7 @@ def test_ctrl_z_subito_dopo_annulla_l_import(napoli, master):
 
 
 def test_ore_scritte_a_mano_restano_se_non_si_sceglie_di_sostituirle(napoli, master):
-    dati, _atteso = master
+    dati, atteso = master
     importa(napoli, dati)
     [p] = righe(napoli.percorso, "SELECT * FROM napoli_presenze WHERE data = '2026-03-03' ORDER BY id LIMIT 1")
     esegui(napoli.percorso, "UPDATE napoli_presenze SET origine = 'foglio', minuti_riconosciuti = 45, import_id = NULL "
@@ -506,8 +670,14 @@ def test_ore_scritte_a_mano_restano_se_non_si_sceglie_di_sostituirle(napoli, mas
     m = a['manuali_diverse'][0]
     assert m['data'] == '2026-03-03' and m['assisto'] == '0:45 (0,75)' and m['alunno'] and m['operatore']
     assert a['nessun_cambiamento']           # se non si sceglie, il file non cambia niente
+    # le ore per figura e per grado sono quelle che Assisto avra' dopo l'import: per il giorno
+    # scritto a mano, che resta, contano le ore di Assisto
+    dopo_l_import = atteso['totale_minuti'] - p['minuti_riconosciuti'] + 45
+    assert a['totale_tabella']['minuti'] == sum(x['minuti'] for x in a['ore_per_figura']) == dopo_l_import
+    assert a['totale_importato']['minuti'] == dopo_l_import and a['totale']['minuti'] == atteso['totale_minuti']
     b = _ok(anteprima(napoli, dati, {'sovrascrivi_manuali': True}))
     assert not b['nessun_cambiamento'] and b['conteggi']['presenze']['sovrascritte'] == 1
+    assert b['totale_tabella']['minuti'] == atteso['totale_minuti']
     _a, esito = importa(napoli, dati, {'sovrascrivi_manuali': True})
     [dopo] = righe(napoli.percorso, 'SELECT * FROM napoli_presenze WHERE id = ?', (p['id'],))
     assert (dopo['minuti_riconosciuti'], dopo['origine']) == (p['minuti_riconosciuti'], 'import_excel')
@@ -522,6 +692,54 @@ def test_ore_cambiate_a_mano_dopo_l_import_impediscono_di_annullarlo(napoli, mas
     esegui(napoli.percorso, "UPDATE napoli_presenze SET origine = 'griglia' WHERE id = "
                             '(SELECT MIN(id) FROM napoli_presenze)')
     _errore(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}), 409, 'IMPORT_CAMBIATO_DOPO')
+
+
+def test_dati_dell_import_cambiati_a_mano_impediscono_di_annullarlo(napoli, master, tmp_path):
+    """Annullare rimetterebbe i valori di prima sopra una modifica fatta a mano dopo
+    l'import: non si annulla (come per le ore cambiate a mano)."""
+    dati, _atteso = master
+    importa(napoli, dati)
+    _a, esito = importa(napoli, aprile(tmp_path))               # aprile: il sostituto continua (data di fine)
+    chiave = ('FORMATO TAU', 'NOVIZIO ZETA', 'sostituto')
+    coppia = coppie_per_nome(napoli.percorso)[chiave]
+    assert coppia['valido_a'] == '2026-04-17'
+    esegui(napoli.percorso, "UPDATE napoli_coppie SET valido_a = '2026-04-10' WHERE id = ?", (coppia['id'],))
+    e = _errore(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}), 409,
+                'IMPORT_CAMBIATO_DOPO')
+    assert 'un dato scritto dall\'import' in e['error']
+    esegui(napoli.percorso, "UPDATE napoli_coppie SET valido_a = '2026-04-17' WHERE id = ?", (coppia['id'],))
+    _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
+    assert coppie_per_nome(napoli.percorso)[chiave]['valido_a'] == '2026-03-19'
+
+
+def test_qualifica_dell_import_cambiata_nelle_impostazioni_impedisce_di_annullarlo(napoli, tmp_path):
+    def qualifica(r):
+        r[5]['qualifica'] = 'OPERATORE SOCIALE'
+    dati = variante(tmp_path, qualifica)
+    _a, esito = carica_anagrafica(napoli, dati, {'qualifiche': {'OPERATORE SOCIALE': 'EDUCATORE'}})
+    _ok(napoli.put('/api/napoli/qualifiche', json={'testo': 'OPERATORE SOCIALE', 'figura': 'ASACOM'}))
+    _errore(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}), 409, 'IMPORT_CAMBIATO_DOPO')
+    _ok(napoli.put('/api/napoli/qualifiche', json={'testo': 'OPERATORE SOCIALE', 'figura': 'EDUCATORE'}))
+    _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
+    assert not righe(napoli.percorso, "SELECT * FROM napoli_alias_qualifiche WHERE testo = 'OPERATORE SOCIALE'")
+
+
+def test_la_nota_della_riga_si_salva_senza_codici_fiscali(napoli, master):
+    """La colonna NOTE e' testo libero: un codice fiscale (anche gia' salvato, per esempio
+    da una versione di prima) non arriva in chiaro nel registro per "Annulla import"."""
+    dati, _atteso = master
+    importa(napoli, dati)
+    cf = 'RSSMRA80A01Z999X'
+    [foglio] = righe(napoli.percorso, 'SELECT id FROM napoli_fogli ORDER BY id LIMIT 1')
+    esegui(napoli.percorso, 'UPDATE napoli_fogli SET note = ? WHERE id = ?', (f'Assente, codice {cf}', foglio['id']))
+    a, scelte = con_ore_scelte(napoli, dati)
+    assert a['conteggi']['aggiornati']['fogli'] == 1
+    esito = _ok(conferma(napoli, dati, a, dict(scelte, conferme=a['conferme_richieste'])))
+    [imp] = righe(napoli.percorso, 'SELECT sostituite_json FROM napoli_import WHERE id = ?', (esito['import_id'],))
+    assert cf not in imp['sostituite_json'] and calc.maschera_codice_fiscale(cf) in imp['sostituite_json']
+    _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
+    [nota] = righe(napoli.percorso, 'SELECT note FROM napoli_fogli WHERE id = ?', (foglio['id'],))
+    assert nota['note'] == f'Assente, codice {calc.maschera_codice_fiscale(cf)}'
 
 
 def test_solo_confronto_non_scrive_e_mostra_le_differenze(napoli, master):
@@ -663,12 +881,12 @@ def test_il_mese_dopo_un_plesso_nuovo_serve_a_una_coppia_nuova(napoli, master, t
         r.append(x)
     apr = aprile(tmp_path, operatore_nuovo)
     a, scelte = con_ore_scelte(napoli, apr)
-    assert a['conferme_richieste'] == ['plessi']
+    assert a['conferme_richieste'] == ['plessi', 'gradi']
     assert [(s['codice'], s['municipalita']) for s in a['scuole_nuove']] == [('NAIC8ZZ001', 3)]
     [voce] = a['conferme'][0]['voci']
     assert 'nel file municipalità 2 e 3, in Assisto 2: si aggiunge il plesso della municipalità 3' in voce['testo']
     assert voce['righe'] == [43]
-    _ok(conferma(napoli, apr, a, dict(scelte, conferme=['plessi'])))
+    _ok(conferma(napoli, apr, a, dict(scelte, conferme=['plessi', 'gradi'])))
     plessi = righe(napoli.percorso, "SELECT s.municipalita, COUNT(c.id) AS coppie FROM napoli_scuole s "
                                     'LEFT JOIN napoli_coppie c ON c.scuola_id = s.id '
                                     "WHERE s.codice_meccanografico = 'NAIC8ZZ001' GROUP BY s.id ORDER BY s.municipalita")
@@ -885,10 +1103,18 @@ def test_richieste_incomplete(napoli, master):
 # ==================== pagina e Roma ====================
 
 def test_pagina_di_import(napoli):
+    """L'azione principale e' "Carica l'anagrafica dal file Excel" (REGOLE 14); le ore dei
+    giorni di un mese sono in una parte secondaria, chiusa."""
     r = napoli.get('/napoli/import')
     assert r.status_code == 200
     testo = r.get_data(as_text=True)
-    assert 'Importa il foglio presenze del mese' in testo and 'NapoliImport.avvia()' in testo
+    assert 'Carica l&#39;anagrafica dal file Excel' in testo or "Carica l'anagrafica dal file Excel" in testo
+    assert 'NapoliImport.avvia()' in testo
+    principale = testo.index('id="btn-import-anteprima"')
+    altre = testo.index('<details class="napoli-altre-azioni"')
+    assert principale < altre < testo.index('id="btn-import-ore"') and altre < testo.index('id="btn-import-confronta"')
+    assert 'btn btn-primary" id="btn-import-anteprima"' in testo
+    assert '<details class="napoli-altre-azioni" id="import-altre">' in testo           # chiusa (senza open)
     assert 'href="/napoli/import"' in napoli.get('/napoli').get_data(as_text=True)
 
 

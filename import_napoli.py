@@ -1,11 +1,22 @@
-"""Import del foglio presenze mensile "master" di Napoli (PROGETTO §7.1, passi 1.4-1.5).
+"""Import del file Excel "master" di Napoli (PROGETTO §7.1, passi 1.4-1.5; REGOLE 14).
 
-Il master e' il file Excel che il coordinatore manda ogni mese: una riga per coppia
-operatore-alunno (Lotto, Cooperativa, operatore e codice fiscale, qualifica, data di
-inizio, ore di contratto, alunno e codice fiscale, ore da progetto, municipalita',
-scuola), una colonna per ogni giorno da lunedi' a sabato con le ore in decimale o la
-sigla dell'operatore assente (F, M, F perm), una VERIFICA dopo ogni settimana, la
-sostituzione SI/NO e le note.
+Il master e' il file Excel del coordinatore: una riga per coppia operatore-alunno
+(Lotto, Cooperativa, operatore e codice fiscale, qualifica, data di inizio, ore di
+contratto, alunno e codice fiscale, ore da progetto, municipalita', scuola), una colonna
+per ogni giorno da lunedi' a sabato con le ore in decimale o la sigla dell'operatore
+assente (F, M, F perm), una VERIFICA dopo ogni settimana, la sostituzione SI/NO e le note.
+
+Tre modi (REGOLE 14: lo storico delle ore di Napoli non si carica):
+- 'anagrafica' (il modo principale e quello predefinito): dal file si prende solo
+  l'anagrafica, cioe' alunni, operatori con qualifica e ore di contratto, scuole e plessi
+  con la municipalita', coppie operatore-alunno con la data di inizio e PEI settimanali.
+  Le celle dei giorni servono solo alle date delle coppie (un sostituto vale dal primo
+  all'ultimo giorno con ore): niente giorni registrati, niente fogli del mese, nessun
+  controllo sulle ore (codici SOLO_ORE) e nessuna ora da confermare.
+- 'ore' ('import' e' lo stesso modo, con il nome di prima): anche le ore dei giorni del
+  mese; un'opzione secondaria della pagina, che non serve per l'uso normale (le ore si
+  scrivono in Assisto).
+- 'confronto': le differenze fra le ore del file e Assisto, senza scrivere nulla.
 
 - Lettura (leggi_master): solo il file, niente database. Le colonne si riconoscono
   dall'intestazione, i giorni dalla data, la scuola per posizione (nel file del
@@ -18,31 +29,41 @@ sostituzione SI/NO e le note.
 - Anteprima (anteprima): non scrive nulla. Abbina il file ai dati di Napoli (scuole per
   codice meccanografico e municipalita' della SCUOLA: la stessa scuola con municipalita'
   diverse, nel file o fra il file e Assisto, si conferma, e un plesso nuovo si crea solo
-  se serve a una coppia nuova; alunni per codice fiscale o per la sua radice, i primi 15
-  caratteri; operatori per codice fiscale, radice o nome, da confermare, anche quando il
-  mese dopo il codice arriva corretto; un codice giusto corregge quello sbagliato in
-  Assisto; qualifiche con le grafie di napoli_alias_qualifiche, una nuova si sceglie
-  sempre; coppie valide nel mese o finite nel mese prima, cosi' un sostituto che continua
-  o un titolare che torna restano la stessa coppia) e prepara il piano: cosa si crea,
-  cosa cambia, ore per figura e per grado, avvisi e bloccanti spiegati con parole
-  semplici. Le ore da confermare ("1,30") si scelgono sempre: nessuna e' gia' scelta.
-- Conferma (conferma): lo stesso file (sha256 dell'anteprima) e gli stessi dati di
-  Napoli (versione_dati), copia di sicurezza del database, poi un'unica transazione.
-  Ogni cella con ore o sigla e' un giorno registrato (calcolo 'manuale', origine
-  'import_excel', testo originale); la nota della riga va nel foglio del mese.
-- Reimport dello stesso mese: si sostituiscono solo le ore importate; le ore scritte a
-  mano diverse dal file si mostrano e restano (salvo la scelta "sovrascrivi");
-  un file uguale non cambia nulla.
+  se serve a una coppia nuova; il grado delle scuole nuove, proposto dal codice, si
+  conferma con "Ho controllato i gradi"; alunni per codice fiscale o per la sua radice, i
+  primi 15 caratteri; operatori per codice fiscale, radice o nome, da confermare, anche
+  quando il mese dopo il codice arriva corretto; un codice giusto corregge quello
+  sbagliato in Assisto; qualifiche con le grafie di napoli_alias_qualifiche, una nuova si
+  sceglie sempre; coppie valide nel mese o finite nel mese prima, cosi' un sostituto che
+  continua o un titolare che torna restano la stessa coppia) e prepara il piano: cosa si
+  crea, cosa cambia, ore (o coppie) per figura e per grado, avvisi e bloccanti spiegati
+  con parole semplici. Le ore da confermare ("1,30") si scelgono sempre: nessuna e' gia'
+  scelta. Se il file non cambia niente, le conferme diventano solo avvisi.
+- Conferma (conferma): lo stesso file (sha256 dell'anteprima), lo stesso modo e gli
+  stessi dati di Napoli (versione_dati), copia di sicurezza del database, poi un'unica
+  transazione. Nel modo 'ore' ogni cella con ore o sigla e' un giorno registrato
+  (calcolo 'manuale', origine 'import_excel', testo originale) e la nota della riga va
+  nel foglio del mese, con i codici fiscali mascherati.
+- Reimport: si sostituiscono solo le ore importate; le ore scritte a mano diverse dal
+  file si mostrano e restano (salvo la scelta "sovrascrivi"); un file uguale non cambia
+  nulla. Nel modo 'anagrafica' si aggiunge o si aggiorna solo l'anagrafica.
 - Annulla import (annulla_import, anche con Ctrl+Z subito dopo): solo l'ultimo import
   del lotto, rimette tutto com'era (napoli_import.sostituite_json: id delle righe
-  create e valori di prima delle righe cambiate, mai codici fiscali).
+  create, valori di prima e di dopo delle righe cambiate, mai codici fiscali). Non si
+  annulla se dopo l'import un giorno, un campo cambiato dall'import o una qualifica
+  creata dall'import sono stati cambiati a mano (IMPORT_CAMBIATO_DOPO). Le righe create
+  dall'import si cancellano: quando le anagrafiche si potranno modificare (passo 1.6)
+  serve lo stesso controllo anche per quelle.
 - Solo confronto (modo 'confronto'): le differenze fra il file e Assisto, coppia per
   coppia e giorno per giorno, senza scrivere nulla.
 
 Privacy: i codici fiscali stanno solo nelle anagrafiche di Napoli; alla pagina arrivano
-mascherati (anche quelli scritti per errore in una cella), e non entrano mai negli
-avvisi, nel registro attivita', nei log, in napoli_import (esito_json e sostituite_json:
-di un codice corretto si salva solo la differenza) o in napoli_annullamenti.
+mascherati (anche quelli scritti per errore in una cella o nelle note), e non entrano mai
+negli avvisi, nel registro attivita', nei log, in napoli_fogli.note, in napoli_import
+(esito_json e sostituite_json: di un codice corretto si salva solo la differenza) o in
+napoli_annullamenti. La colonna NOTE e' testo libero: si salva (solo nel modo 'ore') con
+i codici fiscali mascherati, ma un dato sanitario scritto li' non si riconosce da solo
+(art. 12.3 CSA: la pagina ricorda di non scriverne).
 Solo tabelle napoli_* (tests/test_separazione_napoli.py).
 """
 import collections
@@ -81,6 +102,20 @@ MAX_RIGHE_PER_AVVISO = 40           # righe elencate per ogni avviso (le altre s
 # Righe vuote di fila dopo le quali il foglio e' finito (un foglio formattato fino in
 # fondo ha un milione di righe vuote: non si leggono).
 RIGHE_VUOTE_FINE = 200
+# Che cosa si prende dal file: solo l'anagrafica (il modo principale, REGOLE 14), anche
+# le ore del mese, o solo il confronto delle ore con Assisto ('import' = 'ore').
+MODI = ('anagrafica', 'ore', 'confronto')
+MODO_PREDEFINITO = 'anagrafica'
+
+
+def modo_import(modo):
+    """Il modo dell'import: 'anagrafica' se non e' indicato, 'ore' anche per 'import'."""
+    valore = str(modo or '').strip().lower() or MODO_PREDEFINITO
+    valore = 'ore' if valore == 'import' else valore
+    if valore not in MODI:
+        raise DatiNonValidi('Scegli se caricare l\'anagrafica, importare le ore del mese o solo confrontare.',
+                            'modo', codice='MODO_NON_VALIDO')
+    return valore
 
 
 # ==================== utilita' di lettura ====================
@@ -890,6 +925,9 @@ SPIEGAZIONI = {
     'qualifica_non_collegata': ('bloccante', 'Qualifica da collegare a una figura',
                                 'Scegli la figura professionale nella tabella «Qualifiche nuove» qui sotto.'),
     'qualifica_mancante': ('bloccante', 'Qualifica mancante', 'Scrivi la qualifica dell\'operatore nel file.'),
+    'qualifica_con_codice_fiscale': ('bloccante', 'Qualifica con un codice fiscale dentro',
+                                     'Nella colonna della qualifica c\'è anche un codice fiscale: lascia solo la '
+                                     'qualifica e correggi la cella nel file.'),
     'cf_alunno_non_valido': ('bloccante', 'Codice fiscale dell\'alunno mancante o sbagliato',
                              'L\'alunno si riconosce dal codice fiscale (16 caratteri): correggilo nel file.'),
     'riga_senza_alunno': ('bloccante', 'Riga senza alunno', 'Mancano nome e codice fiscale dell\'alunno.'),
@@ -1057,11 +1095,40 @@ SPIEGAZIONI = {
 }
 
 
-def spiegazione(codice):
+# Controlli che riguardano solo le ore dei giorni: nel modo 'anagrafica' le ore non si
+# caricano, quindi non si mostrano e non bloccano (REGOLE 14).
+SOLO_ORE = frozenset({
+    'sigla_sconosciuta', 'cella_non_riconosciuta', 'ore_negative', 'ore_giorno_oltre_12',
+    'ore_in_colonna_di_altro_mese', 'colonna_giorno_doppia',
+    'ore_giorno_oltre_5', 'ore_non_multiple_di_un_quarto', 'ore_arrotondate_al_minuto', 'cella_in_formato_orario',
+    'attivita_di_sabato', 'colonna_domenica', 'giorno_di_altro_mese', 'colonne_giorni_non_standard',
+    'riga_senza_attivita', 'settimana_oltre_pei', 'settimana_oltre_pei_piu_20',
+    'alunno_settimana_oltre_pei_tra_operatori', 'alunno_assente_e_operatore_assente', 'assenza_operatore_parziale',
+    'numero_come_testo', 'sigla_scritta_in_variante', 'verifica_senza_formula', 'verifica_vuota',
+    'verifica_esclude_numeri_come_testo', 'verifica_diversa_dalla_somma', 'settimana_senza_verifica',
+    'riepilogo_non_allineato',
+})
+# Spiegazioni diverse nel modo 'anagrafica' (le altre sono le stesse).
+SPIEGAZIONI_ANAGRAFICA = {
+    'mese_chiuso': ('bloccante', 'Il mese del file è chiuso per questo lotto',
+                    'L\'anagrafica prende le coppie e i PEI da quel mese: riaprilo prima, oppure usa il file di '
+                    'un mese non ancora chiuso.'),
+    'coppia_del_mese_non_nel_file': ('avviso', 'Coppia di questo mese che nel file non c\'è più',
+                                     'La coppia resta in Assisto com\'è (vedi «Coppie che nel file non ci sono '
+                                     'più»).'),
+    'righe_del_coordinatore': ('avviso', 'Righe del coordinatore',
+                               'Il coordinatore non ha coppie con gli alunni: le sue ore si scrivono nella fattura '
+                               '(totale del mese). Queste righe non si caricano.'),
+}
+
+
+def spiegazione(codice, modo='ore'):
+    if modo == 'anagrafica' and codice in SPIEGAZIONI_ANAGRAFICA:
+        return SPIEGAZIONI_ANAGRAFICA[codice]
     return SPIEGAZIONI.get(codice, ('avviso', codice.replace('_', ' ').capitalize(), ''))
 
 
-def _gruppi(anomalie):
+def _gruppi(anomalie, modo='ore'):
     """Avvisi raggruppati per codice, nell'ordine bloccanti, avvisi, note: [{codice,
     livello, titolo, spiegazione, n, righe: [{riga, colonna, dettaglio}]}] (mai nomi o CF)."""
     per_codice = collections.OrderedDict()
@@ -1070,7 +1137,7 @@ def _gruppi(anomalie):
     ordine = {'bloccante': 0, 'avviso': 1, 'nota': 2}
     out = []
     for codice, lista in per_codice.items():
-        livello, titolo, testo = spiegazione(codice)
+        livello, titolo, testo = spiegazione(codice, modo)
         out.append({'codice': codice, 'livello': livello, 'titolo': titolo, 'spiegazione': testo, 'n': len(lista),
                     'righe': [{k: a.get(k) for k in ('riga', 'colonna', 'dettaglio')}
                               for a in lista[:MAX_RIGHE_PER_AVVISO]]})
@@ -1133,6 +1200,13 @@ def _impronta_contesto(ctx):
     parti = {k: v for k, v in ctx.items() if k not in ('regole', 'inizio', 'fine', 'figure')}
     parti['coppie_con_ore_dopo_il_mese'] = sorted(ctx['coppie_con_ore_dopo_il_mese'])
     return hashlib.sha256(json.dumps(parti, sort_keys=True, default=str).encode('utf-8')).hexdigest()[:24]
+
+
+def _versione(ctx, modo):
+    """La versione_dati dell'anteprima: i dati di Napoli e il modo. Una conferma in un modo
+    diverso da quello dell'anteprima (per esempio le ore dopo l'anteprima dell'anagrafica)
+    si rifiuta come un'anteprima superata."""
+    return hashlib.sha256(f'{ctx["versione"]}|{modo}'.encode('utf-8')).hexdigest()[:24]
 
 
 # ==================== scelte dell'anteprima ====================
@@ -1221,10 +1295,13 @@ def _elenco_municipalita(valori):
 
 class _Piano:
     """Cosa farebbe l'import, senza scrivere: si costruisce dalla lettura del file e dai
-    dati di Napoli (ctx); la conferma lo applica cosi' com'e'."""
+    dati di Napoli (ctx); la conferma lo applica cosi' com'e'. Nel modo 'anagrafica' le
+    celle dei giorni servono solo alle date delle coppie: niente giorni, fogli del mese,
+    ore da confermare o controlli sulle ore."""
 
-    def __init__(self, ctx, lettura, scelte, solo_confronto=False):
-        self.ctx, self.lettura, self.scelte, self.solo_confronto = ctx, lettura, scelte, solo_confronto
+    def __init__(self, ctx, lettura, scelte, modo='ore'):
+        self.ctx, self.lettura, self.scelte, self.modo = ctx, lettura, scelte, modo
+        self.solo_confronto, self.solo_anagrafica = modo == 'confronto', modo == 'anagrafica'
         self.anno, self.mese = lettura['anno'], lettura['mese']
         self.inizio, self.fine = ctx['inizio'], ctx['fine']
         self.avvisi = []                       # come le anomalie della lettura (riga, colonna, codice)
@@ -1285,25 +1362,36 @@ class _Piano:
         for voce in self.righe:
             if voce['valida']:
                 self._coppia(voce)
-        self._ore_ambigue()
+        if not self.solo_anagrafica:
+            self._ore_ambigue()
         for voce in self.righe:
             if voce['valida'] and voce['ruolo'] == 'sostituto':
                 self._titolare_del_sostituto(voce)
         self._subentri()
         self._scuole_usate()
         for voce in self.righe:
-            if voce['valida']:
+            if not voce['valida']:
+                continue
+            if self.solo_anagrafica:
+                voce['foglio'], voce['celle'] = None, []
+            else:
                 self._foglio(voce)
                 self._celle(voce)
         self._pei()
-        self._settimane_tra_operatori()
-        self._presenze_senza_cella()
+        if not self.solo_anagrafica:
+            self._settimane_tra_operatori()
+            self._presenze_senza_cella()
         self._chiusure()
         self._plessi()
         self._figure_degli_operatori()
         per_nome = [o for o in self.operatori.values() if o.get('per_nome') and not o.get('nuovo')]
         if per_nome:
             self.conferme['operatori_per_nome'] = per_nome
+        # il grado decide su quale fattura (e quale fondo) vanno le ore (REGOLE 9): quello
+        # proposto dal codice meccanografico si conferma ("Ho controllato i gradi")
+        nuove = [s for s in self.scuole.values() if s['nuova'] and s['usata']]
+        if nuove:
+            self.conferme['gradi'] = nuove
 
     def _municipalita_delle_scuole(self):
         """Per ogni scuola (codice o nome) le municipalita' scritte nel file e in Assisto."""
@@ -1354,6 +1442,10 @@ class _Piano:
         testo = r['qualifica']
         if not testo:
             self.avviso(r['riga'], 'qualifica_mancante')
+            return None
+        if nascondi_codici_fiscali(testo) != testo:
+            # la grafia si salverebbe nelle Impostazioni (Qualifiche), dove si legge in chiaro
+            self.avviso(r['riga'], 'qualifica_con_codice_fiscale')
             return None
         if testo in self.ctx['alias']:
             return self.ctx['alias'][testo]
@@ -1750,10 +1842,11 @@ class _Piano:
             else:
                 # titolare solo in Assisto: le sue ore importate prima si tolgono (non e' nel
                 # file); contano i giorni scritti a mano o programmati e quelli dopo il mese
+                # (nel modo 'anagrafica' nessun giorno si toglie: contano tutti)
                 attuale = titolare['coppia_assisto']
                 if attuale['id'] in self.ctx['coppie_con_ore_dopo_il_mese'] or any(
                         p['coppia_id'] == attuale['id'] and p['data'] >= di.isoformat()
-                        and p['origine'] != 'import_excel' for p in self.ctx['presenze']):
+                        and (p['origine'] != 'import_excel' or self.solo_anagrafica) for p in self.ctx['presenze']):
                     continue
             if attuale and attuale['valido_a'] is not None and calc.data(attuale['valido_a']) <= chiudi_al:
                 continue
@@ -1769,7 +1862,9 @@ class _Piano:
 
     # ---------- foglio, celle, PEI ----------
     def _foglio(self, voce):
-        note = voce['r']['note'] or None
+        # la colonna NOTE e' testo libero: un codice fiscale scritto li' si salva mascherato
+        # (anche nella copia per "Annulla import"); un dato sanitario non si riconosce da solo
+        note = nascondi_codici_fiscali(voce['r']['note'] or None) or None
         dal, al = self._date_coppia(voce)
         if dal > self.fine or (al is not None and al < self.inizio):
             voce['foglio'] = None           # la coppia non vale nel mese (comincia dopo o e' chiusa prima)
@@ -1810,8 +1905,13 @@ class _Piano:
                                              'colonna': c['colonna']})
                 if self.scelte['sovrascrivi_manuali']:
                     azione = 'sovrascrivi'
+            # minuti_dopo: le ore che il giorno avra' in Assisto dopo l'import (un giorno
+            # scritto a mano e diverso dal file resta com'e', se non si sceglie di sostituirlo)
+            minuti_dopo = (esistente['minuti_riconosciuti'] or 0) if azione == 'manuale_diversa' \
+                else valori['minuti_riconosciuti']
             voce['celle'].append({'data': d, 'colonna': c['colonna'], 'valori': valori, 'azione': azione,
-                                  'presenza': esistente, 'minuti': valori['minuti_riconosciuti']})
+                                  'presenza': esistente, 'minuti': valori['minuti_riconosciuti'],
+                                  'minuti_dopo': minuti_dopo})
 
     def _pei(self):
         for voce in self.righe:
@@ -1967,9 +2067,14 @@ class _Piano:
         g = calc.grado_fattura(voce['alunno'].get('grado')) or calc.grado_fattura(scuola.get('grado'))
         return g or 'da_decidere'
 
+    def anomalie(self):
+        """Gli avvisi della lettura e dell'abbinamento; nel modo 'anagrafica' senza i
+        controlli sulle ore dei giorni (SOLO_ORE), che li' non si caricano."""
+        tutte = self.lettura['anomalie'] + self.avvisi
+        return [a for a in tutte if a['codice'] not in SOLO_ORE] if self.solo_anagrafica else tutte
+
     def bloccanti(self):
-        codici = {c for c, (livello, *_x) in SPIEGAZIONI.items() if livello == 'bloccante'}
-        return [a for a in self.lettura['anomalie'] + self.avvisi if a['codice'] in codici]
+        return [a for a in self.anomalie() if spiegazione(a['codice'], self.modo)[0] == 'bloccante']
 
     def conteggi(self):
         valide = [v for v in self.righe if v['valida']]
@@ -1989,7 +2094,7 @@ class _Piano:
             'righe_escluse': len(self.lettura['righe']) - len(valide),
             'celle_escluse': sum(1 for v in valide for c in v['r']['celle'].values() if c['esito'] == 'errore'),
             'operatori': len(self.operatori), 'alunni': len(self.alunni), 'scuole': len(self.scuole),
-            'minuti': sum(c['minuti'] for c in celle), 'giorni_con_ore': sum(1 for c in celle if c['minuti']),
+            'minuti': sum(c['minuti_dopo'] for c in celle), 'giorni_con_ore': sum(1 for c in celle if c['minuti']),
             'minuti_file': self.minuti_file(),
             'sigle': {k: sigle[k] for k in ('ferie', 'malattia', 'permesso') if sigle[k]},
             'nuovi': {'scuole': sum(1 for s in self.scuole.values() if s['nuova'] and s['usata']),
@@ -2030,20 +2135,30 @@ class _Piano:
                          or c['presenze']['sovrascritte'] or c['presenze']['da_togliere']))
 
     def ore_per_figura(self):
-        """Ore per figura e per grado (come il prospetto della fattura), dai giorni del file."""
+        """Per figura e per grado (come il prospetto della fattura), per le righe che si
+        importano: le ore che i loro giorni avranno in Assisto dopo l'import (un giorno
+        scritto a mano e diverso dal file resta com'e', se non si sceglie di sostituirlo),
+        le righe (coppie) e le ore settimanali da progetto (PEI) del file."""
         out = collections.OrderedDict()
         figure = sorted(self.ctx['figure'].values(), key=lambda f: f['ordine'])
         for f in figure:
             out[f['codice']] = {'figura': f['codice'], 'nome': napoli_db.nome_figura(f['codice']), 'righe': 0,
-                                'minuti': 0, 'per_grado': {'inferiore': 0, 'superiore': 0, 'da_decidere': 0}}
+                                'minuti': 0, 'per_grado': {'inferiore': 0, 'superiore': 0, 'da_decidere': 0},
+                                'righe_per_grado': {'inferiore': 0, 'superiore': 0, 'da_decidere': 0},
+                                'pei': calc.decimale(0)}
         for voce in self.righe:
             if not voce['valida']:
                 continue
             x = out[voce['figura']]
+            grado = self.grado_della_riga(voce)
             x['righe'] += 1
-            m = sum(c['minuti'] for c in voce['celle'])
+            x['righe_per_grado'][grado] += 1
+            m = sum(c['minuti_dopo'] for c in voce['celle'])
             x['minuti'] += m
-            x['per_grado'][self.grado_della_riga(voce)] += m
+            x['per_grado'][grado] += m
+        for p in self.pei.values():
+            if p['figura'] in out:
+                out[p['figura']]['pei'] += p['ore']
         return [x for x in out.values() if x['righe']]
 
 
@@ -2061,10 +2176,13 @@ TABELLE_IMPORT = ('alias_qualifiche', 'scuole', 'operatori', 'alunni', 'coppie',
 
 class _Registro:
     """Le righe create, cambiate e tolte da un import, per "Annulla import"
-    (napoli_import.sostituite_json): id e valori di prima, mai codici fiscali. Delle
-    anagrafiche si cambiano solo campi vuoti (ore di contratto, municipalita' della scuola)
-    e i codici fiscali sbagliati corretti dal file: di quelli si salva solo la differenza
-    (differenza_cf, al piu' due caratteri), mai il codice."""
+    (napoli_import.sostituite_json): id, valori di prima e di dopo (per sapere se sono
+    stati cambiati a mano dopo l'import), mai codici fiscali. Delle anagrafiche si cambiano
+    solo campi vuoti (ore di contratto, municipalita' della scuola), le date delle coppie,
+    i PEI e i codici fiscali sbagliati corretti dal file: di quelli si salva solo la
+    differenza (differenza_cf, al piu' due caratteri), mai il codice. La nota di un foglio
+    si salva con i codici fiscali mascherati. Le grafie delle qualifiche create si salvano
+    con la figura scelta."""
 
     def __init__(self, conn):
         self.conn = conn
@@ -2087,9 +2205,14 @@ class _Registro:
         else:
             elenco = ', '.join(valori)
             prima = dict(self.conn.execute(f'SELECT {elenco} FROM napoli_{tabella} WHERE id = ?', (id_,)).fetchone())
+        if tabella == 'fogli' and prima.get('note'):
+            prima['note'] = nascondi_codici_fiscali(prima['note'])
         assegna = ', '.join(f'{k} = ?' for k in valori)
         self.conn.execute(f'UPDATE napoli_{tabella} SET {assegna} WHERE id = ?', tuple(valori.values()) + (id_,))
-        self.cambiate.append({'tabella': tabella, 'id': id_, 'prima': prima})
+        voce = {'tabella': tabella, 'id': id_, 'prima': prima}
+        if tabella != 'presenze':         # per le presenze il controllo e' import_id e modificato_il
+            voce['dopo'] = dict(valori)
+        self.cambiate.append(voce)
 
     def correggi_cf(self, tabella, id_, vecchio, nuovo):
         """Il codice fiscale di un alunno o di un operatore corretto con quello del file."""
@@ -2104,7 +2227,8 @@ class _Registro:
             valori['cf_valido'] = 1
         assegna = ', '.join(f'{k} = ?' for k in valori)
         self.conn.execute(f'UPDATE napoli_{tabella} SET {assegna} WHERE id = ?', tuple(valori.values()) + (id_,))
-        self.cambiate.append({'tabella': tabella, 'id': id_, 'prima': prima, 'differenza_cf': differenza})
+        self.cambiate.append({'tabella': tabella, 'id': id_, 'prima': prima, 'differenza_cf': differenza,
+                              'dopo': {k: v for k, v in valori.items() if k != 'codice_fiscale'}})
 
     def togli_presenza(self, presenza_id):
         riga = dict(self.conn.execute('SELECT * FROM napoli_presenze WHERE id = ?', (presenza_id,)).fetchone())
@@ -2130,7 +2254,7 @@ def _applica(conn, piano, import_id, ora):
         if q['figura']:
             conn.execute("INSERT INTO napoli_alias_qualifiche (testo, figura, origine) VALUES (?, ?, 'utente')",
                          (q['testo'], q['figura']))
-            reg.create['alias_qualifiche'].append(q['testo'])
+            reg.create['alias_qualifiche'].append({'testo': q['testo'], 'figura': q['figura']})
     for s in piano.scuole.values():
         if s['nuova'] and s['usata']:
             s['id'] = reg.inserisci('scuole', {
@@ -2216,12 +2340,32 @@ def _applica(conn, piano, import_id, ora):
 
 
 def _esito(piano):
-    """Esito di un import da salvare e mostrare: solo conteggi (mai nomi o codici fiscali)."""
+    """Esito di un import da salvare e mostrare: il modo e i conteggi (mai nomi o codici
+    fiscali)."""
     c = piano.conteggi()
-    return {'righe': c['righe'], 'righe_importate': c['righe_importate'], 'operatori': c['operatori'],
-            'alunni': c['alunni'], 'scuole': c['scuole'], 'minuti': c['minuti'], 'nuovi': c['nuovi'],
-            'aggiornati': c['aggiornati'], 'presenze': c['presenze'],
-            'avvisi': dict(collections.Counter(a['codice'] for a in piano.lettura['anomalie'] + piano.avvisi))}
+    return {'modo': piano.modo, 'righe': c['righe'], 'righe_importate': c['righe_importate'],
+            'operatori': c['operatori'], 'alunni': c['alunni'], 'scuole': c['scuole'], 'minuti': c['minuti'],
+            'nuovi': c['nuovi'], 'aggiornati': c['aggiornati'], 'presenze': c['presenze'],
+            'avvisi': dict(collections.Counter(a['codice'] for a in piano.anomalie()))}
+
+
+def _modo_salvato(imp):
+    """Il modo di un import gia' fatto (quelli di prima del modo 'anagrafica' erano 'ore')."""
+    try:
+        return json.loads(imp.get('esito_json') or '{}').get('modo') or 'ore'
+    except (ValueError, AttributeError):
+        return 'ore'
+
+
+def _import_di_prima(ctx, piano, modo):
+    """L'ultimo import non annullato da confrontare: per le ore, quello delle ore dello
+    stesso mese; per l'anagrafica, l'ultimo caricamento dell'anagrafica (di qualsiasi mese)."""
+    validi = [i for i in ctx['imports'] if not i['annullato']]
+    if modo == 'anagrafica':
+        precedenti = [i for i in validi if _modo_salvato(i) == 'anagrafica']
+    else:
+        precedenti = [i for i in validi if _modo_salvato(i) == 'ore' and (i['anno'], i['mese']) == (piano.anno, piano.mese)]
+    return precedenti[-1] if precedenti else None
 
 
 def _annulla_registro(conn, registro, import_id):
@@ -2257,8 +2401,43 @@ def _annulla_registro(conn, registro, import_id):
     for tabella in ('fogli', 'pei', 'coppie', 'alunni', 'operatori', 'scuole'):
         for id_ in sorted(create.get(tabella) or [], reverse=True):
             conn.execute(f'DELETE FROM napoli_{tabella} WHERE id = ?', (id_,))
-    for testo in create.get('alias_qualifiche') or []:
+    for voce in create.get('alias_qualifiche') or []:
+        testo = voce['testo'] if isinstance(voce, dict) else voce
         conn.execute("DELETE FROM napoli_alias_qualifiche WHERE testo = ? AND origine = 'utente'", (testo,))
+
+
+_RX_COLONNA = re.compile(r'[a-z_]+')
+
+
+def _stesso_valore(a, b):
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)) and not isinstance(a, bool):
+        return float(a) == float(b)
+    return a == b
+
+
+def _cambiati_dopo(conn, registro):
+    """Quanti dati scritti dall'import sono stati cambiati a mano dopo (si perderebbero
+    annullando): i campi cambiati dall'import (valori di dopo) e le grafie delle
+    qualifiche create (figura). Le presenze hanno il loro controllo (import_id e
+    modificato_il); le righe create dall'import non hanno ancora una pagina che le cambi
+    (passo 1.6: serve lo stesso controllo anche per quelle)."""
+    n = 0
+    for voce in registro.get('cambiate') or []:
+        dopo, tabella = voce.get('dopo'), voce.get('tabella')
+        if not dopo or tabella not in TABELLE_IMPORT or tabella == 'presenze':
+            continue
+        if not all(_RX_COLONNA.fullmatch(k) for k in dopo):
+            raise ValueError('colonna non valida')
+        riga = conn.execute(f'SELECT {", ".join(dopo)} FROM napoli_{tabella} WHERE id = ?', (voce['id'],)).fetchone()
+        if riga is not None and any(not _stesso_valore(riga[k], v) for k, v in dopo.items()):
+            n += 1
+    for voce in (registro.get('create') or {}).get('alias_qualifiche') or []:
+        if isinstance(voce, dict):
+            riga = conn.execute('SELECT figura, origine FROM napoli_alias_qualifiche WHERE testo = ?',
+                                (voce['testo'],)).fetchone()
+            if riga is not None and (riga['figura'] != voce['figura'] or riga['origine'] != 'utente'):
+                n += 1
+    return n
 
 
 # ==================== testi per la pagina (con i codici fiscali mascherati) ====================
@@ -2300,34 +2479,40 @@ def _nome_voce(voce):
 
 def _risposta(piano, lettura, ctx, sha, nome_file, modo):
     nomi = _Nomi(ctx)
-    gruppi = _gruppi(lettura['anomalie'] + piano.avvisi)
-    precedenti = [i for i in ctx['imports'] if not i['annullato'] and (i['anno'], i['mese']) == (piano.anno, piano.mese)]
-    ultimo = precedenti[-1] if precedenti else None
+    gruppi = _gruppi(piano.anomalie(), modo)
+    ultimo = _import_di_prima(ctx, piano, modo)
+    ore_figura = piano.ore_per_figura()
+    solo_ore = modo != 'anagrafica'
     out = {
         'modo': modo,
         'file': {'nome': nome_file, 'sha256': sha, 'foglio': lettura['foglio'], 'anno': piano.anno, 'mese': piano.mese,
                  'mese_testo': mese_testo(piano.anno, piano.mese)},
         'lotto': {'id': ctx['lotto']['id'], 'nome': ctx['lotto']['nome'], 'numero_lotto': ctx['lotto']['numero_lotto']},
-        'versione_dati': ctx['versione'],
+        'versione_dati': _versione(ctx, modo),
         'mese_chiuso': ctx['chiuso'],
         'reimport': None if ultimo is None else {
             'import_id': ultimo['id'], 'data': ultimo['data'], 'nome_file': ultimo['nome_file'],
+            'mese_testo': mese_testo(ultimo['anno'], ultimo['mese']) if ultimo['anno'] and ultimo['mese'] else '',
             'stesso_file': ultimo['sha256'] == sha},
         'conteggi': piano.conteggi(),
-        'ore_per_figura': [dict(x, ore=_ore_testo(x['minuti']),
-                                per_grado_ore={g: _ore_testo(m) for g, m in x['per_grado'].items()})
-                           for x in piano.ore_per_figura()],
+        'ore_per_figura': [dict({k: v for k, v in x.items() if k != 'pei'}, ore=_ore_testo(x['minuti']),
+                                per_grado_ore={g: _ore_testo(m) for g, m in x['per_grado'].items()},
+                                pei_ore=calc.numero_it(x['pei']))
+                           for x in ore_figura],
         'bloccanti': [g for g in gruppi if g['livello'] == 'bloccante'],
         'avvisi': [g for g in gruppi if g['livello'] == 'avviso'],
         'note': [g for g in gruppi if g['livello'] == 'nota'],
         'segnalazioni': {
-            'righe_con_assenze_in_nota': sum(1 for r in lettura['righe'] if r['giorni_assente_note']),
-            'giorni_assenza_in_nota': sum(len(r['giorni_assente_note']) for r in lettura['righe']),
-            'celle_colorate': sum(r['colorate'] for r in lettura['righe'])},
+            'righe_con_assenze_in_nota': sum(1 for r in lettura['righe'] if r['giorni_assente_note']) if solo_ore else 0,
+            'giorni_assenza_in_nota': sum(len(r['giorni_assente_note']) for r in lettura['righe']) if solo_ore else 0,
+            'celle_colorate': sum(r['colorate'] for r in lettura['righe']) if solo_ore else 0},
     }
     c = out['conteggi']
+    minuti_tabella = sum(x['minuti'] for x in ore_figura)
     out['totale'] = {'minuti': c['minuti_file'], 'ore': _ore_testo(c['minuti_file']), 'hhmm': calc.hhmm(c['minuti_file'])}
     out['totale_importato'] = {'minuti': c['minuti'], 'ore': _ore_testo(c['minuti']), 'hhmm': calc.hhmm(c['minuti'])}
+    out['totale_tabella'] = {'minuti': minuti_tabella, 'ore': _ore_testo(minuti_tabella),
+                             'pei_ore': calc.numero_it(sum((x['pei'] for x in ore_figura), calc.decimale(0)))}
     if modo == 'confronto':
         out['confronto'] = _confronto(piano, nomi)
         return _senza_codici(out)
@@ -2335,7 +2520,9 @@ def _risposta(piano, lettura, ctx, sha, nome_file, modo):
                           'righe': q['righe'][:20], 'n_righe': len(q['righe'])} for q in piano.qualifiche.values()]
     out['scuole_nuove'] = [{'chiave': s['chiave'], 'nome': s['nome'], 'codice': s['codice'] or '',
                             'municipalita': s['municipalita'], 'grado_proposto': s['grado_proposto'] or '',
-                            'grado': s['grado'] or '', 'n_righe': len(s['righe'])}
+                            'grado': s['grado'] or '', 'n_righe': len(s['righe']),
+                            # forma dei codici delle paritarie (NA1A, NA1E, NA1M...): grado da controllare
+                            'paritaria': (s['codice'] or '')[2:3] == '1'}
                            for s in piano.scuole.values() if s['nuova'] and s['usata']]
     out['scuole_senza_grado'] = [{'nome': s['nome'], 'codice': s['codice'] or '', 'municipalita': s['municipalita'],
                                   'grado': s['grado'] or ''}
@@ -2402,9 +2589,13 @@ def _risposta(piano, lettura, ctx, sha, nome_file, modo):
     out['solo_in_assisto'] = [dict(nomi.coppia(x['coppia']), data=x['presenza']['data'],
                                    assisto=_testo_presenza(x['presenza']))
                               for x in piano.solo_in_assisto[:100]]
-    out['conferme_richieste'] = list(piano.conferme)
     out['puo_importare'] = not out['bloccanti']
     out['nessun_cambiamento'] = piano.nessun_cambiamento()
+    # se il file non cambia niente, non c'e' niente da confermare: le conferme restano
+    # solo come avvisi (senza la casella "Ho controllato")
+    out['conferme_richieste'] = [] if out['nessun_cambiamento'] else list(piano.conferme)
+    for conf in out['conferme']:
+        conf['solo_avviso'] = out['nessun_cambiamento']
     return _senza_codici(out)
 
 
@@ -2460,7 +2651,7 @@ def _leggi(dati, nome_file, regole=None):
     return leggi_master(dati, nome_file, regole)
 
 
-def _prepara(lotto_id, dati, nome_file, scelte, solo_confronto=False):
+def _prepara(lotto_id, dati, nome_file, scelte, modo):
     """Lettura del file, dati di Napoli del mese, piano. Non scrive nulla."""
     lettura = _leggi(dati, nome_file)
     with db.get_db_context() as conn:
@@ -2469,16 +2660,16 @@ def _prepara(lotto_id, dati, nome_file, scelte, solo_confronto=False):
               'tetto_arrotondamento')
     if any(ctx['regole'][k] != config_napoli.REGOLE_PREDEFINITE[k]['valore'] for k in limiti):
         lettura = _leggi(dati, nome_file, ctx['regole'])          # limiti diversi per questo lotto e mese
-    piano = _Piano(ctx, lettura, _scelte(scelte, ctx), solo_confronto)
+    piano = _Piano(ctx, lettura, _scelte(scelte, ctx), modo)
     return lettura, ctx, piano
 
 
-def anteprima(lotto_id, dati, nome_file='', scelte=None, modo='import'):
-    """Anteprima dell'import (modo 'import') o solo confronto (modo 'confronto'): non
-    scrive nulla. Ritorna i dati per la pagina (codici fiscali mascherati)."""
-    if modo not in ('import', 'confronto'):
-        raise DatiNonValidi('Scegli se importare o solo confrontare.', 'modo')
-    lettura, ctx, piano = _prepara(lotto_id, dati, nome_file, scelte, modo == 'confronto')
+def anteprima(lotto_id, dati, nome_file='', scelte=None, modo=MODO_PREDEFINITO):
+    """Anteprima dell'anagrafica (modo 'anagrafica', quello predefinito), delle ore del
+    mese (modo 'ore', o 'import') o solo confronto (modo 'confronto'): non scrive nulla.
+    Ritorna i dati per la pagina (codici fiscali mascherati)."""
+    modo = modo_import(modo)
+    lettura, ctx, piano = _prepara(lotto_id, dati, nome_file, scelte, modo)
     return _risposta(piano, lettura, ctx, hashlib.sha256(dati).hexdigest(), nome_file, modo)
 
 
@@ -2486,26 +2677,52 @@ def _registra_ctrl_z(conn, import_id, descrizione):
     napoli_db.registra_azione(conn, 'import', descrizione, {'versione': 1, 'import_id': import_id})
 
 
-def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=None):
-    """Importa il file visto nell'anteprima: stesso file (sha256), stessi dati di Napoli
-    (versione_dati), nessun bloccante, conferme date. Copia di sicurezza del database,
-    poi tutto in un'unica transazione. Ritorna {'import_id', 'messaggio', 'esito', ...}."""
+def _elenco_it(voci):
+    """[(3, 'scuole', 'scuola'), (0, ...)] -> '3 scuole' (solo le voci diverse da zero)."""
+    return ', '.join(f'{calc.numero_it(n, 0)} {singolare if n == 1 else plurale}' for n, plurale, singolare in voci
+                     if n)
+
+
+def _testo_nuovi(esito):
+    n = esito['nuovi']
+    return _elenco_it([(n['scuole'], 'scuole', 'scuola'), (n['alunni'], 'alunni', 'alunno'),
+                       (n['operatori'], 'operatori', 'operatore'), (n['coppie'], 'coppie', 'coppia'),
+                       (n['pei'], 'PEI', 'PEI')]) or 'nessuno'
+
+
+def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=None, modo=MODO_PREDEFINITO):
+    """Importa il file visto nell'anteprima: stesso file (sha256), stesso modo e stessi
+    dati di Napoli (versione_dati), nessun bloccante, conferme date. Nel modo
+    'anagrafica' (quello predefinito) solo l'anagrafica, nel modo 'ore' anche le ore del
+    mese. Copia di sicurezza del database, poi tutto in un'unica transazione. Ritorna
+    {'import_id', 'messaggio', 'esito', ...}."""
+    modo = modo_import(modo)
+    if modo == 'confronto':
+        raise DatiNonValidi('Il solo confronto non salva nulla: per salvare usa l\'anteprima.', 'modo',
+                            codice='MODO_NON_VALIDO')
     sha = hashlib.sha256(dati).hexdigest()
     if not sha256_anteprima or sha != str(sha256_anteprima).strip().lower():
         raise Conflitto('Il file non è più quello dell\'anteprima (forse è stato modificato o salvato di nuovo): '
                         'rifai l\'anteprima.', 'file', codice='FILE_CAMBIATO')
-    lettura, ctx, piano = _prepara(lotto_id, dati, nome_file, scelte)
+    lettura, ctx, piano = _prepara(lotto_id, dati, nome_file, scelte, modo)
     testo_mese = mese_testo(piano.anno, piano.mese)
+    anagrafica = modo == 'anagrafica'
     if ctx['chiuso']:
-        raise Conflitto(f'Il mese di {testo_mese} del lotto è chiuso: riaprilo prima di importare.',
+        azione = 'caricare l\'anagrafica da questo file' if anagrafica else 'importare'
+        raise Conflitto(f'Il mese di {testo_mese} del lotto è chiuso: riaprilo prima di {azione}.',
                         codice='MESE_CHIUSO_LOTTO')
-    if ctx['versione'] != versione_dati:
+    if _versione(ctx, modo) != versione_dati:
         raise Conflitto('Dopo l\'anteprima i dati di Napoli sono cambiati: rifai l\'anteprima prima di importare.',
                         codice='ANTEPRIMA_SUPERATA')
     bloccanti = piano.bloccanti()
     if bloccanti:
         raise DatiNonValidi('Prima di importare bisogna correggere il file: guarda la parte «Da correggere» '
-                            'dell\'anteprima.', codice='IMPORT_BLOCCATO', bloccanti=_gruppi(bloccanti))
+                            'dell\'anteprima.', codice='IMPORT_BLOCCATO', bloccanti=_gruppi(bloccanti, modo))
+    if piano.nessun_cambiamento():
+        # niente da scrivere: non servono le scelte ne' le conferme
+        return {'import_id': None, 'nessun_cambiamento': True, 'esito': _esito(piano), 'modo': modo,
+                'messaggio': ('Niente da cambiare: l\'anagrafica del file è già in Assisto così com\'è' if anagrafica
+                              else f'Niente da cambiare: {testo_mese} è già in Assisto così com\'è nel file')}
     if piano.ore_ambigue_da_scegliere():
         raise DatiNonValidi('Prima di importare scegli come leggere le ore nella parte «Ore da confermare».',
                             codice='DA_CONFERMARE', mancano=['ore_ambigue'])
@@ -2513,9 +2730,6 @@ def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=
     if mancano:
         raise DatiNonValidi('Prima di importare spunta le caselle «Ho controllato» nella parte «Da confermare».',
                             codice='DA_CONFERMARE', mancano=mancano)
-    if piano.nessun_cambiamento():
-        return {'import_id': None, 'nessun_cambiamento': True, 'esito': _esito(piano),
-                'messaggio': f'Niente da cambiare: {testo_mese} è già in Assisto così com\'è nel file'}
     copia = db.create_backup()
     if not copia:
         raise NonRiuscito('Non sono riuscito a fare la copia di sicurezza del database, quindi l\'import non è stato '
@@ -2529,7 +2743,7 @@ def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=
         if ctx_ora['versione'] != ctx['versione']:
             raise Conflitto('Mentre preparavo l\'import i dati di Napoli sono cambiati: rifai l\'anteprima.',
                             codice='ANTEPRIMA_SUPERATA')
-        piano = _Piano(ctx_ora, lettura, piano.scelte)
+        piano = _Piano(ctx_ora, lettura, piano.scelte, modo)
         cur = conn.execute('INSERT INTO napoli_import (lotto_id, anno, mese, nome_file, sha256, n_righe, esito_json, '
                            'sostituite_json, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                            (lotto_id, piano.anno, piano.mese, nome, sha, len(lettura['righe']), '{}', '{}', ora))
@@ -2539,15 +2753,27 @@ def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=
         conn.execute('UPDATE napoli_import SET esito_json = ?, sostituite_json = ? WHERE id = ?',
                      (json.dumps(esito, ensure_ascii=False, default=str), registro.json(), import_id))
         ore = _ore_testo(esito['minuti'])
-        _registra_ctrl_z(conn, import_id, f'Import del foglio presenze di {testo_mese}: {esito["righe_importate"]} '
-                                          f'righe, {ore} ore')
-    db.log_audit('import', 'napoli_import', import_id,
-                 dettagli=f'Napoli, {ctx["lotto"]["nome"]}: import del foglio presenze di {testo_mese} '
-                          f'({esito["righe_importate"]} righe, {ore} ore, {esito["presenze"]["nuove"]} giorni nuovi, '
-                          f'{esito["presenze"]["cambiate"]} cambiati, {esito["presenze"]["da_togliere"]} tolti); '
-                          f'copia di sicurezza {copia}')
-    return {'import_id': import_id, 'nessun_cambiamento': False, 'esito': esito, 'copia': copia,
-            'messaggio': f'Importato {testo_mese}: {esito["righe_importate"]} righe, {ore} ore'}
+        nuovi = _testo_nuovi(esito)
+        if anagrafica:
+            _registra_ctrl_z(conn, import_id, f'Anagrafica dal file di {testo_mese}: {esito["righe_importate"]} '
+                                              f'righe, nuovi {nuovi}')
+        else:
+            _registra_ctrl_z(conn, import_id, f'Import del foglio presenze di {testo_mese}: '
+                                              f'{esito["righe_importate"]} righe, {ore} ore')
+    if anagrafica:
+        db.log_audit('import', 'napoli_import', import_id,
+                     dettagli=f'Napoli, {ctx["lotto"]["nome"]}: anagrafica caricata dal file di {testo_mese} '
+                              f'({esito["righe_importate"]} righe; nuovi: {nuovi}); copia di sicurezza {copia}')
+        messaggio = f'Anagrafica caricata dal file di {testo_mese}: {esito["righe_importate"]} righe'
+    else:
+        db.log_audit('import', 'napoli_import', import_id,
+                     dettagli=f'Napoli, {ctx["lotto"]["nome"]}: import del foglio presenze di {testo_mese} '
+                              f'({esito["righe_importate"]} righe, {ore} ore, {esito["presenze"]["nuove"]} giorni '
+                              f'nuovi, {esito["presenze"]["cambiate"]} cambiati, {esito["presenze"]["da_togliere"]} '
+                              f'tolti); copia di sicurezza {copia}')
+        messaggio = f'Importato {testo_mese}: {esito["righe_importate"]} righe, {ore} ore'
+    return {'import_id': import_id, 'nessun_cambiamento': False, 'esito': esito, 'copia': copia, 'modo': modo,
+            'messaggio': messaggio}
 
 
 def _ultimo_import(imports):
@@ -2570,20 +2796,30 @@ def storico(lotto_id):
             esito = json.loads(i['esito_json'] or '{}')
         except ValueError:
             esito = {}
-        out.append({'id': i['id'], 'anno': i['anno'], 'mese': i['mese'],
+        modo = esito.get('modo') or 'ore'
+        out.append({'id': i['id'], 'anno': i['anno'], 'mese': i['mese'], 'modo': modo,
                     'mese_testo': mese_testo(i['anno'], i['mese']) if i['anno'] and i['mese'] else '',
                     'nome_file': i['nome_file'] or '', 'data': i['data'], 'annullato': bool(i['annullato']),
                     'righe': esito.get('righe_importate', i['n_righe']),
-                    'ore': _ore_testo(esito.get('minuti') or 0) if 'minuti' in esito else '',
-                    'presenze': esito.get('presenze') or {},
+                    'ore': _ore_testo(esito.get('minuti') or 0) if 'minuti' in esito and modo == 'ore' else '',
+                    'presenze': esito.get('presenze') or {}, 'nuovi': esito.get('nuovi') or {},
                     'annullabile': bool(ultimo and ultimo['id'] == i['id'] and (i['anno'], i['mese']) not in chiusi)})
     return out
+
+
+def _controlla_cambiati_dopo(conn, registro):
+    n = _cambiati_dopo(conn, registro)
+    if n:
+        raise Conflitto(f'Dopo l\'import {"un dato scritto" if n == 1 else f"{n} dati scritti"} dall\'import (nelle '
+                        'anagrafiche o nelle qualifiche) è stato cambiato a mano: l\'import non si può più annullare '
+                        'tutto insieme, perché si perderebbe la modifica.', codice='IMPORT_CAMBIATO_DOPO')
 
 
 def annulla_import(import_id):
     """Annulla l'ultimo import del lotto: toglie quello che ha creato e rimette le righe
     cambiate o tolte com'erano. Copia di sicurezza prima. Errori: non e' l'ultimo, mese
-    chiuso, ore cambiate a mano dopo l'import, dati aggiunti dopo e collegati."""
+    chiuso, giorni o dati scritti dall'import cambiati a mano dopo, dati aggiunti dopo e
+    collegati."""
     with db.get_db_context() as conn:
         imp = conn.execute('SELECT * FROM napoli_import WHERE id = ?', (import_id,)).fetchone()
         if imp is None:
@@ -2608,12 +2844,14 @@ def annulla_import(import_id):
         if cambiate_dopo:
             raise Conflitto(f'Dopo l\'import {cambiate_dopo} giorni sono stati cambiati a mano: l\'import non si può '
                             'più annullare tutto insieme.', codice='IMPORT_CAMBIATO_DOPO')
-    try:
-        registro = json.loads(imp['sostituite_json'] or '{}')
-    except ValueError:
-        registro = {}
-    if registro.get('versione') != 1:
-        raise Conflitto('Questo import non si può annullare da qui.', codice='IMPORT_NON_ANNULLABILE')
+        try:
+            registro = json.loads(imp['sostituite_json'] or '{}')
+        except ValueError:
+            registro = {}
+        if not isinstance(registro, dict) or registro.get('versione') != 1:
+            raise Conflitto('Questo import non si può annullare da qui.', codice='IMPORT_NON_ANNULLABILE')
+        _controlla_cambiati_dopo(conn, registro)
+    anagrafica = _modo_salvato(imp) == 'anagrafica'
     copia = db.create_backup()
     if not copia:
         raise NonRiuscito('Non sono riuscito a fare la copia di sicurezza del database: l\'annullamento non è stato '
@@ -2628,6 +2866,7 @@ def annulla_import(import_id):
                                        f'({", ".join("?" * len(create))}) LIMIT 1', tuple(create)).fetchone():
                 raise Conflitto('Dopo l\'import sono stati aggiunti gli orari di coppie create dall\'import: '
                                 'l\'import non si può più annullare.', codice='IMPORT_CAMBIATO_DOPO')
+            _controlla_cambiati_dopo(conn, registro)
             _annulla_registro(conn, registro, import_id)
             conn.execute('UPDATE napoli_import SET annullato = 1 WHERE id = ?', (import_id,))
             for r in _righe(conn, "SELECT id, dati FROM napoli_annullamenti WHERE tipo = 'import'"):
@@ -2639,7 +2878,12 @@ def annulla_import(import_id):
     except sqlite3.IntegrityError:
         raise Conflitto('Non si può annullare: dopo l\'import sono stati aggiunti dati collegati (per esempio '
                         'nelle anagrafiche).', codice='IMPORT_CAMBIATO_DOPO') from None
+    cosa = f'il caricamento dell\'anagrafica dal file di {testo_mese}' if anagrafica else \
+        f'l\'import del foglio presenze di {testo_mese}'
     db.log_audit('annullamento', 'napoli_import', import_id,
-                 dettagli=f'Napoli, {lotto["nome"]}: annullato l\'import del foglio presenze di {testo_mese}; '
-                          f'copia di sicurezza {copia}')
-    return {'messaggio': f'Annullato l\'import di {testo_mese}: i dati sono tornati com\'erano prima', 'copia': copia}
+                 dettagli=f'Napoli, {lotto["nome"]}: annullato {cosa}; copia di sicurezza {copia}')
+    if anagrafica:
+        messaggio = f'Annullato il caricamento dell\'anagrafica dal file di {testo_mese}: i dati sono tornati com\'erano prima'
+    else:
+        messaggio = f'Annullato l\'import di {testo_mese}: i dati sono tornati com\'erano prima'
+    return {'messaggio': messaggio, 'copia': copia}

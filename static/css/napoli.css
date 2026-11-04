@@ -274,3 +274,13 @@ details.napoli-parte-conferma[open] > summary { margin-bottom: 6px; }
 /* Qualifiche nuove dell'import: la tendina della figura e' larga quanto la cella, cosi'
    il nome della figura con la descrizione si legge tutto (anche a 1366x768). */
 .napoli-import .napoli-tabella-compatta select.form-control.napoli-scelta-figura { min-width: 320px; max-width: none; width: 100%; }
+
+/* Opzione secondaria della scheda Importa (REGOLE 14): le ore dei giorni di un mese, in
+   una parte chiusa sotto l'azione principale "Carica l'anagrafica". */
+.napoli-altre-azioni { margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 10px; }
+.napoli-altre-azioni > summary { cursor: pointer; color: var(--text-secondary); font-size: 0.88rem; padding: 4px 0; }
+.napoli-altre-azioni > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.napoli-altre-corpo { padding: 6px 0 0; }
+.napoli-altre-corpo .napoli-intro { font-size: 0.86rem; }
+.napoli-azioni-inizio { justify-content: flex-start; }
+.napoli-nota-stretta { margin-top: 8px; }

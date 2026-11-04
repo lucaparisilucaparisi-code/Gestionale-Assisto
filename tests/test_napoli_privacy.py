@@ -80,17 +80,28 @@ def test_codici_fiscali_mai_in_chiaro_fuori_dalle_anagrafiche(database_isolato, 
         risposte.append(r.get_data(as_text=True))
         return r.get_json()
 
-    def importa(dati, scelte=None):
-        a = chiama('/api/napoli/import/anteprima', dati, scelte)
+    def importa(dati, scelte=None, modo='ore'):
+        a = chiama('/api/napoli/import/anteprima', dati, scelte, modo=modo)
         scelte = dict(scelte or {}, ore_ambigue={x['chiave']: 'ore_e_minuti' for x in a['ore_ambigue']})
-        a = chiama('/api/napoli/import/anteprima', dati, scelte)
+        a = chiama('/api/napoli/import/anteprima', dati, scelte, modo=modo)
         scelte = dict(scelte, conferme=a['conferme_richieste'])
         return chiama('/api/napoli/import/conferma', dati, scelte, sha256=a['file']['sha256'],
-                      versione_dati=a['versione_dati'])
+                      versione_dati=a['versione_dati'], modo=modo)
 
-    dati = ns.leggi_bytes(str(tmp_path / 'a'))[0]
-    primo = importa(dati)
+    def nota_con_codice(r):
+        # la colonna NOTE e' testo libero: un codice fiscale scritto li' si salva solo mascherato
+        r[0]['note'] = f'Alunno assente: 5. Scritto per errore: {r[0]["cf_alunno"]}'
+    dati = ns.leggi_bytes(str(tmp_path / 'a'), modifica=nota_con_codice)[0]
+    anagrafica = importa(dati, modo='anagrafica')            # l'azione principale: solo l'anagrafica
+    assert anagrafica['import_id']
+    primo = importa(dati)                                    # poi anche le ore del mese
     assert primo['import_id']
+    conn = sqlite3.connect(database_isolato)
+    try:
+        note_fogli = json.dumps(conn.execute('SELECT note FROM napoli_fogli').fetchall(), ensure_ascii=False)
+    finally:
+        conn.close()
+    assert 'Scritto per errore: ' in note_fogli and '•' in note_fogli
     chiama('/api/napoli/import/anteprima', dati, modo='confronto')
 
     def altri(r):
@@ -108,14 +119,17 @@ def test_codici_fiscali_mai_in_chiaro_fuori_dalle_anagrafiche(database_isolato, 
         as_text=True))
     ultima = client.get('/api/napoli/annulla/ultima').get_json()['azione']
     risposte.append(_ok(client.post('/api/napoli/annulla', json={'id': ultima['id']})).get_data(as_text=True))
+    risposte.append(_ok(client.post(f'/api/napoli/import/{anagrafica["import_id"]}/annulla', json={})).get_data(
+        as_text=True))
 
     codici, cognomi = _codici_e_nomi()
     codici.add('DSMLMR84A71Z99')
     conn = sqlite3.connect(database_isolato)
     try:
-        assert conn.execute('SELECT COUNT(*) FROM napoli_import').fetchone()[0] == 2
+        assert conn.execute('SELECT COUNT(*) FROM napoli_import').fetchone()[0] == 3
         luoghi = {
             'risposte delle API': '\n'.join(risposte),
+            'note dei fogli': note_fogli,
             'registro attivita': json.dumps(conn.execute('SELECT * FROM audit_log').fetchall()),
             'memoria di Ctrl+Z': json.dumps(conn.execute('SELECT * FROM napoli_annullamenti').fetchall()),
             'registro degli import': json.dumps(conn.execute(
@@ -143,10 +157,11 @@ def test_le_anagrafiche_hanno_i_codici_e_la_pagina_no(database_isolato, app_modu
         'lotto': dict(proposta['lotto'], municipalita='1 e 2'), 'tariffe': proposta['tariffe'],
         'valido_da': proposta['valido_da'], 'valido_a': proposta['valido_a']}).get_json()['lotto']
     dati = ns.leggi_bytes(str(tmp_path / 'a'))[0]
-    campi = {'lotto_id': str(lotto['id']), 'scelte': '{}'}
+    campi = {'lotto_id': str(lotto['id']), 'scelte': '{}'}                 # senza modo: solo l'anagrafica
     a = client.post('/api/napoli/import/anteprima', content_type='multipart/form-data',
                     data=dict(campi, file=(io.BytesIO(dati), 'm.xlsx'))).get_json()
-    campi['scelte'] = json.dumps({'ore_ambigue': {x['chiave']: 'decimale' for x in a['ore_ambigue']}})
+    assert a['modo'] == 'anagrafica' and a['ore_ambigue'] == []
+    campi['scelte'] = json.dumps({'conferme': a['conferme_richieste']})
     r = client.post('/api/napoli/import/conferma', content_type='multipart/form-data', data=dict(
         campi, file=(io.BytesIO(dati), 'm.xlsx'), sha256=a['file']['sha256'], versione_dati=a['versione_dati']))
     assert r.status_code == 200
@@ -194,10 +209,13 @@ def test_un_codice_fiscale_scritto_in_una_cella_non_arriva_in_chiaro(database_is
         r[3]['municipalita'] = f'mun. {codici[3]}'
         r[4]['qualifica'] = f'ASACOM {codici[4]}'
     dati = ns.leggi_bytes(str(tmp_path / 'celle'), modifica=nelle_celle)[0]
-    for modo in ('import', 'confronto'):
+    for modo in ('anagrafica', 'import', 'confronto'):
         r = client.post('/api/napoli/import/anteprima', content_type='multipart/form-data', data={
             'file': (io.BytesIO(dati), 'm.xlsx'), 'lotto_id': str(lotto['id']), 'modo': modo, 'scelte': '{}'})
         assert r.status_code == 200, r.get_data(as_text=True)
         testo = r.get_data(as_text=True)
         assert not [c for c in codici if c in testo], f'codici fiscali in chiaro nella risposta ({modo})'
-        assert calc.maschera_codice_fiscale(codici[0]) in json.dumps(r.get_json(), ensure_ascii=False)
+        if modo != 'anagrafica':          # nel modo 'anagrafica' le celle dei giorni non si controllano
+            assert calc.maschera_codice_fiscale(codici[0]) in json.dumps(r.get_json(), ensure_ascii=False)
+        # la qualifica con un codice fiscale non si salva fra le grafie (Impostazioni): va corretta
+        assert 'qualifica_con_codice_fiscale' in {g['codice'] for g in r.get_json()['bloccanti']}

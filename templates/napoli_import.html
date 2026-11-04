@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Importa il foglio presenze - Napoli - Gestionale OEPAC{% endblock %}
+{% block title %}Carica l'anagrafica - Napoli - Gestionale OEPAC{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="{{ static_url('css/napoli.css') }}">
@@ -9,16 +9,18 @@
 {% block content %}
 {% include '_napoli_tabs.html' %}
 
-{# Import del foglio presenze del mese (master del coordinatore): scelta del file,
-   anteprima senza salvare nulla (o solo confronto con Assisto), scelte da confermare,
-   importazione con la copia di sicurezza, elenco degli import con "Annulla import".
-   Tutto il calcolo e' sul server (import_napoli): la pagina mostra e manda le scelte. #}
+{# Dal file Excel "master" del coordinatore: l'azione principale carica l'ANAGRAFICA
+   (alunni, operatori, scuole e plessi, coppie, PEI) senza le ore dei giorni (REGOLE 14);
+   le ore di un mese (anteprima o solo confronto) sono un'opzione secondaria, chiusa.
+   Anteprima senza salvare nulla, scelte da confermare, caricamento con la copia di
+   sicurezza, elenco dei caricamenti con "Annulla import". Tutto il calcolo e' sul server
+   (import_napoli): la pagina mostra e manda le scelte. #}
 <div class="napoli-import" id="napoli-import">
     <div id="import-senza-lotto" hidden></div>
 
     <section class="card" id="import-scelta" aria-labelledby="titolo-import" hidden>
         <div class="card-header">
-            <h2 class="card-title" id="titolo-import">Importa il foglio presenze del mese</h2>
+            <h2 class="card-title" id="titolo-import">Carica l'anagrafica dal file Excel</h2>
             <button type="button" class="btn btn-ghost btn-sm" id="napoli-annulla-ultima" title="Come Ctrl+Z: chiede conferma prima di annullare">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
@@ -27,10 +29,11 @@
             </button>
         </div>
         <div class="card-body">
-            <p class="napoli-intro">È il file Excel che il coordinatore manda ogni mese (il «master»): una riga per ogni operatore con il suo alunno e le ore di ogni giorno. Prima vedi l'<strong>anteprima</strong>: niente viene salvato finché non premi <strong>Importa</strong>.</p>
+            <p class="napoli-intro">Dal file Excel degli operatori e degli alunni (il «master» del coordinatore) Assisto prende l'<strong>anagrafica</strong>: alunni, operatori con la qualifica e le ore di contratto, scuole e plessi con la municipalità, coppie operatore-alunno con la data di inizio e le ore settimanali da progetto (PEI). <strong>Le ore dei giorni non si caricano</strong>: da ora in poi si scrivono in Assisto.</p>
+            <p class="napoli-intro">Prima vedi l'<strong>anteprima</strong>: niente viene salvato finché non premi <strong>Carica l'anagrafica</strong>.</p>
 
             <div class="file-upload napoli-file" id="import-file-zona" tabindex="0" role="button" aria-describedby="import-file-aiuto">
-                <input type="file" id="import-file" accept=".xlsx,.xlsm" aria-label="File Excel del foglio presenze">
+                <input type="file" id="import-file" accept=".xlsx,.xlsm" aria-label="File Excel con l'anagrafica (master)">
                 <svg class="file-upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
@@ -50,9 +53,20 @@
             </div>
 
             <div class="napoli-azioni-modulo">
-                <button type="button" class="btn btn-secondary" id="btn-import-confronta" disabled title="Confronta il file con le ore già registrate in Assisto, senza salvare nulla">Solo confronto</button>
-                <button type="button" class="btn btn-primary" id="btn-import-anteprima" disabled>Mostra l'anteprima</button>
+                <button type="button" class="btn btn-primary" id="btn-import-anteprima" disabled>Mostra l'anteprima dell'anagrafica</button>
             </div>
+
+            {# opzione secondaria, chiusa: le ore dei giorni di un mese (di solito non servono) #}
+            <details class="napoli-altre-azioni" id="import-altre">
+                <summary>Altro: le ore dei giorni di un mese (di solito non servono)</summary>
+                <div class="napoli-altre-corpo">
+                    <p class="napoli-intro">Lo storico delle ore non si carica: le ore di Napoli si scrivono in Assisto, nella griglia delle presenze o dai fogli firma. Queste due operazioni servono solo in casi particolari, per esempio per controllare le ore scritte nel file di un mese.</p>
+                    <div class="napoli-azioni-modulo napoli-azioni-inizio">
+                        <button type="button" class="btn btn-secondary" id="btn-import-confronta" disabled title="Confronta le ore del file con quelle già registrate in Assisto, senza salvare nulla">Confronta le ore con Assisto</button>
+                        <button type="button" class="btn btn-secondary" id="btn-import-ore" disabled title="Anteprima dell'import delle ore dei giorni del mese del file">Anteprima delle ore del mese</button>
+                    </div>
+                </div>
+            </details>
         </div>
     </section>
 
@@ -60,7 +74,7 @@
 
     <section class="card" id="import-storico-card" aria-labelledby="titolo-storico" hidden>
         <div class="card-header">
-            <h2 class="card-title" id="titolo-storico">Import fatti per questo lotto</h2>
+            <h2 class="card-title" id="titolo-storico">Caricamenti fatti per questo lotto</h2>
         </div>
         <div class="card-body" id="import-storico"></div>
     </section>
