@@ -270,3 +270,7 @@ details.napoli-parte-conferma[open] > summary { margin-bottom: 6px; }
 /* elenco degli import */
 .napoli-riga-annullata td { color: var(--text-tertiary); }
 .napoli-nome-file { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Qualifiche nuove dell'import: la tendina della figura e' larga quanto la cella, cosi'
+   il nome della figura con la descrizione si legge tutto (anche a 1366x768). */
+.napoli-import .napoli-tabella-compatta select.form-control.napoli-scelta-figura { min-width: 320px; max-width: none; width: 100%; }

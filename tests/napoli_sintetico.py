@@ -334,8 +334,8 @@ _riga('O21', 'A34', 13, 'S4', inizio=datetime.date(2025, 10, 1), assente=[2])
 _riga('O22', 'A35', 7, 'S5', contratto=7, inizio=datetime.date(2025, 10, 15), assente=[18])
 
 
-def _giorni_mese():
-    return [x for t, x in colonne_mese(ANNO, MESE) if t == 'giorno']
+def _giorni_mese(anno=ANNO, mese=MESE):
+    return [x for t, x in colonne_mese(anno, mese) if t == 'giorno']
 
 
 def _programmato(rec, d):
@@ -364,8 +364,10 @@ def minuti_attesi(v):
     return round(v * 60)
 
 
-def costruisci(omonimi=False):
-    """(righe per scrivi_master, minuti attesi per riga {data: minuti})."""
+def costruisci(omonimi=False, anno=ANNO, mese=MESE):
+    """(righe per scrivi_master, minuti attesi per riga {data: minuti}). Con un altro mese
+    (anno, mese) le stesse righe con gli stessi numeri dei giorni (il mese dopo, per le
+    prove dei reimport e delle coppie che continuano)."""
     righe, attese = [], []
     for rec in R:
         cog, nom, sesso, nascita, qual = OPERATORI[rec['op']]
@@ -383,7 +385,7 @@ def costruisci(omonimi=False):
         nome_al = f'{acog} {anom}' + ('A' if rec.get('alunno_variante') else '')   # stesso CF, refuso
         scuola_txt, mun = SCUOLE[rec['scuola']]
         valori, minuti, colorati = {}, {}, set()
-        for d in _giorni_mese():
+        for d in _giorni_mese(anno, mese):
             g, p, v = d.day, _programmato(rec, d), None
             if d.weekday() == 5 or rec.get('nessuna') or g in CHIUSURE.get(rec['scuola'], []):
                 v = None
@@ -407,7 +409,7 @@ def costruisci(omonimi=False):
                 extra = rec.get('recuperi', {}).get(g, 0)
                 for a, b in rec.get('assente_rec', []):
                     if b == g:
-                        extra += _programmato(rec, datetime.date(ANNO, MESE, a))
+                        extra += _programmato(rec, datetime.date(anno, mese, a))
                 if extra and not isinstance(v, str):
                     v = (v or 0) + extra
             if g in rec.get('valori', {}):
@@ -440,13 +442,14 @@ def _figura(qualifica):
     return 'TIFLOLOGO'
 
 
-def genera(cartella, omonimi=False, nome_file=NOME_FILE, modifica=None):
+def genera(cartella, omonimi=False, nome_file=NOME_FILE, modifica=None, anno=ANNO, mese=MESE):
     """Scrive il master inventato e i valori attesi nella cartella; ritorna (percorso
     del file, valori attesi). I minuti si contano dalle celle dei giorni.
     modifica(righe): per le varianti dei test (una cella o una municipalita' diverse...),
-    chiamata prima di scrivere il file; i valori attesi restano quelli del file normale."""
+    chiamata prima di scrivere il file; i valori attesi restano quelli del file normale.
+    anno, mese: il mese del file (di solito marzo 2026; aprile per il mese dopo)."""
     os.makedirs(cartella, exist_ok=True)
-    righe, attese = costruisci(omonimi)
+    righe, attese = costruisci(omonimi, anno, mese)
     if modifica is not None:
         modifica(righe)
     # foglio riepilogo NON aggiornato (come nel file vero): manca l'ultimo operatore, un valore e' vecchio
@@ -458,7 +461,7 @@ def genera(cartella, omonimi=False, nome_file=NOME_FILE, modifica=None):
     riepilogo = [(k, v[0], v[1], v[2]) for k, v in acc.items()][:-1]
     riepilogo[0] = (riepilogo[0][0], riepilogo[0][1], riepilogo[0][2], riepilogo[0][3] + 5)
     percorso = os.path.join(cartella, nome_file)
-    scrivi_master(percorso, ANNO, MESE, righe, righe_riepilogo=riepilogo)
+    scrivi_master(percorso, anno, mese, righe, righe_riepilogo=riepilogo)
 
     per_figura = {}
     for rec, r, minuti in zip(R, righe, attese):
@@ -476,7 +479,7 @@ def genera(cartella, omonimi=False, nome_file=NOME_FILE, modifica=None):
                 tipo = 'malattia' if k == 'M' else 'ferie' if k == 'F' else 'permesso'
                 sigle[tipo] = sigle.get(tipo, 0) + 1
     atteso = {
-        'file': nome_file, 'anno': ANNO, 'mese': MESE, 'righe': len(righe), 'operatori': len(OPERATORI),
+        'file': nome_file, 'anno': anno, 'mese': mese, 'righe': len(righe), 'operatori': len(OPERATORI),
         'alunni': len({rec['al'] for rec in R}), 'scuole_codice': 5,
         'minuti_per_riga': [sum(m.values()) for m in attese],
         'ore_per_riga': [sum(m.values()) / 60 for m in attese],
@@ -494,8 +497,8 @@ def genera(cartella, omonimi=False, nome_file=NOME_FILE, modifica=None):
     return percorso, atteso
 
 
-def leggi_bytes(cartella, omonimi=False, nome_file=NOME_FILE, modifica=None):
+def leggi_bytes(cartella, omonimi=False, nome_file=NOME_FILE, modifica=None, anno=ANNO, mese=MESE):
     """Il master inventato come bytes (per le richieste di prova) e i valori attesi."""
-    percorso, atteso = genera(cartella, omonimi, nome_file, modifica)
+    percorso, atteso = genera(cartella, omonimi, nome_file, modifica, anno, mese)
     with open(percorso, 'rb') as fh:
         return fh.read(), atteso

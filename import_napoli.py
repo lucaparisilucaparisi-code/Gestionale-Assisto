@@ -16,11 +16,16 @@ sostituzione SI/NO e le note.
   segnalazioni (diventeranno proposte nella fase 2). Ogni interpretazione e' un avviso
   con riga e colonna, mai con nomi o codici fiscali.
 - Anteprima (anteprima): non scrive nulla. Abbina il file ai dati di Napoli (scuole per
-  codice meccanografico e municipalita' della SCUOLA: lo stesso codice in due
-  municipalita' sono due plessi, da confermare; alunni per codice fiscale; operatori per
-  codice fiscale o, se non e' valido, per nome, da confermare; qualifiche con le grafie
-  di napoli_alias_qualifiche) e prepara il piano: cosa si crea, cosa cambia, ore per
-  figura e per grado, avvisi e bloccanti spiegati con parole semplici.
+  codice meccanografico e municipalita' della SCUOLA: la stessa scuola con municipalita'
+  diverse, nel file o fra il file e Assisto, si conferma, e un plesso nuovo si crea solo
+  se serve a una coppia nuova; alunni per codice fiscale o per la sua radice, i primi 15
+  caratteri; operatori per codice fiscale, radice o nome, da confermare, anche quando il
+  mese dopo il codice arriva corretto; un codice giusto corregge quello sbagliato in
+  Assisto; qualifiche con le grafie di napoli_alias_qualifiche, una nuova si sceglie
+  sempre; coppie valide nel mese o finite nel mese prima, cosi' un sostituto che continua
+  o un titolare che torna restano la stessa coppia) e prepara il piano: cosa si crea,
+  cosa cambia, ore per figura e per grado, avvisi e bloccanti spiegati con parole
+  semplici. Le ore da confermare ("1,30") si scelgono sempre: nessuna e' gia' scelta.
 - Conferma (conferma): lo stesso file (sha256 dell'anteprima) e gli stessi dati di
   Napoli (versione_dati), copia di sicurezza del database, poi un'unica transazione.
   Ogni cella con ore o sigla e' un giorno registrato (calcolo 'manuale', origine
@@ -35,12 +40,14 @@ sostituzione SI/NO e le note.
   coppia e giorno per giorno, senza scrivere nulla.
 
 Privacy: i codici fiscali stanno solo nelle anagrafiche di Napoli; alla pagina arrivano
-mascherati, e non entrano mai negli avvisi, nel registro attivita', nei log, in
-napoli_import (esito_json e sostituite_json) o in napoli_annullamenti.
+mascherati (anche quelli scritti per errore in una cella), e non entrano mai negli
+avvisi, nel registro attivita', nei log, in napoli_import (esito_json e sostituite_json:
+di un codice corretto si salva solo la differenza) o in napoli_annullamenti.
 Solo tabelle napoli_* (tests/test_separazione_napoli.py).
 """
 import collections
 import datetime
+import difflib
 import hashlib
 import io
 import json
@@ -130,6 +137,88 @@ def separa_cognome_nome(nome_completo, cf=None):
             if _codice_nome(a) == cf[3:6] and _codice_cognome(b) == cf[:3]:
                 return b, a, 'cf_invertito'
     return parole[0], ' '.join(parole[1:]), 'prima_parola'
+
+
+# ==================== codici fiscali: abbinamento, correzione, privacy ====================
+
+def radice_cf(cf):
+    """I primi 15 caratteri di un codice fiscale di 16 (il sedicesimo e' il carattere di
+    controllo, calcolato dagli altri): due codici con la stessa radice sono la stessa
+    persona, scritta una volta con l'ultimo carattere sbagliato. None se non ha 16 caratteri."""
+    return cf[:15] if cf and len(cf) == 16 else None
+
+
+def differenza_cf(nuovo, vecchio):
+    """Come tornare dal codice corretto dall'import a quello di prima, senza salvare il
+    codice di prima (per "Annulla import"): {'vuoto': True} se prima non c'era, altrimenti
+    {'modifiche': [[da, a, testo]]} con al piu' due caratteri del codice di prima. None se
+    i due codici sono troppo diversi (allora l'import non corregge il codice)."""
+    if not vecchio:
+        return {'vuoto': True}
+    modifiche = [[i1, i2, vecchio[j1:j2]] for tag, i1, i2, j1, j2
+                 in difflib.SequenceMatcher(None, nuovo, vecchio, autojunk=False).get_opcodes() if tag != 'equal']
+    if sum(len(t) for _a, _b, t in modifiche) > 2 or sum(b - a for a, b, _t in modifiche) > 2:
+        return None
+    return {'modifiche': modifiche}
+
+
+def applica_differenza_cf(attuale, differenza):
+    """Il codice di prima, dal codice attuale e dalla differenza di differenza_cf."""
+    if differenza.get('vuoto'):
+        return None
+    s = attuale
+    for da, a, testo in sorted(differenza['modifiche'], reverse=True):
+        s = s[:da] + testo + s[a:]
+    return s
+
+
+_RX_PEZZO = re.compile(r'[A-Za-z0-9]+')
+_RX_FORMA_CF = re.compile(r'[A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]')
+
+
+def _sembra_codice(pezzo):
+    cifre = sum(ch.isdigit() for ch in pezzo)
+    return 11 <= len(pezzo) <= 20 and cifre >= 2 and len(pezzo) - cifre >= 4
+
+
+def nascondi_codici_fiscali(testo):
+    """Il testo con ogni possibile codice fiscale mascherato (come maschera_codice_fiscale):
+    parole di 11-20 lettere e cifre con almeno 2 cifre e 4 lettere (anche un codice scritto
+    male), e codici scritti a gruppi separati da spazi ('RSS MRA 80A01 Z999X'). Serve per
+    il testo delle celle che arriva alla pagina: un codice scritto per errore in una cella
+    dei giorni o delle ore non deve comparire in chiaro."""
+    if not isinstance(testo, str) or not testo:
+        return testo
+    pezzi = list(_RX_PEZZO.finditer(testo))
+    da_coprire, i = [], 0
+    while i < len(pezzi):
+        trovato = None
+        for k in range(min(6, len(pezzi) - i), 1, -1):
+            gruppo = pezzi[i:i + k]
+            if all(testo[a.end():b.start()] in (' ', '-', '.') for a, b in zip(gruppo, gruppo[1:])) \
+                    and _RX_FORMA_CF.fullmatch(''.join(p.group() for p in gruppo).upper()):
+                trovato = (gruppo[0].start(), gruppo[-1].end(), k)
+                break
+        if trovato is None and _sembra_codice(pezzi[i].group()):
+            trovato = (pezzi[i].start(), pezzi[i].end(), 1)
+        if trovato:
+            da_coprire.append(trovato[:2])
+            i += trovato[2]
+        else:
+            i += 1
+    for a, b in reversed(da_coprire):
+        testo = testo[:a] + calc.maschera_codice_fiscale(testo[a:b]) + testo[b:]
+    return testo
+
+
+def _senza_codici(valore, chiave=None):
+    """Una risposta per la pagina con i possibili codici fiscali nei testi mascherati
+    (tranne le impronte del file e dei dati, che sono numeri esadecimali)."""
+    if isinstance(valore, dict):
+        return {k: (v if k in ('sha256', 'versione_dati') else _senza_codici(v, k)) for k, v in valore.items()}
+    if isinstance(valore, (list, tuple)):
+        return [_senza_codici(v, chiave) for v in valore]
+    return nascondi_codici_fiscali(valore) if isinstance(valore, str) else valore
 
 
 def figura_proposta(qualifica):
@@ -399,11 +488,18 @@ def _trova_foglio(wb):
 
 # ==================== lettura del master ====================
 
+MAX_DETTAGLIO = 60          # caratteri del testo di una cella mostrati in un avviso
+
+
 def _anomalia(lista, riga, colonna, codice, dettaglio=None):
     """Un avviso della lettura: riga e colonna del foglio, codice e un dettaglio che non
-    e' mai un dato personale (solo valori di celle con ore o sigle, date, qualifiche)."""
-    lista.append({'riga': riga, 'colonna': colonna, 'codice': codice,
-                  'dettaglio': None if dettaglio is None else str(dettaglio)})
+    e' mai un dato personale (valori di celle con ore o sigle, date, qualifiche; un codice
+    fiscale scritto per errore in una cella arriva mascherato, il testo lungo accorciato)."""
+    if dettaglio is not None:
+        dettaglio = nascondi_codici_fiscali(re.sub(r'\s+', ' ', str(dettaglio)).strip())
+        if len(dettaglio) > MAX_DETTAGLIO:
+            dettaglio = dettaglio[:MAX_DETTAGLIO - 1].rstrip() + '…'
+    lista.append({'riga': riga, 'colonna': colonna, 'codice': codice, 'dettaglio': dettaglio})
 
 
 def _testo_cella(v):
@@ -434,19 +530,18 @@ def _colorata(cella):
 def _lettura_cella(valore):
     """La cella di un giorno: lettura di napoli_calcoli.leggi_cella_master piu', per i
     numeri che non sono quarti d'ora e le cui cifre possono essere minuti ('1,30'), le
-    due letture possibili e quella proposta (ore e minuti per ,15 ,30 ,45, come sui fogli
-    firma; altrimenti decimale): si conferma nell'anteprima."""
+    due letture possibili: la scelta si fa nell'anteprima ed e' obbligatoria (non ce n'e'
+    una gia' scelta). Finche' non si sceglie, i minuti sono quelli della lettura decimale,
+    la regola del master (PROGETTO §5.1)."""
     lettura = calc.leggi_cella_master(valore)
-    lettura['alternative'], lettura['proposta'] = [], None
+    lettura['alternative'] = []
     if lettura['esito'] == 'ore' and 'ore_non_multiple_di_un_quarto' in lettura['avvisi'] \
             and not isinstance(valore, (datetime.time, datetime.timedelta)):
         alternative = calc.letture_possibili(_testo_cella(valore))
         if alternative:
-            cifre = re.split(r'[.,]', _testo_cella(valore))[-1]
             lettura['alternative'] = alternative
-            lettura['proposta'] = 'ore_e_minuti' if (cifre + '0')[:2] in ('15', '30', '45') else 'decimale'
             lettura['esito'] = 'da_confermare'
-            lettura['minuti'] = next(a['minuti'] for a in alternative if a['lettura'] == lettura['proposta'])
+            lettura['minuti'] = next(a['minuti'] for a in alternative if a['lettura'] == 'decimale')
     return lettura
 
 
@@ -681,10 +776,15 @@ def giorni_alunno_assente(testo):
 
 
 def _chiave_operatore_file(r):
-    """Lo stesso operatore nel file: stesso codice fiscale (anche se sbagliato) o, senza
-    codice, stesso nome."""
+    """Lo stesso operatore nel file: stesso codice fiscale (anche se sbagliato; con 16
+    caratteri basta la radice, cosi' un codice con l'ultimo carattere sbagliato e' la stessa
+    persona del codice giusto) o, senza codice, stesso nome."""
     op = r['operatore']
-    return ('cf', op['cf']) if op['cf'] else ('nome', op['nome_completo'])
+    return ('cf', radice_cf(op['cf']) or op['cf']) if op['cf'] else ('nome', op['nome_completo'])
+
+
+def _chiave_alunno_file(cf):
+    return radice_cf(cf) or cf
 
 
 def _controlli_incrociati(righe, anno, mese, regole, anomalie):
@@ -694,7 +794,7 @@ def _controlli_incrociati(righe, anno, mese, regole, anomalie):
     for r in righe:
         per_operatore[_chiave_operatore_file(r)].append(r)
         if r['alunno']['cf']:
-            per_alunno[r['alunno']['cf']].append(r)
+            per_alunno[_chiave_alunno_file(r['alunno']['cf'])].append(r)
         con_ore = sorted(d for d, c in r['celle'].items() if c['minuti'])
         if not any(c['esito'] != 'vuoto' for c in r['celle'].values()):
             _anomalia(anomalie, r['riga'], None, 'riga_senza_attivita')
@@ -812,18 +912,42 @@ SPIEGAZIONI = {
                               'Correggi la data in cima a una delle due colonne.'),
     # ---- da controllare
     'cf_operatore_controllo': ('avviso', 'Codice fiscale dell\'operatore con l\'ultimo carattere sbagliato',
-                               'L\'operatore si riconosce lo stesso; correggi il codice nel file del mese prossimo.'),
+                               'L\'operatore si riconosce lo stesso. Correggi il codice nel file del mese '
+                               'prossimo: quando arriva giusto, si corregge da solo anche in Assisto.'),
     'cf_operatore_formato': ('avviso', 'Codice fiscale dell\'operatore scritto male',
-                             'L\'operatore si riconosce dal nome; correggi il codice nel file del mese prossimo.'),
+                             'L\'operatore si riconosce dal nome. Correggi il codice nel file del mese prossimo: '
+                             'quando arriva giusto, si corregge anche in Assisto.'),
     'cf_operatore_vuoto': ('avviso', 'Codice fiscale dell\'operatore mancante', 'L\'operatore si riconosce dal nome.'),
     'cf_alunno_controllo': ('avviso', 'Codice fiscale dell\'alunno con l\'ultimo carattere sbagliato',
-                            'Si usa come è scritto: controllalo con la scuola.'),
+                            'Se in Assisto c\'è già lo stesso alunno con il codice giusto si usa quello; '
+                            'altrimenti si salva come è scritto. Controllalo con la scuola e correggilo nel file '
+                            'del mese prossimo: quando arriva giusto, si corregge da solo anche in Assisto.'),
+    'cf_alunno_giusto_in_assisto': ('nota', 'Codice fiscale dell\'alunno giusto in Assisto',
+                                    'Nel file l\'ultimo carattere è sbagliato, in Assisto c\'è lo stesso alunno con '
+                                    'il codice giusto: si usa quello.'),
+    'cf_alunno_corretto_in_assisto': ('avviso', 'Codice fiscale dell\'alunno corretto in Assisto',
+                                      'In Assisto l\'alunno aveva il codice con l\'ultimo carattere sbagliato; nel '
+                                      'file è giusto: si corregge anche in Assisto (è sempre lo stesso alunno).'),
+    'cf_operatore_corretto_in_assisto': ('avviso', 'Codice fiscale dell\'operatore corretto in Assisto',
+                                         'In Assisto l\'operatore aveva il codice con l\'ultimo carattere sbagliato; '
+                                         'nel file è giusto: si corregge anche in Assisto.'),
+    'alunno_omonimo_in_assisto': ('avviso', 'Alunno con lo stesso nome di uno già in Assisto, ma un altro codice fiscale',
+                                  'Si crea un alunno nuovo. Se invece è lo stesso alunno, uno dei due codici fiscali è '
+                                  'sbagliato: controllalo con la scuola.'),
+    'operatore_omonimo_in_assisto': ('avviso', 'Operatore con lo stesso nome di uno già in Assisto, ma un altro '
+                                     'codice fiscale',
+                                     'Si crea un operatore nuovo. Se invece è la stessa persona, uno dei due codici '
+                                     'fiscali è sbagliato: controllalo.'),
     'municipalita_mancante': ('avviso', 'Municipalità mancante',
                               'La municipalità è quella della scuola: se la scuola compare in una sola '
                               'municipalità si prende quella, altrimenti resta da completare.'),
     'municipalita_non_riconosciuta': ('avviso', 'Municipalità che non si capisce', 'Scrivi solo il numero.'),
     'municipalita_presa_dalla_scuola': ('nota', 'Municipalità presa dalla scuola',
-                                        'Nella riga mancava: è quella della stessa scuola nelle altre righe.'),
+                                        'Nella riga mancava: è quella della stessa scuola nelle altre righe o in '
+                                        'Assisto.'),
+    'municipalita_completata_in_assisto': ('avviso', 'Municipalità aggiunta a una scuola di Assisto',
+                                           'In Assisto la scuola non aveva la municipalità: si aggiunge quella del '
+                                           'file (indicata a fianco).'),
     'lotto_mancante': ('avviso', 'Numero del lotto mancante', 'Vale il lotto scelto in alto.'),
     'lotto_non_riconosciuto': ('avviso', 'Numero del lotto che non si capisce', 'Vale il lotto scelto in alto.'),
     'data_inizio_scritta_male': ('nota', 'Data di inizio scritta male, corretta',
@@ -873,7 +997,9 @@ SPIEGAZIONI = {
                                    'Lo stesso giorno ha una sigla su una riga e ore su un\'altra: controlla.'),
     'operatore_stesso_cf_nomi_diversi': ('avviso', 'Stesso operatore scritto in due modi',
                                          'Stesso codice fiscale, nome scritto diversamente: vale la prima riga.'),
-    'operatore_con_piu_figure': ('avviso', 'Operatore con due figure', 'Controlla la qualifica.'),
+    'operatore_con_piu_figure': ('avviso', 'Operatore con due figure',
+                                 'Lo stesso operatore ha righe con figure diverse, o una figura diversa da quella '
+                                 'che ha in Assisto: ogni riga vale con la sua figura. Controlla la qualifica.'),
     'operatore_qualifica_scritta_diversa': ('nota', 'Qualifica dello stesso operatore scritta in modi diversi',
                                             'Si usa la figura di ogni riga.'),
     'operatore_senza_ore_contratto': ('avviso', 'Operatore senza ore di contratto', 'Completa le ore nel file.'),
@@ -892,10 +1018,14 @@ SPIEGAZIONI = {
     'sostituto_senza_titolare': ('avviso', 'Sostituto senza il titolare',
                                  'Non c\'è la riga del titolare (stesso alunno e stessa figura): controlla.'),
     'coppia_scuola_diversa': ('avviso', 'Coppia già in Assisto con un\'altra scuola',
-                              'Resta la scuola di Assisto: se l\'alunno ha cambiato scuola, sistemala nelle '
-                              'anagrafiche.'),
-    'coppia_riaperta': ('avviso', 'Coppia chiusa che ha di nuovo ore', 'La coppia si riapre fino all\'ultimo giorno '
-                        'con ore.'),
+                              'Resta la scuola di Assisto (la scuola scritta nel file non si aggiunge): se l\'alunno '
+                              'ha cambiato scuola, sistemalo nelle anagrafiche.'),
+    'coppia_riaperta': ('avviso', 'Coppia chiusa che ha di nuovo ore',
+                        'Il titolare era stato chiuso (per esempio con un cambio di operatore) e nel file ha di nuovo '
+                        'ore: la coppia si riapre.'),
+    'coppia_del_mese_non_nel_file': ('avviso', 'Coppia di questo mese che nel file non c\'è più',
+                                     'Le sue ore importate prima si tolgono, la coppia resta in Assisto senza ore '
+                                     '(vedi «Coppie che nel file non ci sono più»).'),
     'pei_diverso_in_assisto': ('avviso', 'PEI diverso da quello in Assisto',
                                'Il PEI di Assisto per questo mese non si cambia da qui: controllalo nelle anagrafiche.'),
     'righe_del_coordinatore': ('avviso', 'Righe del coordinatore',
@@ -984,9 +1114,10 @@ def _contesto(conn, lotto_id, anno, mese):
                         (lotto_id, anno, mese)),
         'presenze': _righe(conn, 'SELECT * FROM napoli_presenze WHERE lotto_id = ? AND data BETWEEN ? AND ? '
                                  'ORDER BY id', (lotto_id, inizio.isoformat(), fine.isoformat())),
-        'coppie_con_ore_dopo': {r['coppia_id'] for r in _righe(
-            conn, 'SELECT DISTINCT coppia_id FROM napoli_presenze WHERE lotto_id = ? AND data >= ?',
-            (lotto_id, inizio.isoformat()))},
+        # coppie con giorni dopo la fine del mese (quelli del mese sono in 'presenze')
+        'coppie_con_ore_dopo_il_mese': {r['coppia_id'] for r in _righe(
+            conn, 'SELECT DISTINCT coppia_id FROM napoli_presenze WHERE lotto_id = ? AND data > ?',
+            (lotto_id, fine.isoformat()))},
         'imports': _righe(conn, 'SELECT id, anno, mese, nome_file, sha256, n_righe, esito_json, annullato, data '
                                 'FROM napoli_import WHERE lotto_id = ? ORDER BY id', (lotto_id,)),
         'chiuso': conn.execute('SELECT 1 FROM napoli_mesi_chiusi WHERE lotto_id = ? AND anno = ? AND mese = ?',
@@ -1000,7 +1131,7 @@ def _impronta_contesto(ctx):
     """Impronta dei dati di Napoli guardati dall'import: se cambiano fra anteprima e
     conferma, la conferma si rifiuta (l'anteprima non direbbe piu' il vero)."""
     parti = {k: v for k, v in ctx.items() if k not in ('regole', 'inizio', 'fine', 'figure')}
-    parti['coppie_con_ore_dopo'] = sorted(ctx['coppie_con_ore_dopo'])
+    parti['coppie_con_ore_dopo_il_mese'] = sorted(ctx['coppie_con_ore_dopo_il_mese'])
     return hashlib.sha256(json.dumps(parti, sort_keys=True, default=str).encode('utf-8')).hexdigest()[:24]
 
 
@@ -1055,12 +1186,17 @@ def _nome_persona(p):
     return f'{p.get("cognome") or ""} {p.get("nome") or ""}'.strip()
 
 
-def _minuti_cella(r, c, scelte):
-    """Minuti di una cella: per le ore ambigue la lettura scelta (o quella proposta)."""
-    if c['esito'] != 'da_confermare':
-        return c['minuti'] or 0
-    scelta = scelte['ore_ambigue'].get(f'{r["riga"]}:{c["colonna"]}', c['proposta'])
-    return next(a['minuti'] for a in c['alternative'] if a['lettura'] == scelta)
+def _chiavi_nome(p):
+    """Le chiavi con cui si cerca una persona di Assisto per nome (cognome nome e nome cognome)."""
+    return {chiave_nome_scuola(_nome_persona(p)), chiave_nome_scuola(f'{p.get("nome") or ""} {p.get("cognome") or ""}')}
+
+
+def _cf_giusto(cf, valido=1):
+    return bool(cf) and bool(valido) and calc.esito_codice_fiscale(cf)[1] == 'ok'
+
+
+def _identita_scuola_assisto(s):
+    return ('mecc', s['codice_meccanografico']) if s['codice_meccanografico'] else ('nome', chiave_nome_scuola(s['nome']))
 
 
 def _attiva(c, minuti):
@@ -1075,6 +1211,12 @@ def _valori_presenza(c, minuti):
 def _stessi_valori(presenza, valori):
     return (presenza['stato'] == 'registrato' and presenza['minuti_riconosciuti'] == valori['minuti_riconosciuti']
             and (presenza['causale'] or None) == valori['causale'] and (presenza['sigla'] or None) == valori['sigla'])
+
+
+def _elenco_municipalita(valori):
+    numeri = sorted(v for v in valori if v is not None)
+    testi = [str(v) for v in numeri] + (['senza municipalità'] if None in valori else [])
+    return ' e '.join(testi)
 
 
 class _Piano:
@@ -1093,20 +1235,36 @@ class _Piano:
         self.righe = []
         self.pei = collections.OrderedDict()
         self.conferme = collections.OrderedDict()
-        self.subentri, self.chiusure = [], []
+        self.subentri, self.chiusure, self.coppie_del_mese = [], [], []
         self.togliere, self.solo_in_assisto, self.manuali_diverse = [], [], []
+        self.ambigue = {}                      # 'riga:colonna' -> {'scelta', 'ricordata'} (ore da confermare)
+        self.municipalita_file = collections.defaultdict(set)     # identita' della scuola -> municipalita' nel file
         self.scuole_db = {s['id']: s for s in ctx['scuole']}
         self.alunni_cf = {a['codice_fiscale']: a for a in ctx['alunni']}
+        self.alunni_radice, self.alunni_nome = collections.defaultdict(list), collections.defaultdict(list)
+        for a in ctx['alunni']:
+            if radice_cf(a['codice_fiscale']):
+                self.alunni_radice[radice_cf(a['codice_fiscale'])].append(a)
+            for k in _chiavi_nome(a):
+                self.alunni_nome[k].append(a)
         self.operatori_cf = {}
+        self.operatori_radice, self.operatori_nome = collections.defaultdict(list), collections.defaultdict(list)
         for o in ctx['operatori']:
             if o['codice_fiscale']:
                 self.operatori_cf.setdefault(o['codice_fiscale'], o)
+                if radice_cf(o['codice_fiscale']):
+                    self.operatori_radice[radice_cf(o['codice_fiscale'])].append(o)
+            for k in _chiavi_nome(o):
+                self.operatori_nome[k].append(o)
         self.presenze = {(p['coppia_id'], p['data']): p for p in ctx['presenze']}
         self.fogli = {f['coppia_id']: f for f in ctx['fogli']}
-        # coppie e PEI di Assisto per alunno (l'archivio cresce ogni mese)
+        # coppie e PEI di Assisto per alunno (l'archivio cresce ogni mese); scuole di ogni operatore
         self.coppie_alunno = collections.defaultdict(list)
+        self.scuole_operatore = collections.defaultdict(set)
         for c in ctx['coppie']:
             self.coppie_alunno[c['alunno_id']].append(c)
+            if c['scuola_id'] in self.scuole_db:
+                self.scuole_operatore[c['operatore_id']].add(_identita_scuola_assisto(self.scuole_db[c['scuola_id']]))
         self.pei_alunno = collections.defaultdict(list)
         for p in ctx['pei']:
             self.pei_alunno[p['alunno_id']].append(p)
@@ -1127,10 +1285,12 @@ class _Piano:
         for voce in self.righe:
             if voce['valida']:
                 self._coppia(voce)
+        self._ore_ambigue()
         for voce in self.righe:
             if voce['valida'] and voce['ruolo'] == 'sostituto':
                 self._titolare_del_sostituto(voce)
         self._subentri()
+        self._scuole_usate()
         for voce in self.righe:
             if voce['valida']:
                 self._foglio(voce)
@@ -1140,6 +1300,10 @@ class _Piano:
         self._presenze_senza_cella()
         self._chiusure()
         self._plessi()
+        self._figure_degli_operatori()
+        per_nome = [o for o in self.operatori.values() if o.get('per_nome') and not o.get('nuovo')]
+        if per_nome:
+            self.conferme['operatori_per_nome'] = per_nome
 
     def _municipalita_delle_scuole(self):
         """Per ogni scuola (codice o nome) le municipalita' scritte nel file e in Assisto."""
@@ -1148,11 +1312,10 @@ class _Piano:
             k = self._identita_scuola(r)
             if k and r['municipalita'] is not None:
                 note[k].add(r['municipalita'])
+                self.municipalita_file[k].add(r['municipalita'])
         for s in self.ctx['scuole']:
-            k = ('mecc', s['codice_meccanografico']) if s['codice_meccanografico'] else \
-                ('nome', chiave_nome_scuola(s['nome']))
             if s['municipalita'] is not None:
-                note[k].add(s['municipalita'])
+                note[_identita_scuola_assisto(s)].add(s['municipalita'])
         return note
 
     @staticmethod
@@ -1185,6 +1348,9 @@ class _Piano:
         return voce
 
     def _figura(self, r):
+        """La figura della qualifica: dalle grafie conosciute (napoli_alias_qualifiche) o,
+        per una qualifica nuova, solo quella scelta nella pagina (la figura proposta si
+        mostra, ma non e' gia' scelta: obbligo di scelta)."""
         testo = r['qualifica']
         if not testo:
             self.avviso(r['riga'], 'qualifica_mancante')
@@ -1193,15 +1359,14 @@ class _Piano:
             return self.ctx['alias'][testo]
         voce = self.qualifiche.get(testo)
         if voce is None:
-            proposta = figura_proposta(testo)
-            scelta = self.scelte['qualifiche'].get(testo)
-            voce = self.qualifiche[testo] = {'testo': testo, 'proposta': proposta, 'figura': scelta or proposta,
-                                             'righe': []}
+            voce = self.qualifiche[testo] = {'testo': testo, 'proposta': figura_proposta(testo),
+                                             'figura': self.scelte['qualifiche'].get(testo), 'righe': []}
         voce['righe'].append(r['riga'])
         if voce['figura'] is None:
             self.avviso(r['riga'], 'qualifica_non_collegata', testo)
         return voce['figura']
 
+    # ---------- scuole ----------
     def _scuola(self, r, municipalita_note):
         n = r['riga']
         identita = self._identita_scuola(r)
@@ -1215,11 +1380,14 @@ class _Piano:
         chiave = f'{identita[0]}:{identita[1]}|{"" if mun is None else mun}'
         voce = self.scuole.get(chiave)
         if voce is None:
-            esistente = self._scuola_in_assisto(identita, mun)
+            esistente, completa = self._scuola_in_assisto(identita, mun)
             codice = r['scuola']['codice']
-            voce = {'chiave': chiave, 'identita': identita, 'codice': codice, 'municipalita': mun, 'righe': []}
+            voce = {'chiave': chiave, 'identita': identita, 'codice': codice, 'municipalita': mun, 'righe': [],
+                    'completa': completa, 'usata': True}
             if esistente:
                 voce.update(id=esistente['id'], nome=esistente['nome'], grado=esistente['grado'], nuova=False)
+                if completa:
+                    self.avviso(n, 'municipalita_completata_in_assisto', f'municipalità {mun}')
             else:
                 proposto = calc.grado_da_codice_meccanografico(codice)
                 scelto = self.scelte['gradi'].get(chiave)
@@ -1229,29 +1397,59 @@ class _Piano:
         voce['righe'].append(n)
         return voce
 
-    def _scuola_in_assisto(self, identita, mun):
+    def _plessi_in_assisto(self, identita):
+        """I plessi di Assisto della stessa scuola (stesso codice meccanografico; senza
+        codice, stesso nome), prima quelli senza codice."""
         tipo, valore = identita
         if tipo == 'mecc':
-            for s in self.ctx['scuole']:
-                if s['codice_meccanografico'] == valore and s['municipalita'] == mun:
-                    return s
-            return None
-        candidate = [s for s in self.ctx['scuole'] if chiave_nome_scuola(s['nome']) == valore and s['municipalita'] == mun]
-        candidate.sort(key=lambda s: (s['codice_meccanografico'] is not None, s['id']))
-        return candidate[0] if candidate else None
+            return [s for s in self.ctx['scuole'] if s['codice_meccanografico'] == valore]
+        candidate = [s for s in self.ctx['scuole'] if chiave_nome_scuola(s['nome']) == valore]
+        return sorted(candidate, key=lambda s: (s['codice_meccanografico'] is not None, s['id']))
 
+    @staticmethod
+    def _stessa_scuola(s, identita):
+        tipo, valore = identita
+        return s['codice_meccanografico'] == valore if tipo == 'mecc' else chiave_nome_scuola(s['nome']) == valore
+
+    def _scuola_in_assisto(self, identita, mun):
+        """(plesso di Assisto, municipalita' da aggiungere). Lo stesso plesso ha la stessa
+        scuola e la stessa municipalita'. Se in Assisto la scuola c'e' una volta sola e senza
+        municipalita', e nel file ha una municipalita' sola, e' lo stesso plesso: la
+        municipalita' del file si aggiunge. Altrimenti (municipalita' diversa) e' un plesso
+        nuovo, da confermare (_plessi)."""
+        plessi = self._plessi_in_assisto(identita)
+        uguali = [s for s in plessi if s['municipalita'] == mun]
+        if uguali:
+            return uguali[0], False
+        if mun is not None and len(plessi) == 1 and plessi[0]['municipalita'] is None \
+                and self.municipalita_file.get(identita) == {mun}:
+            return plessi[0], True
+        return None, False
+
+    def _scuole_usate(self):
+        """Una scuola (o un plesso) nuova si crea solo se serve: se tutte le sue righe sono
+        di coppie gia' in Assisto, quelle restano nella scuola della coppia (con un avviso o
+        la conferma dei plessi) e nelle anagrafiche non resta una scuola vuota."""
+        for s in self.scuole.values():
+            if s['nuova']:
+                voci = [v for v in self.righe if v.get('scuola') is s and not v.get('coordinatore')]
+                s['usata'] = any(not v['valida'] or v.get('coppia_nuova') for v in voci)
+
+    # ---------- alunni ----------
     def _alunno(self, r, voce_riga):
         n, al = r['riga'], r['alunno']
         if al['cf_esito'] in ('vuoto', 'formato'):
             self.avviso(n, 'riga_senza_alunno' if not al['cf'] and not al['nome_completo'] else 'cf_alunno_non_valido')
             return None
-        voce = self.alunni.get(al['cf'])
+        chiave = _chiave_alunno_file(al['cf'])
+        voce = self.alunni.get(chiave)
         if voce is None:
-            esistente = self.alunni_cf.get(al['cf'])
-            voce = {'cf': al['cf'], 'righe': [], 'scuola': voce_riga['scuola']}
+            esistente = self._alunno_in_assisto(al['cf'])
+            voce = {'chiave': chiave, 'cf': al['cf'], 'cf_esito': al['cf_esito'], 'righe': [],
+                    'scuola': voce_riga['scuola']}
             if esistente:
                 voce.update(id=esistente['id'], cognome=esistente['cognome'], nome=esistente['nome'],
-                            grado=esistente['grado'], nuovo=False)
+                            grado=esistente['grado'], nuovo=False, cf_assisto=esistente['codice_fiscale'])
                 if not _uguali_nomi(_nome_persona(esistente), al['nome_completo']) and \
                         not _uguali_nomi(f'{esistente["nome"]} {esistente["cognome"]}', al['nome_completo']):
                     self.avviso(n, 'alunno_nome_diverso_in_assisto')
@@ -1262,10 +1460,39 @@ class _Piano:
                     self.avviso(n, 'alunno_senza_nome')
                     return None
                 voce.update(id=None, cognome=al['cognome'], nome=al['nome'] or '-', grado=None, nuovo=True)
-            self.alunni[al['cf']] = voce
+                if self.alunni_nome.get(chiave_nome_scuola(al['nome_completo'])):
+                    self.avviso(n, 'alunno_omonimo_in_assisto')
+            self.alunni[chiave] = voce
+        self._codice_alunno(voce, al, n)
         voce['righe'].append(n)
         return voce
 
+    def _alunno_in_assisto(self, cf):
+        """Lo stesso codice fiscale; altrimenti lo stesso codice con un altro ultimo
+        carattere (uno dei due e' sbagliato: e' la stessa persona)."""
+        esistente = self.alunni_cf.get(cf)
+        if esistente:
+            return esistente
+        stessi = self.alunni_radice.get(radice_cf(cf) or '', [])
+        return stessi[0] if len(stessi) == 1 else None
+
+    def _codice_alunno(self, voce, al, n):
+        """Il codice fiscale giusto, se arriva: per un alunno nuovo si salva quello giusto
+        fra le sue righe; per uno di Assisto con il codice sbagliato si corregge."""
+        if voce['nuovo']:
+            if al['cf_esito'] == 'ok' and voce['cf_esito'] != 'ok':
+                voce['cf'], voce['cf_esito'] = al['cf'], 'ok'
+            return
+        if al['cf'] == voce['cf_assisto'] or voce.get('cf_nuovo'):
+            return
+        giusto_in_assisto = _cf_giusto(voce['cf_assisto'])
+        if al['cf_esito'] == 'ok' and not giusto_in_assisto and al['cf'] not in self.alunni_cf:
+            voce['cf_nuovo'] = al['cf']
+            self.avviso(n, 'cf_alunno_corretto_in_assisto')
+        elif al['cf_esito'] != 'ok' and giusto_in_assisto:
+            self.avviso(n, 'cf_alunno_giusto_in_assisto')
+
+    # ---------- operatori ----------
     def _operatore(self, r, voce_riga):
         n, op = r['riga'], r['operatore']
         if not op['cf'] and not op['nome_completo']:
@@ -1274,13 +1501,14 @@ class _Piano:
         chiave = _chiave_operatore_file(r)
         voce = self.operatori.get(chiave)
         if voce is None:
-            esistente, per_nome = self._operatore_in_assisto(op, n)
+            esistente, modo = self._operatore_in_assisto(op, r)
             voce = {'chiave': chiave, 'righe': [], 'cf': op['cf'], 'cf_esito': op['cf_esito'],
-                    'nome_file': op['nome_completo'], 'per_nome': per_nome, 'ore_contratto': None}
+                    'nome_file': op['nome_completo'], 'per_nome': modo == 'nome', 'ore_contratto': None}
             if esistente:
                 voce.update(id=esistente['id'], cognome=esistente['cognome'], nome=esistente['nome'], nuovo=False,
-                            ore_contratto_assisto=esistente['ore_contratto'], cf_assisto=esistente['codice_fiscale'])
-                if not per_nome and op['nome_completo'] and \
+                            ore_contratto_assisto=esistente['ore_contratto'], cf_assisto=esistente['codice_fiscale'],
+                            cf_valido_assisto=esistente['cf_valido'], figura_assisto=esistente['figura'])
+                if modo != 'nome' and op['nome_completo'] and \
                         not _uguali_nomi(_nome_persona(esistente), op['nome_completo']) and \
                         not _uguali_nomi(f'{esistente["nome"]} {esistente["cognome"]}', op['nome_completo']):
                     self.avviso(n, 'operatore_nome_diverso_in_assisto')
@@ -1291,6 +1519,7 @@ class _Piano:
                 voce.update(id=None, cognome=op['cognome'], nome=op['nome'] or '-', nuovo=True,
                             figura=voce_riga['figura'], qualifica=r['qualifica'] or None)
             self.operatori[chiave] = voce
+        self._codice_operatore(voce, op, n)
         voce['righe'].append(n)
         if voce['ore_contratto'] is None and r['ore_contratto'] is not None:
             voce['ore_contratto'] = r['ore_contratto']
@@ -1298,24 +1527,71 @@ class _Piano:
             voce['figura'] = voce_riga['figura']
         return voce
 
-    def _operatore_in_assisto(self, op, n):
-        """(operatore di Assisto, abbinato per nome). Con il codice fiscale valido si
-        abbina solo per codice; con un codice sbagliato prima lo stesso codice scritto
-        uguale, poi il nome (da confermare)."""
-        if op['cf']:
-            trovato = self.operatori_cf.get(op['cf'])
-            if trovato or op['cf_esito'] == 'ok':
-                return trovato, False
+    def _operatore_in_assisto(self, op, r):
+        """(operatore di Assisto, come si e' trovato): 'cf' (stesso codice), 'radice' (stesso
+        codice salvo l'ultimo carattere) o 'nome' (da confermare, PROGETTO §7.1). Per nome
+        si cerca solo se il codice del file non e' giusto, o se e' giusto ma in Assisto la
+        persona ha un codice sbagliato o nessun codice (il mese dopo il codice arriva
+        corretto); fra piu' omonimi vale quello che ha gia' coppie nella stessa scuola."""
+        cf = op['cf']
+        if cf:
+            trovato = self.operatori_cf.get(cf)
+            if trovato:
+                return trovato, 'cf'
+            stessi = self.operatori_radice.get(radice_cf(cf) or '', [])
+            if len(stessi) == 1:
+                return stessi[0], 'radice'
         if not op['nome_completo']:
-            return None, False
-        candidati = [o for o in self.ctx['operatori']
-                     if _uguali_nomi(_nome_persona(o), op['nome_completo'])
-                     or _uguali_nomi(f'{o["nome"]} {o["cognome"]}', op['nome_completo'])]
-        if len(candidati) == 1:
-            return candidati[0], True
+            return None, None
+        stesso_nome = self.operatori_nome.get(chiave_nome_scuola(op['nome_completo']), [])
+        if op['cf_esito'] == 'ok':
+            candidati = [o for o in stesso_nome if not _cf_giusto(o['codice_fiscale'], o['cf_valido'])]
+            if stesso_nome and not candidati:
+                self.avviso(r['riga'], 'operatore_omonimo_in_assisto')
+        else:
+            candidati = list(stesso_nome)
         if len(candidati) > 1:
-            self.avviso(n, 'operatori_omonimi_in_assisto')
-        return None, False
+            identita = self._identita_scuola(r)
+            stessa_scuola = [o for o in candidati if identita in self.scuole_operatore.get(o['id'], ())]
+            if len(stessa_scuola) == 1:
+                candidati = stessa_scuola
+        if len(candidati) == 1:
+            return candidati[0], 'nome'
+        if len(candidati) > 1:
+            self.avviso(r['riga'], 'operatori_omonimi_in_assisto')
+        return None, None
+
+    def _codice_operatore(self, voce, op, n):
+        """Il codice fiscale giusto, se arriva: per un operatore nuovo si salva quello giusto
+        fra le sue righe; per uno di Assisto con un codice sbagliato o mancante si corregge
+        (se i due codici differiscono di al massimo due caratteri, o in Assisto manca)."""
+        if voce['nuovo']:
+            if op['cf_esito'] == 'ok' and voce['cf_esito'] != 'ok' and radice_cf(op['cf']) == radice_cf(voce['cf']):
+                voce['cf'], voce['cf_esito'] = op['cf'], 'ok'
+            return
+        if op['cf_esito'] != 'ok' or op['cf'] == voce['cf_assisto'] or voce.get('cf_nuovo') \
+                or _cf_giusto(voce['cf_assisto'], voce['cf_valido_assisto']) or op['cf'] in self.operatori_cf \
+                or differenza_cf(op['cf'], voce['cf_assisto']) is None:
+            return
+        voce['cf_nuovo'] = op['cf']
+        if not voce['per_nome']:
+            self.avviso(n, 'cf_operatore_corretto_in_assisto')
+
+    def _figure_degli_operatori(self):
+        """Lo stesso operatore con figure diverse: fra le sue righe, o fra le righe e la
+        figura che ha in Assisto (ogni riga vale con la sua figura: solo un avviso)."""
+        for o in self.operatori.values():
+            voci = [v for v in self.righe if v.get('operatore') is o and v.get('figura') and not v.get('coordinatore')]
+            nel_file = sorted({v['figura'] for v in voci}, key=lambda f: self.ctx['figure'].get(f, {}).get('ordine', 0))
+            in_assisto = o.get('figura_assisto')
+            if len(set(nel_file) | ({in_assisto} if in_assisto else set())) < 2:
+                continue
+            dettaglio = 'nel file ' + ' e '.join(napoli_db.nome_figura(f) for f in nel_file)
+            if in_assisto:
+                dettaglio += f', in Assisto {napoli_db.nome_figura(in_assisto)}'
+            for v in voci:
+                if len(nel_file) > 1 or v['figura'] != in_assisto:
+                    self.avviso(v['riga'], 'operatore_con_piu_figure', dettaglio)
 
     def _doppie(self):
         viste = {}
@@ -1330,10 +1606,44 @@ class _Piano:
             else:
                 viste[chiave] = voce
 
+    # ---------- ore da confermare ----------
+    def _minuti(self, r, c):
+        """Minuti di una cella: per le ore da confermare la lettura scelta (nella pagina o
+        nell'import di prima dello stesso file); finche' non si sceglie, quella decimale."""
+        if c['esito'] != 'da_confermare':
+            return c['minuti'] or 0
+        scelta = (self.ambigue.get(f'{r["riga"]}:{c["colonna"]}') or {}).get('scelta') \
+            or self.scelte['ore_ambigue'].get(f'{r["riga"]}:{c["colonna"]}') or 'decimale'
+        return next(a['minuti'] for a in c['alternative'] if a['lettura'] == scelta)
+
+    def _ore_ambigue(self):
+        """Le ore da confermare ('1,30'): la scelta fatta nella pagina o, se la cella e' la
+        stessa gia' importata (stesso testo, stessi minuti di una delle due letture), quella
+        fatta nell'import di prima. Nessuna scelta gia' fatta dal programma."""
+        for voce in self.righe:
+            if voce.get('coordinatore'):
+                continue
+            r = voce['r']
+            for d, c in r['celle'].items():
+                if c['esito'] != 'da_confermare':
+                    continue
+                chiave = f'{r["riga"]}:{c["colonna"]}'
+                scelta, ricordata = self.scelte['ore_ambigue'].get(chiave), False
+                p = self.presenze.get((voce.get('coppia_id'), d.isoformat())) if voce.get('coppia_id') else None
+                if scelta is None and p and p['origine'] == 'import_excel' and (p['testo_originale'] or '') == c['testo']:
+                    scelta = next((a['lettura'] for a in c['alternative']
+                                   if a['minuti'] == p['minuti_riconosciuti']), None)
+                    ricordata = scelta is not None
+                self.ambigue[chiave] = {'scelta': scelta, 'ricordata': ricordata, 'riga': r['riga'], 'data': d,
+                                        'cella': c}
+
+    def ore_ambigue_da_scegliere(self):
+        return [k for k, x in self.ambigue.items() if x['scelta'] is None]
+
     # ---------- coppie ----------
     def _giorni_attivi(self, voce):
         r = voce['r']
-        return sorted(d for d, c in r['celle'].items() if _attiva(c, _minuti_cella(r, c, self.scelte)))
+        return sorted(d for d, c in r['celle'].items() if _attiva(c, self._minuti(r, c)))
 
     def _coppia(self, voce):
         r = voce['r']
@@ -1348,7 +1658,8 @@ class _Piano:
         else:
             dal = di if di and self.inizio <= di <= (primo or self.fine) else (primo or self.inizio)
             al = ultimo or self.fine
-        voce.update(attivi=attivi, valido_da=dal, valido_a=al, coppia_id=None, coppia_cambi={}, titolare=None)
+        voce.update(attivi=attivi, valido_da=dal, valido_a=al, coppia_id=None, coppia_cambi={}, titolare=None,
+                    scuola_coppia=None)
         esistente = self._coppia_in_assisto(voce, dal)
         if esistente is None:
             voce['coppia_nuova'] = True
@@ -1357,30 +1668,50 @@ class _Piano:
         voce['coppia_id'] = esistente['id']
         voce['coppia_assisto'] = esistente
         cambi = {}
-        attuale_da = calc.data(esistente['valido_da'])
-        if dal < attuale_da:
+        if dal < calc.data(esistente['valido_da']):
             cambi['valido_da'] = dal.isoformat()
         if esistente['valido_a'] is not None:
-            fine_voluta = max(calc.data(esistente['valido_a']), al or ultimo or calc.data(esistente['valido_a']))
-            if fine_voluta > calc.data(esistente['valido_a']):
-                cambi['valido_a'] = fine_voluta.isoformat()
-                if voce['ruolo'] == 'titolare':
+            fine_attuale = calc.data(esistente['valido_a'])
+            if voce['ruolo'] == 'titolare':
+                if ultimo and ultimo > fine_attuale:        # ore dopo la chiusura: il titolare torna
+                    cambi['valido_a'] = None
                     self.avviso(voce['riga'], 'coppia_riaperta')
+            elif al > fine_attuale:                          # il sostituto continua
+                cambi['valido_a'] = al.isoformat()
         voce['coppia_cambi'] = cambi
-        if voce['scuola'].get('id') and esistente['scuola_id'] != voce['scuola']['id']:
-            self.avviso(voce['riga'], 'coppia_scuola_diversa')
+        # la scuola della coppia resta quella di Assisto
+        scuola_coppia = self.scuole_db.get(esistente['scuola_id'])
+        voce['scuola_coppia'] = scuola_coppia
+        if scuola_coppia and voce['scuola'].get('id') != scuola_coppia['id']:
+            if self._stessa_scuola(scuola_coppia, voce['scuola']['identita']):
+                voce['plesso_diverso'] = True        # stessa scuola, altra municipalita': si conferma (_plessi)
+            else:
+                self.avviso(voce['riga'], 'coppia_scuola_diversa')
 
     def _coppia_in_assisto(self, voce, dal):
+        """La coppia di Assisto con lo stesso alunno, operatore, figura e ruolo, valida nel
+        mese o finita nel mese prima: un sostituto che continua o un titolare che torna dopo
+        il cambio di operatore restano la stessa coppia (non se ne crea una ogni mese)."""
         alunno_id, operatore_id = voce['alunno'].get('id'), voce['operatore'].get('id')
         if not alunno_id or not operatore_id:
             return None
         fine_finestra = max(self.fine, dal)
+        da_mese_prima = (self.inizio - datetime.timedelta(days=1)).replace(day=1)
         candidate = [c for c in self.coppie_alunno.get(alunno_id, ())
                      if c['operatore_id'] == operatore_id
                      and c['figura'] == voce['figura'] and c['ruolo'] == voce['ruolo']
                      and calc.data(c['valido_da']) <= fine_finestra
-                     and (c['valido_a'] is None or calc.data(c['valido_a']) >= self.inizio)]
+                     and (c['valido_a'] is None or calc.data(c['valido_a']) >= da_mese_prima)]
         return max(candidate, key=lambda c: (c['valido_da'], c['id'])) if candidate else None
+
+    def _date_coppia(self, voce):
+        """Le date della coppia dopo l'import: quelle della coppia nuova, o quelle di Assisto
+        con i cambi (riapertura, sostituto che continua, subentro)."""
+        if voce['coppia_nuova']:
+            return voce['valido_da'], voce['valido_a']
+        c, cambi = voce['coppia_assisto'], voce['coppia_cambi']
+        fine = cambi['valido_a'] if 'valido_a' in cambi else c['valido_a']
+        return calc.data(cambi.get('valido_da', c['valido_da'])), (calc.data(fine) if fine else None)
 
     def _titolare_del_sostituto(self, voce):
         """Il titolare del sostituto: la riga NO con lo stesso alunno e la stessa figura,
@@ -1417,9 +1748,12 @@ class _Piano:
                     continue
                 attuale = titolare.get('coppia_assisto')
             else:
+                # titolare solo in Assisto: le sue ore importate prima si tolgono (non e' nel
+                # file); contano i giorni scritti a mano o programmati e quelli dopo il mese
                 attuale = titolare['coppia_assisto']
-                if attuale['id'] in self.ctx['coppie_con_ore_dopo'] and any(
-                        p['coppia_id'] == attuale['id'] and p['data'] >= di.isoformat() for p in self.ctx['presenze']):
+                if attuale['id'] in self.ctx['coppie_con_ore_dopo_il_mese'] or any(
+                        p['coppia_id'] == attuale['id'] and p['data'] >= di.isoformat()
+                        and p['origine'] != 'import_excel' for p in self.ctx['presenze']):
                     continue
             if attuale and attuale['valido_a'] is not None and calc.data(attuale['valido_a']) <= chiudi_al:
                 continue
@@ -1436,9 +1770,9 @@ class _Piano:
     # ---------- foglio, celle, PEI ----------
     def _foglio(self, voce):
         note = voce['r']['note'] or None
-        dal, al = voce['valido_da'], voce['valido_a']
-        if calc.data(voce['coppia_cambi'].get('valido_da', dal)) > self.fine or (al is not None and al < self.inizio):
-            voce['foglio'] = None           # la coppia non vale nel mese (comincia dopo)
+        dal, al = self._date_coppia(voce)
+        if dal > self.fine or (al is not None and al < self.inizio):
+            voce['foglio'] = None           # la coppia non vale nel mese (comincia dopo o e' chiusa prima)
             return
         attuale = self.fogli.get(voce['coppia_id']) if voce['coppia_id'] else None
         if attuale is None:
@@ -1457,7 +1791,7 @@ class _Piano:
         for d, c in sorted(r['celle'].items()):
             if c['esito'] == 'errore':
                 continue
-            minuti = _minuti_cella(r, c, self.scelte)
+            minuti = self._minuti(r, c)
             if not _attiva(c, minuti):
                 continue
             valori = _valori_presenza(c, minuti)
@@ -1488,7 +1822,7 @@ class _Piano:
             if not 0 < ore <= 40:
                 self.avviso(voce['riga'], 'ore_progetto_fuori_limite', calc.numero_it(ore))
                 continue
-            chiave = (voce['alunno']['cf'], voce['figura'])
+            chiave = (voce['alunno']['chiave'], voce['figura'])
             attuale = self.pei.get(chiave)
             if attuale is None:
                 self.pei[chiave] = {'alunno': voce['alunno'], 'figura': voce['figura'], 'ore': ore,
@@ -1534,7 +1868,7 @@ class _Piano:
         gruppi = collections.defaultdict(list)
         for voce in self.righe:
             if voce['valida']:
-                gruppi[(voce['alunno']['cf'], voce['figura'])].append(voce)
+                gruppi[(voce['alunno']['chiave'], voce['figura'])].append(voce)
         for chiave, voci in gruppi.items():
             pei = self.pei.get(chiave)
             if len(voci) < 2 or not pei:
@@ -1565,40 +1899,72 @@ class _Piano:
 
     def _chiusure(self):
         """Coppie valide alla fine del mese prima che nel file non ci sono: si propone di
-        chiuderle l'ultimo giorno del mese prima (da confermare)."""
+        chiuderle l'ultimo giorno del mese prima (da confermare). Contano i giorni che
+        restano dopo l'import: nel reimport, le ore importate prima di una riga tolta dal
+        file si tolgono e la sua coppia si propone da chiudere. Una coppia che comincia in
+        questo mese non si puo' chiudere prima di cominciare: si mostra (resta senza ore)."""
         if self.solo_confronto:
             return
         prima = self.inizio - datetime.timedelta(days=1)
         nel_file = {v['coppia_id'] for v in self.righe if v.get('coppia_id')}
         nel_file |= {v['titolare']['coppia_id'] for v in self.righe if v.get('titolare') and
                      v['titolare'].get('coppia_id')}
+        tolte = {p['id'] for p in self.togliere}
+        con_giorni = {p['coppia_id'] for p in self.ctx['presenze'] if p['id'] not in tolte}
+        con_giorni |= self.ctx['coppie_con_ore_dopo_il_mese']
         for c in self.ctx['coppie']:
-            if c['id'] in nel_file or c['id'] in self.ctx['coppie_con_ore_dopo']:
+            if c['id'] in nel_file or c['id'] in con_giorni:
                 continue
-            if calc.data(c['valido_da']) <= prima and (c['valido_a'] is None or calc.data(c['valido_a']) >= self.inizio):
+            if c['valido_a'] is not None and calc.data(c['valido_a']) < self.inizio:
+                continue
+            if calc.data(c['valido_da']) <= prima:
                 scelto = self.scelte['chiusure'] is not None and c['id'] in self.scelte['chiusure']
                 self.chiusure.append({'coppia': c, 'chiudi_al': prima, 'scelto': scelto})
+            elif calc.data(c['valido_da']) <= self.fine:
+                self.coppie_del_mese.append(c)
+                self.avviso(None, 'coppia_del_mese_non_nel_file')
 
     def _plessi(self):
-        """La stessa scuola in due municipalita' del file: due plessi, da confermare (se
-        almeno uno e' nuovo)."""
-        per_scuola = collections.defaultdict(list)
+        """La stessa scuola con municipalita' diverse, nel file o fra il file e Assisto
+        (REGOLE 12: la municipalita' e' della scuola): una municipalita' nuova diventa un
+        altro plesso della stessa scuola, se serve a una coppia nuova; le righe di coppie
+        gia' in Assisto restano nel plesso della coppia. In tutti e due i casi si chiede di
+        confermare ("Ho controllato")."""
+        per_scuola = collections.OrderedDict()
         for s in self.scuole.values():
-            if s['municipalita'] is not None:
-                per_scuola[s['identita']].append(s)
-        voci = [{'nome': lista[0]['nome'], 'codice': lista[0]['codice'],
-                 'municipalita': sorted(s['municipalita'] for s in lista),
-                 'righe': sorted(n for s in lista for n in s['righe'])}
-                for lista in per_scuola.values() if len(lista) > 1 and any(s['nuova'] for s in lista)]
+            per_scuola.setdefault(s['identita'], []).append(s)
+        voci = []
+        for identita, lista in per_scuola.items():
+            in_assisto = self._plessi_in_assisto(identita)
+            nuovi = [s for s in lista if s['nuova'] and s['usata']]
+            restano = [v for v in self.righe if v['valida'] and v.get('plesso_diverso')
+                       and v['scuola']['identita'] == identita]
+            mun_file = {s['municipalita'] for s in lista}
+            mun_assisto = {s['municipalita'] for s in in_assisto}
+            if not ((nuovi and len(mun_file | mun_assisto) > 1) or restano):
+                continue
+            testo = f'nel file municipalità {_elenco_municipalita(mun_file)}'
+            if in_assisto:
+                testo += f', in Assisto {_elenco_municipalita(mun_assisto)}'
+            esiti = []
+            if nuovi:
+                mun_nuovi = {s['municipalita'] for s in nuovi}
+                esiti.append(('si aggiunge il plesso della municipalità ' if len(nuovi) == 1 else
+                              'si aggiungono i plessi delle municipalità ') + _elenco_municipalita(mun_nuovi))
+            if restano:
+                mun_coppie = {v['scuola_coppia']['municipalita'] for v in restano}
+                esiti.append('le coppie già in Assisto restano nel plesso della municipalità '
+                             + _elenco_municipalita(mun_coppie))
+            righe = {n for s in nuovi for n in s['righe']} | {v['riga'] for v in restano}
+            voci.append({'nome': lista[0]['nome'], 'codice': lista[0]['codice'], 'testo': f'{testo}: {"; ".join(esiti)}',
+                         'righe': sorted(righe)})
         if voci:
             self.conferme['plessi'] = voci
-        per_nome = [o for o in self.operatori.values() if o.get('per_nome') and not o.get('nuovo')]
-        if per_nome:
-            self.conferme['operatori_per_nome'] = per_nome
 
     # ---------- riepiloghi ----------
     def grado_della_riga(self, voce):
-        g = calc.grado_fattura(voce['alunno'].get('grado')) or calc.grado_fattura(voce['scuola'].get('grado'))
+        scuola = voce.get('scuola_coppia') or voce['scuola']
+        g = calc.grado_fattura(voce['alunno'].get('grado')) or calc.grado_fattura(scuola.get('grado'))
         return g or 'da_decidere'
 
     def bloccanti(self):
@@ -1615,23 +1981,27 @@ class _Piano:
         coppie_cambiate += sum(1 for c in self.chiusure if c['scelto'])
         fogli = collections.Counter((v.get('foglio') or {}).get('azione') for v in valide)
         pei = collections.Counter(p['azione'] for p in self.pei.values())
-        operatori_cambiati = sum(1 for o in self.operatori.values() if self._cambi_operatore(o))
+        operatori_cambiati = sum(1 for o in self.operatori.values() if self._cambi_operatore(o) or o.get('cf_nuovo'))
         sigle = collections.Counter(calc.TIPO_SIGLA.get(c['valori']['causale']) for c in celle
                                     if c['valori']['sigla'])
         return {
             'righe': len(self.lettura['righe']), 'righe_importate': len(valide),
+            'righe_escluse': len(self.lettura['righe']) - len(valide),
+            'celle_escluse': sum(1 for v in valide for c in v['r']['celle'].values() if c['esito'] == 'errore'),
             'operatori': len(self.operatori), 'alunni': len(self.alunni), 'scuole': len(self.scuole),
             'minuti': sum(c['minuti'] for c in celle), 'giorni_con_ore': sum(1 for c in celle if c['minuti']),
             'minuti_file': self.minuti_file(),
             'sigle': {k: sigle[k] for k in ('ferie', 'malattia', 'permesso') if sigle[k]},
-            'nuovi': {'scuole': sum(1 for s in self.scuole.values() if s['nuova']),
+            'nuovi': {'scuole': sum(1 for s in self.scuole.values() if s['nuova'] and s['usata']),
                       'alunni': sum(1 for a in self.alunni.values() if a['nuovo']),
                       'operatori': sum(1 for o in self.operatori.values() if o['nuovo']),
                       'coppie': coppie_nuove, 'pei': pei['nuovo'],
                       'qualifiche': sum(1 for q in self.qualifiche.values() if q['figura']),
                       'fogli': fogli['nuovo']},
             'aggiornati': {'coppie': coppie_cambiate, 'pei': pei['cambia_dal_mese'] + pei['cambia_ore'] + pei['anticipa'],
-                           'operatori': operatori_cambiati, 'fogli': fogli['cambia']},
+                           'operatori': operatori_cambiati, 'fogli': fogli['cambia'],
+                           'scuole': sum(1 for s in self.scuole.values() if s.get('completa')),
+                           'alunni': sum(1 for a in self.alunni.values() if a.get('cf_nuovo'))},
             'presenze': {'nuove': azioni['nuova'], 'uguali': azioni['uguale'], 'cambiate': azioni['cambia'],
                          'da_programmato': azioni['da_programmato'],
                          'manuali_diverse': azioni['manuale_diversa'] + azioni['sovrascrivi'],
@@ -1641,8 +2011,9 @@ class _Piano:
 
     def minuti_file(self):
         """Le ore di tutte le righe del file (anche quelle che non si importano), dalle celle
-        dei giorni, con la lettura scelta per le ore da confermare."""
-        return sum(_minuti_cella(r, c, self.scelte) for r in self.lettura['righe'] for c in r['celle'].values()
+        dei giorni, con la lettura scelta per le ore da confermare (decimale finche' non si
+        sceglie)."""
+        return sum(self._minuti(r, c) for r in self.lettura['righe'] for c in r['celle'].values()
                    if c['esito'] in ('ore', 'da_confermare'))
 
     def _cambi_operatore(self, o):
@@ -1690,8 +2061,10 @@ TABELLE_IMPORT = ('alias_qualifiche', 'scuole', 'operatori', 'alunni', 'coppie',
 
 class _Registro:
     """Le righe create, cambiate e tolte da un import, per "Annulla import"
-    (napoli_import.sostituite_json): id e valori di prima, mai codici fiscali (delle
-    anagrafiche si cambiano solo campi vuoti come le ore di contratto)."""
+    (napoli_import.sostituite_json): id e valori di prima, mai codici fiscali. Delle
+    anagrafiche si cambiano solo campi vuoti (ore di contratto, municipalita' della scuola)
+    e i codici fiscali sbagliati corretti dal file: di quelli si salva solo la differenza
+    (differenza_cf, al piu' due caratteri), mai il codice."""
 
     def __init__(self, conn):
         self.conn = conn
@@ -1717,6 +2090,21 @@ class _Registro:
         assegna = ', '.join(f'{k} = ?' for k in valori)
         self.conn.execute(f'UPDATE napoli_{tabella} SET {assegna} WHERE id = ?', tuple(valori.values()) + (id_,))
         self.cambiate.append({'tabella': tabella, 'id': id_, 'prima': prima})
+
+    def correggi_cf(self, tabella, id_, vecchio, nuovo):
+        """Il codice fiscale di un alunno o di un operatore corretto con quello del file."""
+        assert tabella in ('alunni', 'operatori'), tabella
+        differenza = differenza_cf(nuovo, vecchio)
+        if differenza is None:           # il piano lo controlla prima: codici troppo diversi non si correggono
+            return
+        valori, prima = {'codice_fiscale': nuovo}, {}
+        if tabella == 'operatori':
+            prima['cf_valido'] = self.conn.execute('SELECT cf_valido FROM napoli_operatori WHERE id = ?',
+                                                   (id_,)).fetchone()[0]
+            valori['cf_valido'] = 1
+        assegna = ', '.join(f'{k} = ?' for k in valori)
+        self.conn.execute(f'UPDATE napoli_{tabella} SET {assegna} WHERE id = ?', tuple(valori.values()) + (id_,))
+        self.cambiate.append({'tabella': tabella, 'id': id_, 'prima': prima, 'differenza_cf': differenza})
 
     def togli_presenza(self, presenza_id):
         riga = dict(self.conn.execute('SELECT * FROM napoli_presenze WHERE id = ?', (presenza_id,)).fetchone())
@@ -1744,10 +2132,12 @@ def _applica(conn, piano, import_id, ora):
                          (q['testo'], q['figura']))
             reg.create['alias_qualifiche'].append(q['testo'])
     for s in piano.scuole.values():
-        if s['nuova']:
+        if s['nuova'] and s['usata']:
             s['id'] = reg.inserisci('scuole', {
                 'lotto_id': lotto_id, 'nome': s['nome'], 'codice_meccanografico': s['codice'], 'grado': s['grado'],
                 'municipalita': s['municipalita'], 'data_inserimento': ora})
+        elif s.get('completa'):
+            reg.cambia('scuole', s['id'], {'municipalita': s['municipalita']})
     for o in piano.operatori.values():
         if o['nuovo']:
             o['id'] = reg.inserisci('operatori', {
@@ -1756,13 +2146,18 @@ def _applica(conn, piano, import_id, ora):
                 'qualifica_originale': o.get('qualifica'),
                 'ore_contratto': None if o['ore_contratto'] is None else float(o['ore_contratto']),
                 'data_inserimento': ora})
-        elif piano._cambi_operatore(o):
-            reg.cambia('operatori', o['id'], piano._cambi_operatore(o))
+        else:
+            if piano._cambi_operatore(o):
+                reg.cambia('operatori', o['id'], piano._cambi_operatore(o))
+            if o.get('cf_nuovo'):
+                reg.correggi_cf('operatori', o['id'], o['cf_assisto'], o['cf_nuovo'])
     for a in piano.alunni.values():
         if a['nuovo']:
             a['id'] = reg.inserisci('alunni', {
                 'lotto_id': lotto_id, 'cognome': a['cognome'], 'nome': a['nome'], 'codice_fiscale': a['cf'],
                 'scuola_id': a['scuola']['id'], 'data_inserimento': ora})
+        elif a.get('cf_nuovo'):
+            reg.correggi_cf('alunni', a['id'], a['cf_assisto'], a['cf_nuovo'])
     valide = [v for v in piano.righe if v['valida']]
     for v in sorted(valide, key=lambda v: v['ruolo'] != 'titolare'):        # i titolari prima dei sostituti
         if v['coppia_nuova']:
@@ -1843,6 +2238,13 @@ def _annulla_registro(conn, registro, import_id):
         if tabella not in TABELLE_IMPORT:
             raise ValueError(tabella)
         prima = {k: v for k, v in voce['prima'].items() if k != 'id'}
+        if 'differenza_cf' in voce:         # codice fiscale corretto: si torna a quello di prima
+            attuale = conn.execute(f'SELECT codice_fiscale FROM napoli_{tabella} WHERE id = ?', (voce['id'],)).fetchone()
+            if attuale is None:
+                continue
+            prima['codice_fiscale'] = applica_differenza_cf(attuale[0] or '', voce['differenza_cf'])
+        if not prima:
+            continue
         assegna = ', '.join(f'{k} = ?' for k in prima)
         conn.execute(f'UPDATE napoli_{tabella} SET {assegna} WHERE id = ?', tuple(prima.values()) + (voce['id'],))
     for voce in registro.get('tolte') or []:
@@ -1928,45 +2330,48 @@ def _risposta(piano, lettura, ctx, sha, nome_file, modo):
     out['totale_importato'] = {'minuti': c['minuti'], 'ore': _ore_testo(c['minuti']), 'hhmm': calc.hhmm(c['minuti'])}
     if modo == 'confronto':
         out['confronto'] = _confronto(piano, nomi)
-        return out
+        return _senza_codici(out)
     out['qualifiche'] = [{'testo': q['testo'], 'proposta': q['proposta'], 'figura': q['figura'],
                           'righe': q['righe'][:20], 'n_righe': len(q['righe'])} for q in piano.qualifiche.values()]
     out['scuole_nuove'] = [{'chiave': s['chiave'], 'nome': s['nome'], 'codice': s['codice'] or '',
                             'municipalita': s['municipalita'], 'grado_proposto': s['grado_proposto'] or '',
                             'grado': s['grado'] or '', 'n_righe': len(s['righe'])}
-                           for s in piano.scuole.values() if s['nuova']]
+                           for s in piano.scuole.values() if s['nuova'] and s['usata']]
     out['scuole_senza_grado'] = [{'nome': s['nome'], 'codice': s['codice'] or '', 'municipalita': s['municipalita'],
                                   'grado': s['grado'] or ''}
                                  for s in piano.scuole.values() if not s['nuova'] and not calc.grado_fattura(s['grado'])]
     out['ore_ambigue'] = []
-    for r in lettura['righe']:
-        for d, cella in sorted(r['celle'].items()):
-            if cella['esito'] == 'da_confermare':
-                chiave = f'{r["riga"]}:{cella["colonna"]}'
-                out['ore_ambigue'].append({
-                    'chiave': chiave, 'riga': r['riga'], 'colonna': cella['colonna'], 'data': d.isoformat(),
-                    'testo': cella['testo'], 'proposta': cella['proposta'],
-                    'scelta': piano.scelte['ore_ambigue'].get(chiave, cella['proposta']),
-                    'alternative': [{'lettura': a['lettura'], 'testo': a['testo'], 'minuti': a['minuti']}
-                                    for a in cella['alternative']]})
+    for chiave, x in sorted(piano.ambigue.items(), key=lambda kv: (kv[1]['riga'], kv[1]['data'])):
+        cella = x['cella']
+        out['ore_ambigue'].append({
+            'chiave': chiave, 'riga': x['riga'], 'colonna': cella['colonna'], 'data': x['data'].isoformat(),
+            'testo': cella['testo'], 'scelta': x['scelta'], 'ricordata': x['ricordata'],
+            'alternative': [{'lettura': a['lettura'], 'testo': a['testo'], 'minuti': a['minuti']}
+                            for a in cella['alternative']]})
+    out['ore_ambigue_da_scegliere'] = len(piano.ore_ambigue_da_scegliere())
     out['conferme'] = []
     if 'plessi' in piano.conferme:
         out['conferme'].append({
             'codice': 'plessi', 'titolo': 'La stessa scuola in due municipalità',
-            'testo': 'La municipalità è quella della scuola. Queste scuole compaiono con due municipalità: '
-                     'diventano due plessi della stessa scuola. Se è un errore di scrittura, correggi il file e '
-                     'rifai l\'anteprima.',
-            'voci': [{'testo': f'{v["nome"]} ({v["codice"]}): municipalità '
-                               + ' e '.join(str(m) for m in v['municipalita']),
+            'testo': 'La municipalità è quella della scuola. Queste scuole compaiono con municipalità diverse, nel '
+                     'file o fra il file e Assisto: una municipalità nuova diventa un altro plesso della stessa '
+                     'scuola, le coppie già in Assisto restano nel loro plesso. Se è un errore di scrittura, '
+                     'correggi il file e rifai l\'anteprima.',
+            'voci': [{'testo': f'{v["nome"]} ({v["codice"] or "senza codice"}): {v["testo"]}',
                       'righe': v['righe'][:20]} for v in piano.conferme['plessi']]})
     if 'operatori_per_nome' in piano.conferme:
+        def voce_operatore(o):
+            testo = (f'{o["nome_file"]}: nel file {calc.maschera_codice_fiscale(o["cf"]) or "senza codice"}, '
+                     f'in Assisto {calc.maschera_codice_fiscale(o.get("cf_assisto")) or "senza codice"}')
+            if o.get('cf_nuovo'):
+                testo += ' (il codice del file è giusto: si corregge anche in Assisto)'
+            return {'testo': testo, 'righe': o['righe'][:20]}
         out['conferme'].append({
             'codice': 'operatori_per_nome', 'titolo': 'Operatori riconosciuti dal nome',
-            'testo': 'Il codice fiscale nel file non è corretto, ma in Assisto c\'è già un operatore con lo stesso '
-                     'nome: si considera la stessa persona. Se non lo è, correggi il codice fiscale nel file.',
-            'voci': [{'testo': f'{o["nome_file"]}: nel file {calc.maschera_codice_fiscale(o["cf"]) or "senza codice"}, '
-                               f'in Assisto {calc.maschera_codice_fiscale(o.get("cf_assisto")) or "senza codice"}',
-                      'righe': o['righe'][:20]} for o in piano.conferme['operatori_per_nome']]})
+            'testo': 'Il codice fiscale nel file e quello in Assisto non sono uguali (uno dei due è scritto male), '
+                     'ma in Assisto c\'è un operatore con lo stesso nome: si considera la stessa persona. Se non '
+                     'lo è, correggi il codice fiscale nel file e rifai l\'anteprima.',
+            'voci': [voce_operatore(o) for o in piano.conferme['operatori_per_nome']]})
     out['subentri'] = []
     for s in piano.subentri:
         sost, tit = s['sostituto'], s['titolare']
@@ -1984,6 +2389,11 @@ def _risposta(piano, lettura, ctx, sha, nome_file, modo):
                                  f'{", sostituto" if c["coppia"]["ruolo"] == "sostituto" else ""}): non è nel file, '
                                  f'si chiude il {calc.data_it(c["chiudi_al"])}'}
                        for c in piano.chiusure]
+    out['coppie_del_mese'] = [{'id': c['id'], 'testo': f'{nomi.coppia(c)["operatore"]} con {nomi.coppia(c)["alunno"]} '
+                                                      f'({napoli_db.nome_figura(c["figura"])}'
+                                                      f'{", sostituto" if c["ruolo"] == "sostituto" else ""}): '
+                                                      f'comincia il {calc.data_it(calc.data(c["valido_da"]))}'}
+                              for c in piano.coppie_del_mese]
     out['manuali_diverse'] = [{'riga': m['voce']['riga'], 'colonna': m['colonna'], 'data': m['data'].isoformat(),
                                'alunno': _nome_voce(m['voce']['alunno']),
                                'operatore': _nome_voce(m['voce']['operatore']),
@@ -1995,7 +2405,7 @@ def _risposta(piano, lettura, ctx, sha, nome_file, modo):
     out['conferme_richieste'] = list(piano.conferme)
     out['puo_importare'] = not out['bloccanti']
     out['nessun_cambiamento'] = piano.nessun_cambiamento()
-    return out
+    return _senza_codici(out)
 
 
 def _confronto(piano, nomi):
@@ -2096,6 +2506,9 @@ def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=
     if bloccanti:
         raise DatiNonValidi('Prima di importare bisogna correggere il file: guarda la parte «Da correggere» '
                             'dell\'anteprima.', codice='IMPORT_BLOCCATO', bloccanti=_gruppi(bloccanti))
+    if piano.ore_ambigue_da_scegliere():
+        raise DatiNonValidi('Prima di importare scegli come leggere le ore nella parte «Ore da confermare».',
+                            codice='DA_CONFERMARE', mancano=['ore_ambigue'])
     mancano = [c for c in piano.conferme if c not in piano.scelte['conferme']]
     if mancano:
         raise DatiNonValidi('Prima di importare spunta le caselle «Ho controllato» nella parte «Da confermare».',

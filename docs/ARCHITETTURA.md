@@ -486,28 +486,56 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     `napoli_calcoli.leggi_cella_master`: la VERIFICA e il foglio "riepilogo" servono solo da
     controllo (nel file vero la VERIFICA perde ore). Un numero con la virgola che non e'
     un quarto d'ora e le cui cifre possono essere minuti ("1,30") e' **da confermare**
-    nell'anteprima (`napoli_calcoli.letture_possibili`; proposta: ore e minuti per ,15
-    ,30 ,45, come sui fogli firma, altrimenti decimale). Le note "Alunno assente: ..." e
-    le celle colorate sono solo promemoria (proposte nella fase 2). Ogni interpretazione
-    e' un avviso con riga, colonna e un dettaglio che non e' mai un dato personale.
+    nell'anteprima (`napoli_calcoli.letture_possibili`): nessuna lettura e' gia' scelta,
+    finche' non si sceglie conta come decimale (la regola del master, PROGETTO §5.1) e
+    non si importa; reimportando lo stesso file vale la scelta dell'import di prima
+    (stessa cella, stesso testo). Le note "Alunno assente: ..." e le celle colorate sono
+    solo promemoria (proposte nella fase 2). Ogni interpretazione e' un avviso con riga,
+    colonna e un dettaglio che non e' mai un dato personale (testo della cella accorciato,
+    un codice fiscale scritto per errore in una cella arriva mascherato:
+    `nascondi_codici_fiscali`, applicato anche a tutti i testi della risposta).
     Messaggi semplici per file vuoto, file temporaneo di Excel (`~$...`), formato .xls o
     file con password, file che non e' Excel, foglio sbagliato (con i fogli trovati); se il
     file e' aperto in Excel su Windows il browser non lo legge e la pagina lo dice
     (il file si legge appena scelto). Le righe vuote dopo 200 di fila non si leggono;
   - anteprima (`POST /api/napoli/import/anteprima`, multipart: file, lotto, modo,
-    scelte): **non scrive nulla**. Abbina solo dentro Napoli: scuole per codice
-    meccanografico e **municipalita' della scuola** (stesso codice in due municipalita' =
-    due plessi, da confermare con "Ho controllato"; municipalita' mancante presa dalla
-    stessa scuola se ne ha una sola), alunni per codice fiscale (mancante o di forma
-    sbagliata = bloccante), operatori per codice fiscale o, se non e' valido, per lo stesso
-    codice scritto uguale e poi per nome (da confermare), qualifiche con
-    `napoli_alias_qualifiche` (una nuova si sceglie nella pagina, con la figura proposta da
-    `figura_proposta`, e si salva come grafia 'utente'), coppie per alunno, operatore,
-    figura e ruolo (SI = sostituto, collegato al titolare; un sostituto con la data di
-    inizio nel mese propone il **subentro**: il titolare finisce il giorno prima). Grado
-    delle scuole nuove proposto dal codice (`napoli_calcoli.grado_da_codice_meccanografico`,
+    scelte): **non scrive nulla**. Abbina solo dentro Napoli:
+    - scuole per codice meccanografico e **municipalita' della scuola** (REGOLE 12):
+      municipalita' mancante presa dalla stessa scuola se ne ha una sola (nel file o in
+      Assisto); se la scuola in Assisto c'e' una volta sola e senza municipalita', quella
+      del file si aggiunge allo stesso plesso (avviso, l'annullamento la toglie). La stessa
+      scuola con municipalita' diverse, nel file o fra il file e Assisto, va confermata con
+      "Ho controllato": una municipalita' nuova diventa un altro plesso se serve a una
+      coppia nuova; le righe di coppie gia' in Assisto restano nel plesso della coppia.
+      Una scuola nuova si crea solo se una coppia nuova la usa (niente scuole vuote; una
+      coppia gia' in Assisto con un'altra scuola resta nella sua, con un avviso);
+    - alunni per codice fiscale (mancante o di forma sbagliata = bloccante) o, se non
+      c'e', per la radice (i primi 15 caratteri: un codice con l'ultimo carattere sbagliato
+      e' la stessa persona); se il file porta il codice giusto e Assisto quello sbagliato,
+      si corregge in Assisto. Omonimo con un altro codice: alunno nuovo con un avviso;
+    - operatori per codice fiscale, per radice, poi per nome (PROGETTO §7.1, da
+      confermare; fra omonimi vale quello con coppie nella stessa scuola): per nome si
+      cerca se il codice del file non e' giusto, o se e' giusto ma in Assisto la persona ha
+      un codice sbagliato o nessun codice (il mese dopo il codice arriva corretto: niente
+      doppioni, e il codice si corregge in Assisto se differisce di al massimo due
+      caratteri). Un omonimo con un altro codice giusto e' un operatore nuovo, con un
+      avviso; un operatore con figure diverse (fra le righe o rispetto ad Assisto) ha
+      l'avviso `operatore_con_piu_figure`;
+    - qualifiche con `napoli_alias_qualifiche`: una nuova si sceglie sempre nella pagina
+      (la figura di `figura_proposta` e' indicata nella tendina, non gia' scelta) e si
+      salva come grafia 'utente';
+    - coppie per alunno, operatore, figura e ruolo, valide nel mese o finite nel mese
+      prima: un sostituto che continua resta la stessa coppia (finisce piu' tardi), un
+      titolare chiuso che ha di nuovo ore si riapre (avviso). SI = sostituto, collegato al
+      titolare; un sostituto con la data di inizio nel mese propone il **subentro**: il
+      titolare finisce il giorno prima.
+
+    Grado delle scuole nuove proposto dal codice (`napoli_calcoli.grado_da_codice_meccanografico`,
     PROGETTO §4.2) e scelto nella pagina. Le coppie del mese prima che nel file non ci
-    sono si possono chiudere (proposta non spuntata). Bloccanti (`SPIEGAZIONI`, livello
+    sono si possono chiudere (proposta non spuntata); contano i giorni che restano dopo
+    l'import, quindi nel reimport anche quella di una riga tolta dal file. Una coppia che
+    comincia nel mese e nel file non c'e' resta senza ore e si mostra (se viene da una
+    riga sbagliata dell'import di prima: annullarlo e importare di nuovo). Bloccanti (`SPIEGAZIONI`, livello
     'bloccante'): mese chiuso, righe di un altro lotto, qualifica senza figura, codice
     fiscale dell'alunno, scritte che non sono ore, piu' di 12 ore, stessa coppia su due
     righe. Risponde con conteggi, ore per figura e per grado, cosa cambia, avvisi
@@ -516,7 +544,8 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   - conferma (`POST /api/napoli/import/conferma`): stesso file (sha256, 409
     `FILE_CAMBIATO`), stessi dati (409 `ANTEPRIMA_SUPERATA`), mese aperto (409
     `MESE_CHIUSO_LOTTO`), nessun bloccante (400 `IMPORT_BLOCCATO`), conferme date (400
-    `DA_CONFERMARE`); se il file non cambia niente non scrive nulla. Poi
+    `DA_CONFERMARE`, anche per le ore da confermare non scelte); se il file non cambia
+    niente non scrive nulla. Poi
     `database.create_backup()` (senza copia niente import, 503) e **un'unica transazione**
     (`BEGIN IMMEDIATE`, dati riletti e confrontati di nuovo): anagrafiche nuove, coppie,
     PEI del mese per alunno e figura (dalle righe NO), fogli del mese con la nota della
@@ -533,7 +562,9 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     nessun giorno dell'import cambiato a mano dopo; copia di sicurezza, poi in una
     transazione si tolgono le righe create e tornano le righe cambiate o tolte
     (`napoli_import.sostituite_json`: id e valori di prima; delle anagrafiche si cambiano
-    solo campi vuoti come le ore di contratto, quindi mai codici fiscali);
+    solo campi vuoti, come le ore di contratto e la municipalita' della scuola, e i codici
+    fiscali sbagliati corretti dal file, dei quali si salva solo la differenza, al piu'
+    due caratteri e la loro posizione: mai un codice fiscale);
   - solo confronto (modo 'confronto'): differenze coppia per coppia e giorno per giorno
     con i giorni registrati, righe del file che in Assisto non ci sono e coppie solo in
     Assisto, senza scrivere;
@@ -556,10 +587,13 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   voce di menu marcata); `tests/test_napoli_import.py` e `tests/test_napoli_privacy.py`
   (passi 1.4-1.5, sul master inventato di `tests/napoli_sintetico.py`, generato durante
   i test: 41 righe, 1.554 ore, codici fiscali con il comune Z999; totali per figura,
-  VERIFICA ignorata, ore da confermare, grado, plessi, sostituti e subentro, reimport,
-  ore scritte a mano, annullamento anche con Ctrl+Z, solo confronto, mese chiuso, errori
-  del file, copia di sicurezza, Roma intatta con alunni omonimi; nessun codice fiscale in
-  risposte, registro, import, Ctrl+Z e log).
+  VERIFICA ignorata, ore da confermare (scelta obbligatoria), grado, plessi, sostituti e
+  subentro, reimport, ore scritte a mano, annullamento anche con Ctrl+Z, solo confronto,
+  mese chiuso, errori del file, copia di sicurezza, Roma intatta con alunni omonimi; il
+  mese dopo (aprile, stesse righe: `napoli_sintetico.genera(anno=, mese=)`): coppie che
+  continuano, municipalita' diversa da Assisto o mancante, codici fiscali corretti di
+  operatori e alunni senza doppioni, omonimi, reimport senza una riga; nessun codice
+  fiscale in risposte, registro, import, Ctrl+Z e log, nemmeno se scritto in una cella).
 
 ## Refactoring pianificati (da fare come interventi dedicati e revisionati)
 

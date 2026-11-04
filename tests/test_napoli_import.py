@@ -84,10 +84,23 @@ def conferma(client, dati, a, scelte=None, nome='master_marzo.xlsx', sha=None, v
         'versione_dati': versione or a['versione_dati'], 'scelte': json.dumps(scelte or {})})
 
 
-def importa(client, dati, scelte=None):
-    """Anteprima e conferma con le proposte e le conferme richieste."""
+def con_ore_scelte(client, dati, scelte=None, lettura='ore_e_minuti'):
+    """(anteprima, scelte) con le ore da confermare scelte (nel master inventato "1,30" e'
+    1 h 30 min, come nei valori attesi), salvo quelle gia' scelte o ricordate."""
+    scelte = dict(scelte or {})
     a = _ok(anteprima(client, dati, scelte))
-    scelte = dict(scelte or {}, conferme=a['conferme_richieste'])
+    if a['ore_ambigue_da_scegliere']:
+        scelte['ore_ambigue'] = dict(scelte.get('ore_ambigue') or {})
+        for x in a['ore_ambigue']:
+            scelte['ore_ambigue'].setdefault(x['chiave'], x['scelta'] or lettura)
+        a = _ok(anteprima(client, dati, scelte))
+    return a, scelte
+
+
+def importa(client, dati, scelte=None):
+    """Anteprima e conferma con le proposte, le ore da confermare scelte e le conferme richieste."""
+    a, scelte = con_ore_scelte(client, dati, scelte)
+    scelte = dict(scelte, conferme=a['conferme_richieste'])
     return a, _ok(conferma(client, dati, a, scelte))
 
 
@@ -136,6 +149,9 @@ def test_anteprima_del_sintetico_ha_i_totali_attesi_e_non_scrive(napoli, master)
     dati, atteso = master
     prima, backup_prima = seme_napoli.impronta_napoli(napoli.percorso), copie()
     a = _ok(anteprima(napoli, dati))
+    # "1,30" non e' ancora scelto: finche' non si sceglie conta in decimale (1,30 ore = 78 minuti)
+    assert a['ore_ambigue_da_scegliere'] == 1 and a['totale']['minuti'] == atteso['totale_minuti'] - 12
+    a, _scelte = con_ore_scelte(napoli, dati)
     assert seme_napoli.impronta_napoli(napoli.percorso) == prima, "l'anteprima ha scritto nel database"
     assert copie() == backup_prima
     c = a['conteggi']
@@ -158,7 +174,12 @@ def test_anteprima_del_sintetico_ha_i_totali_attesi_e_non_scrive(napoli, master)
 def test_le_ore_si_contano_dai_giorni_non_dalla_verifica(master):
     dati, atteso = master
     lettura = import_napoli.leggi_master(dati, 'master.xlsx')
-    assert [r['minuti'] for r in lettura['righe']] == atteso['minuti_per_riga']
+    # la riga 10 ha "1,30": finche' non si sceglie conta in decimale (78 minuti invece di 90)
+    attesi = list(atteso['minuti_per_riga'])
+    attesi[10 - 2] -= 12
+    assert [r['minuti'] for r in lettura['righe']] == attesi
+    [ambigua] = [c for r in lettura['righe'] for c in r['celle'].values() if c['esito'] == 'da_confermare']
+    assert ambigua['testo'] == '1,30' and ambigua['minuti'] == 78 and 'proposta' not in ambigua
     codici = {a['codice'] for a in lettura['anomalie']}
     # VERIFICA scritta a mano e VERIFICA che non somma i numeri scritti come testo: le ore restano quelle dei giorni
     assert {'verifica_senza_formula', 'verifica_esclude_numeri_come_testo', 'verifica_diversa_dalla_somma',
@@ -188,15 +209,27 @@ def test_avvisi_del_sintetico_per_codice(napoli, master):
     assert codici['numero_come_testo']['livello'] == 'nota'
 
 
-def test_ore_da_confermare_proposta_e_scelta(napoli, master):
+def test_ore_da_confermare_scelta_obbligatoria(napoli, master):
+    """"1,30": nessuna lettura gia' scelta (nel master le ore sono decimali, ma sul foglio
+    firma "1,30" e' 1 h 30 min): senza la scelta non si importa."""
     dati, atteso = master
     a = _ok(anteprima(napoli, dati))
     [x] = a['ore_ambigue']
-    assert (x['testo'], x['proposta'], x['scelta']) == ('1,30', 'ore_e_minuti', 'ore_e_minuti')
+    assert (x['testo'], x['scelta'], x['ricordata']) == ('1,30', None, False) and 'proposta' not in x
     assert {alt['lettura']: alt['minuti'] for alt in x['alternative']} == {'ore_e_minuti': 90, 'decimale': 78}
+    assert a['ore_ambigue_da_scegliere'] == 1 and a['puo_importare']
+    e = _errore(conferma(napoli, dati, a, {'conferme': a['conferme_richieste']}), 400, 'DA_CONFERMARE')
+    assert e['mancano'] == ['ore_ambigue'] and 'Ore da confermare' in e['error']
+    assert righe(napoli.percorso, 'SELECT COUNT(*) AS n FROM napoli_import')[0]['n'] == 0
     b = _ok(anteprima(napoli, dati, {'ore_ambigue': {x['chiave']: 'decimale'}}))
-    assert b['totale']['minuti'] == atteso['totale_minuti'] - 12
+    assert b['totale']['minuti'] == atteso['totale_minuti'] - 12 and b['ore_ambigue_da_scegliere'] == 0
+    assert b['ore_ambigue'][0]['scelta'] == 'decimale'
     _errore(anteprima(napoli, dati, {'ore_ambigue': {x['chiave']: 'forse'}}), 400, 'SCELTE_NON_VALIDE')
+    # importato con "1 h 30 min": reimportando lo stesso file la scelta di prima si ricorda
+    importa(napoli, dati)
+    c = _ok(anteprima(napoli, dati))
+    assert (c['ore_ambigue'][0]['scelta'], c['ore_ambigue'][0]['ricordata']) == ('ore_e_minuti', True)
+    assert c['ore_ambigue_da_scegliere'] == 0 and c['nessun_cambiamento']
 
 
 def test_grado_proposto_dal_codice_meccanografico(napoli, master):
@@ -223,13 +256,15 @@ def test_la_stessa_scuola_in_due_municipalita_sono_due_plessi_da_confermare(napo
     def due_municipalita(r):
         r[0]['municipalita'] = 1               # NAIC8ZZ001 anche in municipalita' 1 (nelle altre righe e' 2)
     dati = variante(tmp_path, due_municipalita)
-    a = _ok(anteprima(napoli, dati))
+    a, scelte = con_ore_scelte(napoli, dati)
     assert a['conferme_richieste'] == ['plessi']
     [conf] = a['conferme']
-    assert 'NAIC8ZZ001' in conf['voci'][0]['testo'] and '1 e 2' in conf['voci'][0]['testo']
-    _errore(conferma(napoli, dati, a), 400, 'DA_CONFERMARE')
+    testo = conf['voci'][0]['testo']
+    assert 'NAIC8ZZ001' in testo and 'nel file municipalità 1 e 2' in testo and 'plessi' in testo
+    assert conf['voci'][0]['righe'][0] == 2
+    _errore(conferma(napoli, dati, a, scelte), 400, 'DA_CONFERMARE')
     assert righe(napoli.percorso, 'SELECT COUNT(*) AS n FROM napoli_scuole')[0]['n'] == 0
-    _ok(conferma(napoli, dati, a, {'conferme': ['plessi']}))
+    _ok(conferma(napoli, dati, a, dict(scelte, conferme=['plessi'])))
     plessi = righe(napoli.percorso, "SELECT municipalita FROM napoli_scuole WHERE codice_meccanografico = 'NAIC8ZZ001' "
                                     'ORDER BY municipalita')
     assert [p['municipalita'] for p in plessi] == [1, 2]
@@ -312,10 +347,17 @@ def test_qualifica_nuova_scelta_nell_anteprima(napoli, tmp_path):
     dati = variante(tmp_path, qualifica)
     a = _ok(anteprima(napoli, dati))
     q = {x['testo']: x for x in a['qualifiche']}
+    # la figura proposta si mostra, ma non e' scelta: tutte e due le qualifiche bloccano finche' non si sceglie
     assert q['ASS. ALLA COMUNICAZIONE']['proposta'] == 'ASACOM' and q['OPERATORE SOCIALE']['proposta'] is None
-    assert [g['codice'] for g in a['bloccanti']] == ['qualifica_non_collegata']
+    assert q['ASS. ALLA COMUNICAZIONE']['figura'] is None and q['OPERATORE SOCIALE']['figura'] is None
+    [bloccante] = a['bloccanti']
+    assert bloccante['codice'] == 'qualifica_non_collegata' and bloccante['n'] == 2
+    assert a['conteggi']['nuovi']['qualifiche'] == 0
     _errore(conferma(napoli, dati, a), 400, 'IMPORT_BLOCCATO')
-    _a, esito = importa(napoli, dati, {'qualifiche': {'OPERATORE SOCIALE': 'EDUCATORE'}})
+    b = _ok(anteprima(napoli, dati, {'qualifiche': {'OPERATORE SOCIALE': 'EDUCATORE'}}))
+    assert [(g['codice'], g['n']) for g in b['bloccanti']] == [('qualifica_non_collegata', 1)]
+    _a, esito = importa(napoli, dati, {'qualifiche': {'OPERATORE SOCIALE': 'EDUCATORE',
+                                                      'ASS. ALLA COMUNICAZIONE': 'ASACOM'}})
     alias = {r['testo']: (r['figura'], r['origine']) for r in righe(napoli.percorso,
                                                                      'SELECT * FROM napoli_alias_qualifiche')}
     assert alias['OPERATORE SOCIALE'] == ('EDUCATORE', 'utente')
@@ -368,10 +410,10 @@ def test_file_cambiato_o_dati_cambiati_dopo_l_anteprima(napoli, master, tmp_path
 
 def test_senza_copia_di_sicurezza_non_si_scrive(napoli, master, monkeypatch, db_mod):
     dati, _atteso = master
-    a = _ok(anteprima(napoli, dati))
+    a, scelte = con_ore_scelte(napoli, dati)
     prima = seme_napoli.impronta_napoli(napoli.percorso)
     monkeypatch.setattr(db_mod, 'create_backup', lambda *x, **k: None)
-    e = _errore(conferma(napoli, dati, a), 503, 'COPIA_NON_RIUSCITA')
+    e = _errore(conferma(napoli, dati, a, scelte), 503, 'COPIA_NON_RIUSCITA')
     assert 'copia di sicurezza' in e['error']
     assert seme_napoli.impronta_napoli(napoli.percorso) == prima
 
@@ -518,6 +560,280 @@ def test_operatore_riconosciuto_dal_nome_va_confermato(napoli, master, tmp_path)
     _errore(conferma(napoli, diverso, a), 400, 'DA_CONFERMARE')
     _ok(conferma(napoli, diverso, a, {'conferme': ['operatori_per_nome']}))
     assert righe(napoli.percorso, 'SELECT COUNT(*) AS n FROM napoli_operatori')[0]['n'] == n_operatori
+
+
+# ==================== il mese dopo ====================
+
+def aprile(tmp_path, modifica=None, nome='master_aprile.xlsx'):
+    """Il master inventato di aprile 2026: le stesse righe di marzo, il mese dopo."""
+    return ns.leggi_bytes(str(tmp_path / nome.replace('.', '_')), nome_file=nome, modifica=modifica,
+                          anno=2026, mese=4)[0]
+
+
+def coppie_per_nome(percorso):
+    """Le coppie per (operatore, alunno, ruolo), con i nomi delle anagrafiche."""
+    return {(c['operatore'], c['alunno'], c['ruolo']): c for c in righe(
+        percorso, "SELECT c.*, o.cognome || ' ' || o.nome AS operatore, a.cognome || ' ' || a.nome AS alunno "
+                  'FROM napoli_coppie c JOIN napoli_operatori o ON o.id = c.operatore_id '
+                  'JOIN napoli_alunni a ON a.id = c.alunno_id')}
+
+
+def municipalita_di(inizio_scuola, municipalita):
+    def modifica(r):
+        for x in r:
+            if x['scuola'].startswith(inizio_scuola):
+                x['municipalita'] = municipalita
+    return modifica
+
+
+def codice_giusto(operatore):
+    cog, nom, sesso, nascita, _q = next(v for v in ns.OPERATORI.values() if f'{v[0]} {v[1]}' == operatore)
+    return seme_napoli.codice_fiscale_inventato(cog, nom, nascita, sesso)
+
+
+def codici(a, livello='avvisi'):
+    return {g['codice']: g for g in a[livello]}
+
+
+def test_il_mese_dopo_le_coppie_continuano(napoli, master, tmp_path):
+    """Aprile con le stesse righe di marzo: nessuna coppia nuova. Un sostituto che continua
+    resta la stessa coppia (finisce piu' tardi); il titolare chiuso con il subentro del 24
+    marzo che in aprile ha di nuovo ore si riapre, con un avviso."""
+    dati, _atteso = master
+    importa(napoli, dati)
+    marzo = coppie_per_nome(napoli.percorso)
+    apr = aprile(tmp_path)
+    a, _scelte = con_ore_scelte(napoli, apr)
+    c = a['conteggi']
+    assert a['file']['mese_testo'] == 'aprile 2026' and a['reimport'] is None
+    assert {k: c['nuovi'][k] for k in ('coppie', 'alunni', 'operatori', 'pei', 'scuole')} == {
+        'coppie': 0, 'alunni': 0, 'operatori': 0, 'pei': 0, 'scuole': 0}
+    assert c['aggiornati']['coppie'] == 7                     # 5 sostituti che continuano, 2 titolari che tornano
+    assert codici(a)['coppia_riaperta']['n'] == 2
+    assert not a['chiusure'] and not a['coppie_del_mese'] and not a['conferme_richieste']
+    _a, esito = importa(napoli, apr)
+    dopo = coppie_per_nome(napoli.percorso)
+    assert set(dopo) == set(marzo) and len(dopo) == 41
+    chiave = ('FORMATO TAU', 'NOVIZIO ZETA', 'sostituto')
+    assert dopo[chiave]['id'] == marzo[chiave]['id'] and dopo[chiave]['valido_da'] == '2026-03-16'
+    assert (marzo[chiave]['valido_a'], dopo[chiave]['valido_a']) == ('2026-03-19', '2026-04-17')
+    chiave = ('CAMPIONE ZETA', 'STUDENTE LAMBDA', 'titolare')
+    assert (marzo[chiave]['valido_a'], dopo[chiave]['valido_a']) == ('2026-03-23', None)
+    # annullare aprile rimette le coppie di marzo com'erano
+    _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
+    assert coppie_per_nome(napoli.percorso) == marzo
+
+
+def test_il_mese_dopo_una_municipalita_diversa_da_assisto_va_confermata(napoli, master, tmp_path):
+    """NAIC8ZZ001 in Assisto e' nella municipalita' 2; in aprile e' scritta 3. Non si crea
+    una scuola vuota e la municipalita' del file non si ignora in silenzio (REGOLE 12): le
+    coppie gia' in Assisto restano nel loro plesso, con la conferma "Ho controllato"."""
+    dati, _atteso = master
+    importa(napoli, dati)
+    apr = aprile(tmp_path, municipalita_di('I.C. ALFA', 3))
+    a, scelte = con_ore_scelte(napoli, apr)
+    assert a['conferme_richieste'] == ['plessi'] and a['scuole_nuove'] == []
+    assert a['conteggi']['nuovi']['scuole'] == 0
+    [voce] = a['conferme'][0]['voci']
+    assert voce['testo'] == ('I.C. ALFA CENTAURI - PLESSO NORD (NAIC8ZZ001): nel file municipalità 3, in Assisto 2: '
+                             'le coppie già in Assisto restano nel plesso della municipalità 2')
+    assert voce['righe'] == [2, 3, 14, 23, 24, 38]
+    _errore(conferma(napoli, apr, a, scelte), 400, 'DA_CONFERMARE')
+    _ok(conferma(napoli, apr, a, dict(scelte, conferme=['plessi'])))
+    plessi = righe(napoli.percorso, "SELECT municipalita FROM napoli_scuole WHERE codice_meccanografico = 'NAIC8ZZ001'")
+    assert [p['municipalita'] for p in plessi] == [2]
+    ore = righe(napoli.percorso, 'SELECT s.municipalita, COUNT(*) AS n FROM napoli_presenze p '
+                                 'JOIN napoli_coppie c ON c.id = p.coppia_id JOIN napoli_scuole s ON s.id = c.scuola_id '
+                                 "WHERE s.codice_meccanografico = 'NAIC8ZZ001' AND p.data >= '2026-04-01' "
+                                 'GROUP BY s.municipalita')
+    assert [x['municipalita'] for x in ore] == [2] and ore[0]['n'] > 0
+
+
+def test_il_mese_dopo_un_plesso_nuovo_serve_a_una_coppia_nuova(napoli, master, tmp_path):
+    """Un operatore nuovo con un alunno della stessa scuola scritta nella municipalita' 3:
+    la coppia e' nuova, quindi si aggiunge il plesso della municipalita' 3 (due plessi della
+    stessa scuola), da confermare."""
+    dati, _atteso = master
+    importa(napoli, dati)
+
+    def operatore_nuovo(r):
+        x = dict(r[0], giorni=dict(r[0]['giorni']), colorati=set())
+        x.update(operatore='NUOVA PROVA', cf_operatore=seme_napoli.codice_fiscale_inventato(
+            'NUOVA', 'PROVA', datetime.date(1990, 1, 1), 'F'), municipalita=3, note=None)
+        r.append(x)
+    apr = aprile(tmp_path, operatore_nuovo)
+    a, scelte = con_ore_scelte(napoli, apr)
+    assert a['conferme_richieste'] == ['plessi']
+    assert [(s['codice'], s['municipalita']) for s in a['scuole_nuove']] == [('NAIC8ZZ001', 3)]
+    [voce] = a['conferme'][0]['voci']
+    assert 'nel file municipalità 2 e 3, in Assisto 2: si aggiunge il plesso della municipalità 3' in voce['testo']
+    assert voce['righe'] == [43]
+    _ok(conferma(napoli, apr, a, dict(scelte, conferme=['plessi'])))
+    plessi = righe(napoli.percorso, "SELECT s.municipalita, COUNT(c.id) AS coppie FROM napoli_scuole s "
+                                    'LEFT JOIN napoli_coppie c ON c.scuola_id = s.id '
+                                    "WHERE s.codice_meccanografico = 'NAIC8ZZ001' GROUP BY s.id ORDER BY s.municipalita")
+    assert [(p['municipalita'], p['coppie']) for p in plessi] == [(2, 6), (3, 1)]
+
+
+def test_il_mese_dopo_una_coppia_con_un_altra_scuola_resta_nella_sua(napoli, master, tmp_path):
+    """Una coppia gia' in Assisto la cui riga ha un'altra scuola (che in Assisto non c'e'):
+    avviso, la coppia resta nella sua scuola e la scuola nuova non si crea vuota."""
+    dati, _atteso = master
+    importa(napoli, dati)
+
+    def altra_scuola(r):
+        r[0]['scuola'] = 'I.C. OMEGA (COD.MECC. NAIC8ZZ099)'
+    a, _scelte = con_ore_scelte(napoli, aprile(tmp_path, altra_scuola))
+    assert codici(a)['coppia_scuola_diversa']['righe'][0]['riga'] == 2
+    assert a['scuole_nuove'] == [] and a['conteggi']['nuovi']['scuole'] == 0 and not a['conferme_richieste']
+    importa(napoli, aprile(tmp_path, altra_scuola))
+    assert not righe(napoli.percorso, "SELECT id FROM napoli_scuole WHERE codice_meccanografico = 'NAIC8ZZ099'")
+
+
+def test_il_mese_dopo_la_municipalita_mancante_si_aggiunge_alla_scuola(napoli, tmp_path):
+    """Una scuola salvata senza municipalita' (mancava nel file di marzo): in aprile la
+    municipalita' c'e' e si aggiunge allo stesso plesso (non un plesso nuovo, vuoto)."""
+    marzo = variante(tmp_path, municipalita_di('I.C. ALFA', None), nome='marzo_senza.xlsx')
+    importa(napoli, marzo)
+    [plesso] = righe(napoli.percorso, "SELECT id, municipalita FROM napoli_scuole "
+                                      "WHERE codice_meccanografico = 'NAIC8ZZ001'")
+    assert plesso['municipalita'] is None
+    prima = impronta_dati(napoli.percorso)
+    apr = aprile(tmp_path)                                    # municipalita' 2
+    a, _scelte = con_ore_scelte(napoli, apr)
+    assert a['conteggi']['nuovi']['scuole'] == 0 and a['conteggi']['aggiornati']['scuole'] == 1
+    g = codici(a)['municipalita_completata_in_assisto']
+    assert g['n'] == 1 and g['righe'][0]['dettaglio'] == 'municipalità 2'
+    assert not a['conferme_richieste'] and not a['scuole_nuove']
+    _a, esito = importa(napoli, apr)
+    assert righe(napoli.percorso, "SELECT id, municipalita FROM napoli_scuole "
+                                  "WHERE codice_meccanografico = 'NAIC8ZZ001'") == [{'id': plesso['id'], 'municipalita': 2}]
+    _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
+    assert impronta_dati(napoli.percorso) == prima
+
+
+def test_il_mese_dopo_i_codici_fiscali_corretti_non_creano_doppioni(napoli, master, tmp_path):
+    """Marzo con due codici sbagliati (SCHEMA SIGMA: l'ultimo carattere; DI ESEMPIO ALFA
+    MARIA: 17 caratteri); aprile con quelli giusti. Sono le stesse persone (nessun operatore
+    o coppia nuova): il codice si corregge anche in Assisto. Annullando aprile tornano i
+    codici di prima; nel registro dell'import non c'e' mai un codice fiscale."""
+    dati, _atteso = master
+    importa(napoli, dati)
+    prima = impronta_dati(napoli.percorso)
+
+    def giusti(r):
+        for x in r:
+            if x['operatore'] in ('SCHEMA SIGMA', 'SCHEMA SIGMMA'):
+                x['cf_operatore'] = codice_giusto('SCHEMA SIGMA')
+            elif x['operatore'] == 'DI ESEMPIO ALFA MARIA':
+                x['cf_operatore'] = codice_giusto('DI ESEMPIO ALFA MARIA')
+    apr = aprile(tmp_path, giusti)
+    a, scelte = con_ore_scelte(napoli, apr)
+    c = a['conteggi']
+    assert c['nuovi']['operatori'] == 0 and c['nuovi']['coppie'] == 0 and not a['chiusure']
+    assert c['aggiornati']['operatori'] == 2
+    assert codici(a)['cf_operatore_corretto_in_assisto']['n'] == 1        # SCHEMA SIGMA: cambia l'ultimo carattere
+    assert a['conferme_richieste'] == ['operatori_per_nome']               # DI ESEMPIO ALFA MARIA: dal nome
+    [voce] = a['conferme'][0]['voci']
+    assert voce['testo'].startswith('DI ESEMPIO ALFA MARIA: nel file DSM') and 'si corregge anche in Assisto' in voce['testo']
+    _errore(conferma(napoli, apr, a, scelte), 400, 'DA_CONFERMARE')
+    _ok(conferma(napoli, apr, a, dict(scelte, conferme=['operatori_per_nome'])))
+    operatori = {f"{o['cognome']} {o['nome']}": o for o in righe(napoli.percorso, 'SELECT * FROM napoli_operatori')}
+    assert len(operatori) == 22
+    for nome in ('SCHEMA SIGMA', 'DI ESEMPIO ALFA MARIA'):
+        assert (operatori[nome]['codice_fiscale'], operatori[nome]['cf_valido']) == (codice_giusto(nome), 1)
+    registro = json.dumps(righe(napoli.percorso, 'SELECT esito_json, sostituite_json FROM napoli_import'))
+    tutti = {r['cf_operatore'] for r in ns.costruisci()[0]} | {codice_giusto(n) for n in operatori}
+    assert not [cf for cf in tutti if cf in registro], 'codici fiscali nel registro degli import'
+    [imp] = [i for i in righe(napoli.percorso, 'SELECT * FROM napoli_import') if i['mese'] == 4]
+    _ok(napoli.post(f'/api/napoli/import/{imp["id"]}/annulla', json={}))
+    assert impronta_dati(napoli.percorso) == prima
+
+
+def test_il_mese_dopo_il_codice_dell_alunno_con_l_ultimo_carattere_corretto(napoli, master, tmp_path):
+    """L'alunno salvato con il codice sbagliato nell'ultimo carattere: in aprile il codice
+    giusto e' lo stesso alunno (niente alunno o PEI nuovi) e si corregge in Assisto. Al
+    contrario, un codice giusto in Assisto e sbagliato nel file: si usa quello di Assisto."""
+    def sbagliato(r):
+        cf = r[0]['cf_alunno']
+        r[0]['cf_alunno'] = cf[:15] + ('A' if cf[15] != 'A' else 'B')
+    importa(napoli, variante(tmp_path, sbagliato, nome='marzo_cf.xlsx'))
+    prima = impronta_dati(napoli.percorso)
+    giusto = ns.costruisci()[0][0]['cf_alunno']
+    a, _scelte = con_ore_scelte(napoli, aprile(tmp_path))
+    c = a['conteggi']
+    assert (c['nuovi']['alunni'], c['nuovi']['pei'], c['nuovi']['coppie'], c['aggiornati']['alunni']) == (0, 0, 0, 1)
+    assert codici(a)['cf_alunno_corretto_in_assisto']['n'] == 1
+    _a, esito = importa(napoli, aprile(tmp_path))
+    assert giusto in {x['codice_fiscale'] for x in righe(napoli.percorso, 'SELECT codice_fiscale FROM napoli_alunni')}
+    assert righe(napoli.percorso, 'SELECT COUNT(*) AS n FROM napoli_alunni')[0]['n'] == 34
+    _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
+    assert impronta_dati(napoli.percorso) == prima
+    # al contrario: in Assisto il codice giusto, nel file di nuovo quello sbagliato
+    _ok(napoli.post(f'/api/napoli/import/{_ultimo_import(napoli)}/annulla', json={}))
+    importa(napoli, master[0])
+    b, _scelte = con_ore_scelte(napoli, aprile(tmp_path, sbagliato, nome='aprile_cf.xlsx'))
+    assert (b['conteggi']['nuovi']['alunni'], b['conteggi']['aggiornati']['alunni']) == (0, 0)
+    assert 'cf_alunno_giusto_in_assisto' in codici(b, 'note')
+
+
+def _ultimo_import(client):
+    return next(i['id'] for i in _ok(client.get(f'/api/napoli/lotti/{client.lotto_id}/import')) if i['annullabile'])
+
+
+def test_omonimo_con_un_altro_codice_giusto_e_una_persona_nuova_con_avviso(napoli, master, tmp_path):
+    dati, _atteso = master
+    importa(napoli, dati)
+
+    def altro_codice(r):
+        for x in r:
+            if x['operatore'] == 'PROVA ALFA':
+                x['cf_operatore'] = seme_napoli.codice_fiscale_inventato('PROVA', 'ALFA', datetime.date(1970, 1, 1), 'F')
+    a, _scelte = con_ore_scelte(napoli, aprile(tmp_path, altro_codice))
+    assert a['conteggi']['nuovi']['operatori'] == 1
+    assert codici(a)['operatore_omonimo_in_assisto']['righe'][0]['riga'] == 2
+    assert not a['conferme_richieste'] and len(a['chiusure']) == 2       # le coppie dell'altra PROVA ALFA
+
+
+def test_operatore_con_piu_figure(napoli, master, tmp_path):
+    def educatrice(r):
+        r[1]['qualifica'] = 'EDUCATORE PROFESSIONALE'          # PROVA ALFA: Asacom alla riga 2, Educatore alla 3
+    a = _ok(anteprima(napoli, variante(tmp_path, educatrice)))
+    g = codici(a)['operatore_con_piu_figure']
+    assert [x['riga'] for x in g['righe']] == [2, 3] and g['righe'][0]['dettaglio'] == 'nel file Asacom e Educatore'
+    # gia' in Assisto con un'altra figura
+    importa(napoli, master[0])
+
+    def tutta_educatrice(r):
+        for x in r[:2]:
+            x['qualifica'] = 'EDUCATORE PROFESSIONALE'
+    b, _scelte = con_ore_scelte(napoli, aprile(tmp_path, tutta_educatrice))
+    g = codici(b)['operatore_con_piu_figure']
+    assert g['n'] == 2 and g['righe'][0]['dettaglio'] == 'nel file Educatore, in Assisto Asacom'
+
+
+def test_reimport_senza_una_riga_propone_di_chiudere_la_sua_coppia(napoli, master, tmp_path):
+    """Reimport di marzo senza due righe: le loro ore importate si tolgono. La coppia che
+    c'era gia' prima di marzo si propone da chiudere (fine febbraio); quella che comincia a
+    marzo (subentro dal 24) non si puo' chiudere prima e si mostra."""
+    dati, _atteso = master
+    importa(napoli, dati)
+
+    def senza(r):
+        del r[30 - 2]                                     # IPOTESI PHI con STUDENTE LAMBDA, dal 24 marzo
+        del r[0]                                          # PROVA ALFA con SCOLARO ALFA, dal 1/10/2025
+    meno = variante(tmp_path, senza, nome='marzo_meno.xlsx')
+    a, scelte = con_ore_scelte(napoli, meno)
+    [chiusura] = a['chiusure']
+    assert chiusura['testo'].startswith('PROVA ALFA con SCOLARO ALFA (Asacom)') and not chiusura['scelto']
+    assert chiusura['chiudi_al'] == '2026-02-28'
+    [del_mese] = a['coppie_del_mese']
+    assert del_mese['testo'] == 'IPOTESI PHI con STUDENTE LAMBDA (Educatore, sostituto): comincia il 24/03/2026'
+    assert codici(a)['coppia_del_mese_non_nel_file']['n'] == 1
+    assert a['conteggi']['presenze']['da_togliere'] > 0
+    importa(napoli, meno, dict(scelte, chiusure=[chiusura['id']]))
+    coppie = coppie_per_nome(napoli.percorso)
+    assert coppie[('PROVA ALFA', 'SCOLARO ALFA', 'titolare')]['valido_a'] == '2026-02-28'
 
 
 # ==================== errori del file ====================

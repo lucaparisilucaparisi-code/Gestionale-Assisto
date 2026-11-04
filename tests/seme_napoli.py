@@ -319,9 +319,12 @@ def _seme_import(client, lotto_id):
         return _ok(client.post(url, content_type='multipart/form-data', data=dict(
             campi, file=(io.BytesIO(dati), 'master_prova_marzo.xlsx'), lotto_id=str(lotto_id))))
 
-    a = manda('/api/napoli/import/anteprima', scelte='{}')
+    # le ore da confermare si scelgono sempre (nel master inventato "1,30" e' 1 h 30 min)
+    scelte = {'ore_ambigue': {x['chiave']: 'ore_e_minuti' for x in
+                              manda('/api/napoli/import/anteprima', scelte='{}')['ore_ambigue']}}
+    a = manda('/api/napoli/import/anteprima', scelte=json.dumps(scelte))
     esito = manda('/api/napoli/import/conferma', sha256=a['file']['sha256'], versione_dati=a['versione_dati'],
-                  scelte=json.dumps({'conferme': a['conferme_richieste']}))
+                  scelte=json.dumps(dict(scelte, conferme=a['conferme_richieste'])))
     assert esito['import_id'], esito
 
 

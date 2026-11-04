@@ -82,7 +82,9 @@ def test_codici_fiscali_mai_in_chiaro_fuori_dalle_anagrafiche(database_isolato, 
 
     def importa(dati, scelte=None):
         a = chiama('/api/napoli/import/anteprima', dati, scelte)
-        scelte = dict(scelte or {}, conferme=a['conferme_richieste'])
+        scelte = dict(scelte or {}, ore_ambigue={x['chiave']: 'ore_e_minuti' for x in a['ore_ambigue']})
+        a = chiama('/api/napoli/import/anteprima', dati, scelte)
+        scelte = dict(scelte, conferme=a['conferme_richieste'])
         return chiama('/api/napoli/import/conferma', dati, scelte, sha256=a['file']['sha256'],
                       versione_dati=a['versione_dati'])
 
@@ -144,6 +146,7 @@ def test_le_anagrafiche_hanno_i_codici_e_la_pagina_no(database_isolato, app_modu
     campi = {'lotto_id': str(lotto['id']), 'scelte': '{}'}
     a = client.post('/api/napoli/import/anteprima', content_type='multipart/form-data',
                     data=dict(campi, file=(io.BytesIO(dati), 'm.xlsx'))).get_json()
+    campi['scelte'] = json.dumps({'ore_ambigue': {x['chiave']: 'decimale' for x in a['ore_ambigue']}})
     r = client.post('/api/napoli/import/conferma', content_type='multipart/form-data', data=dict(
         campi, file=(io.BytesIO(dati), 'm.xlsx'), sha256=a['file']['sha256'], versione_dati=a['versione_dati']))
     assert r.status_code == 200
@@ -157,3 +160,44 @@ def test_le_anagrafiche_hanno_i_codici_e_la_pagina_no(database_isolato, app_modu
                          data=dict(campi, file=(io.BytesIO(dati), 'm.xlsx'))).get_data(as_text=True)
     storico = client.get(f'/api/napoli/lotti/{lotto["id"]}/import').get_data(as_text=True)
     assert not [c for c in salvati if c in ancora or c in storico]
+
+
+def test_nascondi_codici_fiscali_nei_testi():
+    import import_napoli as imp
+    cf = 'RSSMRA80A01Z999X'
+    assert imp.nascondi_codici_fiscali(cf) == 'RSS••••••••••99X'
+    assert imp.nascondi_codici_fiscali(f'assente {cf.lower()} ieri') == 'assente RSS••••••••••99X ieri'
+    assert imp.nascondi_codici_fiscali('RSS MRA 80A01 Z999X') == 'RSS••••••••••99X'
+    assert imp.nascondi_codici_fiscali('DSMLMR84A71Z99') == 'DSM••••••••Z99'            # scritto male, 14 caratteri
+    # niente da nascondere: ore, sigle, date, codici meccanografici, testo normale
+    for testo in ('1,30', 'F perm', '24/03/2026', 'NAIC8ZZ001', 'Alunno assente il 5 e il 6', 'settimana 2: 16 ore'):
+        assert imp.nascondi_codici_fiscali(testo) == testo
+    assert imp.nascondi_codici_fiscali(None) is None
+
+
+def test_un_codice_fiscale_scritto_in_una_cella_non_arriva_in_chiaro(database_isolato, app_module, db_mod, tmp_path):
+    """Un codice fiscale scritto per errore in una cella dei giorni, nelle ore di contratto,
+    nella sostituzione, nella municipalita' o nella qualifica: nella risposta dell'anteprima
+    (avvisi e testi) arriva solo mascherato."""
+    client = fotografa_roma.client_fotografia(app_module.app, db_mod)
+    proposta = client.get('/api/napoli/lotti/proposta').get_json()
+    lotto = client.post('/api/napoli/lotti/procedura', json={
+        'lotto': dict(proposta['lotto'], municipalita='1 e 2'), 'tariffe': proposta['tariffe'],
+        'valido_da': proposta['valido_da'], 'valido_a': proposta['valido_a']}).get_json()['lotto']
+    righe, _attese = ns.costruisci()
+    codici = [r['cf_alunno'] for r in righe[:5]]
+
+    def nelle_celle(r):
+        r[0]['giorni'][datetime.date(2026, 3, 3)] = codici[0]
+        r[1]['ore_contratto'] = f'26 {codici[1]}'
+        r[2]['sostituzione'] = codici[2]
+        r[3]['municipalita'] = f'mun. {codici[3]}'
+        r[4]['qualifica'] = f'ASACOM {codici[4]}'
+    dati = ns.leggi_bytes(str(tmp_path / 'celle'), modifica=nelle_celle)[0]
+    for modo in ('import', 'confronto'):
+        r = client.post('/api/napoli/import/anteprima', content_type='multipart/form-data', data={
+            'file': (io.BytesIO(dati), 'm.xlsx'), 'lotto_id': str(lotto['id']), 'modo': modo, 'scelte': '{}'})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        testo = r.get_data(as_text=True)
+        assert not [c for c in codici if c in testo], f'codici fiscali in chiaro nella risposta ({modo})'
+        assert calc.maschera_codice_fiscale(codici[0]) in json.dumps(r.get_json(), ensure_ascii=False)
