@@ -1108,6 +1108,11 @@ SPIEGAZIONI = {
 }
 
 
+# Bloccanti che si sistemano scegliendo nella pagina (non correggendo il file), con le
+# parole della pagina (napoli.js, NAPOLI_SCELTE_BLOCCANTI).
+SCELTE_BLOCCANTI = {'qualifica_non_collegata': 'le figure delle qualifiche nuove',
+                    'municipalita_da_scegliere': 'i plessi'}
+
 # Controlli che riguardano solo le ore dei giorni: nel modo 'anagrafica' le ore non si
 # caricano, quindi non si mostrano e non bloccano (REGOLE 14).
 SOLO_ORE = frozenset({
@@ -1551,14 +1556,15 @@ class _Piano:
         altrimenti quella scelta nella pagina («Plessi da scegliere»). Finche' non si sceglie
         la riga non si carica (bloccante 'municipalita_da_scegliere'): None."""
         n = r['riga']
-        if not voce_riga['valida']:
-            return None            # una riga che non si carica comunque (coordinatore, altro lotto...)
-        if voce_riga['alunno'] is not None and voce_riga['operatore'] is not None:
-            esistente = self._coppia_in_assisto(voce_riga, self.inizio)
-            plesso = self.scuole_db.get(esistente['scuola_id']) if esistente else None
-            if plesso and plesso['municipalita'] is not None and self._stessa_scuola(plesso, identita):
-                self.avviso(n, 'municipalita_presa_dalla_coppia', f'municipalità {plesso["municipalita"]}')
-                return plesso['municipalita']
+        if not voce_riga['valida'] or voce_riga['alunno'] is None or voce_riga['operatore'] is None:
+            # una riga che non si carica comunque (coordinatore, altro lotto, alunno o
+            # operatore da correggere): il plesso si chiede quando il resto della riga va bene
+            return None
+        esistente = self._coppia_in_assisto(voce_riga, self.inizio)
+        plesso = self.scuole_db.get(esistente['scuola_id']) if esistente else None
+        if plesso and plesso['municipalita'] is not None and self._stessa_scuola(plesso, identita):
+            self.avviso(n, 'municipalita_presa_dalla_coppia', f'municipalità {plesso["municipalita"]}')
+            return plesso['municipalita']
         chiave = f'{n}|{identita[0]}:{identita[1]}'
         scelta = self.scelte['plessi'].get(chiave)
         voce = {'chiave': chiave, 'riga': n, 'nome': r['scuola']['nome'] or r['scuola']['testo'],
@@ -2754,14 +2760,14 @@ def _risposta(piano, lettura, ctx, sha, nome_file, modo):
                      'municipalità passano al plesso della municipalità del file. Se è un errore di scrittura, '
                      'correggi il file e rifai l\'anteprima.',
             'voci': [{'testo': f'{v["nome"]} ({v["codice"] or "senza codice"}): {v["testo"]}',
-                      'righe': v['righe'][:20]} for v in piano.conferme['plessi']]})
+                      'righe': v['righe'][:20], 'n_righe': len(v['righe'])} for v in piano.conferme['plessi']]})
     if 'operatori_per_nome' in piano.conferme:
         def voce_operatore(o):
             testo = (f'{o["nome_file"]}: nel file {calc.maschera_codice_fiscale(o["cf"]) or "senza codice"}, '
                      f'in Assisto {calc.maschera_codice_fiscale(o.get("cf_assisto")) or "senza codice"}')
             if o.get('cf_nuovo'):
                 testo += ' (il codice del file è giusto: si corregge anche in Assisto)'
-            return {'testo': testo, 'righe': o['righe'][:20]}
+            return {'testo': testo, 'righe': o['righe'][:20], 'n_righe': len(o['righe'])}
         out['conferme'].append({
             'codice': 'operatori_per_nome', 'titolo': 'Operatori riconosciuti dal nome',
             'testo': 'Il codice fiscale nel file e quello in Assisto non sono uguali (uno dei due è scritto male), '
@@ -2899,6 +2905,30 @@ def _testo_nuovi(esito):
                        (n['pei'], 'PEI', 'PEI')]) or 'nessuno'
 
 
+def _testo_aggiornati(esito):
+    """', aggiornati 7 coppie' (o niente): un caricamento puo' solo aggiornare dati (per
+    esempio le coppie dei sostituti che continuano)."""
+    g = esito.get('aggiornati') or {}
+    testo = _elenco_it([(g.get('coppie'), 'coppie', 'coppia'), (g.get('pei'), 'PEI', 'PEI'),
+                        (g.get('operatori'), 'operatori', 'operatore'), (g.get('alunni'), 'alunni', 'alunno'),
+                        (g.get('scuole'), 'scuole', 'scuola')])
+    return f', aggiornati {testo}' if testo else ''
+
+
+def _testo_bloccato(bloccanti, prima_di):
+    """Il messaggio di una conferma con dei bloccanti (si arriva qui solo aggirando il
+    pulsante disattivato): le scelte della pagina (qualifiche nuove, plessi) non sono
+    errori del file."""
+    codici = {a['codice'] for a in bloccanti}
+    scelte = [testo for codice, testo in SCELTE_BLOCCANTI.items() if codice in codici]
+    if codici <= set(SCELTE_BLOCCANTI):
+        return f'{prima_di} scegli {" e ".join(scelte)} nella parte «Da confermare» dell\'anteprima.'
+    if scelte:
+        return (f'{prima_di} scegli {" e ".join(scelte)} nella parte «Da confermare» e correggi il file '
+                '(guarda la parte «Da correggere» dell\'anteprima).')
+    return f'{prima_di} bisogna correggere il file: guarda la parte «Da correggere» dell\'anteprima.'
+
+
 def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=None, modo=MODO_PREDEFINITO):
     """Importa il file visto nell'anteprima: stesso file (sha256), stesso modo e stessi
     dati di Napoli (versione_dati), nessun bloccante, conferme date. Nel modo
@@ -2920,29 +2950,32 @@ def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=
         azione = 'caricare l\'anagrafica da questo file' if anagrafica else 'importare'
         raise Conflitto(f'Il mese di {testo_mese} del lotto è chiuso: riaprilo prima di {azione}.',
                         codice='MESE_CHIUSO_LOTTO')
+    # come la pagina: "caricare l'anagrafica" (l'azione principale) o "importare" (le ore)
+    prima_di = 'Prima di caricare l\'anagrafica' if anagrafica else 'Prima di importare'
     if _versione(ctx, modo) != versione_dati:
-        raise Conflitto('Dopo l\'anteprima i dati di Napoli sono cambiati: rifai l\'anteprima prima di importare.',
+        raise Conflitto(f'Dopo l\'anteprima i dati di Napoli sono cambiati: rifai l\'anteprima {prima_di.lower()}.',
                         codice='ANTEPRIMA_SUPERATA')
     bloccanti = piano.bloccanti()
     if bloccanti:
-        raise DatiNonValidi('Prima di importare bisogna correggere il file: guarda la parte «Da correggere» '
-                            'dell\'anteprima.', codice='IMPORT_BLOCCATO', bloccanti=_gruppi(bloccanti, modo))
+        raise DatiNonValidi(_testo_bloccato(bloccanti, prima_di), codice='IMPORT_BLOCCATO',
+                            bloccanti=_gruppi(bloccanti, modo))
     if piano.nessun_cambiamento():
         # niente da scrivere: non servono le scelte ne' le conferme
         return {'import_id': None, 'nessun_cambiamento': True, 'esito': _esito(piano), 'modo': modo,
                 'messaggio': ('Niente da cambiare: l\'anagrafica del file è già in Assisto così com\'è' if anagrafica
                               else f'Niente da cambiare: {testo_mese} è già in Assisto così com\'è nel file')}
     if piano.ore_ambigue_da_scegliere():
-        raise DatiNonValidi('Prima di importare scegli come leggere le ore nella parte «Ore da confermare».',
+        raise DatiNonValidi(f'{prima_di} scegli come leggere le ore nella parte «Ore da confermare».',
                             codice='DA_CONFERMARE', mancano=['ore_ambigue'])
     mancano = [c for c in piano.conferme if c not in piano.scelte['conferme']]
     if mancano:
-        raise DatiNonValidi('Prima di importare spunta le caselle «Ho controllato» nella parte «Da confermare».',
+        raise DatiNonValidi(f'{prima_di} spunta le caselle «Ho controllato» nella parte «Da confermare».',
                             codice='DA_CONFERMARE', mancano=mancano)
+    il_caricamento = 'il caricamento' if anagrafica else 'l\'import'
     copia = db.create_backup()
     if not copia:
-        raise NonRiuscito('Non sono riuscito a fare la copia di sicurezza del database, quindi l\'import non è stato '
-                          'fatto. Riprova; se succede ancora, controlla che sul disco ci sia spazio.',
+        raise NonRiuscito(f'Non sono riuscito a fare la copia di sicurezza del database, quindi {il_caricamento} '
+                          'non è stato fatto. Riprova; se succede ancora, controlla che sul disco ci sia spazio.',
                           codice='COPIA_NON_RIUSCITA')
     ora = _ora()
     nome = str(nome_file or '').replace('\\', '/').rsplit('/', 1)[-1][:200] or None
@@ -2950,7 +2983,7 @@ def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=
         conn.execute('BEGIN IMMEDIATE')
         ctx_ora = _contesto(conn, lotto_id, piano.anno, piano.mese)
         if ctx_ora['versione'] != ctx['versione']:
-            raise Conflitto('Mentre preparavo l\'import i dati di Napoli sono cambiati: rifai l\'anteprima.',
+            raise Conflitto(f'Mentre preparavo {il_caricamento} i dati di Napoli sono cambiati: rifai l\'anteprima.',
                             codice='ANTEPRIMA_SUPERATA')
         piano = _Piano(ctx_ora, lettura, piano.scelte, modo)
         cur = conn.execute('INSERT INTO napoli_import (lotto_id, anno, mese, nome_file, sha256, n_righe, esito_json, '
@@ -2965,14 +2998,15 @@ def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=
         nuovi = _testo_nuovi(esito)
         if anagrafica:
             _registra_ctrl_z(conn, import_id, f'Anagrafica dal file di {testo_mese}: {esito["righe_importate"]} '
-                                              f'righe, nuovi {nuovi}')
+                                              f'righe, nuovi {nuovi}{_testo_aggiornati(esito)}')
         else:
             _registra_ctrl_z(conn, import_id, f'Import del foglio presenze di {testo_mese}: '
                                               f'{esito["righe_importate"]} righe, {ore} ore')
     if anagrafica:
         db.log_audit('import', 'napoli_import', import_id,
                      dettagli=f'Napoli, {ctx["lotto"]["nome"]}: anagrafica caricata dal file di {testo_mese} '
-                              f'({esito["righe_importate"]} righe; nuovi: {nuovi}); copia di sicurezza {copia}')
+                              f'({esito["righe_importate"]} righe; nuovi: {nuovi}{_testo_aggiornati(esito)}); '
+                              f'copia di sicurezza {copia}')
         messaggio = f'Anagrafica caricata dal file di {testo_mese}: {esito["righe_importate"]} righe'
     else:
         db.log_audit('import', 'napoli_import', import_id,
@@ -3012,6 +3046,7 @@ def storico(lotto_id):
                     'righe': esito.get('righe_importate', i['n_righe']),
                     'ore': _ore_testo(esito.get('minuti') or 0) if 'minuti' in esito and modo == 'ore' else '',
                     'presenze': esito.get('presenze') or {}, 'nuovi': esito.get('nuovi') or {},
+                    'aggiornati': esito.get('aggiornati') or {}, 'tolti': esito.get('tolti') or {},
                     'annullabile': bool(ultimo and ultimo['id'] == i['id'] and (i['anno'], i['mese']) not in chiusi)})
     return out
 

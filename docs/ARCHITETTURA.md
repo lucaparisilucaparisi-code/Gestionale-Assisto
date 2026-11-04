@@ -516,7 +516,10 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     Messaggi semplici per file vuoto, file temporaneo di Excel (`~$...`), formato .xls o
     file con password, file che non e' Excel, foglio sbagliato (con i fogli trovati); se il
     file e' aperto in Excel su Windows il browser non lo legge e la pagina lo dice
-    (il file si legge appena scelto). Le righe vuote dopo 200 di fila non si leggono;
+    (il file si legge appena scelto). Il messaggio rosso, come la rotellina di attesa e
+    l'anteprima, sta sotto la scheda di scelta: la pagina lo porta in vista (a 1366x768
+    sarebbe fuori dallo schermo, REGOLE 13), con il pulsante «Scegli di nuovo il file».
+    Le righe vuote dopo 200 di fila non si leggono;
   - anteprima (`POST /api/napoli/import/anteprima`, multipart: file, lotto, modo,
     scelte): **non scrive nulla**. Abbina solo dentro Napoli:
     - scuole per codice meccanografico e **municipalita' della scuola** (REGOLE 12):
@@ -526,7 +529,9 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
       (nota `municipalita_presa_dalla_coppia`), altrimenti il plesso si sceglie nella pagina
       («Plessi da scegliere», scelta `plessi`: riga e scuola -> municipalita', solo fra
       quelle della scuola; finche' non si sceglie e' il bloccante
-      `municipalita_da_scegliere` e la riga non si carica; il solo confronto non la chiede).
+      `municipalita_da_scegliere` e la riga non si carica; il solo confronto non la chiede,
+      e nemmeno una riga che non si carica comunque, per esempio con l'alunno o l'operatore
+      da correggere: si chiede quando la riga e' corretta).
       Se la scuola in Assisto c'e' una volta sola e senza municipalita', quella del file si
       aggiunge allo stesso plesso (avviso, l'annullamento la toglie). La stessa scuola con
       municipalita' diverse, nel file o fra il file e Assisto, va confermata con "Ho
@@ -587,7 +592,10 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     senza chiederle;
   - conferma (`POST /api/napoli/import/conferma`): stesso file (sha256, 409
     `FILE_CAMBIATO`), stessi dati (409 `ANTEPRIMA_SUPERATA`), mese aperto (409
-    `MESE_CHIUSO_LOTTO`), nessun bloccante (400 `IMPORT_BLOCCATO`), conferme date (400
+    `MESE_CHIUSO_LOTTO`), nessun bloccante (400 `IMPORT_BLOCCATO`: il messaggio distingue
+    le scelte della pagina, `SCELTE_BLOCCANTI` cioe' qualifiche nuove e plessi, dagli
+    errori del file, e dice «caricare l'anagrafica» o «importare» come la pagina; la pagina
+    intitola «Da scegliere prima di caricare» i soli bloccanti da scegliere), conferme date (400
     `DA_CONFERMARE`, anche per le ore da confermare non scelte); se il file non cambia
     niente non scrive nulla. Poi
     `database.create_backup()` (senza copia niente import, 503) e **un'unica transazione**
@@ -623,7 +631,9 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   - solo confronto (modo 'confronto'): differenze coppia per coppia e giorno per giorno
     con i giorni registrati, righe del file che in Assisto non ci sono e coppie solo in
     Assisto, senza scrivere;
-  - elenco degli import del lotto (`GET /api/napoli/lotti/<id>/import`): modo e conteggi;
+  - elenco degli import del lotto (`GET /api/napoli/lotti/<id>/import`): modo e conteggi
+    (nuovi, aggiornati, tolti: la colonna «Cosa» dice anche i dati solo aggiornati, per
+    esempio le coppie dei sostituti che continuano);
   - privacy: codici fiscali solo nelle anagrafiche; mai nelle risposte (mascherati), nel
     registro attivita', in `napoli_import` (esito e registro dell'annullamento), in
     `napoli_annullamenti` o nel log.

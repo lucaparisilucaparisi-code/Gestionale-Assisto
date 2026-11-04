@@ -864,6 +864,11 @@ def test_il_mese_dopo_le_coppie_continuano(napoli, master, tmp_path):
     assert (marzo[chiave]['valido_a'], dopo[chiave]['valido_a']) == ('2026-03-19', '2026-04-17')
     chiave = ('CAMPIONE ZETA', 'STUDENTE LAMBDA', 'titolare')
     assert (marzo[chiave]['valido_a'], dopo[chiave]['valido_a']) == ('2026-03-23', None)
+    # l'elenco dei caricamenti dice anche i dati solo aggiornati (non solo «nessun dato nuovo»)
+    ultimo = _ok(napoli.get(f'/api/napoli/lotti/{napoli.lotto_id}/import'))[0]
+    assert ultimo['id'] == esito['import_id'] and ultimo['aggiornati']['coppie'] == 7
+    assert not any(ultimo['nuovi'][k] for k in ('coppie', 'alunni', 'operatori', 'scuole', 'pei'))
+    assert ultimo['tolti'] == {'scuole': 0}
     # annullare aprile rimette le coppie di marzo com'erano
     _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
     assert coppie_per_nome(napoli.percorso) == marzo
@@ -1045,7 +1050,7 @@ def test_coppie_in_un_plesso_senza_municipalita_passano_al_plesso_del_file(napol
     assert voce['testo'] == ('LICEO ZETA ETA (NAPC0ZZ004): nel file municipalità 1 e 2, in Assisto 1 e 2 e senza '
                              'municipalità: le coppie già in Assisto nel plesso senza municipalità passano al plesso '
                              'della municipalità 1; il plesso senza municipalità, rimasto vuoto, si toglie')
-    assert voce['righe'] == [7]
+    assert (voce['righe'], voce['n_righe']) == ([7], 1)          # la pagina scrive «riga 7»
     _errore(conferma(napoli, file_corretto, a), 400, 'DA_CONFERMARE')
     _a, esito = carica_anagrafica(napoli, file_corretto)
     assert plessi_zeta(napoli.percorso) == [(1, 5), (2, 1)]
@@ -1094,6 +1099,76 @@ def test_il_mese_dopo_il_plesso_senza_municipalita_la_prende_dal_file(napoli, tm
                                   "WHERE s.codice_meccanografico = 'NAPC0ZZ004' AND s.municipalita = 2")[0]['n'] == 1
     _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
     assert impronta_dati(napoli.percorso) == prima
+
+
+@pytest.mark.parametrize('sbagliato,codice', [
+    ({'cf_alunno': 'ABC123'}, 'cf_alunno_non_valido'),
+    ({'operatore': '', 'cf_operatore': ''}, 'riga_senza_operatore'),
+])
+def test_il_plesso_si_chiede_solo_se_il_resto_della_riga_va_bene(napoli, tmp_path, sbagliato, codice):
+    """La riga 7 non ha la municipalita' (la scuola ha due plessi) e ha l'alunno o
+    l'operatore da correggere: la riga non si carica comunque, quindi il plesso non si
+    chiede (niente voce «Plessi da scegliere» con il nome vuoto); si chiede quando la riga
+    e' corretta."""
+    def riga_sbagliata(r):
+        un_plesso_nella_2(r)
+        r[RIGA_7].update(sbagliato)
+    dati = variante(tmp_path, riga_sbagliata)
+    for modo in ('anagrafica', 'import'):
+        a = _ok(anteprima(napoli, dati, modo=modo))
+        assert a['plessi_da_scegliere'] == []
+        assert codice in codici(a, 'bloccanti') and 'municipalita_da_scegliere' not in codici(a, 'bloccanti')
+        assert [x['riga'] for x in codici(a, 'bloccanti')[codice]['righe']] == [7]
+    assert set(codici(_ok(anteprima(napoli, dati, modo='anagrafica')), 'bloccanti')) == {codice}
+    [x] = _ok(anteprima(napoli, variante(tmp_path, un_plesso_nella_2, nome='corretto.xlsx'),
+                        modo='anagrafica'))['plessi_da_scegliere']
+    assert (x['riga'], x['operatore'], x['alunno']) == (7, 'DE PROVA DELTA', 'NOVIZIO ZETA')
+
+
+def test_la_conferma_bloccata_dice_cosa_fare_con_le_parole_della_pagina(napoli, tmp_path):
+    """Si arriva alla conferma con dei bloccanti solo aggirando il pulsante disattivato: il
+    messaggio distingue le scelte della pagina (plessi, qualifiche nuove) dagli errori del
+    file e dice «caricare l'anagrafica» o «importare» come la pagina."""
+    def con(*modifiche):
+        def modifica(r):
+            for m in modifiche:
+                m(r)
+        return modifica
+
+    def qualifica_nuova(r):
+        r[3]['qualifica'] = 'OPERATORE SOCIALE'
+
+    def alunno_senza_codice(r):
+        r[10]['cf_alunno'] = ''
+    casi = [
+        (con(un_plesso_nella_2), 'anagrafica',
+         'Prima di caricare l\'anagrafica scegli i plessi nella parte «Da confermare» dell\'anteprima.'),
+        (con(un_plesso_nella_2), 'import',
+         'Prima di importare scegli i plessi nella parte «Da confermare» dell\'anteprima.'),
+        (con(un_plesso_nella_2, qualifica_nuova), 'anagrafica',
+         'Prima di caricare l\'anagrafica scegli le figure delle qualifiche nuove e i plessi nella parte «Da '
+         'confermare» dell\'anteprima.'),
+        (con(un_plesso_nella_2, alunno_senza_codice), 'anagrafica',
+         'Prima di caricare l\'anagrafica scegli i plessi nella parte «Da confermare» e correggi il file (guarda la '
+         'parte «Da correggere» dell\'anteprima).'),
+        (con(alunno_senza_codice), 'anagrafica',
+         'Prima di caricare l\'anagrafica bisogna correggere il file: guarda la parte «Da correggere» '
+         'dell\'anteprima.'),
+        (con(alunno_senza_codice), 'import',
+         'Prima di importare bisogna correggere il file: guarda la parte «Da correggere» dell\'anteprima.'),
+    ]
+    for i, (modifica, modo, messaggio) in enumerate(casi):
+        dati = variante(tmp_path, modifica, nome=f'caso{i}.xlsx')
+        a = _ok(anteprima(napoli, dati, modo=modo))
+        e = _errore(conferma(napoli, dati, a), 400, 'IMPORT_BLOCCATO')
+        assert e['error'] == messaggio, (i, e['error'])
+    # le conferme da spuntare, nel modo dell'anagrafica (aprile cambia qualcosa: non sono solo avvisi)
+    importa(napoli, variante(tmp_path, municipalita_di('I.C. ALFA', 2), nome='prima.xlsx'))
+    dati = aprile(tmp_path, municipalita_di('I.C. ALFA', 3))
+    a = _ok(anteprima(napoli, dati, modo='anagrafica'))
+    assert 'plessi' in a['conferme_richieste']
+    e = _errore(conferma(napoli, dati, a), 400, 'DA_CONFERMARE')
+    assert e['error'] == 'Prima di caricare l\'anagrafica spunta le caselle «Ho controllato» nella parte «Da confermare».'
 
 
 def test_il_mese_dopo_i_codici_fiscali_corretti_non_creano_doppioni(napoli, master, tmp_path):

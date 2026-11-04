@@ -521,6 +521,13 @@ function napoliNumeroIt(n) {
     return Number(n || 0).toLocaleString('it-IT');
 }
 
+/** "riga 41", "righe 3, 7", "righe 1, 2, … 20 e altre 5": le righe del file di una voce
+ *  (il server ne manda al massimo 20, n e' quante sono in tutto). */
+function napoliRigheTesto(righe, n = righe.length) {
+    const altre = n > righe.length ? ` e altre ${napoliNumeroIt(n - righe.length)}` : '';
+    return `${n === 1 ? 'riga' : 'righe'} ${righe.join(', ')}${altre}`;
+}
+
 /** "3 giorni nuovi, 1 cambiato": solo le voci con un numero diverso da zero. Ogni voce e'
  *  [numero, testo al plurale, testo al singolare (se diverso)]. */
 function napoliElenco(voci) {
@@ -677,14 +684,28 @@ const NapoliImport = {
         this.pulsanti(true);
     },
 
+    /** Il messaggio rosso (file aperto in Excel, file temporaneo ~$, .xls, file rovinato...)
+     *  sta sotto la scheda di scelta: la pagina lo porta in vista (a 1366x768 sarebbe fuori
+     *  dallo schermo, REGOLE 13), con il pulsante per scegliere di nuovo il file. */
     errore(messaggio, titolo = 'Il file non si può usare') {
-        this.el('import-risultato').innerHTML = `
+        const box = this.el('import-risultato');
+        box.innerHTML = `
             <div class="card napoli-esito">
-                <div class="alert alert-danger">
+                <div class="alert alert-danger" role="alert" tabindex="-1">
                     ${napoliSvg(NAPOLI_ICONE_STATO.manca, 22)}
                     <div><strong>${escapeHtml(titolo)}</strong><br>${escapeHtml(messaggio)}</div>
                 </div>
+                <div class="napoli-azioni-modulo">
+                    <button type="button" class="btn btn-primary" data-azione="altro-file">Scegli di nuovo il file</button>
+                </div>
             </div>`;
+        this.inVista(box.querySelector('.napoli-esito'), false);
+        box.querySelector('.alert').focus({ preventScroll: true });
+    },
+
+    /** Porta in vista (in cima, sotto la barra in alto) il riquadro del risultato. */
+    inVista(el, liscio = true) {
+        if (el) el.scrollIntoView({ behavior: liscio ? 'smooth' : 'auto', block: 'start' });
     },
 
     /** Manda il file (gia' letto) con il lotto e gli altri campi. Errori con il messaggio del server. */
@@ -722,6 +743,7 @@ const NapoliImport = {
             this.scelte = {};
             box.innerHTML = `<div class="card napoli-esito"><div class="loading"><div class="spinner"></div></div>
                 <p class="napoli-attesa">${escapeHtml(NAPOLI_MODI_IMPORT[modo].attesa)}</p></div>`;
+            this.inVista(box.querySelector('.napoli-esito'));
         } else {
             box.querySelector('.napoli-anteprima')?.classList.add('napoli-in-aggiornamento');
         }
@@ -733,7 +755,9 @@ const NapoliImport = {
             if (r.modo === 'confronto') this.disegnaConfronto(r);
             else this.disegnaAnteprima(r, aggiorna);
         } catch (e) {
-            if (seq === this.seq) this.errore(e.message);
+            // senza risposta (Assisto chiuso) o con un errore del programma non e' colpa del file
+            const titolo = !e.status ? 'Assisto non risponde' : (e.status >= 500 ? 'Qualcosa non ha funzionato' : undefined);
+            if (seq === this.seq) this.errore(e.message, titolo);
         } finally {
             if (seq === this.seq) this.pulsanti(true);
         }
@@ -832,7 +856,7 @@ const NapoliImport = {
             const el = attivo && box.querySelector(attivo);
             if (el) el.focus({ preventScroll: true });
         } else {
-            box.querySelector('.napoli-anteprima').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            this.inVista(box.querySelector('.napoli-anteprima'));
         }
     },
 
@@ -876,13 +900,34 @@ const NapoliImport = {
             </details>`;
     },
 
+    /** Cosa si sceglie nella pagina fra i bloccanti ('le figure delle qualifiche nuove e i plessi'). */
+    testoScelte(bloccanti) {
+        return [bloccanti.some(g => g.codice === 'qualifica_non_collegata') ? 'le figure delle qualifiche nuove' : '',
+            bloccanti.some(g => g.codice === 'municipalita_da_scegliere') ? 'i plessi' : ''].filter(Boolean).join(' e ');
+    },
+
+    /** I bloccanti: errori del file (da correggere in Excel) e scelte da fare nella pagina
+     *  (qualifiche nuove, plessi). Con le sole scelte il titolo non parla di correggere. */
     htmlBloccanti(a) {
         if (!a.bloccanti.length) return '';
+        const azione = a.modo === 'anagrafica' ? 'caricare' : 'importare';
+        const scelte = a.bloccanti.filter(g => NAPOLI_SCELTE_BLOCCANTI.includes(g.codice));
+        const nelFile = 'correggilo in Excel, salvalo, chiudilo e sceglilo di nuovo qui sopra';
+        let titolo = `Da correggere prima di ${azione}`;
+        let intro = `Queste righe si correggono nel file: ${nelFile}.`;
+        let classe = 'napoli-blocco-danger';
+        if (scelte.length === a.bloccanti.length) {
+            titolo = `Da scegliere prima di ${azione}`;
+            intro = `Nel file non c'è niente da correggere: scegli ${this.testoScelte(scelte)} qui sotto, in «Da confermare».`;
+            classe = 'napoli-blocco-warning';
+        } else if (scelte.length) {
+            intro = `Scegli ${this.testoScelte(scelte)} qui sotto, in «Da confermare». Il resto si corregge nel file: ${nelFile}.`;
+        }
         return `
-            <div class="napoli-blocco napoli-blocco-danger">
-                <h3>Da correggere prima di ${a.modo === 'anagrafica' ? 'caricare' : 'importare'}</h3>
-                <p class="napoli-intro">Le figure delle qualifiche nuove e i plessi si scelgono qui sotto, in «Da confermare». Il resto si corregge nel file: correggilo in Excel, salvalo, chiudilo e sceglilo di nuovo qui sopra.</p>
-                ${a.bloccanti.map(g => this.htmlGruppo(g, true)).join('')}
+            <div class="napoli-blocco ${classe}">
+                <h3>${escapeHtml(titolo)}</h3>
+                <p class="napoli-intro">${escapeHtml(intro)}</p>
+                ${a.bloccanti.map(g => this.htmlGruppo(NAPOLI_SCELTE_BLOCCANTI.includes(g.codice) ? { ...g, livello: 'avviso' } : g, true)).join('')}
             </div>`;
     },
 
@@ -968,7 +1013,7 @@ const NapoliImport = {
                 <div class="${classeParte}">
                     <h4>${escapeHtml(conf.titolo)}</h4>
                     <p class="napoli-intro">${escapeHtml(conf.testo)}</p>
-                    ${conf.voci.length ? `<ul class="napoli-elenco">${conf.voci.map(v => `<li>${escapeHtml(v.testo)} <span class="napoli-vuoto">(righe ${v.righe.join(', ')})</span></li>`).join('')}</ul>` : ''}
+                    ${conf.voci.length ? `<ul class="napoli-elenco">${conf.voci.map(v => `<li>${escapeHtml(v.testo)} <span class="napoli-vuoto">(${napoliRigheTesto(v.righe, v.n_righe)})</span></li>`).join('')}</ul>` : ''}
                     ${conf.solo_avviso
                         ? '<p class="napoli-nota napoli-nota-stretta">Il file non cambia niente in Assisto, quindi qui non c\'è niente da confermare: è solo un avviso.</p>'
                         : `<label class="napoli-scelta napoli-ho-controllato"><input type="checkbox" value="${escapeHtml(conf.codice)}" data-scelta="conferma"${(s.conferme || []).includes(conf.codice) ? ' checked' : ''}> <strong>Ho controllato</strong></label>`}
@@ -1166,9 +1211,7 @@ const NapoliImport = {
             stato = ['badge-danger', 'Mese chiuso'];
         } else if (a.bloccanti.length && a.bloccanti.every(g => NAPOLI_SCELTE_BLOCCANTI.includes(g.codice))) {
             // si sistemano nella pagina, senza cambiare il file
-            const cosa = [a.bloccanti.some(g => g.codice === 'qualifica_non_collegata') ? 'le figure delle qualifiche nuove' : '',
-                a.bloccanti.some(g => g.codice === 'municipalita_da_scegliere') ? 'i plessi' : ''].filter(Boolean).join(' e ');
-            testo = `Scegli ${cosa} nella parte «Da confermare».`;
+            testo = `Scegli ${this.testoScelte(a.bloccanti)} nella parte «Da confermare».`;
             stato = ['badge-warning', `${napoliNumeroIt(a.bloccanti.reduce((n, g) => n + g.n, 0))} da scegliere`];
         } else if (a.bloccanti.length) {
             testo = 'Prima correggi il file (parte «Da correggere»).';
@@ -1248,9 +1291,14 @@ const NapoliImport = {
         this.el('import-file-zona').hidden = false;
         this.el('import-file-scelto').hidden = true;
         this.pulsanti(true);
+        const g = r.esito.aggiornati || {};
         const nuovi = napoliElenco([[n.scuole, 'scuole', 'scuola'], [n.alunni, 'alunni', 'alunno'], [n.operatori, 'operatori', 'operatore'], [n.coppie, 'coppie', 'coppia'], [n.pei, 'PEI']]) || 'nessuno';
-        const dettaglio = anagrafica ? `Nuovi: ${nuovi}. Le ore dei giorni non sono state caricate.`
-            : `Giorni: ${napoliElenco([[p.nuove, 'nuovi', 'nuovo'], [p.cambiate, 'cambiati', 'cambiato'], [p.da_programmato, 'completati', 'completato'], [p.sovrascritte, 'sostituiti', 'sostituito'], [p.da_togliere, 'tolti', 'tolto'], [p.uguali, 'già uguali', 'già uguale']]) || 'nessuno'}. Nuovi: ${nuovi}.`;
+        // anche i dati solo aggiornati (per esempio le coppie dei sostituti che continuano)
+        const aggiornati = napoliElenco([[g.coppie, 'coppie', 'coppia'], [g.pei, 'PEI'], [g.operatori, 'operatori', 'operatore'],
+            [g.alunni, 'alunni', 'alunno'], [g.scuole, 'scuole', 'scuola']]);
+        const testoAggiornati = aggiornati ? ` Aggiornati: ${aggiornati}.` : '';
+        const dettaglio = anagrafica ? `Nuovi: ${nuovi}.${testoAggiornati} Le ore dei giorni non sono state caricate.`
+            : `Giorni: ${napoliElenco([[p.nuove, 'nuovi', 'nuovo'], [p.cambiate, 'cambiati', 'cambiato'], [p.da_programmato, 'completati', 'completato'], [p.sovrascritte, 'sostituiti', 'sostituito'], [p.da_togliere, 'tolti', 'tolto'], [p.uguali, 'già uguali', 'già uguale']]) || 'nessuno'}. Nuovi: ${nuovi}.${testoAggiornati}`;
         this.el('import-risultato').innerHTML = `
             <section class="card napoli-esito">
                 <div class="alert alert-success napoli-alert">
@@ -1263,7 +1311,7 @@ const NapoliImport = {
                     <button type="button" class="btn btn-secondary" data-azione="altro-file">Scegli un altro file</button>
                 </div>
             </section>`;
-        this.el('import-risultato').querySelector('.napoli-esito').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        this.inVista(this.el('import-risultato').querySelector('.napoli-esito'));
     },
 
     disegnaConfronto(a) {
@@ -1312,7 +1360,7 @@ const NapoliImport = {
                     </div>
                 </div>
             </section>`;
-        box.querySelector('.napoli-anteprima').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        this.inVista(box.querySelector('.napoli-anteprima'));
     },
 
     async caricaStorico() {
@@ -1329,13 +1377,23 @@ const NapoliImport = {
             box.innerHTML = '<p class="napoli-vuoto">Nessun caricamento per questo lotto.</p>';
             return;
         }
+        // cosa ha fatto il caricamento: anche i dati solo aggiornati (per esempio le coppie
+        // dei sostituti che continuano), non solo quelli nuovi
         const cosa = (i) => {
             const p = i.presenze || {};
             const n = i.nuovi || {};
+            const g = i.aggiornati || {};
             if (i.modo === 'anagrafica') {
-                return `Anagrafica<br><span class="napoli-vuoto">${escapeHtml(napoliElenco([[n.alunni, 'alunni nuovi', 'alunno nuovo'], [n.operatori, 'operatori nuovi', 'operatore nuovo'], [n.coppie, 'coppie nuove', 'coppia nuova']]) || 'nessun dato nuovo')}</span>`;
+                const fatto = napoliElenco([[n.alunni, 'alunni nuovi', 'alunno nuovo'], [n.operatori, 'operatori nuovi', 'operatore nuovo'],
+                    [n.coppie, 'coppie nuove', 'coppia nuova'], [n.scuole, 'scuole nuove', 'scuola nuova'], [n.pei, 'PEI nuovi', 'PEI nuovo'],
+                    [g.coppie, 'coppie aggiornate', 'coppia aggiornata'], [g.pei, 'PEI aggiornati', 'PEI aggiornato'],
+                    [g.operatori, 'operatori aggiornati', 'operatore aggiornato'], [g.alunni, 'alunni aggiornati', 'alunno aggiornato'],
+                    [g.scuole, 'scuole aggiornate', 'scuola aggiornata'], [(i.tolti || {}).scuole, 'plessi vuoti tolti', 'plesso vuoto tolto']]);
+                return `Anagrafica<br><span class="napoli-vuoto">${escapeHtml(fatto || 'nessun dato nuovo o cambiato')}</span>`;
             }
-            return `Ore del mese<br><span class="napoli-vuoto">${escapeHtml(napoliElenco([[p.nuove, 'giorni nuovi', 'giorno nuovo'], [p.cambiate, 'cambiati', 'cambiato'], [p.da_togliere, 'tolti', 'tolto']]) || 'nessun giorno nuovo')}</span>`;
+            const giorni = napoliElenco([[p.nuove, 'nuovi', 'nuovo'], [p.cambiate, 'cambiati', 'cambiato'],
+                [p.da_programmato, 'completati', 'completato'], [p.sovrascritte, 'sostituiti', 'sostituito'], [p.da_togliere, 'tolti', 'tolto']]);
+            return `Ore del mese<br><span class="napoli-vuoto">${escapeHtml(giorni ? `giorni: ${giorni}` : 'nessun giorno nuovo o cambiato')}</span>`;
         };
         const classeRiga = (i) => (i.annullato ? 'napoli-riga-annullata' : '');
         box.innerHTML = `
