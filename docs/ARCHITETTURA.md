@@ -8,6 +8,7 @@ Nota tecnica per chi sviluppa. Per l'uso e l'installazione vedi il `README.md`.
 |------|----------------|
 | `app.py` | Applicazione Flask: route pagine e molte API, autenticazione (sessione + WebAuthn), import. Registra i blueprint sotto. |
 | `database.py` | Tutto l'accesso ai dati SQLite: schema/migrazioni, CRUD, calcoli di dominio. |
+| `napoli_schema.py` | Solo lo schema della sezione Napoli (tabelle `napoli_*`): la migrazione 2 di `database.py` (vedi "Sezione Napoli"). |
 | `routes_export.py` | Blueprint export (Excel, PDF, Word). |
 | `routes_backup.py` | Blueprint backup/ripristino (`/api/backup...`). |
 | `routes_migrazione.py` | Blueprint migrazione dati JSON e audit log (`/api/migrazione`, `/api/audit`). Formato v3.0: tutte le tabelle di dominio (`TABELLE_DOMINIO`), import merge/skip/replace con rimappatura delle FK (`TABELLE_MERGE`). |
@@ -260,8 +261,9 @@ dati inventati:
   voluto, sul codice di riferimento:
   `python strumenti/fotografa_roma.py --sintetico --codice CARTELLA_VERSIONE --uscita tests/golden/roma_v1_20_1.json`.
 - **Invarianza** (`tests/test_roma_invariata.py`): fotografia, poi i dati di Napoli
-  (`tests/seme_napoli.py`, `carica_seme_napoli`: ogni passo di Napoli ci aggiunge i
-  suoi dati tramite le sue API), poi di nuovo la fotografia, che deve essere uguale;
+  (`tests/seme_napoli.py`, `carica_seme_napoli`: riempie tutte le tabelle `napoli_*`,
+  per ora scrivendole direttamente; ogni passo di Napoli ci aggiunge i suoi dati
+  tramite le sue API), poi di nuovo la fotografia, che deve essere uguale;
   tabelle di Roma (schema e righe; del registro attivita' le voci non `napoli%`)
   intatte. **Doppio giro**: con `ASSISTO_TEST_CON_NAPOLI=1 pytest` il seme si carica
   anche nel database della sessione e nell'archivio della fotografia, e tutta la
@@ -284,6 +286,35 @@ dati inventati:
   sulla sua copia con lo stesso orologio fermo e stampa solo "N rotte identiche / M
   diverse" con i nomi delle rotte, mai dati. Esce con 0 (identiche), 1 (differenze)
   o 2 (errore). Con molti mesi e utenti puo' durare alcuni minuti.
+
+## Sezione Napoli
+
+Il servizio di Napoli sta in tabelle `napoli_*` proprie, nello stesso database:
+nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
+
+- **Schema**: `napoli_schema.py` contiene solo il DDL (non importa `database`).
+  `database.py` lo registra nel runner delle migrazioni: `SCHEMA_VERSION = 2`,
+  `MIGRAZIONI = {2: napoli_schema.crea_v2}`; e' l'unica modifica dello schema dal
+  lato di Roma. `crea_v2` crea le 22 tabelle della fase 1 (lotti, scuole, alunni,
+  operatori, PEI, coppie operatore-alunno, contratti applicativi, tariffe e regole
+  con data, calendario, orari, fogli firma, import, presenze e fasce, ore del
+  coordinatore, mesi chiusi per lotto, prospetti fattura, annullamenti) con i
+  valori iniziali (figure professionali, grafie delle qualifiche).
+- **Aggiornamento**: all'avvio, dopo il backup "pre-aggiornamento", un database con
+  `user_version` 1 (v1.20.1 e precedenti) passa a 2. La migrazione e' un'unica
+  transazione (se si interrompe non resta nulla a meta') e si puo' rieseguire senza
+  danni (`IF NOT EXISTS`, `INSERT OR IGNORE`). Il ripristino di un backup della
+  v1.20.1 aggiorna subito lo schema (tabelle di Napoli vuote): ripristinare un
+  backup fatto prima di Napoli cancella i dati di Napoli, come per ogni ripristino.
+  Una versione vecchia che apre un database v2 non lo tocca e ignora le tabelle
+  `napoli_*`.
+- **Unita'**: ore delle presenze in minuti interi, tariffe e importi in centesimi,
+  ore del coordinatore in centesimi di ora; tariffe sempre IVA esclusa. La
+  municipalita' e' quella della scuola: lo stesso codice meccanografico in due
+  municipalita' sono due plessi.
+- **Test**: `tests/test_napoli_schema.py` (migrazione su un database v1.20.1 con
+  l'archivio Roma inventato confrontato con il gemello riaperto dalla versione
+  vecchia, rieseguibilita', interruzione, ripristino, vincoli).
 
 ## Refactoring pianificati (da fare come interventi dedicati e revisionati)
 

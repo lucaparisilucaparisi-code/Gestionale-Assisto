@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timedelta
 
 import config
+import napoli_schema   # solo DDL delle tabelle napoli_* (non importa database)
 
 DATABASE_PATH = config.DATABASE_PATH
 
@@ -67,9 +68,10 @@ def get_db_context():
 # numero e registrare in MIGRAZIONI una funzione(conn) con il DDL necessario.
 # Il runner legge PRAGMA user_version ed esegue solo le migrazioni mancanti
 # (a differenza dei vecchi ALTER TABLE try/except rieseguiti a ogni avvio).
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MIGRAZIONI = {
-    # esempio: 2: lambda conn: conn.execute("ALTER TABLE utenti ADD COLUMN ..."),
+    # esempio: 3: lambda conn: conn.execute("ALTER TABLE utenti ADD COLUMN ..."),
+    2: napoli_schema.crea_v2,   # sezione Napoli, fase 1: solo tabelle nuove, Roma non cambia
 }
 
 

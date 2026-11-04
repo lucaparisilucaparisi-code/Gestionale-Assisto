@@ -3,8 +3,9 @@
 - Invarianza: sull'archivio Roma inventato si fotografa Roma, si carica il seme
   Napoli (tests/seme_napoli.py) e si rifotografa: le due fotografie devono essere
   uguali, le tabelle di Roma (schema e righe) intatte e le letture di Roma non
-  devono toccare le tabelle di Napoli. Finche' la sezione Napoli non c'e' il seme
-  e' vuoto: ogni passo di Napoli lo arricchisce e il test resta questo.
+  devono toccare le tabelle di Napoli. Il seme riempie tutte le tabelle napoli_*
+  (tests/test_napoli_schema.py lo controlla): ogni passo di Napoli lo arricchisce e
+  il test resta questo.
 - Inventario: ogni rotta di app.url_map sta in ROTTE_ROMA, ROTTE_NAPOLI o ESCLUSE
   (strumenti/fotografa_roma.py); una rotta nuova non classificata fa fallire il test.
 
@@ -27,7 +28,7 @@ def test_roma_non_cambia_con_i_dati_di_napoli(database_isolato, app_module, db_m
     prima = fotografa_roma.fotografa_sintetico(client, database_isolato, roma_sintetico, versione)
     tabelle_roma = seme_napoli.impronta_roma(database_isolato)
 
-    seme_napoli.carica_seme_napoli(client)
+    seme_napoli.carica_seme_napoli(client, database_isolato)
     assert seme_napoli.impronta_roma(database_isolato) == tabelle_roma, 'il seme Napoli ha toccato Roma'
     tabelle_napoli = seme_napoli.impronta_napoli(database_isolato)
 

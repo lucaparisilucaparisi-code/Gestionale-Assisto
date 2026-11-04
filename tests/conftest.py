@@ -26,7 +26,7 @@ CON_NAPOLI = os.environ.get('ASSISTO_TEST_CON_NAPOLI') == '1'
 def _carica_seme_napoli(app_mod, db):
     import seme_napoli
     from strumenti.fotografa_roma import client_fotografia
-    return seme_napoli.carica_seme_napoli(client_fotografia(app_mod.app, db))
+    return seme_napoli.carica_seme_napoli(client_fotografia(app_mod.app, db), db.DATABASE_PATH)
 
 
 @pytest.fixture(scope='session')

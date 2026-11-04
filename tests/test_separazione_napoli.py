@@ -37,10 +37,12 @@ MODULI_CONTROLLATI = {'config': ('vietati', CONFIG_VIETATI), 'database': ('ammes
                       'routes_export': ('ammessi', EXPORT_AMMESSI)}
 
 # Occorrenze ammesse della parola "napoli" (maiuscole o minuscole) nei file di Roma.
-# Vuoto finche' la sezione non c'e'; i passi successivi aggiungono i punti del
-# PROGETTO §4.5 (database.py, app.py, templates/base.html, static/js/app.js,
-# routes_migrazione.py, templates/commesse.html) con il loro numero esatto.
-OCCORRENZE_AMMESSE = {}
+# Ogni passo aggiunge i suoi punti del PROGETTO §4.5 (database.py, app.py,
+# templates/base.html, static/js/app.js, routes_migrazione.py, templates/commesse.html)
+# con il loro numero esatto.
+OCCORRENZE_AMMESSE = {
+    'database.py': 4,   # import napoli_schema e la migrazione 2 in MIGRAZIONI (con i commenti)
+}
 
 
 def _file(modelli):
