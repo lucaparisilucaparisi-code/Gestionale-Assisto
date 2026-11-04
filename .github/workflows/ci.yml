@@ -31,3 +31,8 @@ jobs:
 
       - name: Test (pytest + coverage, soglia minima 55%)
         run: pytest --cov=. --cov-report=term-missing --cov-fail-under=55
+
+      - name: Test con i dati di Napoli (doppio giro, docs/ARCHITETTURA.md)
+        run: pytest
+        env:
+          ASSISTO_TEST_CON_NAPOLI: "1"
