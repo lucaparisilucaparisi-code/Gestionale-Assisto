@@ -6,12 +6,15 @@ Napoli:
 - con ASSISTO_TEST_CON_NAPOLI=1 conftest.py carica il seme nel database della
   sessione e nell'archivio Roma inventato, e tutta la suite gira di nuovo.
 
-Finche' la sezione non ha le sue API il seme scrive direttamente nelle tabelle
-napoli_* (schema attuale di napoli_schema.py; con versione_schema=2 nella forma
-della v2, per provare la migrazione 3), con una connessione SQLite a parte: mai
-nelle tabelle di Roma. Ogni passo che aggiunge una funzione di Napoli porta qui i
-suoi dati, tramite le API di Napoli quando ci sono (lotto, tariffe, import del
-master sintetico, orari, mese preparato, fogli, fattura definitiva, mese chiuso...).
+Con un client (sessione autenticata sullo stesso database) i dati che hanno gia'
+le loro API passano dalle API di Napoli: dal passo 1.3 dati della cooperativa,
+destinatario, il lotto con le tariffe (procedura "Crea il primo lotto"), un'altra
+tariffa, i contratti applicativi, le regole con data e una qualifica (_seme_con_le_api).
+Il resto, e tutto senza client o con versione_schema=2 (forma della v2, per provare la
+migrazione 3), si scrive direttamente nelle tabelle napoli_* con una connessione
+SQLite a parte: mai nelle tabelle di Roma. Ogni passo che aggiunge una funzione di
+Napoli sposta qui i suoi dati sulle sue API (import del master sintetico, orari, mese
+preparato, fogli, fattura definitiva, mese chiuso...).
 
 Solo dati inventati: alunni e operatori hanno di proposito gli stessi nomi di
 utenti e operatori dell'archivio Roma (tests/roma_sintetico.py), una scuola ha lo
@@ -78,19 +81,88 @@ class _Seme:
         return cur.lastrowid
 
 
-def _scrivi_seme(ins, versione_schema):
-    ora = '2025-09-01T08:00:00'
-    ins('napoli_impostazioni', chiave='cooperativa_denominazione', valore='COOPERATIVA DI FANTASIA')
-    ins('napoli_impostazioni', chiave='cooperativa_iban', valore='IT00A0000000000000000000000')
-    ins('napoli_alias_qualifiche', testo='EDUCATRICE PROF.LE', figura='EDUCATORE', origine='utente')
+def iban_inventato(conto='000000000001'):
+    """IBAN italiano con le cifre di controllo giuste ma ABI e CAB 00000, che non esistono:
+    non puo' essere il conto di nessuno."""
+    bban = 'X' + '00000' + '00000' + conto
+    numero = int(''.join(str(int(c, 36)) for c in bban + 'IT00'))
+    return f'IT{98 - numero % 97:02d}{bban}'
 
-    lotto = ins('napoli_lotti', nome='NAPOLI LOTTO 1 (PROVA)', numero_lotto=1, municipalita='1 e 2',
-                colore='#0EA5E9', cig='ZZ00000000',
-                oggetto_fattura='Servizio di prova - Lotto {lotto} - Scuole di grado {grado} - '
-                                'Competenze dal {dal} al {al} {mese} {anno}. {contratto} APPLICATIVO',
-                nota_fattura='D.D. N.{dd_numero} DEL {dd_data}', destinatario='ENTE DI FANTASIA',
-                codice_univoco_ufficio='ZZZZZZ', riferimento_amministrativo='0000',
-                intestazione_foglio='FOGLIO FIRMA DI PROVA', data_creazione=ora)
+
+# Dati delle Impostazioni (passo 1.3): gli stessi con le API e scritti direttamente.
+LOTTO_SEME = dict(nome='NAPOLI LOTTO 1 (PROVA)', numero_lotto=1, municipalita='1 e 2', colore='#0EA5E9',
+                  cig='ZZ00000000',
+                  oggetto_fattura='Servizio di prova - Lotto {lotto} - Scuole di grado {grado} - '
+                                  'Competenze dal {dal} al {al} {mese} {anno}. {contratto} APPLICATIVO',
+                  nota_fattura='D.D. N.{dd_numero} DEL {dd_data}', destinatario='ENTE DI FANTASIA',
+                  codice_univoco_ufficio='ZZZZZZ', riferimento_amministrativo='0000',
+                  intestazione_foglio='FOGLIO FIRMA DI PROVA')
+TARIFFE_SEME = (('ASACOM', 2344), ('EDUCATORE', 2428), ('TIFLOLOGO', 2428), ('PSICOLOGO', 2966), ('COORDINATORE', 2966))
+CONTRATTI_SEME = (
+    dict(grado='inferiore', numero='X', accordo_quadro='attuale', dd_numero='DD-PROVA-1', dd_data='2025-08-20',
+         valido_da='2025-09-01', valido_a='2026-06-07'),
+    dict(grado='inferiore', numero='XI', accordo_quadro='attuale', valido_da='2026-06-08', valido_a='2026-07-31'),
+    dict(grado='superiore', numero='X', accordo_quadro='attuale', valido_da='2025-09-01', valido_a='2026-07-31',
+         importo_cent=1000000),
+)
+
+
+def _ok(risposta):
+    assert risposta.status_code == 200, risposta.get_data(as_text=True)
+    return risposta.get_json()
+
+
+def _seme_con_le_api(client):
+    """Le Impostazioni del seme con le API di Napoli (passo 1.3). Ritorna gli id usati dal
+    resto del seme: lotto e i contratti X dei due gradi."""
+    _ok(client.put('/api/napoli/impostazioni/cooperativa', json={
+        'cooperativa_denominazione': 'COOPERATIVA DI FANTASIA', 'cooperativa_iban': iban_inventato()}))
+    _ok(client.put('/api/napoli/impostazioni/destinatario', json={
+        'destinatario_denominazione': 'ENTE DI FANTASIA', 'destinatario_cap': '00000'}))
+    _ok(client.post('/api/napoli/qualifiche', json={'testo': 'EDUCATRICE PROF.LE', 'figura': 'EDUCATORE'}))
+    lotto = _ok(client.post('/api/napoli/lotti/procedura', json={
+        'lotto': LOTTO_SEME, 'valido_da': '2025-09-01', 'valido_a': '2027-01-31', 'fonte': 'prova',
+        'tariffe': [{'figura': f, 'tariffa': f'{c // 100},{c % 100:02d}'} for f, c in TARIFFE_SEME]}))['lotto']['id']
+    _ok(client.post(f'/api/napoli/lotti/{lotto}/tariffe', json={
+        'figura': 'ASACOM', 'tariffa': '24,08', 'valido_da': '2027-02-01', 'fonte': 'prova, nuovo accordo'}))
+    contratti = []
+    for c in CONTRATTI_SEME:
+        dati = dict(c, importo=f'{c["importo_cent"] // 100},00' if 'importo_cent' in c else '')
+        contratti.append(_ok(client.post(f'/api/napoli/lotti/{lotto}/contratti', json=dati))['contratto']['id'])
+    for regola in ({'chiave': 'quota_assenza_alunno', 'valore': '0,5', 'valido_da': '2025-09-01',
+                    'valido_a': '2027-01-31', 'fonte': 'prova'},
+                   {'chiave': 'quota_assenza_alunno', 'valore': '0', 'valido_da': '2027-02-01', 'fonte': 'prova'},
+                   {'chiave': 'giorni_pagamento', 'valore': 30, 'valido_da': '2025-09-01', 'lotto_id': lotto}):
+        _ok(client.post('/api/napoli/regole', json=regola))
+    return {'lotto': lotto, 'inferiore_x': contratti[0], 'superiore_x': contratti[2]}
+
+
+def _seme_impostazioni_diretto(ins, ora):
+    """Le stesse Impostazioni scritte direttamente (senza client, o nella forma della v2)."""
+    ins('napoli_impostazioni', chiave='cooperativa_denominazione', valore='COOPERATIVA DI FANTASIA')
+    ins('napoli_impostazioni', chiave='cooperativa_iban', valore=iban_inventato())
+    ins('napoli_alias_qualifiche', testo='EDUCATRICE PROF.LE', figura='EDUCATORE', origine='utente')
+    lotto = ins('napoli_lotti', data_creazione=ora, **LOTTO_SEME)
+    contratti = [ins('napoli_contratti', lotto_id=lotto, data_inserimento=ora, **c) for c in CONTRATTI_SEME]
+    for figura, cent in TARIFFE_SEME:
+        ins('napoli_tariffe', lotto_id=lotto, figura=figura, tariffa_cent=cent, valido_da='2025-09-01',
+            valido_a='2027-01-31', fonte='prova', data_inserimento=ora)
+    ins('napoli_tariffe', lotto_id=lotto, figura='ASACOM', tariffa_cent=2408, valido_da='2027-02-01',
+        fonte='prova, nuovo accordo', data_inserimento=ora)
+    ins('napoli_regole', chiave='quota_assenza_alunno', valore='0.5', valido_da='2025-09-01', valido_a='2027-01-31',
+        fonte='prova', data_inserimento=ora)
+    ins('napoli_regole', chiave='quota_assenza_alunno', valore='0', valido_da='2027-02-01', fonte='prova',
+        data_inserimento=ora)
+    ins('napoli_regole', lotto_id=lotto, chiave='giorni_pagamento', valore='30', valido_da='2025-09-01',
+        data_inserimento=ora)
+    return {'lotto': lotto, 'inferiore_x': contratti[0], 'superiore_x': contratti[2]}
+
+
+def _scrivi_seme(ins, versione_schema, ids=None):
+    ora = '2025-09-01T08:00:00'
+    if ids is None:
+        ids = _seme_impostazioni_diretto(ins, ora)
+    lotto, inferiore_x, superiore_x = ids['lotto'], ids['inferiore_x'], ids['superiore_x']
 
     # stesso nome di una scuola di Roma; lo stesso codice in due municipalita' = due plessi
     s_arcobaleno = ins('napoli_scuole', lotto_id=lotto, nome='IC Fantasia - Primaria Arcobaleno',
@@ -152,28 +224,6 @@ def _scrivi_seme(ins, versione_schema):
     c_gaia_psico = coppia(gaia, quinto, s_galileo, 'PSICOLOGO', valido_da='2025-09-15')
     c_sostituto = coppia(alba, settimo, s_arcobaleno, 'ASACOM', ruolo='sostituto', titolare_coppia_id=c_alba_asacom,
                          valido_da='2025-10-13', valido_a='2025-10-13')
-
-    inferiore_x = ins('napoli_contratti', lotto_id=lotto, grado='inferiore', numero='X', accordo_quadro='attuale',
-                      dd_numero='DD-PROVA-1', dd_data='2025-08-20', valido_da='2025-09-01', valido_a='2026-06-07',
-                      data_inserimento=ora)
-    ins('napoli_contratti', lotto_id=lotto, grado='inferiore', numero='XI', accordo_quadro='attuale',
-        valido_da='2026-06-08', valido_a='2026-07-31', data_inserimento=ora)
-    superiore_x = ins('napoli_contratti', lotto_id=lotto, grado='superiore', numero='X', accordo_quadro='attuale',
-                      valido_da='2025-09-01', valido_a='2026-07-31', importo_cent=1000000, data_inserimento=ora)
-
-    for figura, cent in (('ASACOM', 2344), ('EDUCATORE', 2428), ('TIFLOLOGO', 2428), ('PSICOLOGO', 2966),
-                         ('COORDINATORE', 2966)):
-        ins('napoli_tariffe', lotto_id=lotto, figura=figura, tariffa_cent=cent, valido_da='2025-09-01',
-            valido_a='2027-01-31', fonte='prova', data_inserimento=ora)
-    ins('napoli_tariffe', lotto_id=lotto, figura='ASACOM', tariffa_cent=2408, valido_da='2027-02-01',
-        fonte='prova, nuovo accordo', data_inserimento=ora)
-
-    ins('napoli_regole', chiave='quota_assenza_alunno', valore='0.5', valido_da='2025-09-01', valido_a='2027-01-31',
-        fonte='prova', data_inserimento=ora)
-    ins('napoli_regole', chiave='quota_assenza_alunno', valore='0', valido_da='2027-02-01', fonte='prova',
-        data_inserimento=ora)
-    ins('napoli_regole', lotto_id=lotto, chiave='giorni_pagamento', valore='30', valido_da='2025-09-01',
-        data_inserimento=ora)
 
     ins('napoli_calendario', data='2025-12-25', tipo='chiusura', descrizione='Festivita\' di prova')
     ins('napoli_calendario', lotto_id=lotto, data='2025-11-01', tipo='chiusura', descrizione='Chiusura di prova')
@@ -252,21 +302,34 @@ def _scrivi_seme(ins, versione_schema):
         dati=json.dumps({'presenze': [{'id': p_psico, 'minuti_riconosciuti': 120}]}))
 
 
+def _conteggi_napoli(percorso):
+    conn = sqlite3.connect(percorso, timeout=30)
+    try:
+        return {t: conn.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
+                for t in _tabelle(conn) if t.startswith(PREFISSO_NAPOLI)}
+    finally:
+        conn.close()
+
+
 def carica_seme_napoli(client, percorso, versione_schema=None):
     """Carica i dati di Napoli nel database `percorso` (una volta per database).
 
-    `client` (sessione autenticata) servira' ai passi che caricano il seme con le
-    API di Napoli. versione_schema=2: le righe nella forma della v2 (database non
-    ancora migrato alla 3). Ritorna {tabella: righe caricate}."""
+    `client`: sessione autenticata del programma al lavoro su `percorso`; i dati che
+    hanno le loro API passano da li' (con None si scrive tutto direttamente).
+    versione_schema=2: tutto scritto direttamente nella forma della v2 (database non
+    ancora migrato alla 3). Ritorna {tabella: righe aggiunte}."""
+    prima = _conteggi_napoli(percorso)
+    ids = _seme_con_le_api(client) if client is not None and versione_schema is None else None
     conn = sqlite3.connect(percorso, timeout=30)
     try:
         conn.execute('PRAGMA foreign_keys = ON')
         ins = _Seme(conn)
         with conn:
-            _scrivi_seme(ins, versione_schema)
-        return ins.righe
+            _scrivi_seme(ins, versione_schema, ids)
     finally:
         conn.close()
+    dopo = _conteggi_napoli(percorso)
+    return {t: n - prima.get(t, 0) for t, n in dopo.items() if n != prima.get(t, 0)}
 
 
 def _tabelle(conn):
@@ -288,9 +351,15 @@ def _connetti(percorso):
     return sqlite3.connect(pathlib.Path(percorso).resolve().as_uri() + '?mode=ro', uri=True)
 
 
+# Del registro attivita' condiviso non conta il numero (id) delle voci di Roma: le voci
+# di Napoli scritte prima (seme con le API) lo fanno crescere, il contenuto no.
+MASCHERATE_SEMPRE = {'audit_log': ('id',)}
+
+
 def impronta_roma(percorso, mascherate=None):
     """Schema e righe di tutte le tabelle che non sono di Napoli. Del registro
-    attivita' (audit_log, condiviso) contano solo le voci che non sono di Napoli.
+    attivita' (audit_log, condiviso) contano solo le voci che non sono di Napoli, nel
+    loro ordine e senza il loro numero (MASCHERATE_SEMPRE).
     mascherate: {tabella: colonne} di cui conta solo se sono vuote o no (quelle che
     scrive l'orologio di SQLite, che l'orologio fermo dei test non ferma)."""
     conn = _connetti(percorso)
@@ -301,7 +370,8 @@ def impronta_roma(percorso, mascherate=None):
                 continue
             schema = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (t,)).fetchone()[0]
             dove = "WHERE COALESCE(entita, '') NOT LIKE 'napoli%'" if t == 'audit_log' else ''
-            esito[t] = (schema, _impronta_righe(conn, t, dove, (mascherate or {}).get(t, ())))
+            colonne = tuple((mascherate or {}).get(t, ())) + MASCHERATE_SEMPRE.get(t, ())
+            esito[t] = (schema, _impronta_righe(conn, t, dove, colonne))
         return esito
     finally:
         conn.close()

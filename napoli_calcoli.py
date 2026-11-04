@@ -13,8 +13,10 @@ Unita':
 - date come datetime.date o testo 'AAAA-MM-GG', orari 'HH:MM'.
 
 Dati in ingresso (valida_data, valida_orario, valida_fascia, valida_fasce,
-valida_periodo, valida_mese): da usare nelle API prima di scrivere; un errore e' un
-ValueError con un messaggio semplice da mostrare all'utente.
+valida_periodo, valida_mese, valida_euro, valida_iban, valida_partita_iva,
+valida_codice_fiscale, segnaposto_sconosciuti): da usare nelle API prima di
+scrivere; un errore e' un ValueError con un messaggio semplice da mostrare
+all'utente.
 
 Esiti delle letture (leggi_ore_griglia, leggi_ore_foglio, leggi_cella_master):
 un dict con 'esito' ('ore', 'vuoto', 'sigla', 'da_confermare', 'errore'),
@@ -202,7 +204,7 @@ def valida_data(valore, nome='La data'):
         elif italiana:
             g, m, a = (int(x) for x in italiana.groups())
         else:
-            raise ValueError(f'{nome} "{scritto}" non e\' scritta bene: scrivere giorno, mese e anno, '
+            raise ValueError(f'{nome} "{scritto}" non è scritta bene: scrivere giorno, mese e anno, '
                              'per esempio 08/06/2026.')
         try:
             giorno = datetime.date(a, m, g)
@@ -223,7 +225,7 @@ def valida_orario(valore, nome="L'orario"):
         raise ValueError(f'{nome} manca.')
     m = _RX_ORARIO.fullmatch(scritto)
     if not m:
-        raise ValueError(f'{nome} "{scritto}" non e\' scritto bene: scrivere ore e minuti, per esempio 08:30.')
+        raise ValueError(f'{nome} "{scritto}" non è scritto bene: scrivere ore e minuti, per esempio 08:30.')
     ore, min_ = int(m.group(1)), int(m.group(2))
     if ore > 23 or min_ > 59:
         raise ValueError(f'{nome} "{scritto}" non esiste: le ore vanno da 00:00 a 23:59.')
@@ -273,8 +275,134 @@ def valida_mese(anno, mese):
     if not 1 <= mese <= 12:
         raise ValueError('Il mese deve essere un numero da 1 a 12.')
     if not ANNI_AMMESSI[0] <= anno <= ANNI_AMMESSI[1]:
-        raise ValueError(f"L'anno {anno} e' fuori da quelli del servizio.")
+        raise ValueError(f"L'anno {anno} è fuori da quelli del servizio.")
     return anno, mese
+
+
+def valida_euro(valore, nome='La tariffa', minimo=Decimal('0.01'), massimo=Decimal('999.99')):
+    """Euro scritti come '23,44', '23.44' o un numero -> centesimi interi. Errore se manca,
+    se non e' un numero, se ha piu' di due decimali o se e' fuori da [minimo, massimo]."""
+    scritto = '' if valore is None else str(valore).strip().replace('€', '').strip()
+    if not scritto:
+        raise ValueError(f'{nome} manca.')
+    if re.fullmatch(r'\d{1,3}(\.\d{3})+,\d+', scritto):        # 1.234,56: punto delle migliaia
+        scritto = scritto.replace('.', '')
+    try:
+        euro = decimale(scritto)
+    except ValueError:
+        raise ValueError(f'{nome} "{scritto}" non è un numero: scrivere per esempio 23,44.') from None
+    if not euro.is_finite():
+        raise ValueError(f'{nome} "{scritto}" non è un numero: scrivere per esempio 23,44.')
+    if euro != euro.quantize(CENT):
+        raise ValueError(f'{nome} "{scritto}" ha più di due decimali: gli euro si scrivono al centesimo.')
+    if not minimo <= euro <= massimo:
+        raise ValueError(f'{nome} deve essere fra {numero_it(minimo)} e {numero_it(massimo)} euro.')
+    return int(euro * 100)
+
+
+def _iban_mod97(iban):
+    """Resto della divisione per 97 dell'IBAN (ISO 13616): 1 se le cifre di controllo tornano."""
+    riordinato = iban[4:] + iban[:4]
+    return int(''.join(str(int(c, 36)) for c in riordinato)) % 97
+
+
+# Lunghezza dell'IBAN dei paesi piu' vicini (gli altri: fra 15 e 34 caratteri).
+LUNGHEZZE_IBAN = {'IT': 27, 'SM': 27, 'VA': 22, 'DE': 22, 'FR': 27, 'ES': 24, 'AT': 20, 'BE': 16, 'NL': 18,
+                  'PT': 25, 'CH': 21, 'GB': 22, 'IE': 22, 'LU': 20, 'MT': 31, 'SI': 19, 'HR': 21, 'GR': 27}
+
+
+def valida_iban(valore):
+    """IBAN senza spazi e in maiuscolo ('IT60 X054...' -> 'IT60X054...'). Errore se manca,
+    se la lunghezza non e' quella del paese o se le cifre di controllo non tornano (una
+    cifra sbagliata o due cifre scambiate)."""
+    scritto = re.sub(r'[\s-]', '', '' if valore is None else str(valore)).upper()
+    if not scritto:
+        raise ValueError("L'IBAN manca.")
+    if not re.fullmatch(r'[A-Z]{2}\d{2}[A-Z0-9]+', scritto):
+        raise ValueError("L'IBAN comincia con le due lettere del paese e due cifre (per l'Italia IT e poi 25 "
+                         'caratteri) e contiene solo lettere e numeri.')
+    attesa = LUNGHEZZE_IBAN.get(scritto[:2])
+    if attesa and len(scritto) != attesa:
+        raise ValueError(f"L'IBAN ha {len(scritto)} caratteri, ma un IBAN {scritto[:2]} ne ha {attesa}: "
+                         'controlla di averlo copiato tutto.')
+    if not 15 <= len(scritto) <= 34:
+        raise ValueError(f"L'IBAN ha {len(scritto)} caratteri: è troppo {'corto' if len(scritto) < 15 else 'lungo'}.")
+    if scritto[:2] == 'IT' and not re.fullmatch(r'IT\d{2}[A-Z]\d{10}[A-Z0-9]{12}', scritto):
+        raise ValueError("L'IBAN italiano ha, dopo IT e le due cifre di controllo, una lettera (il CIN), le 10 "
+                         'cifre di ABI e CAB e i 12 caratteri del conto.')
+    if _iban_mod97(scritto) != 1:
+        raise ValueError("L'IBAN non è corretto: le cifre di controllo non tornano. Controlla di non aver "
+                         'sbagliato o scambiato una cifra.')
+    return scritto
+
+
+def maschera_iban(iban):
+    """IBAN da mostrare: solo il paese con le cifre di controllo e le ultime 4 cifre
+    ('IT60 •••• •••• •••• •••• 3456'); vuoto se non c'e'."""
+    iban = re.sub(r'\s', '', iban or '')
+    if len(iban) < 9:
+        return '•' * len(iban)
+    return f'{iban[:4]} •••• •••• •••• •••• {iban[-4:]}'
+
+
+def _controllo_numerico(cifre):
+    """Cifra di controllo della partita IVA (e del codice fiscale numerico) dalle prime 10."""
+    totale = 0
+    for i, c in enumerate(int(x) for x in cifre[:10]):
+        totale += c if i % 2 == 0 else (2 * c - 9 if 2 * c > 9 else 2 * c)
+    return (10 - totale % 10) % 10
+
+
+def valida_partita_iva(valore, nome='La partita IVA'):
+    """Partita IVA italiana: 11 cifre con l'ultima di controllo ('IT' davanti e spazi tolti)."""
+    scritto = re.sub(r'\s', '', '' if valore is None else str(valore)).upper()
+    if scritto.startswith('IT') and len(scritto) == 13:
+        scritto = scritto[2:]
+    if not scritto:
+        raise ValueError(f'{nome} manca.')
+    if not re.fullmatch(r'\d{11}', scritto):
+        raise ValueError(f'{nome} ha 11 cifre, senza lettere.')
+    if _controllo_numerico(scritto) != int(scritto[10]):
+        raise ValueError(f"{nome} non è corretta: l'ultima cifra (di controllo) non torna. Controlla le cifre.")
+    return scritto
+
+
+_DISPARI_CF = dict(zip('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+                       (1, 0, 5, 7, 9, 13, 15, 17, 19, 21, 1, 0, 5, 7, 9, 13, 15, 17, 19, 21, 2, 4, 18, 20, 11,
+                        3, 6, 8, 12, 14, 16, 10, 22, 25, 24, 23)))
+_RX_CF_PERSONA = re.compile(r'[A-Z]{6}[0-9LMNPQRSTUV]{2}[ABCDEHLMPRST][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]')
+
+
+def carattere_di_controllo_cf(base):
+    """Ultimo carattere del codice fiscale di una persona, dai primi 15."""
+    somma = sum(_DISPARI_CF[c] if i % 2 == 0 else (int(c) if c.isdigit() else ord(c) - 65)
+                for i, c in enumerate(base))
+    return chr(65 + somma % 26)
+
+
+def valida_codice_fiscale(valore, nome='Il codice fiscale'):
+    """Codice fiscale di un ente o di una societa' (11 cifre, come la partita IVA) o di una
+    persona (16 caratteri), con il controllo dell'ultimo carattere; in maiuscolo e senza spazi."""
+    scritto = re.sub(r'\s', '', '' if valore is None else str(valore)).upper()
+    if not scritto:
+        raise ValueError(f'{nome} manca.')
+    if re.fullmatch(r'\d{11}', scritto):
+        return valida_partita_iva(scritto, nome)
+    if len(scritto) != 16 or not _RX_CF_PERSONA.fullmatch(scritto):
+        raise ValueError(f'{nome} ha 11 cifre (enti e società) oppure 16 lettere e cifre (persone).')
+    if carattere_di_controllo_cf(scritto[:15]) != scritto[15]:
+        raise ValueError(f"{nome} non è corretto: l'ultimo carattere (di controllo) non torna.")
+    return scritto
+
+
+def segnaposto_sconosciuti(modello, ammessi):
+    """Segnaposto {nome} di un modello di testo che non sono fra quelli ammessi (in ordine,
+    senza ripetizioni): riempi_modello li lascerebbe scritti cosi' come sono."""
+    visti = []
+    for nome in re.findall(r'\{(\w*)\}', modello or ''):
+        if nome not in ammessi and nome not in visti:
+            visti.append(nome)
+    return visti
 
 
 def quota_minuti(min_, quota, arrotondamento='eccesso'):
@@ -760,7 +888,7 @@ def verifica_settimane(minuti_giorni, anno, mese, pei, regole=None):
     for giorno, m in coppie:
         giorno = data(giorno)
         if (giorno.year, giorno.month) != (anno, mese):
-            raise ValueError(f'{giorno} non e\' nel mese {mese:02d}/{anno}')
+            raise ValueError(f'{giorno} non è nel mese {mese:02d}/{anno}')
         if giorno.weekday() in servizio:
             k = _chiave_settimana(giorno)
             somme[k] = somme.get(k, 0) + int(m or 0)
@@ -1064,11 +1192,46 @@ def scadenza_invio(anno, mese, giorni):
     return fine_mese(anno, mese) + datetime.timedelta(days=int(giorni))
 
 
+# Destinatario delle fatture nelle Impostazioni (napoli_impostazioni), nell'ordine del testo.
+CAMPI_DESTINATARIO = ('destinatario_denominazione', 'destinatario_indirizzo', 'destinatario_cap',
+                      'destinatario_comune', 'destinatario_provincia', 'destinatario_codice_fiscale')
+
+
+def testo_destinatario(impostazioni=None):
+    """Destinatario salvato nelle Impostazioni in una riga: "Comune di ... - AREA ..., Via ...,
+    80133 Napoli (NA), CF ..."; vuoto se manca la denominazione."""
+    v = {k: str((impostazioni or {}).get(k) or '').strip() for k in CAMPI_DESTINATARIO}
+    if not v['destinatario_denominazione']:
+        return ''
+    citta = ' '.join(x for x in (v['destinatario_cap'], v['destinatario_comune']) if x)
+    if citta and v['destinatario_provincia']:
+        citta += f" ({v['destinatario_provincia']})"
+    parti = [v['destinatario_denominazione'], v['destinatario_indirizzo'], citta]
+    if v['destinatario_codice_fiscale']:
+        parti.append(f"CF {v['destinatario_codice_fiscale']}")
+    return ', '.join(x for x in parti if x)
+
+
+def destinatario_fattura(lotto, impostazioni=None):
+    """Destinatario della fattura: quello scritto nel lotto, se c'e', altrimenti quello delle
+    Impostazioni (uguale per tutti i lotti)."""
+    return str((lotto or {}).get('destinatario') or '').strip() or testo_destinatario(impostazioni)
+
+
+def servizio_determina(lotto, contratto):
+    """Servizio della determina (D.D.) nella nota: quello del contratto applicativo, se c'e',
+    altrimenti il riferimento amministrativo del lotto."""
+    return (str((contratto or {}).get('dd_servizio') or '').strip()
+            or str((lotto or {}).get('riferimento_amministrativo') or '').strip())
+
+
 def dati_mancanti_fattura(lotto, contratto, impostazioni=None, oggetto=None):
     """Dati obbligatori del prospetto che mancano (bloccano la fattura definitiva):
-    CIG, destinatario, oggetto, contratto applicativo, DD (numero e data), IBAN."""
+    CIG, destinatario (del lotto o delle Impostazioni), oggetto, contratto applicativo,
+    DD (numero e data), IBAN."""
     impostazioni = impostazioni or {}
-    controlli = (('cig', lotto.get('cig')), ('destinatario', lotto.get('destinatario')), ('oggetto', oggetto),
+    controlli = (('cig', lotto.get('cig')), ('destinatario', destinatario_fattura(lotto, impostazioni)),
+                 ('oggetto', oggetto),
                  ('contratto', contratto.get('numero')), ('dd_numero', contratto.get('dd_numero')),
                  ('dd_data', contratto.get('dd_data')), ('iban', impostazioni.get('cooperativa_iban')))
     return [campo for campo, valore in controlli if not str(valore or '').strip()]
@@ -1123,7 +1286,9 @@ def prospetto_fattura(anno, mese, grado, contratto, presenze, tariffe, coordinam
                       righe_regole=(), impostazioni=None, data_fattura=None):
     """Prospetto di un lotto per grado, contratto applicativo e mese (§5.4): periodo,
     righe, totali, testi (oggetto, nota, destinatario, ritenuta, scadenza), regole usate
-    e controlli ('bloccanti' e 'avvisi', dict con 'codice'). Le regole della fattura
+    e controlli ('bloccanti' e 'avvisi', dict con 'codice'). Destinatario: quello del
+    lotto o, se manca, quello delle Impostazioni (destinatario_fattura); servizio della
+    D.D. nella nota: quello del contratto o il riferimento amministrativo del lotto. Le regole della fattura
     (ritenuta, IVA, split payment, testi, giorni di pagamento) sono quelle valide il primo
     giorno del periodo. contratto: riga di napoli_contratti; lotto: riga di napoli_lotti.
     Le presenze fuori da ogni contratto o in due contratti si controllano a parte, sul
@@ -1133,7 +1298,8 @@ def prospetto_fattura(anno, mese, grado, contratto, presenze, tariffe, coordinam
         raise ValueError(f'grado non valido: {grado}')
     lotto = lotto or {}
     out = {'grado': grado, 'contratto': contratto.get('numero'), 'dal': None, 'al': None, 'righe': [],
-           'totali': totali_fattura([]), 'oggetto': '', 'nota': '', 'destinatario': lotto.get('destinatario') or '',
+           'totali': totali_fattura([]), 'oggetto': '', 'nota': '',
+           'destinatario': destinatario_fattura(lotto, impostazioni),
            'ritenuta_testo': '', 'giorni_pagamento': None, 'scadenza': None, 'regole': {}, 'bloccanti': [],
            'avvisi': []}
     if contratto.get('grado') not in (None, '', grado):
@@ -1151,7 +1317,7 @@ def prospetto_fattura(anno, mese, grado, contratto, presenze, tariffe, coordinam
                regole={k: regole[k] for k in REGOLE_DELLA_FATTURA})
     out['oggetto'] = testo_oggetto(lotto.get('numero_lotto', ''), grado, dal, al, contratto.get('numero', ''),
                                    lotto.get('oggetto_fattura'))
-    out['nota'] = testo_nota(lotto.get('riferimento_amministrativo'), contratto.get('dd_numero'),
+    out['nota'] = testo_nota(servizio_determina(lotto, contratto), contratto.get('dd_numero'),
                              contratto.get('dd_data'), regole, lotto.get('nota_fattura'))
     if data_fattura:
         out['scadenza'] = scadenza_pagamento(data_fattura, regole['giorni_pagamento'])

@@ -117,6 +117,7 @@ const KeyboardShortcuts = {
         '5': '/import',        // Import
         '6': '/report',        // Report
         '7': '/calendario',    // Calendario
+        '8': '/napoli',        // sezione Napoli
     },
 
     init() {
@@ -135,10 +136,13 @@ const KeyboardShortcuts = {
                 }
             }
 
-            // Cmd/Ctrl + Z - Undo (only when not in input)
+            // Cmd/Ctrl + Z - Undo (only when not in input). Una pagina con il suo annulla
+            // (window.annullaPagina: la sezione Napoli) usa quello: Ctrl+Z non annulla mai
+            // un'azione dell'altra sezione. Le pagine di Roma non lo definiscono.
             if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !isInput) {
                 e.preventDefault();
-                undoLastAction();
+                if (typeof window.annullaPagina === 'function') window.annullaPagina();
+                else undoLastAction();
             }
 
             // Alt + numero: Navigazione rapida tra le pagine
@@ -185,7 +189,7 @@ const KeyboardShortcuts = {
         // stili scritti qui, angoli da 16px e fondo nero pieno
         const riga = (nome, tasti) => `<div class="scorciatoia-riga"><span>${nome}</span><kbd class="command-kbd">${tasti}</kbd></div>`;
         const pagine = [['1', 'Dashboard'], ['2', 'Rendicontazione'], ['3', 'Utenti'], ['4', 'Commesse'],
-            ['5', 'Import'], ['6', 'Report'], ['7', 'Calendario']];
+            ['5', 'Import'], ['6', 'Report'], ['7', 'Calendario'], ['8', 'Napoli']];
 
         const modal = document.createElement('div');
         modal.id = 'shortcuts-help-modal';

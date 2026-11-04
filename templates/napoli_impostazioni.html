@@ -1,0 +1,478 @@
+{% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
+
+{% block title %}Impostazioni Napoli - Gestionale OEPAC{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static_url('css/napoli.css') }}">
+{% endblock %}
+
+{% block content %}
+{% include '_napoli_tabs.html' %}
+
+<div class="napoli-impostazioni">
+    {# Una parte alla volta (indirizzo #lotto, #contratti...); la scheda Mese porta qui
+       direttamente alla parte da sistemare. #}
+    <nav class="napoli-menu-parti" aria-label="Parti delle impostazioni di Napoli">
+        <div class="napoli-menu-titolo">Il lotto scelto</div>
+        <a href="#lotto" data-parte-link="lotto">Dati del lotto</a>
+        <a href="#contratti" data-parte-link="contratti">Contratti applicativi</a>
+        <a href="#tariffe" data-parte-link="tariffe">Tariffe</a>
+        <a href="#regole" data-parte-link="regole">Regole</a>
+        <div class="napoli-menu-titolo">Per tutti i lotti</div>
+        <a href="#cooperativa" data-parte-link="cooperativa">Cooperativa</a>
+        <a href="#destinatario" data-parte-link="destinatario">Destinatario delle fatture</a>
+        <a href="#qualifiche" data-parte-link="qualifiche">Qualifiche</a>
+        <button type="button" class="btn btn-ghost btn-sm napoli-annulla" id="napoli-annulla-ultima" title="Come Ctrl+Z: chiede conferma prima di annullare">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+            </svg>
+            Annulla l'ultima modifica
+        </button>
+    </nav>
+
+    <div class="napoli-parti">
+        <!-- Dati del lotto -->
+        <section class="card napoli-parte" id="parte-lotto" data-parte="lotto" aria-labelledby="titolo-lotto" hidden>
+            <div class="card-header">
+                <h2 class="card-title" id="titolo-lotto">Dati del lotto</h2>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-nuovo-lotto">Nuovo lotto</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="btn-modifica-lotto">Modifica</button>
+                    <button type="button" class="btn btn-sm btn-secondary btn-solo-icona" id="btn-altro-lotto" title="Altre azioni" aria-label="Altre azioni sul lotto" aria-haspopup="menu" aria-expanded="false"></button>
+                </div>
+            </div>
+            <div class="card-body" id="lotto-contenuto"></div>
+        </section>
+
+        <!-- Contratti applicativi -->
+        <section class="card napoli-parte" id="parte-contratti" data-parte="contratti" aria-labelledby="titolo-contratti" hidden>
+            <div class="card-header">
+                <h2 class="card-title" id="titolo-contratti">Contratti applicativi</h2>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-nuovo-contratto">Aggiungi contratto</button>
+            </div>
+            <div class="card-body">
+                <p class="napoli-intro">La fattura si fa per contratto applicativo e per grado di scuola. Due contratti dello stesso grado non possono coprire gli stessi giorni.</p>
+                <div id="contratti-contenuto"></div>
+            </div>
+        </section>
+
+        <!-- Tariffe -->
+        <section class="card napoli-parte" id="parte-tariffe" data-parte="tariffe" aria-labelledby="titolo-tariffe" hidden>
+            <div class="card-header">
+                <h2 class="card-title" id="titolo-tariffe">Tariffe orarie</h2>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-nuova-tariffa">Aggiungi tariffa</button>
+            </div>
+            <div class="card-body">
+                <p class="napoli-intro">Euro all'ora, <strong>IVA esclusa</strong>, con le date in cui valgono. Due tariffe della stessa figura non possono valere negli stessi giorni.</p>
+                <div id="tariffe-contenuto"></div>
+            </div>
+        </section>
+
+        <!-- Regole con data -->
+        <section class="card napoli-parte" id="parte-regole" data-parte="regole" aria-labelledby="titolo-regole" hidden>
+            <div class="card-header">
+                <h2 class="card-title" id="titolo-regole">Regole</h2>
+            </div>
+            <div class="card-body">
+                <p class="napoli-intro">Come si contano le ore e come si fa la fattura. Ogni regola ha un valore che vale da una data: per cambiarla da un certo giorno premi <strong>Cambia</strong>; i mesi prima restano con il valore di prima.</p>
+                <div id="regole-contenuto"></div>
+            </div>
+        </section>
+
+        <!-- Cooperativa -->
+        <section class="card napoli-parte" id="parte-cooperativa" data-parte="cooperativa" aria-labelledby="titolo-cooperativa" hidden>
+            <div class="card-header">
+                <h2 class="card-title" id="titolo-cooperativa">Dati della cooperativa</h2>
+            </div>
+            <form class="card-body" id="form-cooperativa" novalidate>
+                <p class="napoli-intro">Servono per i prospetti delle fatture. Restano solo in questo computer, nel file del programma.</p>
+                <div class="form-group">
+                    <label class="form-label" for="coop-denominazione">Ragione sociale</label>
+                    <input type="text" id="coop-denominazione" class="form-control" data-campo="cooperativa_denominazione" maxlength="150" autocomplete="off">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="coop-piva">Partita IVA</label>
+                        <input type="text" id="coop-piva" class="form-control" data-campo="cooperativa_partita_iva" maxlength="13" inputmode="numeric" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="coop-cf">Codice fiscale</label>
+                        <input type="text" id="coop-cf" class="form-control" data-campo="cooperativa_codice_fiscale" maxlength="16" autocomplete="off">
+                        <p class="form-help">Di solito è uguale alla partita IVA.</p>
+                    </div>
+                </div>
+                <div class="form-row napoli-riga-indirizzo">
+                    <div class="form-group">
+                        <label class="form-label" for="coop-indirizzo">Indirizzo della sede</label>
+                        <input type="text" id="coop-indirizzo" class="form-control" data-campo="cooperativa_indirizzo" maxlength="150" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="coop-cap">CAP</label>
+                        <input type="text" id="coop-cap" class="form-control" data-campo="cooperativa_cap" maxlength="5" inputmode="numeric" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="coop-comune">Comune</label>
+                        <input type="text" id="coop-comune" class="form-control" data-campo="cooperativa_comune" maxlength="80" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="coop-provincia">Provincia</label>
+                        <input type="text" id="coop-provincia" class="form-control" data-campo="cooperativa_provincia" maxlength="2" placeholder="NA" autocomplete="off">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="coop-banca">Banca</label>
+                        <input type="text" id="coop-banca" class="form-control" data-campo="cooperativa_banca" maxlength="120" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="coop-iban">IBAN</label>
+                        <input type="text" id="coop-iban" class="form-control" data-campo="cooperativa_iban" maxlength="42" autocomplete="off" spellcheck="false">
+                        <p class="form-help" id="coop-iban-aiuto">Il programma controlla che l'IBAN sia scritto bene.</p>
+                        <button type="button" class="btn btn-ghost btn-sm" id="btn-togli-iban" hidden>Togli l'IBAN salvato</button>
+                    </div>
+                </div>
+                <div class="napoli-azioni-modulo">
+                    <button type="submit" class="btn btn-primary" id="btn-salva-cooperativa">Salva i dati della cooperativa</button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Destinatario -->
+        <section class="card napoli-parte" id="parte-destinatario" data-parte="destinatario" aria-labelledby="titolo-destinatario" hidden>
+            <div class="card-header">
+                <h2 class="card-title" id="titolo-destinatario">Destinatario delle fatture</h2>
+                <span class="badge badge-warning" id="destinatario-stato" hidden>Proposto: controlla e salva</span>
+            </div>
+            <form class="card-body" id="form-destinatario" novalidate>
+                <p class="napoli-intro">L'ente a cui si intestano le fatture, uguale per tutti i lotti. Il programma propone i dati della fattura del Comune: controllali e premi <strong>Salva</strong>.</p>
+                <div class="form-group">
+                    <label class="form-label" for="dest-denominazione">Ente destinatario</label>
+                    <input type="text" id="dest-denominazione" class="form-control" data-campo="destinatario_denominazione" maxlength="150" autocomplete="off">
+                </div>
+                <div class="form-row napoli-riga-indirizzo">
+                    <div class="form-group">
+                        <label class="form-label" for="dest-indirizzo">Indirizzo</label>
+                        <input type="text" id="dest-indirizzo" class="form-control" data-campo="destinatario_indirizzo" maxlength="150" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="dest-cap">CAP</label>
+                        <input type="text" id="dest-cap" class="form-control" data-campo="destinatario_cap" maxlength="5" inputmode="numeric" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="dest-comune">Comune</label>
+                        <input type="text" id="dest-comune" class="form-control" data-campo="destinatario_comune" maxlength="80" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="dest-provincia">Provincia</label>
+                        <input type="text" id="dest-provincia" class="form-control" data-campo="destinatario_provincia" maxlength="2" autocomplete="off">
+                    </div>
+                </div>
+                <div class="form-group napoli-campo-medio">
+                    <label class="form-label" for="dest-cf">Codice fiscale dell'ente</label>
+                    <input type="text" id="dest-cf" class="form-control" data-campo="destinatario_codice_fiscale" maxlength="16" autocomplete="off">
+                </div>
+                <div class="napoli-azioni-modulo">
+                    <button type="button" class="btn btn-ghost" id="btn-proposta-destinatario">Rimetti i dati proposti</button>
+                    <button type="submit" class="btn btn-primary" id="btn-salva-destinatario">Salva il destinatario</button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Qualifiche -->
+        <section class="card napoli-parte" id="parte-qualifiche" data-parte="qualifiche" aria-labelledby="titolo-qualifiche" hidden>
+            <div class="card-header">
+                <h2 class="card-title" id="titolo-qualifiche">Qualifiche</h2>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-nuova-qualifica">Aggiungi qualifica</button>
+            </div>
+            <div class="card-body">
+                <p class="napoli-intro">Come è scritta la qualifica degli operatori nel file Excel "master" e a quale figura corrisponde. Quando nel file c'è una scritta nuova (per esempio "EDUCATRICE PROF.LE") aggiungila qui.</p>
+                <div id="qualifiche-contenuto"></div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- Finestra: lotto -->
+<div class="modal-overlay" id="napoli-modal-lotto">
+    <div class="modal napoli-modal-larga" aria-labelledby="lotto-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="lotto-titolo">Modifica il lotto</h3>
+            {{ modal_close("closeModal('napoli-modal-lotto')") }}
+        </div>
+        <form class="modal-body" id="form-lotto" novalidate>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="lotto-nome">Nome del lotto *</label>
+                    <input type="text" id="lotto-nome" class="form-control" data-campo="nome" maxlength="60" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="lotto-numero">Numero del lotto *</label>
+                    <select id="lotto-numero" class="form-control" data-campo="numero_lotto"></select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="lotto-municipalita">Municipalità *</label>
+                    <input type="text" id="lotto-municipalita" class="form-control" data-campo="municipalita" maxlength="40" placeholder="per esempio 1 e 2" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="lotto-cig">CIG</label>
+                    <input type="text" id="lotto-cig" class="form-control" data-campo="cig" maxlength="12" placeholder="10 lettere e numeri" autocomplete="off">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="lotto-codice-univoco">Codice univoco ufficio</label>
+                    <input type="text" id="lotto-codice-univoco" class="form-control" data-campo="codice_univoco_ufficio" maxlength="8" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="lotto-riferimento">Riferimento amministrativo</label>
+                    <input type="text" id="lotto-riferimento" class="form-control" data-campo="riferimento_amministrativo" maxlength="30" autocomplete="off">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="lotto-oggetto">Oggetto della fattura</label>
+                <textarea id="lotto-oggetto" class="form-control" data-campo="oggetto_fattura" rows="3" maxlength="500"></textarea>
+                <p class="form-help">Le parole tra graffe si riempiono da sole: {lotto} numero del lotto, {grado} inferiore o superiore, {dal} e {al} giorni, {mese}, {anno}, {contratto} numero del contratto applicativo. Vuoto = il testo proposto.</p>
+                <p class="form-help napoli-esempio" id="lotto-oggetto-esempio"></p>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="lotto-nota">Nota della fattura (determina)</label>
+                <input type="text" id="lotto-nota" class="form-control" data-campo="nota_fattura" maxlength="500" autocomplete="off">
+                <p class="form-help">{servizio}, {dd_numero} e {dd_data} vengono dalla determina del contratto applicativo. Il testo dello split payment si aggiunge da solo.</p>
+            </div>
+            <details class="section napoli-altri-dati">
+                <summary>Altri dati (facoltativi)</summary>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="lotto-cup">CUP</label>
+                        <input type="text" id="lotto-cup" class="form-control" data-campo="cup" maxlength="17" placeholder="15 lettere e numeri" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="lotto-attivo">Stato</label>
+                        <select id="lotto-attivo" class="form-control" data-campo="attivo">
+                            <option value="1">Attivo</option>
+                            <option value="0">Non più attivo</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="lotto-destinatario">Destinatario solo per questo lotto</label>
+                    <input type="text" id="lotto-destinatario" class="form-control" data-campo="destinatario" maxlength="300" autocomplete="off">
+                    <p class="form-help">Vuoto = il destinatario delle impostazioni, uguale per tutti i lotti.</p>
+                </div>
+            </details>
+        </form>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('napoli-modal-lotto')">Annulla</button>
+            <button type="submit" form="form-lotto" class="btn btn-primary">Salva il lotto</button>
+        </div>
+    </div>
+</div>
+
+<!-- Finestra: contratto applicativo -->
+<div class="modal-overlay" id="napoli-modal-contratto">
+    <div class="modal napoli-modal-larga" aria-labelledby="contratto-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="contratto-titolo">Contratto applicativo</h3>
+            {{ modal_close("closeModal('napoli-modal-contratto')") }}
+        </div>
+        <form class="modal-body" id="form-contratto" novalidate>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="contratto-numero">Numero *</label>
+                    <input type="text" id="contratto-numero" class="form-control" data-campo="numero" maxlength="20" placeholder="per esempio XI" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="contratto-grado">Grado di scuola *</label>
+                    <select id="contratto-grado" class="form-control" data-campo="grado">
+                        <option value="inferiore">Grado inferiore (infanzia, primaria, secondaria di I grado)</option>
+                        <option value="superiore">Grado superiore (secondaria di II grado)</option>
+                        <option value="">Tutti e due i gradi</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="contratto-dal">Dal *</label>
+                    <input type="date" id="contratto-dal" class="form-control" data-campo="valido_da">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="contratto-al">Al *</label>
+                    <input type="date" id="contratto-al" class="form-control" data-campo="valido_a">
+                </div>
+            </div>
+            <fieldset class="napoli-gruppo">
+                <legend>Determina di impegno (D.D.)</legend>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="contratto-dd-servizio">Servizio</label>
+                        <input type="text" id="contratto-dd-servizio" class="form-control" data-campo="dd_servizio" maxlength="30" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="contratto-dd-numero">Numero</label>
+                        <input type="text" id="contratto-dd-numero" class="form-control" data-campo="dd_numero" maxlength="30" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="contratto-dd-data">Data</label>
+                        <input type="date" id="contratto-dd-data" class="form-control" data-campo="dd_data">
+                    </div>
+                </div>
+                <p class="form-help" id="contratto-dd-aiuto">Nella nota della fattura: "D.D. servizio N. numero DEL data". Servizio vuoto = il riferimento amministrativo del lotto.</p>
+            </fieldset>
+            <details class="section napoli-altri-dati">
+                <summary>Altri dati (facoltativi)</summary>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="contratto-accordo">Accordo quadro</label>
+                        <input type="text" id="contratto-accordo" class="form-control" data-campo="accordo_quadro" maxlength="100" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="contratto-repertorio">Repertorio</label>
+                        <input type="text" id="contratto-repertorio" class="form-control" data-campo="repertorio" maxlength="50" autocomplete="off">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="contratto-data">Data del contratto</label>
+                        <input type="date" id="contratto-data" class="form-control" data-campo="data_contratto">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="contratto-importo">Importo (euro)</label>
+                        <input type="text" id="contratto-importo" class="form-control" data-campo="importo" inputmode="decimal" autocomplete="off">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="contratto-note">Note</label>
+                    <input type="text" id="contratto-note" class="form-control" data-campo="note" maxlength="500" autocomplete="off">
+                </div>
+            </details>
+        </form>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('napoli-modal-contratto')">Annulla</button>
+            <button type="submit" form="form-contratto" class="btn btn-primary">Salva il contratto</button>
+        </div>
+    </div>
+</div>
+
+<!-- Finestra: tariffa -->
+<div class="modal-overlay" id="napoli-modal-tariffa">
+    <div class="modal" aria-labelledby="tariffa-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="tariffa-titolo">Tariffa</h3>
+            {{ modal_close("closeModal('napoli-modal-tariffa')") }}
+        </div>
+        <form class="modal-body" id="form-tariffa" novalidate>
+            <div class="form-group">
+                <label class="form-label" for="tariffa-figura">Figura professionale *</label>
+                <select id="tariffa-figura" class="form-control" data-campo="figura"></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="tariffa-euro">Euro all'ora, IVA esclusa *</label>
+                <input type="text" id="tariffa-euro" class="form-control" data-campo="tariffa" inputmode="decimal" placeholder="per esempio 23,44" autocomplete="off">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="tariffa-dal">Vale dal *</label>
+                    <input type="date" id="tariffa-dal" class="form-control" data-campo="valido_da">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="tariffa-al">fino al</label>
+                    <input type="date" id="tariffa-al" class="form-control" data-campo="valido_a">
+                    <p class="form-help">Vuoto = senza una data di fine.</p>
+                </div>
+            </div>
+            <details class="section napoli-altri-dati">
+                <summary>Altri dati (facoltativi)</summary>
+                <div class="form-group">
+                    <label class="form-label" for="tariffa-livello">Livello del contratto di lavoro</label>
+                    <input type="text" id="tariffa-livello" class="form-control" data-campo="livello_ccnl" maxlength="10" placeholder="per esempio D2" autocomplete="off">
+                    <p class="form-help">Solo se la tariffa cambia con il livello dell'operatore. Vuoto = tutti i livelli.</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="tariffa-fonte">Nota (da dove viene)</label>
+                    <input type="text" id="tariffa-fonte" class="form-control" data-campo="fonte" maxlength="200" autocomplete="off">
+                </div>
+            </details>
+        </form>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('napoli-modal-tariffa')">Annulla</button>
+            <button type="submit" form="form-tariffa" class="btn btn-primary">Salva la tariffa</button>
+        </div>
+    </div>
+</div>
+
+<!-- Finestra: regola -->
+<div class="modal-overlay" id="napoli-modal-regola">
+    <div class="modal napoli-modal-larga" aria-labelledby="regola-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="regola-titolo">Cambia la regola</h3>
+            {{ modal_close("closeModal('napoli-modal-regola')") }}
+        </div>
+        <form class="modal-body" id="form-regola" novalidate>
+            <p class="napoli-regola-nome" id="regola-nome"></p>
+            <p class="form-help" id="regola-spiegazione"></p>
+            <div class="form-group" id="regola-valore-gruppo">
+                <label class="form-label" id="regola-valore-etichetta" for="regola-valore">Nuovo valore *</label>
+                <div id="regola-valore-campo" data-campo="valore" tabindex="-1"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="regola-dal">Vale dal *</label>
+                    <input type="date" id="regola-dal" class="form-control" data-campo="valido_da">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="regola-al">fino al</label>
+                    <input type="date" id="regola-al" class="form-control" data-campo="valido_a">
+                    <p class="form-help">Vuoto = senza una data di fine.</p>
+                </div>
+            </div>
+            <div class="form-group" id="regola-ambito-gruppo">
+                <span class="form-label">Vale per</span>
+                <label class="napoli-scelta"><input type="radio" name="regola-ambito" value="tutti" checked> tutti i lotti</label>
+                <label class="napoli-scelta"><input type="radio" name="regola-ambito" value="lotto"> solo <span id="regola-ambito-lotto">questo lotto</span></label>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="regola-fonte">Nota (da dove viene)</label>
+                <input type="text" id="regola-fonte" class="form-control" data-campo="fonte" maxlength="200" placeholder="per esempio: nuovo accordo quadro" autocomplete="off">
+            </div>
+        </form>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('napoli-modal-regola')">Annulla</button>
+            <button type="submit" form="form-regola" class="btn btn-primary">Salva</button>
+        </div>
+    </div>
+</div>
+
+<!-- Finestra: qualifica -->
+<div class="modal-overlay" id="napoli-modal-qualifica">
+    <div class="modal" aria-labelledby="qualifica-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="qualifica-titolo">Qualifica</h3>
+            {{ modal_close("closeModal('napoli-modal-qualifica')") }}
+        </div>
+        <form class="modal-body" id="form-qualifica" novalidate>
+            <div class="form-group">
+                <label class="form-label" for="qualifica-testo">Come è scritta nel file *</label>
+                <input type="text" id="qualifica-testo" class="form-control" data-campo="testo" maxlength="80" placeholder="per esempio EDUCATRICE PROF.LE" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="qualifica-figura">Figura professionale *</label>
+                <select id="qualifica-figura" class="form-control" data-campo="figura"></select>
+            </div>
+        </form>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('napoli-modal-qualifica')">Annulla</button>
+            <button type="submit" form="form-qualifica" class="btn btn-primary">Salva</button>
+        </div>
+    </div>
+</div>
+
+{% include '_napoli_procedura_lotto.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static_url('js/napoli.js') }}"></script>
+<script>NapoliImpostazioni.avvia();</script>
+{% endblock %}

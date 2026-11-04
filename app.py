@@ -47,6 +47,7 @@ from routes_migrazione import migrazione_bp
 from routes_report_locale import report_locale_bp
 from routes_utenti_dettaglio import utenti_dettaglio_bp
 from routes_dashboard import dashboard_bp
+from routes_napoli import napoli_bp   # sezione Napoli: solo rotte /napoli e /api/napoli
 
 logger = config.setup_logging()
 
@@ -62,6 +63,7 @@ app.register_blueprint(migrazione_bp)
 app.register_blueprint(report_locale_bp)
 app.register_blueprint(utenti_dettaglio_bp)
 app.register_blueprint(dashboard_bp)
+app.register_blueprint(napoli_bp)
 app.config['UPLOAD_FOLDER'] = config.UPLOAD_FOLDER
 app.config['EXPORT_FOLDER'] = config.EXPORT_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH

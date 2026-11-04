@@ -117,8 +117,29 @@ ROTTE_ROMA_SCRITTURA = frozenset({
     '/api/variazioni-monte-ore/<int:variazione_id>',
 })
 
-# Riempita dai passi della sezione Napoli (rotte sotto /napoli e /api/napoli).
-ROTTE_NAPOLI = frozenset()
+# Rotte della sezione Napoli (solo sotto /napoli e /api/napoli): ogni passo aggiunge le sue.
+ROTTE_NAPOLI = frozenset({
+    # passo 1.3: pagine Mese e Impostazioni, Ctrl+Z di Napoli
+    '/napoli',
+    '/napoli/impostazioni',
+    '/api/napoli/annulla',
+    '/api/napoli/annulla/ultima',
+    '/api/napoli/contratti/<int:contratto_id>',
+    '/api/napoli/figure',
+    '/api/napoli/impostazioni',
+    '/api/napoli/impostazioni/<gruppo>',
+    '/api/napoli/lotti',
+    '/api/napoli/lotti/<int:lotto_id>',
+    '/api/napoli/lotti/<int:lotto_id>/contratti',
+    '/api/napoli/lotti/<int:lotto_id>/controlli',
+    '/api/napoli/lotti/<int:lotto_id>/tariffe',
+    '/api/napoli/lotti/procedura',
+    '/api/napoli/lotti/proposta',
+    '/api/napoli/qualifiche',
+    '/api/napoli/regole',
+    '/api/napoli/regole/<int:regola_id>',
+    '/api/napoli/tariffe/<int:tariffa_id>',
+})
 PREFISSI_NAPOLI = ('/napoli', '/api/napoli')
 
 _MOTIVO_BACKUP = "backup dell'intero database: l'import di Napoli crea un backup e il file contiene anche Napoli"

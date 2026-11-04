@@ -1,0 +1,86 @@
+{# Procedura guidata "Crea il primo lotto" (anche "Nuovo lotto"): tre passi, i valori
+   proposti dal programma (GET /api/napoli/lotti/proposta), una sola richiesta alla fine
+   (POST /api/napoli/lotti/procedura). Il codice e' in napoli.js (NapoliProcedura). #}
+{% from '_macros.html' import modal_close %}
+<div class="modal-overlay" id="napoli-modal-procedura">
+    <div class="modal napoli-modal-larga" aria-labelledby="proc-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="proc-titolo">Crea il primo lotto</h3>
+            {{ modal_close("closeModal('napoli-modal-procedura')") }}
+        </div>
+        <div class="modal-body">
+            <ol class="napoli-passi" aria-label="Passi della procedura">
+                <li data-passo="1"><span class="napoli-passo-num" aria-hidden="true">1</span>Il lotto</li>
+                <li data-passo="2"><span class="napoli-passo-num" aria-hidden="true">2</span>Le tariffe</li>
+                <li data-passo="3"><span class="napoli-passo-num" aria-hidden="true">3</span>Conferma</li>
+            </ol>
+
+            <section data-pagina-passo="1">
+                <p class="napoli-intro">Il programma propone i valori: controllali, completa quelli che mancano e premi <strong>Avanti</strong>.</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="proc-nome">Nome del lotto *</label>
+                        <input type="text" id="proc-nome" class="form-control" data-campo="nome" maxlength="60" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="proc-numero">Numero del lotto *</label>
+                        <select id="proc-numero" class="form-control" data-campo="numero_lotto"></select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="proc-municipalita">Municipalità *</label>
+                        <input type="text" id="proc-municipalita" class="form-control" data-campo="municipalita" maxlength="40" placeholder="per esempio 1 e 2" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="proc-cig">CIG</label>
+                        <input type="text" id="proc-cig" class="form-control" data-campo="cig" maxlength="12" placeholder="10 lettere e numeri" autocomplete="off">
+                        <p class="form-help">Si può aggiungere anche dopo: serve per la fattura.</p>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="proc-codice-univoco">Codice univoco ufficio</label>
+                        <input type="text" id="proc-codice-univoco" class="form-control" data-campo="codice_univoco_ufficio" maxlength="8" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="proc-riferimento">Riferimento amministrativo</label>
+                        <input type="text" id="proc-riferimento" class="form-control" data-campo="riferimento_amministrativo" maxlength="30" autocomplete="off">
+                    </div>
+                </div>
+                <p class="form-help">Codice univoco e riferimento amministrativo sono quelli indicati dal capitolato: controllali.</p>
+            </section>
+
+            <section data-pagina-passo="2" hidden>
+                <p class="napoli-intro">Tariffe orarie <strong>IVA esclusa</strong>. Il programma propone quelle del contratto attuale; una casella vuota vuol dire nessuna tariffa (per esempio l'interprete LIS, finché non è nota).</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="proc-dal">Valgono dal *</label>
+                        <input type="date" id="proc-dal" class="form-control" data-campo="valido_da">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="proc-al">fino al</label>
+                        <input type="date" id="proc-al" class="form-control" data-campo="valido_a">
+                        <p class="form-help">Vuoto = senza una data di fine.</p>
+                    </div>
+                </div>
+                <table class="table napoli-tabella-compatta">
+                    <thead>
+                        <tr><th scope="col">Figura</th><th scope="col" class="text-right">Euro all'ora</th></tr>
+                    </thead>
+                    <tbody id="proc-tariffe"></tbody>
+                </table>
+            </section>
+
+            <section data-pagina-passo="3" hidden>
+                <p class="napoli-intro">Controlla il riepilogo e premi <strong>Crea il lotto</strong>.</p>
+                <div id="proc-riepilogo" class="napoli-riepilogo"></div>
+                <p class="form-help">Dopo potrai aggiungere i contratti applicativi e controllare le regole. Se ti accorgi di un errore, Ctrl+Z annulla la creazione del lotto.</p>
+            </section>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="proc-indietro">Indietro</button>
+            <button type="button" class="btn btn-primary" id="proc-avanti">Avanti</button>
+        </div>
+    </div>
+</div>

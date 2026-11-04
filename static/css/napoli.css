@@ -1,0 +1,153 @@
+/* Sezione Napoli: solo le pagine /napoli (le pagine di Roma non caricano questo foglio).
+   Si carica dopo style.css -> components.css -> refine.css (block head di base.html) e
+   aggiunge solo le parti nuove: colori, raggi e misure vengono dai token di style.css,
+   quindi tema chiaro e scuro sono quelli del resto del programma. */
+
+/* Un elemento con l'attributo hidden non si vede, anche se e' un pulsante (.btn ha display) */
+[hidden] { display: none !important; }
+
+/* ---------- testata: lotto scelto ---------- */
+.napoli-scelta-lotto { display: flex; align-items: center; gap: 10px; }
+.napoli-scelta-lotto[hidden] { display: none; }
+.napoli-scelta-lotto .form-label { margin: 0; white-space: nowrap; }
+.napoli-scelta-lotto select { min-width: 240px; width: auto; }
+@media (max-width: 1024px) {
+    .napoli-scelta-lotto { width: 100%; }
+    .napoli-scelta-lotto select { flex: 1; min-width: 0; }
+}
+
+.napoli-intro { color: var(--text-secondary); font-size: 0.9rem; margin: 0 0 16px; max-width: 72ch; }
+
+/* ---------- Impostazioni: menu delle parti a sinistra, una parte alla volta ---------- */
+.napoli-impostazioni {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+.napoli-menu-parti {
+    position: sticky;
+    top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-card-solid);
+}
+.napoli-menu-titolo {
+    padding: 10px 10px 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+}
+.napoli-menu-parti a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+.napoli-menu-parti a:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.napoli-menu-parti a.attiva { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.napoli-menu-parti a:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.napoli-menu-segno { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); flex-shrink: 0; }
+.napoli-annulla { margin-top: 10px; justify-content: flex-start; }
+.napoli-parti { min-width: 0; }   /* la colonna puo' stringersi: le tabelle scorrono dentro la loro cornice */
+
+@media (max-width: 1100px) {
+    .napoli-impostazioni { grid-template-columns: 1fr; }
+    .napoli-menu-parti { position: static; flex-direction: row; flex-wrap: wrap; }
+    .napoli-menu-titolo { display: none; }
+    .napoli-annulla { margin: 0 0 0 auto; }
+}
+
+/* ---------- tabelle e righe ---------- */
+.napoli-parte .table-container { max-height: none; }
+.napoli-parte .table td, .napoli-parte .table th { padding: 10px 14px; }
+.napoli-parte .table .napoli-azioni { white-space: nowrap; text-align: right; width: 1%; }
+.napoli-azioni .btn + .btn { margin-left: 6px; }
+.napoli-figura-nome { font-weight: 600; color: var(--text-primary); }
+.napoli-figura-descrizione { font-size: 0.78rem; color: var(--text-tertiary); }
+.napoli-parte tr.napoli-stessa-figura td { border-top: 0; }
+.napoli-vuoto { color: var(--text-tertiary); font-style: italic; }
+.napoli-numero { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.napoli-badge-riga { margin-left: 6px; vertical-align: 1px; }
+.napoli-tabella-compatta td, .napoli-tabella-compatta th { padding: 4px 12px; }
+.napoli-tabella-compatta input.form-control { max-width: 130px; margin-left: auto; padding: 6px 10px; text-align: right; }
+
+/* dati del lotto */
+.napoli-dati { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; }
+.napoli-dati .dati-riga-larga { grid-column: 1 / -1; }
+.dati-riga-larga .dati-riga { flex-direction: column; align-items: flex-start; gap: 4px; }
+.dati-riga-larga .dati-valore { text-align: left; }
+.napoli-modello { display: block; margin-top: 2px; font-size: 0.8rem; font-weight: 400; color: var(--text-tertiary); }
+@media (max-width: 768px) { .napoli-dati { grid-template-columns: 1fr; } }
+.napoli-esempio { color: var(--text-secondary); }
+
+/* ---------- moduli ---------- */
+.napoli-modal-larga { max-width: 680px; }
+.napoli-riga-indirizzo { grid-template-columns: minmax(0, 2fr) 96px minmax(0, 1.2fr) 80px; }
+@media (max-width: 900px) { .napoli-riga-indirizzo { grid-template-columns: minmax(0, 1fr) 96px; } }
+@media (max-width: 640px) { .napoli-riga-indirizzo { grid-template-columns: 1fr; } }
+.napoli-campo-medio { max-width: 320px; }
+.napoli-azioni-modulo { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.napoli-gruppo { border: 1px solid var(--border-color); border-radius: var(--radius); padding: 12px 16px 4px; margin: 4px 0 16px; }
+.napoli-gruppo legend { padding: 0 6px; font-weight: 600; font-size: 0.9rem; color: var(--text-secondary); }
+.napoli-altri-dati { margin-top: 4px; }
+.napoli-scelta { display: inline-flex; align-items: center; gap: 6px; margin-right: 18px; cursor: pointer; }
+.napoli-giorni { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.napoli-regola-nome { font-weight: 600; margin: 0 0 4px; }
+
+/* ---------- regole ---------- */
+.napoli-gruppo-regole + .napoli-gruppo-regole { margin-top: 20px; }
+.napoli-gruppo-regole h3 { font-size: 0.95rem; font-weight: 600; margin: 0 0 8px; color: var(--text-primary); }
+.napoli-regola-etichetta { font-weight: 500; color: var(--text-primary); }
+.napoli-regola-spiegazione { font-size: 0.8rem; color: var(--text-tertiary); margin-top: 2px; }
+.napoli-tabella-regole { table-layout: fixed; }
+.napoli-tabella-regole col.c-regola { width: 46%; }
+.napoli-tabella-regole col.c-valore { width: 26%; }
+.napoli-tabella-regole col.c-dove { width: 15%; }
+.napoli-tabella-regole col.c-azioni { width: 13%; }
+.napoli-tabella-regole td { overflow-wrap: anywhere; }
+.napoli-parte .napoli-tabella-regole .napoli-azioni { width: auto; }
+.napoli-regola-valore { font-weight: 600; }
+.napoli-regola-valore.lungo { font-weight: 400; font-size: 0.82rem; color: var(--text-secondary); }
+.napoli-storico td { background: var(--bg-tertiary); font-size: 0.82rem; }
+.napoli-storico td:first-child { padding-left: 28px; }
+
+/* ---------- procedura "Crea il primo lotto" ---------- */
+.napoli-passi { display: flex; gap: 8px; margin: 0 0 20px; padding: 0; list-style: none; flex-wrap: wrap; }
+.napoli-passi li {
+    display: flex; align-items: center; gap: 8px; flex: 1 1 0; min-width: 140px;
+    padding: 8px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+    color: var(--text-tertiary); font-size: 0.9rem;
+}
+.napoli-passo-num {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg-tertiary); color: var(--text-secondary); font-weight: 700; font-size: 0.8rem;
+}
+.napoli-passi li.attivo { border-color: var(--accent); color: var(--text-primary); font-weight: 600; }
+.napoli-passi li.attivo .napoli-passo-num { background: var(--accent-strong); color: #fff; }
+.napoli-passi li.fatto .napoli-passo-num { background: var(--success-strong); color: #fff; }
+.napoli-riepilogo .dati-riga { padding: 6px 0; }
+
+/* ---------- scheda Mese ---------- */
+.napoli-benvenuto { text-align: center; padding: 40px 24px; }
+.napoli-benvenuto h2 { font-size: 1.25rem; margin: 12px 0 8px; }
+.napoli-benvenuto p { color: var(--text-secondary); max-width: 60ch; margin: 0 auto 20px; }
+.napoli-benvenuto > svg { width: 48px; height: 48px; color: var(--accent-text); }
+.da-fare-ok .da-fare-icona { color: var(--success); }
+details.napoli-controlli-ok { margin-top: 0; border-top: 0; }
+details.napoli-controlli-ok > summary { padding: 12px 16px; }
+.napoli-controlli-ok .da-fare-item { padding: 8px 16px; border-bottom: 0; }
+.napoli-controlli-ok .da-fare-titolo { font-weight: 400; color: var(--text-secondary); }
+.napoli-nota { color: var(--text-tertiary); font-size: 0.85rem; margin: 16px 2px 0; }

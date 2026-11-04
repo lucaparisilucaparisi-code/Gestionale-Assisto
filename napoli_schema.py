@@ -14,8 +14,10 @@ che le esegue una volta sola, in ordine, e poi imposta PRAGMA user_version:
   diventano un totale mensile per lotto, grado e contratto applicativo con
   l'operatore facoltativo (ricostruzione di napoli_coordinamento); il prospetto
   fattura congela anche i testi (oggetto, nota, destinatario, ritenuta, scadenza)
-  e le regole usate.
-  La fase 2 (banca ore, PROGETTO §4.3) diventa quindi la migrazione 4 (crea_v4).
+  e le regole usate;
+- crea_v4 (fase 1, passo 1.3: Impostazioni): il contratto applicativo ha anche il
+  servizio della determina di impegno (D.D.), che va nella nota della fattura.
+  La fase 2 (banca ore, PROGETTO §4.3) diventa quindi la migrazione 5 (crea_v5).
 
 Una migrazione gia' pubblicata non si cambia piu' (tests/test_napoli_schema.py ne
 controlla l'impronta): un database puo' essere gia' a quella versione, e
@@ -494,3 +496,26 @@ def crea_v3(conn):
     for nome, tipo in COLONNE_FATTURE_V3:
         if nome not in presenti:
             conn.execute(f'ALTER TABLE napoli_fatture ADD COLUMN {nome} {tipo}')
+
+
+# ==================== migrazione 4 ====================
+
+# Servizio della determina di impegno (D.D.) del contratto applicativo: nella nota della
+# fattura "D.D. {servizio} N.{dd_numero} DEL {dd_data}" (fattura reale: "D.D. 1093 N.31
+# DEL 12/06/2026"). Vuoto = il riferimento amministrativo del lotto, come prima.
+COLONNE_CONTRATTI_V4 = (
+    ('dd_servizio', 'TEXT'),
+)
+
+
+def crea_v4(conn):
+    """Migrazione 4 (fase 1, passo 1.3): napoli_contratti.dd_servizio, aggiunta solo se
+    manca. Rieseguibile e sicura su un database gia' alla v3 con dati (le righe restano,
+    con il servizio vuoto). Apre la transazione se non c'e'; la conferma il runner di
+    database.py insieme a user_version."""
+    if not conn.in_transaction:
+        conn.execute('BEGIN')
+    presenti = _colonne(conn, 'napoli_contratti')
+    for nome, tipo in COLONNE_CONTRATTI_V4:
+        if nome not in presenti:
+            conn.execute(f'ALTER TABLE napoli_contratti ADD COLUMN {nome} {tipo}')

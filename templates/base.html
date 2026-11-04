@@ -129,6 +129,19 @@
                     <span>Import Excel</span>
                 </a>
 
+                {# Sezione Napoli (PROGETTO §4.5): ogni elemento del blocco ha data-sezione="napoli",
+                   l'unica parte delle pagine di Roma che la fotografia di Roma non guarda. #}
+                <div class="nav-section" data-sezione="napoli">
+                    <div class="nav-section-title">Napoli</div>
+                </div>
+
+                <a href="/napoli" class="nav-link {% if request.path[:7] == '/napoli' %}active{% endif %}" data-sezione="napoli">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" data-sezione="napoli">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" data-sezione="napoli" />
+                    </svg>
+                    <span data-sezione="napoli">Assistenza specialistica</span>
+                </a>
+
                 <div class="nav-section">
                     <div class="nav-section-title">Configurazione</div>
                 </div>
@@ -321,6 +334,18 @@
                             <span class="command-item-title">Profilo</span>
                             <span class="command-item-desc">Password, impronta e backup</span>
                         </div>
+                    </div>
+                    <div class="command-item" data-action="navigate" data-url="/napoli" data-sezione="napoli">
+                        <div class="command-item-icon" data-sezione="napoli">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" data-sezione="napoli">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" data-sezione="napoli" />
+                            </svg>
+                        </div>
+                        <div class="command-item-content" data-sezione="napoli">
+                            <span class="command-item-title" data-sezione="napoli">Napoli</span>
+                            <span class="command-item-desc" data-sezione="napoli">Assistenza specialistica: lotti, tariffe e fatture</span>
+                        </div>
+                        <kbd class="command-kbd" data-sezione="napoli">Alt+8</kbd>
                     </div>
                 </div>
                 <div class="command-section">

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Napoli - Gestionale OEPAC{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static_url('css/napoli.css') }}">
+{% endblock %}
+
+{% block content %}
+{% include '_napoli_tabs.html' %}
+
+{# Senza lotti: l'invito a creare il primo lotto (procedura guidata). Con un lotto: cosa
+   manca per fare le fatture (GET /api/napoli/lotti/<id>/controlli). #}
+<div id="napoli-mese">
+    <div class="loading"><div class="spinner"></div></div>
+</div>
+
+{% include '_napoli_procedura_lotto.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static_url('js/napoli.js') }}"></script>
+<script>NapoliMese.avvia();</script>
+{% endblock %}

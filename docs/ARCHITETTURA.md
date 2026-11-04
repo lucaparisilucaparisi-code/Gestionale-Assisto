@@ -8,7 +8,9 @@ Nota tecnica per chi sviluppa. Per l'uso e l'installazione vedi il `README.md`.
 |------|----------------|
 | `app.py` | Applicazione Flask: route pagine e molte API, autenticazione (sessione + WebAuthn), import. Registra i blueprint sotto. |
 | `database.py` | Tutto l'accesso ai dati SQLite: schema/migrazioni, CRUD, calcoli di dominio. |
-| `napoli_schema.py` | Solo lo schema della sezione Napoli (tabelle `napoli_*`): le migrazioni 2 e 3 di `database.py` (vedi "Sezione Napoli"). |
+| `napoli_schema.py` | Solo lo schema della sezione Napoli (tabelle `napoli_*`): le migrazioni 2, 3 e 4 di `database.py` (vedi "Sezione Napoli"). |
+| `napoli_db.py` | Accesso ai dati di Napoli (solo tabelle `napoli_*`): Impostazioni, controlli che guardano il database (nomi doppi, date sovrapposte), Ctrl+Z di Napoli (`napoli_annullamenti`). |
+| `routes_napoli.py` | Blueprint della sezione Napoli: pagine `/napoli` e API `/api/napoli/...`. |
 | `napoli_calcoli.py` | Calcoli di Napoli, solo funzioni pure (niente database, Flask o `config` di Roma): letture delle ore, ore riconosciute, settimane e PEI, regole con data, fattura. |
 | `config_napoli.py` | Valori predefiniti di Napoli: regole con data (`REGOLE_PREDEFINITE`), modelli dei testi della fattura, tariffe solo *proposte*. |
 | `routes_export.py` | Blueprint export (Excel, PDF, Word). |
@@ -258,8 +260,10 @@ dati inventati:
   ciascuno con l'impronta del contenuto a fine riga Linux). Dalla cornice si toglie
   il blocco di Napoli: gli elementi con `data-sezione="napoli"`, con tutto il loro
   contenuto, sono l'unica parte delle pagine di Roma che Napoli puo' aggiungere
-  (PROGETTO §4.5: la voce di menu del passo 1.3 deve avere questo attributo su ogni
-  elemento del blocco). Dei file `STATICI_MODIFICABILI` (`app.js`, che cambia per
+  (PROGETTO §4.5): la voce "Napoli" del menu laterale e della ricerca rapida (Alt+8)
+  ha questo attributo su ogni elemento; `test_cornice_senza_il_blocco_di_napoli`
+  controlla che con la voce la cornice resti quella della v1.20.1 e che senza
+  l'attributo cambierebbe. Dei file `STATICI_MODIFICABILI` (`app.js`, che cambia per
   Alt+8 e l'annulla della pagina di Napoli) si annota solo che la pagina li carica.
   La fotografia non deve contenere errori 4xx/5xx (`test_la_fotografia_non_contiene_errori`).
   L'archivio inventato
@@ -274,11 +278,14 @@ dati inventati:
   gia' deve restare uguale:
   `python strumenti/fotografa_roma.py --sintetico --codice CARTELLA_VERSIONE --uscita tests/golden/roma_v1_20_1.json`.
 - **Invarianza** (`tests/test_roma_invariata.py`): fotografia, poi i dati di Napoli
-  (`tests/seme_napoli.py`, `carica_seme_napoli`: riempie tutte le tabelle `napoli_*`,
-  per ora scrivendole direttamente; ogni passo di Napoli ci aggiunge i suoi dati
-  tramite le sue API), poi di nuovo la fotografia, che deve essere uguale;
-  tabelle di Roma (schema e righe; del registro attivita' le voci non `napoli%`)
-  intatte. **Scritture su due gemelli** (`test_scritture_di_roma_uguali_con_e_senza_napoli`):
+  (`tests/seme_napoli.py`, `carica_seme_napoli`: riempie tutte le tabelle `napoli_*`;
+  con un client i dati che hanno gia' le loro API passano da li', dal passo 1.3
+  cooperativa, destinatario, lotto con le tariffe dalla procedura guidata,
+  contratti, regole e qualifiche, il resto si scrive direttamente; ogni passo di
+  Napoli sposta i suoi dati sulle sue API), poi di nuovo la fotografia, che deve
+  essere uguale; tabelle di Roma (schema e righe; del registro attivita' le voci non
+  `napoli%`, nel loro ordine e senza il loro `id`, che le voci di Napoli scritte prima
+  fanno crescere: `seme_napoli.MASCHERATE_SEMPRE`) intatte. **Scritture su due gemelli** (`test_scritture_di_roma_uguali_con_e_senza_napoli`):
   lo stesso archivio Roma con e senza il seme Napoli; chiusura e riapertura del
   mese, compila con media, copia del mese precedente, import della prefattura,
   dell'anagrafica utenti e dei dipendenti (anche omonimi di operatori di Napoli),
@@ -320,9 +327,9 @@ Il servizio di Napoli sta in tabelle `napoli_*` proprie, nello stesso database:
 nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
 
 - **Schema**: `napoli_schema.py` contiene solo il DDL (non importa `database`).
-  `database.py` lo registra nel runner delle migrazioni: `SCHEMA_VERSION = 3`,
-  `MIGRAZIONI = {2: napoli_schema.crea_v2, 3: napoli_schema.crea_v3}`; e' l'unica
-  modifica dello schema dal lato di Roma. `crea_v2` crea le 22 tabelle della fase 1
+  `database.py` lo registra nel runner delle migrazioni: `SCHEMA_VERSION = 4`,
+  `MIGRAZIONI = {2: napoli_schema.crea_v2, 3: napoli_schema.crea_v3, 4: napoli_schema.crea_v4}`;
+  e' l'unica modifica dello schema dal lato di Roma. `crea_v2` crea le 22 tabelle della fase 1
   (lotti, scuole, alunni, operatori, PEI, coppie operatore-alunno, contratti
   applicativi, tariffe e regole con data, calendario, orari, fogli firma, import,
   presenze e fasce, ore del coordinatore, mesi chiusi per lotto, prospetti fattura,
@@ -331,19 +338,22 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   coordinatore sono un totale mensile per lotto, grado e contratto applicativo
   (una riga per mese, operatore facoltativo e mai in fattura, come la riga
   "Coordinatore" della fattura reale) e il prospetto fattura congela anche oggetto,
-  nota, destinatario, testo della ritenuta, scadenza e regole usate. La banca ore
-  della fase 2 (PROGETTO §4.3, la' chiamata v3) sara' quindi la migrazione 4
-  (`crea_v4`).
+  nota, destinatario, testo della ritenuta, scadenza e regole usate. `crea_v4`
+  (passo 1.3, Impostazioni) aggiunge a `napoli_contratti` il servizio della determina
+  (`dd_servizio`: "D.D. 1093 N.31 DEL ..." nella nota della fattura; vuoto = il
+  riferimento amministrativo del lotto). La banca ore della fase 2 (PROGETTO §4.3,
+  la' chiamata v3) sara' quindi la migrazione 5 (`crea_v5`).
 - **Migrazioni gia' pubblicate non si cambiano**: un database puo' essere gia' a
   quella versione e rieseguirla non lo correggerebbe. `test_la_migrazione_2_pubblicata_non_cambia`
-  fissa l'impronta di `crea_v2`; ogni correzione e' una migrazione nuova, sicura
-  anche su un database gia' aggiornato e con dati: `crea_v3` ricostruisce
+  e `test_la_migrazione_3_pubblicata_non_cambia` fissano le impronte di `crea_v2` e
+  `crea_v3`; ogni correzione e' una migrazione nuova, sicura anche su un database gia'
+  aggiornato e con dati (`crea_v4` aggiunge la colonna solo se manca): `crea_v3` ricostruisce
   `napoli_coordinamento` (nuova tabella, copia, `DROP`, `RENAME`, nella stessa
   transazione; le righe della v2, una per operatore, diventano il totale del mese)
   solo se ha ancora la forma della v2, e aggiunge le colonne di `napoli_fatture`
   solo se mancano (`PRAGMA table_info`).
 - **Aggiornamento**: all'avvio, dopo il backup "pre-aggiornamento", un database con
-  `user_version` 1 (v1.20.1 e precedenti) o 2 passa a 3. Le migrazioni mancanti
+  `user_version` 1 (v1.20.1 e precedenti), 2 o 3 passa a 4. Le migrazioni mancanti
   girano in un'unica transazione (se si interrompe non resta nulla a meta') e si
   possono rieseguire senza danni (`IF NOT EXISTS`, `INSERT OR IGNORE`, controlli
   sulla forma delle tabelle). Il ripristino di un backup della v1.20.1 aggiorna
@@ -402,15 +412,61 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     finirebbero in due fatture).
     Tutto in `Decimal` con ROUND_HALF_UP; le tariffe sono sempre quelle del lotto
     (`napoli_tariffe`): `config_napoli.TARIFFE_PROPOSTE` servono solo a precompilare.
+- **Pagine e API** (`routes_napoli.py`, blueprint registrato in `app.py`; dati da
+  `napoli_db.py`). Il menu ha la voce "Napoli" (Alt+8) che porta a `/napoli`; le schede
+  comuni (`templates/_napoli_tabs.html`, con il lotto scelto ricordato nel browser) per
+  ora sono **Mese** (`/napoli`: senza lotti la procedura "Crea il primo lotto", poi cosa
+  manca per le fatture, `GET /api/napoli/lotti/<id>/controlli`) e **Impostazioni**
+  (`/napoli/impostazioni`, una parte alla volta, `#lotto`, `#contratti`...): dati della
+  cooperativa e destinatario (`napoli_impostazioni`), lotti, contratti applicativi per
+  lotto e grado, tariffe e regole con data, qualifiche. Pagine e script
+  (`static/js/napoli.js`, `static/css/napoli.css`) solo di Napoli: le pagine di Roma non
+  li caricano. Le API controllano tutto lato server e rispondono con un messaggio
+  semplice e il campo sbagliato (`{error, code, campo}`: 400 dati non validi, 404, 409):
+  - procedura guidata (`GET /api/napoli/lotti/proposta`, `POST /api/napoli/lotti/procedura`):
+    nome "NAPOLI LOTTO n" con il primo numero libero, modelli dell'oggetto e della nota
+    della fattura, codice univoco e riferimento amministrativo del capitolato, tariffe
+    del contratto attuale dal 01/09/2025 al 31/01/2027 (`config_napoli.LOTTO_PROPOSTO`,
+    `tariffe_proposte`; LIS vuota), tutto in un'azione sola;
+  - lotti: nome e numero (1-5) unici, CIG di 10 caratteri, CUP di 15, codice univoco di
+    6, segnaposto dei modelli fra quelli ammessi (`napoli_calcoli.segnaposto_sconosciuti`);
+    un lotto si elimina solo senza dati (con i suoi contratti, tariffe e regole);
+  - contratti applicativi: date obbligatorie; due contratti dello stesso lotto che
+    coprono gli stessi giorni per lo stesso grado (senza grado = tutti e due) sono
+    rifiutati (409 `CONTRATTI_SOVRAPPOSTI`, `napoli_calcoli.contratti_sovrapposti`); un
+    contratto con ore del coordinatore o fatture non si elimina;
+  - tariffe (IVA esclusa, `valida_euro`) e regole con data: date sovrapposte della
+    stessa figura e livello (della stessa regola e dello stesso ambito, lotto o tutti i
+    lotti) rifiutate (409 `TARIFFE_SOVRAPPOSTE` / `REGOLE_SOVRAPPOSTE`); se quelle di
+    prima cominciano prima, la risposta dice dove si possono chiudere (`chiudibili`) e
+    con `chiudi_precedenti` si chiudono il giorno prima nella stessa azione. Le regole
+    hanno spiegazione, gruppo e limiti in `config_napoli.ETICHETTE_REGOLE`;
+  - cooperativa: partita IVA e codice fiscale con la cifra di controllo, IBAN con le
+    cifre di controllo e la lunghezza del paese (`valida_iban`), salvato senza spazi e
+    mostrato solo mascherato (`maschera_iban`: alla pagina non torna mai intero); un
+    campo che non arriva resta com'e'. Destinatario: proposto dalla fattura reale
+    (`config_napoli.DESTINATARIO_PROPOSTO`), vale per tutti i lotti
+    (`napoli_calcoli.destinatario_fattura`: quello del lotto, se c'e', vince);
+  - **Ctrl+Z di Napoli** (`/api/napoli/annulla/ultima`, `POST /api/napoli/annulla`):
+    `napoli_annullamenti`, separato da quello di Roma; ogni azione salva le righe
+    toccate com'erano (`{"versione": 1, "righe": [{tabella, chiave, prima}]}`), si
+    annulla solo l'ultima, entro 24 ore, con l'id mostrato nella conferma. In `app.js`
+    Ctrl+Z chiama `window.annullaPagina` se la pagina lo definisce (solo le pagine di
+    Napoli), altrimenti l'annulla di Roma;
+  - registro attivita': voci `napoli_*` senza valori (mai IBAN o codici fiscali).
 - **Test**: `tests/test_napoli_schema.py` (migrazione su un database v1.20.1 con
   l'archivio Roma inventato confrontato con il gemello riaperto dalla versione
-  vecchia; da un database gia' alla v2 con dati alla v3; rieseguibilita',
-  interruzione, ripristino, impronta della migrazione 2, vincoli);
+  vecchia; da un database gia' alla v2 con dati alla v3 e alla v4, da uno alla v3
+  alla v4; rieseguibilita', interruzione, ripristino, impronte delle migrazioni 2 e 3,
+  vincoli);
   `tests/test_napoli_calcoli.py` (con soli dati inventati: le quantita' e le tariffe
   della fattura reale di giugno ricalcolate al centesimo, i due fogli firma ricostruiti
   con orari equivalenti, letture ambigue, date e orari che non esistono, precedenza
   delle causali, domeniche, regole, tariffe e contratti sovrapposti, coordinatore,
-  testi congelati, bloccanti).
+  testi congelati, bloccanti; IBAN, partita IVA, codici fiscali, euro, destinatario e
+  servizio della determina); `tests/test_napoli_impostazioni.py` (procedura guidata,
+  controlli lato server, sovrapposizioni, IBAN mascherato, Ctrl+Z separato, Roma intatta,
+  voce di menu marcata).
 
 ## Refactoring pianificati (da fare come interventi dedicati e revisionati)
 

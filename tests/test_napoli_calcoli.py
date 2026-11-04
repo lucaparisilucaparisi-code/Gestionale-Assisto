@@ -70,8 +70,8 @@ def test_valida_data(scritto, attesa):
 
 @pytest.mark.parametrize('scritto, messaggio', [
     ('2025-19-39', 'non esiste'), ('31/02/2026', 'non esiste'), ('29/02/2026', 'non esiste'), ('2026-06-31', 'non esiste'),
-    ('0202-06-08', 'anno fuori'), ('08/06/26', 'non e\' scritta bene'), ('domani', 'non e\' scritta bene'),
-    ('2026-06-08T10:00', 'non e\' scritta bene'), ('', 'manca'), (None, 'manca')])
+    ('0202-06-08', 'anno fuori'), ('08/06/26', 'non è scritta bene'), ('domani', 'non è scritta bene'),
+    ('2026-06-08T10:00', 'non è scritta bene'), ('', 'manca'), (None, 'manca')])
 def test_valida_data_rifiuta_le_date_che_non_esistono(scritto, messaggio):
     with pytest.raises(ValueError, match=messaggio):
         nc.valida_data(scritto)
@@ -81,7 +81,7 @@ def test_valida_orari_fasce_periodi_e_mesi():
     assert [nc.valida_orario(x) for x in ('8:30', '08:30', '08.30', '00:00', '23:59', datetime.time(9, 5))] == [
         '08:30', '08:30', '08:30', '00:00', '23:59', '09:05']
     for sbagliato, messaggio in (('29:59', 'non esiste'), ('24:00', 'non esiste'), ('10:75', 'non esiste'),
-                                 ('10:7', 'non e\' scritto bene'), ('8', 'non e\' scritto bene'), ('', 'manca')):
+                                 ('10:7', 'non è scritto bene'), ('8', 'non è scritto bene'), ('', 'manca')):
         with pytest.raises(ValueError, match=messaggio):
             nc.valida_orario(sbagliato)
     assert nc.valida_fascia('8:00', '10:00') == ('08:00', '10:00')
@@ -942,3 +942,109 @@ def test_calcoli_senza_database_ne_flask(modulo):
     importati = {a.name.split('.')[0] for n in ast.walk(albero) if isinstance(n, ast.Import) for a in n.names}
     importati |= {n.module.split('.')[0] for n in ast.walk(albero) if isinstance(n, ast.ImportFrom)}
     assert importati <= {'datetime', 'decimal', 'json', 're', 'config_napoli'}, importati
+
+
+# ==================== dati delle Impostazioni (passo 1.3) ====================
+
+def _iban_con_controllo(bban, paese='IT'):
+    numero = int(''.join(str(int(c, 36)) for c in bban + paese + '00'))
+    return f'{paese}{98 - numero % 97:02d}{bban}'
+
+
+def test_valida_iban():
+    # esempio pubblico della norma (ISO 13616), non un conto di nessuno
+    assert nc.valida_iban('gb82 west 1234 5698 7654 32') == 'GB82WEST12345698765432'
+    inventato = _iban_con_controllo('X0000000000000000000123')
+    assert len(inventato) == 27 and nc.valida_iban(' ' + inventato.lower() + ' ') == inventato
+    assert nc.valida_iban('-'.join(inventato[i:i + 4] for i in range(0, 27, 4))) == inventato
+    scambiato = inventato[:-2] + inventato[-1] + inventato[-2]
+    for sbagliato, messaggio in (
+            (inventato[:-1] + ('9' if inventato[-1] != '9' else '8'), 'cifre di controllo'),
+            (scambiato, 'cifre di controllo'), (inventato[:-1], 'ne ha 27'), ('', 'manca'), (None, 'manca'),
+            ('ITXX' + inventato[4:], 'due lettere del paese'), ('IT60 X0542 8111 €', 'due lettere del paese'),
+            (_iban_con_controllo('00000000000000000000123'), 'CIN'), ('GB82WEST1234', 'ne ha 22')):
+        with pytest.raises(ValueError, match=messaggio):
+            nc.valida_iban(sbagliato)
+    assert nc.maschera_iban(inventato) == f'{inventato[:4]} •••• •••• •••• •••• {inventato[-4:]}'
+    assert nc.maschera_iban('') == '' and nc.maschera_iban(None) == ''
+
+
+def _con_controllo_numerico(prime10):
+    return prime10 + str(nc._controllo_numerico(prime10))
+
+
+def test_partita_iva_e_codice_fiscale():
+    piva = _con_controllo_numerico('0000000001')
+    assert nc.valida_partita_iva(' IT ' + piva) == piva and nc.valida_partita_iva(piva) == piva
+    for sbagliata, messaggio in ((piva[:-1] + str((int(piva[-1]) + 1) % 10), 'non torna'), ('123', '11 cifre'),
+                                 ('ABCDEFGHILM', '11 cifre'), ('', 'manca')):
+        with pytest.raises(ValueError, match=messaggio):
+            nc.valida_partita_iva(sbagliata)
+    # codice fiscale di un ente (come la partita IVA) o di una persona (inventato, comune Z999)
+    assert nc.valida_codice_fiscale(piva) == piva
+    base = 'PRVLNA15C50Z999'
+    cf = base + nc.carattere_di_controllo_cf(base)
+    assert nc.valida_codice_fiscale(cf.lower()) == cf
+    for sbagliato in (base + ('A' if cf[-1] != 'A' else 'B'), cf[:-1], 'PRVLNA15C50Z99XX'):
+        with pytest.raises(ValueError):
+            nc.valida_codice_fiscale(sbagliato)
+
+
+def test_valida_euro():
+    assert [nc.valida_euro(x) for x in ('23,44', '23.44', ' 29,66 € ', '5', 24.28, D('0.01'))] == [
+        2344, 2344, 2966, 500, 2428, 1]
+    assert nc.valida_euro('1.234,56', massimo=D('9999')) == 123456
+    for sbagliato, messaggio in (('23,445', 'due decimali'), ('0', 'fra 0,01'), ('-1', 'fra 0,01'),
+                                 ('mille', 'non è un numero'), ('', 'manca'), ('NaN', 'non è un numero'),
+                                 ('1000', 'fra 0,01 e 999,99')):
+        with pytest.raises(ValueError, match=messaggio):
+            nc.valida_euro(sbagliato)
+    assert nc.valida_euro('0', minimo=D('0')) == 0
+
+
+def test_segnaposto_sconosciuti():
+    ammessi = config_napoli.SEGNAPOSTO_OGGETTO
+    assert nc.segnaposto_sconosciuti(config_napoli.MODELLO_OGGETTO_FATTURA, ammessi) == []
+    assert nc.segnaposto_sconosciuti('Lotto {lotto} {mesi} {mesi} {}', ammessi) == ['mesi', '']
+    assert nc.segnaposto_sconosciuti(config_napoli.MODELLO_NOTA_FATTURA, config_napoli.SEGNAPOSTO_NOTA) == []
+
+
+def test_destinatario_e_servizio_della_determina():
+    impostazioni = {'destinatario_denominazione': 'Ente di prova', 'destinatario_indirizzo': 'Via Inventata 1',
+                    'destinatario_cap': '00000', 'destinatario_comune': 'Altrove', 'destinatario_provincia': 'ZZ',
+                    'destinatario_codice_fiscale': '00000000000', 'cooperativa_iban': 'x'}
+    testo = 'Ente di prova, Via Inventata 1, 00000 Altrove (ZZ), CF 00000000000'
+    assert nc.testo_destinatario(impostazioni) == testo
+    assert nc.testo_destinatario({'destinatario_cap': '00000'}) == '' and nc.testo_destinatario(None) == ''
+    # quello del lotto vince; senza, quello delle Impostazioni (anche nel prospetto e nei dati mancanti)
+    assert nc.destinatario_fattura(LOTTO, impostazioni) == 'Ente di fantasia'
+    lotto = dict(LOTTO, destinatario='  ')
+    assert nc.destinatario_fattura(lotto, impostazioni) == testo
+    p = nc.prospetto_fattura(2026, 6, 'inferiore', CONTRATTO_XI, [], TARIFFE, (), lotto, impostazioni=impostazioni)
+    assert p['destinatario'] == testo and 'destinatario' not in [b.get('campo') for b in p['bloccanti']]
+    assert 'destinatario' in nc.dati_mancanti_fattura(lotto, CONTRATTO_XI, {}, 'oggetto')
+    # servizio della D.D.: quello del contratto, altrimenti il riferimento amministrativo del lotto
+    assert p['nota'].startswith('D.D. 9999 N.77 DEL 01/06/2026')
+    con_servizio = nc.prospetto_fattura(2026, 6, 'inferiore', dict(CONTRATTO_XI, dd_servizio='1234'), [], TARIFFE, (),
+                                        lotto, impostazioni=impostazioni)
+    assert con_servizio['nota'].startswith('D.D. 1234 N.77 DEL 01/06/2026')
+    assert nc.servizio_determina({}, {}) == ''
+
+
+def test_etichette_delle_regole_e_proposte_delle_impostazioni():
+    """Ogni regola ha la sua spiegazione a schermo, nel suo gruppo; le scelte sono quelle
+    ammesse; le proposte sono complete e il destinatario proposto supera i controlli."""
+    gruppi = {g for g, _ in config_napoli.GRUPPI_REGOLE}
+    assert set(config_napoli.ETICHETTE_REGOLE) == set(config_napoli.REGOLE_PREDEFINITE)
+    for chiave, e in config_napoli.ETICHETTE_REGOLE.items():
+        definizione = config_napoli.REGOLE_PREDEFINITE[chiave]
+        assert e['etichetta'] and e['gruppo'] in gruppi, chiave
+        if definizione['tipo'] == 'scelta':
+            assert set(e['scelte']) == set(definizione['scelte']), chiave
+        if 'min' in e:
+            assert e['min'] <= definizione['valore'] <= e['max'], chiave
+        assert "'" + ' ' not in e['etichetta'].replace("l'", '').replace("dell'", ''), chiave
+    proposto = config_napoli.DESTINATARIO_PROPOSTO
+    assert tuple(proposto) == nc.CAMPI_DESTINATARIO
+    assert nc.valida_codice_fiscale(proposto['destinatario_codice_fiscale']) == proposto['destinatario_codice_fiscale']
+    assert set(config_napoli.LOTTO_PROPOSTO) >= {'nome', 'oggetto_fattura', 'nota_fattura'}

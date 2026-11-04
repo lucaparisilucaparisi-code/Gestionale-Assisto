@@ -62,8 +62,8 @@ def test_la_fotografia_non_contiene_errori():
 
 def test_cornice_senza_il_blocco_di_napoli(archivio_roma):
     """L'impronta della cornice (menu laterale compreso) non vede il blocco di Napoli
-    del menu (elementi con data-sezione="napoli"), ma vede ogni altra differenza; i
-    file caricati hanno la loro impronta."""
+    del menu (elementi con data-sezione="napoli", quello vero della pagina e uno di
+    prova in piu'), ma vede ogni altra differenza; i file caricati hanno la loro impronta."""
     html = archivio_roma.client.get('/').get_data(as_text=True)
     norm = fotografa_roma.Normalizzatore(fotografa_roma.leggi_versione(ROOT))
     statici = fotografa_roma._Statici(archivio_roma.client)
@@ -73,6 +73,13 @@ def test_cornice_senza_il_blocco_di_napoli(archivio_roma):
 
     prima = pagina(html)
     assert '</nav>' in html and html.count('<main') == 1
+    # la pagina vera ha il blocco di Napoli del passo 1.3 (voce del menu e della ricerca
+    # rapida, Alt+8): la sua cornice resta quella della v1.20.1, che il blocco non l'aveva
+    assert 'href="/napoli" class="nav-link' in html and 'data-url="/napoli"' in html
+    assert html.count('data-sezione="napoli"') >= 2
+    assert prima['impronta_cornice'] == fotografa_roma.leggi(GOLDEN)['rotte']['/']['/']['contenuto']['impronta_cornice']
+    senza_attributo = pagina(html.replace(' data-sezione="napoli"', ''))
+    assert senza_attributo['impronta_cornice'] != prima['impronta_cornice'], 'il blocco di Napoli non e\' marcato'
     blocco = ('<div class="nav-section" data-sezione="napoli"><div class="nav-section-title">Napoli</div></div>'
               '<a href="/napoli" class="nav-link" data-sezione="napoli"><svg viewBox="0 0 24 24"><path d="M1 1"/>'
               '</svg><span>Mese</span></a><hr data-sezione="napoli"><script src="/static/js/napoli.js" '

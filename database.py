@@ -68,11 +68,12 @@ def get_db_context():
 # numero e registrare in MIGRAZIONI una funzione(conn) con il DDL necessario.
 # Il runner legge PRAGMA user_version ed esegue solo le migrazioni mancanti
 # (a differenza dei vecchi ALTER TABLE try/except rieseguiti a ogni avvio).
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 MIGRAZIONI = {
-    # esempio: 4: lambda conn: conn.execute("ALTER TABLE utenti ADD COLUMN ..."),
+    # esempio: 5: lambda conn: conn.execute("ALTER TABLE utenti ADD COLUMN ..."),
     2: napoli_schema.crea_v2,   # sezione Napoli, fase 1: solo tabelle nuove, Roma non cambia
     3: napoli_schema.crea_v3,   # sezione Napoli, correzioni della fase 1: solo tabelle napoli_*
+    4: napoli_schema.crea_v4,   # sezione Napoli, Impostazioni: servizio della determina dei contratti
 }
 
 
