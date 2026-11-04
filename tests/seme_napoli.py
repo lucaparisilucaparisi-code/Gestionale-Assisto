@@ -274,10 +274,13 @@ def _tabelle(conn):
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
 
 
-def _impronta_righe(conn, tabella, dove=''):
+def _impronta_righe(conn, tabella, dove='', mascherate=()):
+    """Impronta delle righe; delle colonne `mascherate` conta solo se sono vuote o no."""
     h = hashlib.sha256()
-    for riga in conn.execute(f'SELECT * FROM "{tabella}" {dove} ORDER BY rowid'):
-        h.update(repr(tuple(riga)).encode('utf-8'))
+    cur = conn.execute(f'SELECT * FROM "{tabella}" {dove} ORDER BY rowid')
+    indici = {i for i, d in enumerate(cur.description) if d[0] in mascherate}
+    for riga in cur:
+        h.update(repr(tuple((v is not None) if i in indici else v for i, v in enumerate(riga))).encode('utf-8'))
     return h.hexdigest()
 
 
@@ -285,9 +288,11 @@ def _connetti(percorso):
     return sqlite3.connect(pathlib.Path(percorso).resolve().as_uri() + '?mode=ro', uri=True)
 
 
-def impronta_roma(percorso):
+def impronta_roma(percorso, mascherate=None):
     """Schema e righe di tutte le tabelle che non sono di Napoli. Del registro
-    attivita' (audit_log, condiviso) contano solo le voci che non sono di Napoli."""
+    attivita' (audit_log, condiviso) contano solo le voci che non sono di Napoli.
+    mascherate: {tabella: colonne} di cui conta solo se sono vuote o no (quelle che
+    scrive l'orologio di SQLite, che l'orologio fermo dei test non ferma)."""
     conn = _connetti(percorso)
     try:
         esito = {}
@@ -296,7 +301,7 @@ def impronta_roma(percorso):
                 continue
             schema = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (t,)).fetchone()[0]
             dove = "WHERE COALESCE(entita, '') NOT LIKE 'napoli%'" if t == 'audit_log' else ''
-            esito[t] = (schema, _impronta_righe(conn, t, dove))
+            esito[t] = (schema, _impronta_righe(conn, t, dove, (mascherate or {}).get(t, ())))
         return esito
     finally:
         conn.close()

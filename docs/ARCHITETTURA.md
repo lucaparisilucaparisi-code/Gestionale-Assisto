@@ -252,22 +252,41 @@ dati inventati:
 - **Fotografia golden** (`tests/test_roma_golden.py`). `strumenti/fotografa_roma.py`
   fotografa tutte le rotte GET di Roma: JSON (valori, con date-ora del momento,
   versione e nomi casuali dei file mascherati), Excel (celle, formule, celle unite),
-  Word (paragrafi e tabelle), pagine (titolo, id, intestazioni e impronta del
-  contenuto di `<main>`, quindi senza il menu laterale). L'archivio inventato
+  Word (paragrafi e tabelle), pagine (titolo, id, intestazioni, impronta del
+  contenuto di `<main>`, impronta della cornice, cioe' `<head>`, menu laterale,
+  finestre comuni e script della pagina, e i file caricati, stili, script e icone,
+  ciascuno con l'impronta del contenuto a fine riga Linux). Dalla cornice si toglie
+  il blocco di Napoli: gli elementi con `data-sezione="napoli"`, con tutto il loro
+  contenuto, sono l'unica parte delle pagine di Roma che Napoli puo' aggiungere
+  (PROGETTO §4.5: la voce di menu del passo 1.3 deve avere questo attributo su ogni
+  elemento del blocco). Dei file `STATICI_MODIFICABILI` (`app.js`, che cambia per
+  Alt+8 e l'annulla della pagina di Napoli) si annota solo che la pagina li carica.
+  La fotografia non deve contenere errori 4xx/5xx (`test_la_fotografia_non_contiene_errori`).
+  L'archivio inventato
   (`tests/roma_sintetico.py`, due anni scolastici scritti solo con le API) deve dare
   `tests/golden/roma_v1_20_1.json`, creata sul codice della v1.20.1. Le date "di
   oggi" passano da `orologio_fermo` (sostituisce `datetime`/`date` nei moduli del
   programma): niente `date('now')` di SQLite nelle uscite nuove di Roma, che non si
   potrebbe fermare. Ore in quarti d'ora: la fotografia e' la stessa su Python 3.9 e
   3.12 (somme con `sum()` diverse). Si rigenera solo per un cambiamento di Roma
-  voluto, sul codice di riferimento:
+  voluto, o per un cambiamento dello strumento (`VERSIONE_FOTOGRAFIA`), sempre sul
+  codice di riferimento (la v1.20.1 e' il commit a0249a2), e la parte che c'era
+  gia' deve restare uguale:
   `python strumenti/fotografa_roma.py --sintetico --codice CARTELLA_VERSIONE --uscita tests/golden/roma_v1_20_1.json`.
 - **Invarianza** (`tests/test_roma_invariata.py`): fotografia, poi i dati di Napoli
   (`tests/seme_napoli.py`, `carica_seme_napoli`: riempie tutte le tabelle `napoli_*`,
   per ora scrivendole direttamente; ogni passo di Napoli ci aggiunge i suoi dati
   tramite le sue API), poi di nuovo la fotografia, che deve essere uguale;
   tabelle di Roma (schema e righe; del registro attivita' le voci non `napoli%`)
-  intatte. **Doppio giro**: con `ASSISTO_TEST_CON_NAPOLI=1 pytest` il seme si carica
+  intatte. **Scritture su due gemelli** (`test_scritture_di_roma_uguali_con_e_senza_napoli`):
+  lo stesso archivio Roma con e senza il seme Napoli; chiusura e riapertura del
+  mese, compila con media, copia del mese precedente, import della prefattura,
+  dell'anagrafica utenti e dei dipendenti (anche omonimi di operatori di Napoli),
+  wizard del nuovo anno e i tre reset, con lo stesso orologio, devono dare le
+  stesse risposte e le stesse tabelle di Roma nei due gemelli e lasciare intatte
+  quelle di Napoli: il reset di Roma non cancella Napoli. Le colonne che scrive
+  l'orologio di SQLite (`import_cronologia.data`) si confrontano solo come
+  presenti. **Doppio giro**: con `ASSISTO_TEST_CON_NAPOLI=1 pytest` il seme si carica
   anche nel database della sessione e nell'archivio della fotografia, e tutta la
   suite deve restare verde.
 - **Inventario delle rotte** (`test_inventario_rotte`): ogni rotta sta in
@@ -277,16 +296,22 @@ dati inventati:
   Una rotta nuova non classificata fa fallire il test.
 - **Separazione statica** (`tests/test_separazione_napoli.py`): nei moduli di Napoli
   (`napoli_*.py`, `routes_napoli.py`, `import_napoli.py`, `export_napoli.py`,
-  `config_napoli.py`) lo SQL nomina solo tabelle `napoli_*`, niente tariffe e calcoli
-  di Roma, di `database.py` e `routes_export.py` solo le funzioni comuni elencate
-  (`DATABASE_AMMESSI`, `EXPORT_AMMESSI`). Nei file di Roma la parola "napoli"
+  `config_napoli.py`) lo SQL nomina solo tabelle `napoli_*` (anche quando e'
+  costruito con f-string, `+`, `%`, `.format` o `join`: un nome di tabella calcolato
+  che non comincia per `napoli_` e' un errore; `sqlite_sequence` solo con
+  `name = 'napoli_...'`), niente tariffe e calcoli di Roma, di `database.py`,
+  `routes_export.py` e `validators.py` solo le funzioni comuni elencate
+  (`DATABASE_AMMESSI`, `EXPORT_AMMESSI`, `VALIDATORS_AMMESSI`), nessun altro modulo
+  di Roma (`app`, `routes_*`, `import_*`, `strumenti`...), niente `import *`, import
+  per nome o `getattr` che non si possono verificare. Nei file di Roma la parola "napoli"
   compare solo nei punti dichiarati in `OCCORRENZE_AMMESSE`, con il numero esatto.
 - **Confronto sul database vero** (`strumenti/confronta_roma.py`), prima di un
   rilascio, sul PC dell'utente e con il suo consenso:
   `python strumenti/confronta_roma.py --db gestionale.db --vecchia CARTELLA_VERSIONE_VECCHIA`.
-  Lavora su due copie temporanee (il file indicato non cambia), avvia ogni versione
-  sulla sua copia con lo stesso orologio fermo e stampa solo "N rotte identiche / M
-  diverse" con i nomi delle rotte, mai dati. Esce con 0 (identiche), 1 (differenze)
+  Fa una copia temporanea (il file indicato non cambia: anche
+  `fotografa_roma.py --db` lavora sempre su una sua copia), avvia ogni versione su
+  una copia di quella con lo stesso orologio fermo e stampa solo "N rotte identiche
+  / M diverse" con i nomi delle rotte, mai dati. Esce con 0 (identiche), 1 (differenze)
   o 2 (errore). Con molti mesi e utenti puo' durare alcuni minuti.
 
 ## Sezione Napoli

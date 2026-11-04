@@ -4,11 +4,14 @@ Prova su copie di un piccolo database inventato: con la stessa versione le
 uscite di Roma sono identiche; con una versione che cambia la tariffa lo
 strumento lo dice. In entrambi i casi stampa solo conteggi e nomi delle rotte
 (nessun nome di persona o di scuola) e non modifica il database indicato.
+Anche strumenti/fotografa_roma.py --db lavora su una copia: il file indicato non
+cambia, nemmeno se la versione fotografata deve aggiornarne lo schema.
 """
 import glob
 import hashlib
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 
@@ -69,3 +72,32 @@ def test_confronto_fra_versioni_stampa_solo_conteggi(database_isolato, app_modul
         assert dato not in uscita
     assert _impronta(database_isolato) == prima, 'il database indicato e\' stato modificato'
     assert not os.path.exists(os.path.join(nuova, '__pycache__'))
+
+
+def test_fotografia_di_un_database_lavora_su_una_copia(database_isolato, app_module, db_mod, tmp_path):
+    client = fotografa_roma.client_fotografia(app_module.app, db_mod)
+    client.post('/api/commesse', json={'nome': 'COMMESSA COPIA'})
+    r = client.post('/api/utenti', json={'commessa': 'COMMESSA COPIA', 'scuola': 'IC Plesso Nascosto',
+                                         'nome': 'Riservata', 'cognome': 'Prova', 'monte_ore': 10})
+    client.post('/api/rendicontazione/2026/2/batch',
+                json={'updates': [{'utente_id': r.get_json()['utente_id'], 'ore_lavorate_60': 12.5}]})
+    # un database "vecchio" (user_version 1): la versione fotografata lo aggiornerebbe
+    conn = sqlite3.connect(database_isolato)
+    conn.execute('PRAGMA user_version = 1')
+    conn.commit()
+    conn.close()
+    prima = _impronta(database_isolato)
+    uscita = str(tmp_path / 'foto.json')
+    esito = subprocess.run([sys.executable, os.path.join(ROOT, 'strumenti', 'fotografa_roma.py'), '--db',
+                            database_isolato, '--uscita', uscita, '--oggi', '2026-03-20'],
+                           capture_output=True, text=True, timeout=300)
+    assert esito.returncode == 0, esito.stderr[-2000:]
+    assert _impronta(database_isolato) == prima, 'il database indicato e\' stato modificato'
+    conn = sqlite3.connect(database_isolato)
+    try:
+        assert conn.execute('PRAGMA user_version').fetchone()[0] == 1
+    finally:
+        conn.close()
+    foto = fotografa_roma.leggi(uscita)
+    assert foto['rotte']['/api/commesse'] and foto['oggi'] == '2026-03-20T10:00:00'
+    assert esito.stdout == ''

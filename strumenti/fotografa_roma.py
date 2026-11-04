@@ -7,7 +7,11 @@ API, statistiche, report ed export) su un database, ridotte a cio' che conta:
 - Excel: fogli, celle (formule comprese) e celle unite;
 - Word: paragrafi e tabelle;
 - pagine: titolo, id degli elementi, intestazioni e un'impronta del contenuto
-  della pagina, SENZA il menu laterale (l'unica parte che Napoli cambia).
+  della pagina (<main>); un'impronta della cornice (tutto il resto: <head>, menu
+  laterale, finestre comuni, script nella pagina) SENZA il blocco del menu di Napoli,
+  cioe' gli elementi con data-sezione="napoli" (l'unica parte delle pagine di Roma che
+  Napoli cambia, PROGETTO §4.5); i file di stile, script e icone caricati, ciascuno
+  con l'impronta del contenuto (tranne STATICI_MODIFICABILI).
 
 La usano (docs/ARCHITETTURA.md, "Protezioni per Roma"):
 - tests/test_roma_golden.py: l'archivio Roma inventato (tests/roma_sintetico.py)
@@ -19,11 +23,13 @@ La usano (docs/ARCHITETTURA.md, "Protezioni per Roma"):
 Uso a riga di comando (scrive la fotografia in un file JSON e non stampa dati):
 
     python strumenti/fotografa_roma.py --sintetico --uscita FILE [--codice CARTELLA]
-    python strumenti/fotografa_roma.py --db COPIA.db --uscita FILE [--codice CARTELLA] [--oggi AAAA-MM-GG]
+    python strumenti/fotografa_roma.py --db FILE.db --uscita FILE [--codice CARTELLA] [--oggi AAAA-MM-GG]
 
 --codice e' la cartella della versione da fotografare (predefinita: questa). Con
---sintetico l'archivio inventato si crea in un database temporaneo; con --db si
-lavora su quel file, che viene aggiornato da init_db: deve essere una COPIA.
+--sintetico l'archivio inventato si crea in un database temporaneo; con --db lo
+strumento ne fa una copia in una cartella temporanea (con il backup di SQLite, che
+legge anche il file -wal) e lavora sulla copia, che init_db aggiorna: il file
+indicato non viene mai modificato.
 Il modulo non importa niente del programma finche' non serve, cosi' la stessa
 copia fotografa anche una versione precedente.
 """
@@ -43,7 +49,7 @@ import sys
 import tempfile
 from urllib.parse import urlencode
 
-VERSIONE_FOTOGRAFIA = 1
+VERSIONE_FOTOGRAFIA = 2      # 2: cornice delle pagine e file statici caricati
 CARTELLA_PROGETTO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ==================== INVENTARIO DELLE ROTTE ====================
@@ -117,8 +123,8 @@ PREFISSI_NAPOLI = ('/napoli', '/api/napoli')
 
 _MOTIVO_BACKUP = "backup dell'intero database: l'import di Napoli crea un backup e il file contiene anche Napoli"
 ESCLUSE = {
-    '/static/<path:filename>': 'file statici: app.js cambia per Napoli (Alt+8, annulla della pagina); '
-                               'li controllano test_css_integrita e i test della grafica',
+    '/static/<path:filename>': 'file statici: si fotografano come file caricati dalle pagine (impronta del '
+                               'contenuto), tranne STATICI_MODIFICABILI (app.js cambia per Napoli)',
     '/api/audit': "registro attivita' condiviso: le azioni di Napoli vi scrivono le loro voci",
     '/api/audit/export': "registro attivita' condiviso: le azioni di Napoli vi scrivono le loro voci",
     '/api/backup': _MOTIVO_BACKUP,
@@ -126,6 +132,17 @@ ESCLUSE = {
     '/api/backup/download/<path:backup_name>': _MOTIVO_BACKUP,
     '/api/backup/restore': _MOTIVO_BACKUP,
 }
+
+# File statici delle pagine di Roma che i passi di Napoli possono cambiare (PROGETTO
+# §4.5), con il motivo: nella fotografia si annota solo che la pagina li carica.
+STATICI_MODIFICABILI = {
+    '/static/js/app.js': "Alt+8 e annulla della pagina di Napoli (PROGETTO §4.5); il comportamento di Roma "
+                         "lo controllano i test della grafica e test_css_integrita",
+}
+# Il blocco di Napoli nel menu laterale (e ogni altro aggancio nelle pagine di Roma):
+# elementi con questo attributo, tolti dall'impronta della cornice con tutto il loro
+# contenuto.
+ATTRIBUTO_NAPOLI = ('data-sezione', 'napoli')
 
 # Chiavi che dipendono dall'ambiente e non dai dati: sum() compensata dalla 3.12.
 CHIAVI_AMBIENTE = frozenset({'somma_compensata'})
@@ -527,25 +544,41 @@ _INTESTAZIONI = ('h1', 'h2', 'h3', 'h4')
 
 
 class _LettorePagina(html.parser.HTMLParser):
-    """Dal contenuto della pagina (<main>, senza il menu laterale): id degli
-    elementi, intestazioni e testo; dalla pagina intera il titolo e APP_CONFIG."""
+    """Dal contenuto della pagina (<main>): id degli elementi, intestazioni e testo;
+    dal resto (la cornice: <head>, menu laterale, finestre comuni, script) tag,
+    attributi e testo, senza gli elementi di Napoli (ATTRIBUTO_NAPOLI) e senza
+    APP_CONFIG, che si legge a parte; da tutta la pagina il titolo, APP_CONFIG e i
+    file caricati (<script src>, <link href>)."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.titolo, self.id, self.intestazioni, self.testo, self.app_config = '', [], [], [], None
+        self.cornice, self.risorse = [], []
         self._in_main = 0
         self._tag = []
         self._intestazione = None
+        self._napoli_da = None           # profondita' a cui comincia un elemento di Napoli
+
+    def _fuori_da_napoli(self, attrs):
+        return self._napoli_da is None and ATTRIBUTO_NAPOLI not in attrs
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
+        fuori = self._fuori_da_napoli(attrs)
         if tag == 'main':
             self._in_main += 1
         if self._in_main and a.get('id'):
             self.id.append(f"{tag}#{a['id']}")
         if tag in _INTESTAZIONI and self._in_main and self._intestazione is None:
             self._intestazione = []
+        if fuori:
+            if (tag == 'script' and a.get('src')) or (tag == 'link' and a.get('href')):
+                self.risorse.append(a.get('src') or a.get('href'))
+            if not self._in_main:
+                self.cornice.append('<' + tag + ''.join(f' {k}="{v}"' for k, v in sorted(attrs, key=str)) + '>')
         if tag not in _VUOTI:
+            if not fuori and self._napoli_da is None:
+                self._napoli_da = len(self._tag)
             self._tag.append(tag)
 
     def handle_endtag(self, tag):
@@ -557,24 +590,34 @@ class _LettorePagina(html.parser.HTMLParser):
         if tag in self._tag:
             while self._tag.pop() != tag:
                 pass
+        if self._napoli_da is not None and len(self._tag) <= self._napoli_da:
+            self._napoli_da = None
 
     def handle_data(self, data):
         corrente = self._tag[-1] if self._tag else ''
         if corrente == 'title':
             self.titolo += data
-        elif corrente == 'script':
+        if corrente == 'script':
             m = re.search(r'window\.APP_CONFIG\s*=\s*(\{.*?\});', data, re.S)
             if m:
                 self.app_config = json.loads(m.group(1))
-        elif self._in_main and corrente != 'style':
-            t = ' '.join(data.split())
-            if t:
-                self.testo.append(t)
-                if self._intestazione is not None:
-                    self._intestazione.append(t)
+                return                   # letto a parte, normalizzato (somma_compensata)
+        t = ' '.join(data.split())
+        if not t:
+            return
+        if self._in_main and corrente not in ('style', 'script'):
+            self.testo.append(t)
+            if self._intestazione is not None:
+                self._intestazione.append(t)
+        elif not self._in_main and self._napoli_da is None:
+            self.cornice.append(t)
 
 
-def _leggi_pagina(testo, norm):
+def _impronta_testo(testo):
+    return hashlib.sha256(testo.encode('utf-8')).hexdigest()[:16]
+
+
+def _leggi_pagina(testo, norm, statici=None):
     p = _LettorePagina()
     p.feed(testo)
     contenuto = norm.testo(' '.join(p.testo))
@@ -582,9 +625,35 @@ def _leggi_pagina(testo, norm):
         'titolo': norm.testo(' '.join(p.titolo.split())),
         'id': p.id,
         'intestazioni': [norm.testo(t) for t in p.intestazioni],
-        'impronta_contenuto': hashlib.sha256(contenuto.encode('utf-8')).hexdigest()[:16],
+        'impronta_contenuto': _impronta_testo(contenuto),
+        'impronta_cornice': _impronta_testo(norm.testo('\n'.join(p.cornice))),
+        'risorse': [[norm.testo(r), statici(r) if statici else None] for r in p.risorse],
         'app_config': norm.valore(p.app_config),
     }
+
+
+class _Statici:
+    """Impronta del contenuto dei file statici caricati dalle pagine, letti una volta
+    sola con il client di prova. Fine riga come in Linux (lo stesso file estratto su
+    Windows con CRLF ha la stessa impronta); i file di STATICI_MODIFICABILI non si
+    leggono; un file che non si apre ha lo stato della risposta."""
+
+    def __init__(self, client):
+        self._client, self._visti = client, {}
+
+    def __call__(self, indirizzo):
+        percorso = re.sub(r'^https?://[^/]+', '', indirizzo).split('?')[0].split('#')[0]
+        if percorso in STATICI_MODIFICABILI:
+            return 'modificabile'
+        if not percorso.startswith('/static/'):
+            return 'esterno'
+        if percorso not in self._visti:
+            r = self._client.get(indirizzo)
+            dati = r.get_data().replace(b'\r\n', b'\n')
+            self._visti[percorso] = (hashlib.sha256(dati).hexdigest()[:16] if r.status_code == 200
+                                     else f'stato {r.status_code}')
+            r.close()
+        return self._visti[percorso]
 
 
 def _leggi_xlsx(dati, norm):
@@ -617,8 +686,9 @@ def _leggi_docx(dati, norm):
     }
 
 
-def leggi_risposta(r, norm, via_chiavi=frozenset()):
-    """Una risposta del client di prova ridotta a stato, tipo, nome del file e contenuto."""
+def leggi_risposta(r, norm, via_chiavi=frozenset(), statici=None):
+    """Una risposta del client di prova ridotta a stato, tipo, nome del file e contenuto.
+    statici: impronte dei file caricati dalle pagine (_Statici), se servono."""
     tipo = (r.headers.get('Content-Type') or '').split(';')[0].strip()
     esito = {'stato': r.status_code, 'tipo': tipo}
     disp = r.headers.get('Content-Disposition') or ''
@@ -632,7 +702,7 @@ def leggi_risposta(r, norm, via_chiavi=frozenset()):
     if tipo == 'application/json':
         esito['contenuto'] = norm.valore(json.loads(dati.decode('utf-8')), via_chiavi)
     elif tipo == 'text/html':
-        esito['contenuto'] = _leggi_pagina(dati.decode('utf-8'), norm)
+        esito['contenuto'] = _leggi_pagina(dati.decode('utf-8'), norm, statici)
     elif tipo.endswith('spreadsheetml.sheet'):
         esito['contenuto'] = _leggi_xlsx(dati, norm)
     elif tipo.endswith('wordprocessingml.document'):
@@ -655,10 +725,11 @@ def leggi_versione(cartella_codice):
 def fotografa(client, contesto, versione=''):
     """{'versione_fotografia', 'rotte': {regola: {url: risposta normalizzata}}}."""
     norm = Normalizzatore(versione)
+    statici = _Statici(client)
     rotte = {}
     for regola, u in indirizzi(contesto):
         via = CHIAVI_NAPOLI_TRASLOCO if regola == '/api/migrazione/esporta' else frozenset()
-        rotte.setdefault(regola, {})[u] = leggi_risposta(client.get(u), norm, via)
+        rotte.setdefault(regola, {})[u] = leggi_risposta(client.get(u), norm, via, statici)
     return {'versione_fotografia': VERSIONE_FOTOGRAFIA, 'rotte': rotte}
 
 
@@ -795,6 +866,20 @@ def _prepara_programma(codice, percorso_db, lavoro):
     return client_fotografia(app_mod.app, database)
 
 
+def copia_database(origine, destinazione):
+    """Copia coerente del database (anche con il file -wal) senza modificarlo: lo apre
+    in sola lettura e usa il backup di SQLite."""
+    src = sqlite3.connect(pathlib.Path(origine).resolve().as_uri() + '?mode=ro', uri=True)
+    try:
+        dst = sqlite3.connect(destinazione)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+
 def _carica_da_file(nome, percorso):
     spec = importlib.util.spec_from_file_location(nome, percorso)
     modulo = importlib.util.module_from_spec(spec)
@@ -806,7 +891,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(description='Fotografia delle uscite di Roma (scrive un file JSON, non stampa dati).')
     sorgente = p.add_mutually_exclusive_group(required=True)
     sorgente.add_argument('--sintetico', action='store_true', help="archivio Roma inventato (tests/roma_sintetico.py)")
-    sorgente.add_argument('--db', help='COPIA del database da fotografare (viene aggiornata da init_db)')
+    sorgente.add_argument('--db', help='database da fotografare (si lavora su una copia: il file non cambia)')
     p.add_argument('--uscita', required=True, help='file JSON della fotografia')
     p.add_argument('--codice', default=CARTELLA_PROGETTO, help='cartella della versione da fotografare')
     p.add_argument('--oggi', help="data dell'orologio fermo (AAAA-MM-GG; predefinita: oggi)")
@@ -820,7 +905,8 @@ def main(argv=None):
             sintetico.costruisci_archivio(client, orologio_fermo)
             foto = fotografa_sintetico(client, percorso_db, sintetico, leggi_versione(codice))
         else:
-            percorso_db = os.path.abspath(a.db)
+            percorso_db = os.path.join(lavoro, 'gestionale.db')
+            copia_database(os.path.abspath(a.db), percorso_db)
             client = _prepara_programma(codice, percorso_db, lavoro)
             quando = _dt.datetime.combine(_dt.date.fromisoformat(a.oggi) if a.oggi else _dt.date.today(),
                                           _dt.time(10, 0))

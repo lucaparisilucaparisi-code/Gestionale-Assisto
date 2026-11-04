@@ -6,7 +6,12 @@
     tariffe e calcoli di Roma (config.TARIFFA_ORARIA, IVA_PERCENTUALE,
     calcola_fatturazione...); di database.py e routes_export.py usano solo le
     funzioni comuni elencate in DATABASE_AMMESSI ed EXPORT_AMMESSI, che non
-    leggono ne' scrivono tabelle di Roma (log_audit scrive il registro condiviso).
+    leggono ne' scrivono tabelle di Roma (log_audit scrive il registro condiviso);
+    non importano altri moduli di Roma (app, routes_*, import_*...).
+    Lo SQL si legge anche quando e' costruito (f-string, +, %, .format, join): le
+    parti calcolate diventano {?}, e un nome di tabella calcolato che non comincia
+    per napoli_ e' un problema. Non sono ammessi gli import con * dai moduli di Roma
+    ne' gli import o getattr con nomi calcolati, che non si potrebbero verificare.
 (b) Nei file di Roma (moduli Python, script di avvio, template, JS e CSS) la
     parola "napoli" compare solo nei punti ammessi (PROGETTO §4.5), con il numero
     di occorrenze fissato in OCCORRENZE_AMMESSE: ogni aggancio nuovo va dichiarato qui.
@@ -37,8 +42,12 @@ CONFIG_VIETATI = frozenset({'TARIFFA_ORARIA', 'IVA_PERCENTUALE', 'TASSO_ASSENZA'
 DATABASE_AMMESSI = frozenset({'get_db_context', 'create_backup', 'log_audit',
                               '_norm_ora', '_overlap', '_periodi_sovrapposti', '_turno_valido_in_data'})
 EXPORT_AMMESSI = frozenset({'get_excel_brand_styles', '_fmt_euro_it'})
+VALIDATORS_AMMESSI = frozenset({'validate_string', 'validate_number', 'validate_integer'})
+# I soli moduli di Roma che Napoli puo' importare, con cio' che puo' usarne; ogni
+# altro modulo (o pacchetto) della cartella del programma che non e' di Napoli e'
+# vietato (moduli_roma).
 MODULI_CONTROLLATI = {'config': ('vietati', CONFIG_VIETATI), 'database': ('ammessi', DATABASE_AMMESSI),
-                      'routes_export': ('ammessi', EXPORT_AMMESSI)}
+                      'routes_export': ('ammessi', EXPORT_AMMESSI), 'validators': ('ammessi', VALIDATORS_AMMESSI)}
 
 # Occorrenze ammesse della parola "napoli" (maiuscole o minuscole) nei file di Roma.
 # Ogni passo aggiunge i suoi punti del PROGETTO §4.5 (database.py, app.py,
@@ -58,6 +67,14 @@ def _file(modelli):
 
 def moduli_napoli():
     return sorted(_file(MODULI_NAPOLI))
+
+
+def moduli_roma():
+    """Nomi importabili dei moduli e pacchetti di Roma nella cartella del programma."""
+    nomi = {os.path.splitext(f)[0] for f in _file(('*.py',)) - _file(MODULI_NAPOLI)}
+    nomi |= {d for d in os.listdir(ROOT) if os.path.isfile(os.path.join(ROOT, d, '__init__.py'))
+             or (os.path.isdir(os.path.join(ROOT, d)) and glob.glob(os.path.join(ROOT, d, '*.py')))}
+    return frozenset(nomi)
 
 
 def file_roma():
@@ -80,12 +97,35 @@ _FROM = re.compile(r'\bFROM\s+(.+?)(?=\b(?:WHERE|GROUP|ORDER|LIMIT|HAVING|WINDOW
 _CTE = re.compile(r'(?:\bWITH(?:\s+RECURSIVE)?|,)\s+([A-Za-z_]\w*)\s+AS\s*\(', re.I)
 
 
+_SEGNAPOSTO_PERCENTO = re.compile(r'%(?:\([^)]*\))?[-#0 +]*\d*(?:\.\d+)?[sdifrx]')
+_SEGNAPOSTO_FORMAT = re.compile(r'\{[^{}]*\}')
+
+
 def _testo_stringa(nodo):
-    """Testo di una stringa o di una f-string ('{?}' al posto delle parti calcolate)."""
-    if isinstance(nodo, ast.Constant) and isinstance(nodo.value, str):
-        return nodo.value
+    """Testo di una stringa, anche costruita: f-string, concatenazione con +, % e
+    .format() su una stringa, separatore.join([...]); le parti calcolate diventano
+    '{?}'. None se l'espressione non e' una stringa."""
+    if isinstance(nodo, ast.Constant):
+        return nodo.value if isinstance(nodo.value, str) else None
     if isinstance(nodo, ast.JoinedStr):
         return ''.join(v.value if isinstance(v, ast.Constant) else '{?}' for v in nodo.values)
+    if isinstance(nodo, ast.BinOp) and isinstance(nodo.op, ast.Add):
+        a, b = _testo_stringa(nodo.left), _testo_stringa(nodo.right)
+        if a is None and b is None:
+            return None
+        return ('{?}' if a is None else a) + ('{?}' if b is None else b)
+    if isinstance(nodo, ast.BinOp) and isinstance(nodo.op, ast.Mod):
+        a = _testo_stringa(nodo.left)
+        return None if a is None else _SEGNAPOSTO_PERCENTO.sub('{?}', a)
+    if isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute):
+        base = _testo_stringa(nodo.func.value)
+        if base is None:
+            return None
+        if nodo.func.attr == 'format':
+            return _SEGNAPOSTO_FORMAT.sub('{?}', base)
+        if nodo.func.attr == 'join' and nodo.args and isinstance(nodo.args[0], (ast.List, ast.Tuple)):
+            parti = (_testo_stringa(e) for e in nodo.args[0].elts)
+            return base.join('{?}' if p is None else p for p in parti)
     return None
 
 
@@ -112,35 +152,85 @@ def tabelle_sql(testo):
     return [n for n in nomi if n.lower() not in cte and not n.lower().startswith('pragma_')]
 
 
-def problemi_modulo_napoli(sorgente, nome='modulo'):
-    """Problemi di un modulo di Napoli: tabelle non napoli_* nelle stringhe SQL,
-    tariffe e calcoli di Roma, funzioni di database.py e routes_export.py non ammesse."""
+def _problemi_sql(testo, dove):
+    problemi = []
+    for t in tabelle_sql(testo):
+        if '{?}' in t and not t.startswith(PREFISSO):
+            problemi.append(f'{dove}: nome di tabella calcolato, non verificabile: {t}')
+        elif t == CONTATORI:
+            if not _SOLO_CONTATORI_NAPOLI.search(testo):
+                problemi.append(f'{dove}: contatori di tabelle non napoli_* ({t})')
+        elif not t.startswith(PREFISSO) and t not in TABELLE_SISTEMA:
+            problemi.append(f'{dove}: tabella di Roma nello SQL: {t}')
+    return problemi
+
+
+def _import(modulo, dove, roma):
+    """Problema di un import (None se ammesso): moduli di Roma non controllati."""
+    radice = (modulo or '').split('.')[0]
+    if radice in roma and radice not in MODULI_CONTROLLATI:
+        return f'{dove}: il modulo di Roma {modulo} non e\' ammesso nei moduli di Napoli'
+    return None
+
+
+def problemi_modulo_napoli(sorgente, nome='modulo', roma=None):
+    """Problemi di un modulo di Napoli: tabelle non napoli_* nelle stringhe SQL (anche
+    costruite), tariffe e calcoli di Roma, funzioni di database.py, routes_export.py e
+    validators.py non ammesse, altri moduli di Roma importati, import con * e import o
+    getattr non verificabili. roma: nomi dei moduli di Roma (predefinito: moduli_roma())."""
+    roma = moduli_roma() if roma is None else roma
     albero = ast.parse(sorgente)
-    docstring = {id(d) for n in ast.walk(albero) for d in [_docstring(n)] if d is not None}
+    visti = {id(d) for n in ast.walk(albero) for d in [_docstring(n)] if d is not None}
     problemi = []
     alias = {}   # nome locale -> modulo di Roma controllato
-    for n in ast.walk(albero):
-        if isinstance(n, (ast.Constant, ast.JoinedStr)) and id(n) not in docstring:
-            testo = _testo_stringa(n)
-            for t in tabelle_sql(testo or ''):
-                if '{?}' in t and not t.startswith(PREFISSO):
-                    problemi.append(f'{nome}:{n.lineno}: nome di tabella calcolato, non verificabile: {t}')
-                elif t == CONTATORI:
-                    if not _SOLO_CONTATORI_NAPOLI.search(testo):
-                        problemi.append(f'{nome}:{n.lineno}: contatori di tabelle non napoli_* ({t})')
-                elif not t.startswith(PREFISSO) and t not in TABELLE_SISTEMA:
-                    problemi.append(f'{nome}:{n.lineno}: tabella di Roma nello SQL: {t}')
+    for n in ast.walk(albero):        # in ampiezza: un'espressione prima delle sue parti
+        if id(n) in visti:
+            continue
+        dove = f'{nome}:{getattr(n, "lineno", 0)}'
+        testo = _testo_stringa(n) if isinstance(n, ast.expr) else None
+        if testo is not None:
+            visti.update(id(x) for x in ast.walk(n))     # le parti non si rileggono da sole
+            problemi += _problemi_sql(testo, dove)
         elif isinstance(n, ast.Import):
             for a in n.names:
                 if a.name in MODULI_CONTROLLATI:
                     alias[a.asname or a.name] = a.name
-        elif isinstance(n, ast.ImportFrom) and n.module in MODULI_CONTROLLATI:
-            for a in n.names:
-                problemi += _uso(n.module, a.name, f'{nome}:{n.lineno}')
+                problemi += [p for p in [_import(a.name, dove, roma)] if p]
+        elif isinstance(n, ast.ImportFrom) and n.level == 0:
+            problemi += [p for p in [_import(n.module, dove, roma)] if p]
+            if n.module in MODULI_CONTROLLATI:
+                for a in n.names:
+                    if a.name == '*':
+                        problemi.append(f'{dove}: from {n.module} import * non e\' verificabile')
+                    else:
+                        problemi += _uso(n.module, a.name, dove)
+        elif isinstance(n, ast.Call) and _chiama(n, ('__import__', 'import_module', 'getattr')):
+            primo = n.args[0] if n.args else None
+            nome_fn = n.func.id if isinstance(n.func, ast.Name) else n.func.attr
+            if nome_fn == 'getattr':
+                if isinstance(primo, ast.Name) and primo.id in alias:
+                    attributo = n.args[1] if len(n.args) > 1 else None
+                    if isinstance(attributo, ast.Constant) and isinstance(attributo.value, str):
+                        problemi += _uso(alias[primo.id], attributo.value, dove)
+                    else:
+                        problemi.append(f'{dove}: getattr su {alias[primo.id]} con un nome calcolato, '
+                                        'non verificabile')
+            elif isinstance(primo, ast.Constant) and isinstance(primo.value, str):
+                problemi += [p for p in [_import(primo.value, dove, roma)] if p]
+                if primo.value in MODULI_CONTROLLATI:
+                    problemi.append(f'{dove}: import di {primo.value} per nome, non verificabile')
+            else:
+                problemi.append(f'{dove}: import con un nome calcolato, non verificabile')
     for n in ast.walk(albero):
         if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id in alias:
             problemi += _uso(alias[n.value.id], n.attr, f'{nome}:{n.lineno}')
     return problemi
+
+
+def _chiama(nodo, nomi):
+    f = nodo.func
+    return (isinstance(f, ast.Name) and f.id in nomi) or (isinstance(f, ast.Attribute) and f.attr in nomi
+                                                          and f.attr != 'getattr')
 
 
 def _uso(modulo, attributo, dove):
@@ -196,6 +286,69 @@ def test_controllo_trova_gli_import_non_ammessi():
     sorgente = 'from database import get_db_context, get_rendicontazione_completa\nfrom config import IVA_PERCENTUALE\n'
     problemi = problemi_modulo_napoli(sorgente, 'routes_napoli.py')
     assert len(problemi) == 2 and 'get_rendicontazione_completa' in problemi[0] and 'IVA_PERCENTUALE' in problemi[1]
+
+
+def test_controllo_trova_lo_sql_costruito():
+    sorgente = """
+TABELLA = 'utenti'
+
+
+def leggi(conn, t, x, colonne):
+    conn.execute("SELECT * FROM " + "rendicontazione WHERE id = ?", (x,))
+    conn.execute("SELECT * FROM " + t)
+    conn.execute("DELETE FROM %s WHERE id = ?" % t, (x,))
+    conn.execute("UPDATE {} SET nome = ?".format(t), (x,))
+    conn.execute(" ".join(["SELECT", colonne, "FROM", "commesse"]))
+    conn.execute("SELECT * FROM napoli_" + t)
+    conn.execute("SELECT %s FROM napoli_alunni WHERE id = %d" % (colonne, x))
+    conn.execute(f"SELECT {colonne} FROM napoli_coppie " + "JOIN scuole ON 1")
+    conn.execute("INSERT INTO napoli_alunni (nome) VALUES (?)", (x,))
+"""
+    problemi = problemi_modulo_napoli(sorgente, 'napoli_prova.py')
+    testo = '\n'.join(problemi)
+    for atteso in ('napoli_prova.py:6: tabella di Roma nello SQL: rendicontazione',
+                   'napoli_prova.py:7: nome di tabella calcolato, non verificabile: {?}',
+                   'napoli_prova.py:8: nome di tabella calcolato, non verificabile: {?}',
+                   'napoli_prova.py:9: nome di tabella calcolato, non verificabile: {?}',
+                   'napoli_prova.py:10: tabella di Roma nello SQL: commesse',
+                   'napoli_prova.py:13: tabella di Roma nello SQL: scuole'):
+        assert atteso in testo, testo
+    assert len(problemi) == 6, testo        # una volta sola per espressione; le righe 11, 12 e 14 vanno bene
+
+
+def test_controllo_trova_i_moduli_di_roma_e_gli_import_non_verificabili():
+    sorgente = """
+import importlib
+import json
+import app
+import routes_dashboard as rd
+from import_rendicontazione import parse_ore
+from routes_migrazione import TABELLE_DOMINIO
+from strumenti import fotografa_roma
+from config import *
+from database import *
+from validators import validate_string, valida_tutto
+import config_napoli
+import napoli_calcoli
+import database as db
+modulo = importlib.import_module('routes_backup')
+altro = __import__(json.dumps('x'))
+f = getattr(db, 'update_rendicontazione')
+g = getattr(db, 'get_db_context')
+h = getattr(db, json.dumps('x'))
+"""
+    problemi = problemi_modulo_napoli(sorgente, 'routes_napoli.py')
+    testo = '\n'.join(problemi)
+    for atteso in ('il modulo di Roma app ', 'il modulo di Roma routes_dashboard ',
+                   'il modulo di Roma import_rendicontazione ', 'il modulo di Roma routes_migrazione ',
+                   'il modulo di Roma strumenti ', 'from config import * non e\' verificabile',
+                   'from database import * non e\' verificabile', 'validators.valida_tutto',
+                   'il modulo di Roma routes_backup ', 'import con un nome calcolato',
+                   'database.update_rendicontazione', 'getattr su database con un nome calcolato'):
+        assert atteso in testo, testo
+    assert len(problemi) == 12, testo
+    assert {'app', 'database', 'config', 'routes_export', 'strumenti', 'tests'} <= moduli_roma()
+    assert not {'napoli_calcoli', 'napoli_schema', 'config_napoli'} & moduli_roma()
 
 
 # ==================== (b) i file di Roma ====================

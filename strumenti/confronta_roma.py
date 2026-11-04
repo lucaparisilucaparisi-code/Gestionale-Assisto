@@ -9,13 +9,14 @@ Da usare prima di un rilascio, sul PC dell'utente e solo con il suo consenso
 --vecchia e --nuova sono le cartelle delle due versioni (per esempio quella della
 v1.20.1 estratta dallo ZIP e questa, che e' la predefinita per --nuova).
 
-Il file indicato con --db non viene mai modificato: lo strumento ne fa due copie in
+Il file indicato con --db non viene mai modificato: lo strumento ne fa una copia in
 una cartella temporanea (con il backup di SQLite, che legge anche le modifiche
-ancora nel file -wal), avvia ciascuna versione sulla sua copia in un processo a
-parte (strumenti/fotografa_roma.py: all'avvio la versione aggiorna la copia come
-farebbe con il database vero), fotografa tutte le rotte di Roma con lo stesso
-orologio fermo e confronta le due fotografie. Stampa SOLO conteggi e nomi delle
-rotte, mai dati; copie e fotografie si cancellano alla fine.
+ancora nel file -wal), cosi' le due versioni partono dagli stessi dati anche se il
+programma e' aperto; poi avvia ciascuna versione in un processo a parte
+(strumenti/fotografa_roma.py, che lavora su una sua copia: all'avvio la versione la
+aggiorna come farebbe con il database vero), fotografa tutte le rotte di Roma con lo
+stesso orologio fermo e confronta le due fotografie. Stampa SOLO conteggi e nomi
+delle rotte, mai dati; copie e fotografie si cancellano alla fine.
 
 Esce con 0 se le uscite di Roma sono identiche, 1 se ci sono differenze, 2 se non
 e' stato possibile fotografare.
@@ -23,9 +24,7 @@ e' stato possibile fotografare.
 import argparse
 import datetime
 import os
-import pathlib
 import re
-import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -38,17 +37,7 @@ except ImportError:                            # importato come strumenti.confro
 FOTOGRAFA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fotografa_roma.py')
 
 
-def copia_database(origine, destinazione):
-    """Copia coerente del database (anche con il file -wal) senza modificarlo."""
-    src = sqlite3.connect(pathlib.Path(origine).resolve().as_uri() + '?mode=ro', uri=True)
-    try:
-        dst = sqlite3.connect(destinazione)
-        try:
-            src.backup(dst)
-        finally:
-            dst.close()
-    finally:
-        src.close()
+copia_database = fotografa_roma.copia_database
 
 
 def _tipo_errore(stderr):
@@ -71,12 +60,12 @@ def fotografa_versione(codice, copia, uscita, oggi, lavoro):
 
 def confronta(db, vecchia, nuova, oggi, scrivi=print):
     with tempfile.TemporaryDirectory(prefix='confronta_roma_') as lavoro:
+        copia = os.path.join(lavoro, 'gestionale.db')
+        copia_database(db, copia)                    # una sola copia: stessi dati per le due versioni
         foto = {}
         for nome, codice in (('vecchia', vecchia), ('nuova', nuova)):
             cartella = os.path.join(lavoro, nome)
             os.makedirs(cartella)
-            copia = os.path.join(cartella, 'gestionale.db')
-            copia_database(db, copia)
             uscita = os.path.join(cartella, 'fotografia.json')
             errore = fotografa_versione(codice, copia, uscita, oggi, cartella)
             if errore:
