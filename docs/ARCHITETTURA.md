@@ -17,6 +17,7 @@ Nota tecnica per chi sviluppa. Per l'uso e l'installazione vedi il `README.md`.
 | `import_*.py` | Parsing dei file Excel (anagrafica e rendicontazione). |
 | `templates/`, `static/` | UI (Jinja2, CSS, JS, PWA). |
 | `tests/` | Suite pytest su DB temporaneo (non tocca `gestionale.db`). |
+| `strumenti/` | Solo per chi sviluppa, fuori dal programma: fotografia delle uscite di Roma e confronto fra due versioni (vedi "Protezioni per Roma"). |
 
 ## Regole di dominio da NON duplicare
 
@@ -236,7 +237,53 @@ ruff check .           # lint
 ruff check . --fix     # lint con fix automatici
 ```
 
-La CI (`.github/workflows/ci.yml`) esegue ruff + pytest su Python 3.9 e 3.12 ad ogni push/PR.
+La CI (`.github/workflows/ci.yml`) esegue ruff + pytest su Python 3.9 e 3.12 ad ogni push/PR, poi
+la suite una seconda volta con `ASSISTO_TEST_CON_NAPOLI=1` (vedi sotto).
+
+## Protezioni per Roma (prima della sezione Napoli)
+
+Napoli diventa una sezione con tabelle `napoli_*` proprie: Roma deve restare
+identica (numeri, pagine, report, export). Lo controllano, a ogni passo e solo con
+dati inventati:
+
+- **Fotografia golden** (`tests/test_roma_golden.py`). `strumenti/fotografa_roma.py`
+  fotografa tutte le rotte GET di Roma: JSON (valori, con date-ora del momento,
+  versione e nomi casuali dei file mascherati), Excel (celle, formule, celle unite),
+  Word (paragrafi e tabelle), pagine (titolo, id, intestazioni e impronta del
+  contenuto di `<main>`, quindi senza il menu laterale). L'archivio inventato
+  (`tests/roma_sintetico.py`, due anni scolastici scritti solo con le API) deve dare
+  `tests/golden/roma_v1_20_1.json`, creata sul codice della v1.20.1. Le date "di
+  oggi" passano da `orologio_fermo` (sostituisce `datetime`/`date` nei moduli del
+  programma): niente `date('now')` di SQLite nelle uscite nuove di Roma, che non si
+  potrebbe fermare. Ore in quarti d'ora: la fotografia e' la stessa su Python 3.9 e
+  3.12 (somme con `sum()` diverse). Si rigenera solo per un cambiamento di Roma
+  voluto, sul codice di riferimento:
+  `python strumenti/fotografa_roma.py --sintetico --codice CARTELLA_VERSIONE --uscita tests/golden/roma_v1_20_1.json`.
+- **Invarianza** (`tests/test_roma_invariata.py`): fotografia, poi i dati di Napoli
+  (`tests/seme_napoli.py`, `carica_seme_napoli`: ogni passo di Napoli ci aggiunge i
+  suoi dati tramite le sue API), poi di nuovo la fotografia, che deve essere uguale;
+  tabelle di Roma (schema e righe; del registro attivita' le voci non `napoli%`)
+  intatte. **Doppio giro**: con `ASSISTO_TEST_CON_NAPOLI=1 pytest` il seme si carica
+  anche nel database della sessione e nell'archivio della fotografia, e tutta la
+  suite deve restare verde.
+- **Inventario delle rotte** (`test_inventario_rotte`): ogni rotta sta in
+  `ROTTE_ROMA` (le GET in `FOTOGRAFIE`, con gli indirizzi da fotografare),
+  `ROTTE_NAPOLI` (solo `/napoli` e `/api/napoli`) o `ESCLUSE` con il motivo
+  (`/static`, `/api/audit*`, `/api/backup*`), in `strumenti/fotografa_roma.py`.
+  Una rotta nuova non classificata fa fallire il test.
+- **Separazione statica** (`tests/test_separazione_napoli.py`): nei moduli di Napoli
+  (`napoli_*.py`, `routes_napoli.py`, `import_napoli.py`, `export_napoli.py`,
+  `config_napoli.py`) lo SQL nomina solo tabelle `napoli_*`, niente tariffe e calcoli
+  di Roma, di `database.py` e `routes_export.py` solo le funzioni comuni elencate
+  (`DATABASE_AMMESSI`, `EXPORT_AMMESSI`). Nei file di Roma la parola "napoli"
+  compare solo nei punti dichiarati in `OCCORRENZE_AMMESSE`, con il numero esatto.
+- **Confronto sul database vero** (`strumenti/confronta_roma.py`), prima di un
+  rilascio, sul PC dell'utente e con il suo consenso:
+  `python strumenti/confronta_roma.py --db gestionale.db --vecchia CARTELLA_VERSIONE_VECCHIA`.
+  Lavora su due copie temporanee (il file indicato non cambia), avvia ogni versione
+  sulla sua copia con lo stesso orologio fermo e stampa solo "N rotte identiche / M
+  diverse" con i nomi delle rotte, mai dati. Esce con 0 (identiche), 1 (differenze)
+  o 2 (errore). Con molti mesi e utenti puo' durare alcuni minuti.
 
 ## Refactoring pianificati (da fare come interventi dedicati e revisionati)
 
