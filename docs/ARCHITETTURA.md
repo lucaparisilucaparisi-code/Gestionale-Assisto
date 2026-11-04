@@ -8,7 +8,7 @@ Nota tecnica per chi sviluppa. Per l'uso e l'installazione vedi il `README.md`.
 |------|----------------|
 | `app.py` | Applicazione Flask: route pagine e molte API, autenticazione (sessione + WebAuthn), import. Registra i blueprint sotto. |
 | `database.py` | Tutto l'accesso ai dati SQLite: schema/migrazioni, CRUD, calcoli di dominio. |
-| `napoli_schema.py` | Solo lo schema della sezione Napoli (tabelle `napoli_*`): la migrazione 2 di `database.py` (vedi "Sezione Napoli"). |
+| `napoli_schema.py` | Solo lo schema della sezione Napoli (tabelle `napoli_*`): le migrazioni 2 e 3 di `database.py` (vedi "Sezione Napoli"). |
 | `napoli_calcoli.py` | Calcoli di Napoli, solo funzioni pure (niente database, Flask o `config` di Roma): letture delle ore, ore riconosciute, settimane e PEI, regole con data, fattura. |
 | `config_napoli.py` | Valori predefiniti di Napoli: regole con data (`REGOLE_PREDEFINITE`), modelli dei testi della fattura, tariffe solo *proposte*. |
 | `routes_export.py` | Blueprint export (Excel, PDF, Word). |
@@ -295,21 +295,41 @@ Il servizio di Napoli sta in tabelle `napoli_*` proprie, nello stesso database:
 nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
 
 - **Schema**: `napoli_schema.py` contiene solo il DDL (non importa `database`).
-  `database.py` lo registra nel runner delle migrazioni: `SCHEMA_VERSION = 2`,
-  `MIGRAZIONI = {2: napoli_schema.crea_v2}`; e' l'unica modifica dello schema dal
-  lato di Roma. `crea_v2` crea le 22 tabelle della fase 1 (lotti, scuole, alunni,
-  operatori, PEI, coppie operatore-alunno, contratti applicativi, tariffe e regole
-  con data, calendario, orari, fogli firma, import, presenze e fasce, ore del
-  coordinatore, mesi chiusi per lotto, prospetti fattura, annullamenti) con i
-  valori iniziali (figure professionali, grafie delle qualifiche).
+  `database.py` lo registra nel runner delle migrazioni: `SCHEMA_VERSION = 3`,
+  `MIGRAZIONI = {2: napoli_schema.crea_v2, 3: napoli_schema.crea_v3}`; e' l'unica
+  modifica dello schema dal lato di Roma. `crea_v2` crea le 22 tabelle della fase 1
+  (lotti, scuole, alunni, operatori, PEI, coppie operatore-alunno, contratti
+  applicativi, tariffe e regole con data, calendario, orari, fogli firma, import,
+  presenze e fasce, ore del coordinatore, mesi chiusi per lotto, prospetti fattura,
+  annullamenti) con i valori iniziali (figure professionali, grafie delle
+  qualifiche). `crea_v3` corregge la fase 1 prima del rilascio: le ore del
+  coordinatore sono un totale mensile per lotto, grado e contratto applicativo
+  (una riga per mese, operatore facoltativo e mai in fattura, come la riga
+  "Coordinatore" della fattura reale) e il prospetto fattura congela anche oggetto,
+  nota, destinatario, testo della ritenuta, scadenza e regole usate. La banca ore
+  della fase 2 (PROGETTO §4.3, la' chiamata v3) sara' quindi la migrazione 4
+  (`crea_v4`).
+- **Migrazioni gia' pubblicate non si cambiano**: un database puo' essere gia' a
+  quella versione e rieseguirla non lo correggerebbe. `test_la_migrazione_2_pubblicata_non_cambia`
+  fissa l'impronta di `crea_v2`; ogni correzione e' una migrazione nuova, sicura
+  anche su un database gia' aggiornato e con dati: `crea_v3` ricostruisce
+  `napoli_coordinamento` (nuova tabella, copia, `DROP`, `RENAME`, nella stessa
+  transazione; le righe della v2, una per operatore, diventano il totale del mese)
+  solo se ha ancora la forma della v2, e aggiunge le colonne di `napoli_fatture`
+  solo se mancano (`PRAGMA table_info`).
 - **Aggiornamento**: all'avvio, dopo il backup "pre-aggiornamento", un database con
-  `user_version` 1 (v1.20.1 e precedenti) passa a 2. La migrazione e' un'unica
-  transazione (se si interrompe non resta nulla a meta') e si puo' rieseguire senza
-  danni (`IF NOT EXISTS`, `INSERT OR IGNORE`). Il ripristino di un backup della
-  v1.20.1 aggiorna subito lo schema (tabelle di Napoli vuote): ripristinare un
-  backup fatto prima di Napoli cancella i dati di Napoli, come per ogni ripristino.
-  Una versione vecchia che apre un database v2 non lo tocca e ignora le tabelle
-  `napoli_*`.
+  `user_version` 1 (v1.20.1 e precedenti) o 2 passa a 3. Le migrazioni mancanti
+  girano in un'unica transazione (se si interrompe non resta nulla a meta') e si
+  possono rieseguire senza danni (`IF NOT EXISTS`, `INSERT OR IGNORE`, controlli
+  sulla forma delle tabelle). Il ripristino di un backup della v1.20.1 aggiorna
+  subito lo schema (tabelle di Napoli vuote): ripristinare un backup fatto prima di
+  Napoli cancella i dati di Napoli, come per ogni ripristino. Una versione vecchia
+  che apre un database piu' nuovo non lo tocca e ignora le tabelle `napoli_*`.
+- **Date e orari**: i CHECK dello schema controllano solo la forma ('AAAA-MM-GG',
+  'HH:MM': accettano anche 2025-19-39 e 29:59); il controllo vero e' in Python
+  (`napoli_calcoli.valida_data`, `valida_orario`, `valida_fascia`,
+  `valida_periodo`, `valida_mese`), da usare in ogni API di Napoli prima di
+  scrivere.
 - **Unita'**: ore delle presenze in minuti interi, tariffe e importi in centesimi,
   ore del coordinatore in centesimi di ora; tariffe sempre IVA esclusa. La
   municipalita' e' quella della scuola: lo stesso codice meccanografico in due
@@ -344,7 +364,8 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     (`napoli_tariffe`): `config_napoli.TARIFFE_PROPOSTE` servono solo a precompilare.
 - **Test**: `tests/test_napoli_schema.py` (migrazione su un database v1.20.1 con
   l'archivio Roma inventato confrontato con il gemello riaperto dalla versione
-  vecchia, rieseguibilita', interruzione, ripristino, vincoli);
+  vecchia; da un database gia' alla v2 con dati alla v3; rieseguibilita',
+  interruzione, ripristino, impronta della migrazione 2, vincoli);
   `tests/test_napoli_calcoli.py` (con soli dati inventati: le quantita' e le tariffe
   della fattura reale di giugno ricalcolate al centesimo, i due fogli firma ricostruiti
   con orari equivalenti, letture ambigue, regole, tariffe, bloccanti).

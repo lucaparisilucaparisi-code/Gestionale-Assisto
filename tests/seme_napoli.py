@@ -7,7 +7,8 @@ Napoli:
   sessione e nell'archivio Roma inventato, e tutta la suite gira di nuovo.
 
 Finche' la sezione non ha le sue API il seme scrive direttamente nelle tabelle
-napoli_* (schema v2, napoli_schema.py), con una connessione SQLite a parte: mai
+napoli_* (schema attuale di napoli_schema.py; con versione_schema=2 nella forma
+della v2, per provare la migrazione 3), con una connessione SQLite a parte: mai
 nelle tabelle di Roma. Ogni passo che aggiunge una funzione di Napoli porta qui i
 suoi dati, tramite le API di Napoli quando ci sono (lotto, tariffe, import del
 master sintetico, orari, mese preparato, fogli, fattura definitiva, mese chiuso...).
@@ -77,7 +78,7 @@ class _Seme:
         return cur.lastrowid
 
 
-def _scrivi_seme(ins):
+def _scrivi_seme(ins, versione_schema):
     ora = '2025-09-01T08:00:00'
     ins('napoli_impostazioni', chiave='cooperativa_denominazione', valore='COOPERATIVA DI FANTASIA')
     ins('napoli_impostazioni', chiave='cooperativa_iban', valore='IT00A0000000000000000000000')
@@ -157,8 +158,8 @@ def _scrivi_seme(ins):
                       data_inserimento=ora)
     ins('napoli_contratti', lotto_id=lotto, grado='inferiore', numero='XI', accordo_quadro='attuale',
         valido_da='2026-06-08', valido_a='2026-07-31', data_inserimento=ora)
-    ins('napoli_contratti', lotto_id=lotto, grado='superiore', numero='X', accordo_quadro='attuale',
-        valido_da='2025-09-01', valido_a='2026-07-31', importo_cent=1000000, data_inserimento=ora)
+    superiore_x = ins('napoli_contratti', lotto_id=lotto, grado='superiore', numero='X', accordo_quadro='attuale',
+                      valido_da='2025-09-01', valido_a='2026-07-31', importo_cent=1000000, data_inserimento=ora)
 
     for figura, cent in (('ASACOM', 2344), ('EDUCATORE', 2428), ('TIFLOLOGO', 2428), ('PSICOLOGO', 2966),
                          ('COORDINATORE', 2966)):
@@ -222,33 +223,47 @@ def _scrivi_seme(ins):
                        minuti_programmati=120, minuti_svolti=60, minuti_riconosciuti=60, causale='evento',
                        nota='Assemblea di prova', origine='griglia')
 
-    ins('napoli_coordinamento', lotto_id=lotto, grado='inferiore', contratto_id=inferiore_x, anno=2025, mese=10,
-        operatore_id=sesta, ore_cent=1250, nota='Ore di prova')
+    if versione_schema == 2:            # v2: una riga per coordinatore, operatore obbligatorio
+        ins('napoli_coordinamento', lotto_id=lotto, grado='inferiore', contratto_id=inferiore_x, anno=2025, mese=10,
+            operatore_id=sesta, ore_cent=1250, nota='Ore di prova')
+    else:                               # dalla v3: totale del mese, senza nome (come in fattura)
+        ins('napoli_coordinamento', lotto_id=lotto, grado='inferiore', contratto_id=inferiore_x, anno=2025, mese=10,
+            ore_cent=1250, nota='Ore di prova', modificato_il='2025-11-04T09:00:00')
+        ins('napoli_coordinamento', lotto_id=lotto, grado='superiore', contratto_id=superiore_x, anno=2025, mese=10,
+            operatore_id=sesta, ore_cent=375, modificato_il='2025-11-04T09:00:00')
     ins('napoli_mesi_chiusi', lotto_id=lotto, anno=2025, mese=10, data_chiusura='2025-11-05T10:00:00',
         nota='Chiusura di prova')
     # ottobre, grado inferiore: ASACOM 570 minuti (9,50 h x 23,44) + coordinatore 12,50 h x 29,66
     righe = [{'figura': 'ASACOM', 'ore': '9.50', 'tariffa_cent': 2344, 'importo_cent': 22268},
              {'figura': 'COORDINATORE', 'ore': '12.50', 'tariffa_cent': 2966, 'importo_cent': 37075}]
+    testi = {} if versione_schema == 2 else dict(
+        oggetto='Servizio di prova - Lotto 1 - Scuole di grado inferiore - Competenze dal 01 al 31 Ottobre 2025. '
+                'X APPLICATIVO',
+        nota='D.D. N.DD-PROVA-1 DEL 20/08/2025 - Scissione dei pagamenti (prova)', destinatario='ENTE DI FANTASIA',
+        ritenuta_testo='RITENUTA dello 0,50% (prova)', scadenza='2025-12-05',
+        regole_json=json.dumps({'ritenuta_percento': '0.50', 'iva_percento': '5', 'split_payment': True,
+                                'giorni_pagamento': 30}))
     ins('napoli_fatture', lotto_id=lotto, grado='inferiore', contratto_id=inferiore_x, periodo_dal='2025-10-01',
         periodo_al='2025-10-31', numero='1/PROVA', data='2025-11-05', righe_json=json.dumps(righe),
         somma_righe_cent=59343, ritenuta_cent=297, imponibile_cent=59046, iva_cent=2952, totale_cent=61998,
-        da_pagare_cent=59046, stato='definitiva', data_creazione='2025-11-05T10:00:00')
+        da_pagare_cent=59046, stato='definitiva', data_creazione='2025-11-05T10:00:00', **testi)
     ins('napoli_annullamenti', timestamp='2025-11-04T09:30:00', tipo='griglia',
         descrizione='Griglia: 1 cella, ottobre 2025',
         dati=json.dumps({'presenze': [{'id': p_psico, 'minuti_riconosciuti': 120}]}))
 
 
-def carica_seme_napoli(client, percorso):
+def carica_seme_napoli(client, percorso, versione_schema=None):
     """Carica i dati di Napoli nel database `percorso` (una volta per database).
 
     `client` (sessione autenticata) servira' ai passi che caricano il seme con le
-    API di Napoli. Ritorna {tabella: righe caricate}."""
+    API di Napoli. versione_schema=2: le righe nella forma della v2 (database non
+    ancora migrato alla 3). Ritorna {tabella: righe caricate}."""
     conn = sqlite3.connect(percorso, timeout=30)
     try:
         conn.execute('PRAGMA foreign_keys = ON')
         ins = _Seme(conn)
         with conn:
-            _scrivi_seme(ins)
+            _scrivi_seme(ins, versione_schema)
         return ins.righe
     finally:
         conn.close()

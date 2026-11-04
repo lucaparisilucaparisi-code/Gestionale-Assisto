@@ -28,6 +28,10 @@ FILE_ROMA = ('*.py', '*.bat', '*.sh', 'templates/*.html', 'static/*.js', 'static
 
 PREFISSO = 'napoli_'
 TABELLE_SISTEMA = frozenset({'sqlite_master', 'sqlite_schema'})   # sola lettura (esistenza di tabelle)
+# Contatori AUTOINCREMENT: ammessi solo per righe di tabelle napoli_* (name = 'napoli_...'),
+# come nella ricostruzione di napoli_coordinamento della migrazione 3.
+CONTATORI = 'sqlite_sequence'
+_SOLO_CONTATORI_NAPOLI = re.compile(r"\bname\s*=\s*'napoli_\w+'", re.I)
 CONFIG_VIETATI = frozenset({'TARIFFA_ORARIA', 'IVA_PERCENTUALE', 'TASSO_ASSENZA', 'COEFFICIENTE_GIORNALIERO',
                             'SETTIMANE_ANNO_SCOLASTICO', 'calcola_fatturazione'})
 DATABASE_AMMESSI = frozenset({'get_db_context', 'create_backup', 'log_audit',
@@ -41,7 +45,7 @@ MODULI_CONTROLLATI = {'config': ('vietati', CONFIG_VIETATI), 'database': ('ammes
 # templates/base.html, static/js/app.js, routes_migrazione.py, templates/commesse.html)
 # con il loro numero esatto.
 OCCORRENZE_AMMESSE = {
-    'database.py': 4,   # import napoli_schema e la migrazione 2 in MIGRAZIONI (con i commenti)
+    'database.py': 7,   # import napoli_schema e le migrazioni 2 e 3 in MIGRAZIONI (con i commenti)
 }
 
 
@@ -121,6 +125,9 @@ def problemi_modulo_napoli(sorgente, nome='modulo'):
             for t in tabelle_sql(testo or ''):
                 if '{?}' in t and not t.startswith(PREFISSO):
                     problemi.append(f'{nome}:{n.lineno}: nome di tabella calcolato, non verificabile: {t}')
+                elif t == CONTATORI:
+                    if not _SOLO_CONTATORI_NAPOLI.search(testo):
+                        problemi.append(f'{nome}:{n.lineno}: contatori di tabelle non napoli_* ({t})')
                 elif not t.startswith(PREFISSO) and t not in TABELLE_SISTEMA:
                     problemi.append(f'{nome}:{n.lineno}: tabella di Roma nello SQL: {t}')
         elif isinstance(n, ast.Import):
@@ -168,6 +175,8 @@ def salva(conn, x):
     conn.execute(f"DELETE FROM {x} WHERE id = 1")
     conn.execute(f"DELETE FROM napoli_{x} WHERE id = 1")
     conn.execute("UPDATE commesse SET nome = ?", (x,))
+    conn.execute("UPDATE sqlite_sequence SET seq = 9 WHERE name = 'napoli_coordinamento'")
+    conn.execute("UPDATE sqlite_sequence SET seq = 9 WHERE name = 'utenti'")
     with db.get_db_context():
         db.log_audit('napoli_import', 'napoli_lotto')
         db.update_rendicontazione(1, 2025, 10, ore_lavorate=1)
@@ -177,9 +186,10 @@ def salva(conn, x):
     testo = '\n'.join(problemi)
     for atteso in ('tabella di Roma nello SQL: utenti', 'tabella di Roma nello SQL: rendicontazione',
                    'nome di tabella calcolato, non verificabile: {?}', 'tabella di Roma nello SQL: commesse',
-                   'database.update_rendicontazione', 'config.calcola_fatturazione'):
+                   'database.update_rendicontazione', 'config.calcola_fatturazione',
+                   'contatori di tabelle non napoli_* (sqlite_sequence)'):
         assert atteso in testo, testo
-    assert len(problemi) == 6, testo
+    assert len(problemi) == 7, testo
 
 
 def test_controllo_trova_gli_import_non_ammessi():

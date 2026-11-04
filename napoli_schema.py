@@ -9,7 +9,17 @@ che le esegue una volta sola, in ordine, e poi imposta PRAGMA user_version:
   figura, coppie operatore-alunno, contratti applicativi, tariffe e regole con
   data, calendario, orari settimanali, fogli firma, import del master, presenze
   (unica fonte delle ore), ore del coordinatore, mesi chiusi per lotto, prospetti
-  fattura congelati, annullamenti (Ctrl+Z) delle pagine Napoli.
+  fattura congelati, annullamenti (Ctrl+Z) delle pagine Napoli;
+- crea_v3 (fase 1, correzioni prima del rilascio): le ore del coordinatore
+  diventano un totale mensile per lotto, grado e contratto applicativo con
+  l'operatore facoltativo (ricostruzione di napoli_coordinamento); il prospetto
+  fattura congela anche i testi (oggetto, nota, destinatario, ritenuta, scadenza)
+  e le regole usate.
+  La fase 2 (banca ore, PROGETTO §4.3) diventa quindi la migrazione 4 (crea_v4).
+
+Una migrazione gia' pubblicata non si cambia piu' (tests/test_napoli_schema.py ne
+controlla l'impronta): un database puo' essere gia' a quella versione, e
+rieseguirla non lo correggerebbe. Ogni correzione e' una migrazione nuova.
 
 Regole dello schema:
 - Roma non cambia: nessuna tabella di Roma viene toccata e nessuna chiave esterna
@@ -399,3 +409,88 @@ def crea_v2(conn):
                      'VALUES (?, ?, ?, ?)', FIGURE)
     conn.executemany('INSERT OR IGNORE INTO napoli_alias_qualifiche (testo, figura) VALUES (?, ?)',
                      ALIAS_QUALIFICHE)
+
+
+# ==================== migrazione 3 ====================
+
+# Ore del coordinatore: un TOTALE MENSILE per lotto, grado e contratto applicativo,
+# come la riga "Coordinatore" della fattura reale (risposta alla domanda Q4).
+# L'operatore e' facoltativo (solo un riferimento interno, mai in fattura) e non fa
+# parte della chiave. La tabella della v2 lo voleva obbligatorio e nella chiave:
+# SQLite non permette di cambiarlo con ALTER TABLE, quindi si ricostruisce.
+COORDINAMENTO_V3 = '''CREATE TABLE napoli_coordinamento_v3 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lotto_id INTEGER NOT NULL REFERENCES napoli_lotti(id),
+        grado TEXT NOT NULL CHECK (grado IN ('inferiore', 'superiore')),
+        contratto_id INTEGER NOT NULL REFERENCES napoli_contratti(id),
+        anno INTEGER NOT NULL,
+        mese INTEGER NOT NULL CHECK (mese BETWEEN 1 AND 12),
+        operatore_id INTEGER REFERENCES napoli_operatori(id),   -- facoltativo, mai in fattura
+        ore_cent INTEGER NOT NULL CHECK (ore_cent >= 0),
+        nota TEXT,
+        modificato_il TEXT
+    )'''
+# Le righe della v2 (una per operatore) diventano il totale del mese: ore sommate,
+# operatore tenuto solo se era uno, note unite; l'id e' quello della riga piu' vecchia.
+COORDINAMENTO_COPIA_V2 = '''INSERT INTO napoli_coordinamento_v3
+        (id, lotto_id, grado, contratto_id, anno, mese, operatore_id, ore_cent, nota)
+    SELECT MIN(id), lotto_id, grado, contratto_id, anno, mese,
+           CASE WHEN COUNT(DISTINCT operatore_id) = 1 THEN MIN(operatore_id) END,
+           SUM(ore_cent), GROUP_CONCAT(nota, ' | ')
+    FROM napoli_coordinamento
+    GROUP BY lotto_id, grado, contratto_id, anno, mese'''
+COORDINAMENTO_INDICE_V3 = '''CREATE UNIQUE INDEX IF NOT EXISTS ux_napoli_coordinamento
+        ON napoli_coordinamento(lotto_id, grado, contratto_id, anno, mese)'''
+
+# Testi del prospetto congelati con la fattura (colonne aggiunte, vuote per le righe
+# gia' presenti): una fattura definitiva si ristampa uguale anche se poi cambiano
+# i modelli del lotto, le regole o il destinatario.
+COLONNE_FATTURE_V3 = (
+    ('oggetto', 'TEXT'),
+    ('nota', 'TEXT'),                   # D.D. e split payment
+    ('destinatario', 'TEXT'),
+    ('ritenuta_testo', 'TEXT'),
+    ('scadenza', 'TEXT'),               # data del pagamento 'AAAA-MM-GG'
+    ('regole_json', 'TEXT'),            # regole usate: percentuali, split payment, giorni di pagamento
+)
+
+
+def _colonne(conn, tabella):
+    """{nome: notnull} delle colonne di una tabella napoli_* (vuoto se non esiste)."""
+    return {r[1]: r[3] for r in conn.execute(f'PRAGMA table_info({tabella})')}
+
+
+def _ricostruisci_coordinamento(conn):
+    """Ricostruzione della tabella (procedura di SQLite: nuova tabella, copia, DROP,
+    RENAME) nella transazione della migrazione. Nessuna tabella punta a
+    napoli_coordinamento, quindi il DROP non tocca altre righe; il contatore degli
+    id resta almeno quello di prima (un id cancellato non torna)."""
+    seq = conn.execute("SELECT seq FROM sqlite_sequence WHERE name = 'napoli_coordinamento'").fetchone()
+    conn.execute(COORDINAMENTO_V3)
+    conn.execute(COORDINAMENTO_COPIA_V2)
+    conn.execute('DROP TABLE napoli_coordinamento')
+    conn.execute('ALTER TABLE napoli_coordinamento_v3 RENAME TO napoli_coordinamento')
+    if seq:
+        conn.execute("UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = 'napoli_coordinamento'", (seq[0],))
+    if conn.execute('PRAGMA foreign_key_check(napoli_coordinamento)').fetchall():
+        raise RuntimeError('migrazione 3: ore del coordinatore con riferimenti non validi')
+
+
+def crea_v3(conn):
+    """Migrazione 3 (fase 1, correzioni prima del rilascio).
+
+    - napoli_coordinamento: operatore facoltativo, una riga per lotto, grado,
+      contratto e mese (ricostruita solo se ha ancora la forma della v2);
+    - napoli_fatture: colonne dei testi congelati (aggiunte solo se mancano).
+    Rieseguibile e sicura anche su un database gia' alla v2 con dati: le righe
+    restano (quelle del coordinatore unite per mese). Apre la transazione se non
+    c'e'; la conferma il runner di database.py insieme a user_version."""
+    if not conn.in_transaction:
+        conn.execute('BEGIN')
+    if _colonne(conn, 'napoli_coordinamento').get('operatore_id'):
+        _ricostruisci_coordinamento(conn)
+    conn.execute(COORDINAMENTO_INDICE_V3)
+    presenti = _colonne(conn, 'napoli_fatture')
+    for nome, tipo in COLONNE_FATTURE_V3:
+        if nome not in presenti:
+            conn.execute(f'ALTER TABLE napoli_fatture ADD COLUMN {nome} {tipo}')
