@@ -29,7 +29,11 @@ Tre modi (REGOLE 14: lo storico delle ore di Napoli non si carica):
 - Anteprima (anteprima): non scrive nulla. Abbina il file ai dati di Napoli (scuole per
   codice meccanografico e municipalita' della SCUOLA: la stessa scuola con municipalita'
   diverse, nel file o fra il file e Assisto, si conferma, e un plesso nuovo si crea solo
-  se serve a una coppia nuova; il grado delle scuole nuove, proposto dal codice, si
+  se serve a una coppia nuova; una riga senza municipalita' di una scuola con piu' plessi
+  prende quella del plesso della coppia gia' in Assisto o si sceglie nella pagina (mai un
+  plesso "senza municipalita'" in piu'), e le coppie rimaste in un plesso senza
+  municipalita' passano al plesso della municipalita' del file; un file di un mese
+  precedente all'ultimo caricamento si conferma; il grado delle scuole nuove, proposto dal codice, si
   conferma con "Ho controllato i gradi"; alunni per codice fiscale o per la sua radice, i
   primi 15 caratteri; operatori per codice fiscale, radice o nome, da confermare, anche
   quando il mese dopo il codice arriva corretto; un codice giusto corregge quello
@@ -934,6 +938,10 @@ SPIEGAZIONI = {
     'alunno_senza_nome': ('bloccante', 'Alunno senza nome', 'Scrivi cognome e nome dell\'alunno nel file.'),
     'riga_senza_operatore': ('bloccante', 'Riga senza operatore', 'Mancano nome e codice fiscale dell\'operatore.'),
     'riga_senza_scuola': ('bloccante', 'Riga senza scuola', 'Scrivi la scuola (con il codice meccanografico).'),
+    'municipalita_da_scegliere': ('bloccante', 'Municipalità da scegliere',
+                                  'La riga non ha la municipalità e la sua scuola è in più municipalità (plessi '
+                                  'diversi): scegli il plesso nella parte «Plessi da scegliere» qui sotto, oppure '
+                                  'scrivi la municipalità nel file.'),
     'coppia_doppia': ('bloccante', 'La stessa coppia operatore-alunno su due righe',
                       'Metti le ore della stessa coppia su una riga sola (o segna SI sulla riga del sostituto).'),
     'sigla_sconosciuta': ('bloccante', 'Scritte che non sono ore né sigle',
@@ -978,11 +986,16 @@ SPIEGAZIONI = {
                                      'fiscali è sbagliato: controllalo.'),
     'municipalita_mancante': ('avviso', 'Municipalità mancante',
                               'La municipalità è quella della scuola: se la scuola compare in una sola '
-                              'municipalità si prende quella, altrimenti resta da completare.'),
+                              'municipalità si prende quella; se è in più municipalità vale quella del plesso '
+                              'della coppia in Assisto, oppure la scegli tu. Se la scuola non ne ha nessuna, '
+                              'resta da completare: si aggiunge quando un file la porta.'),
     'municipalita_non_riconosciuta': ('avviso', 'Municipalità che non si capisce', 'Scrivi solo il numero.'),
     'municipalita_presa_dalla_scuola': ('nota', 'Municipalità presa dalla scuola',
                                         'Nella riga mancava: è quella della stessa scuola nelle altre righe o in '
                                         'Assisto.'),
+    'municipalita_presa_dalla_coppia': ('nota', 'Municipalità presa dalla coppia',
+                                        'Nella riga mancava e la scuola è in più municipalità: è quella del plesso '
+                                        'in cui la coppia è già in Assisto.'),
     'municipalita_completata_in_assisto': ('avviso', 'Municipalità aggiunta a una scuola di Assisto',
                                            'In Assisto la scuola non aveva la municipalità: si aggiunge quella del '
                                            'file (indicata a fianco).'),
@@ -1185,6 +1198,9 @@ def _contesto(conn, lotto_id, anno, mese):
         'coppie_con_ore_dopo_il_mese': {r['coppia_id'] for r in _righe(
             conn, 'SELECT DISTINCT coppia_id FROM napoli_presenze WHERE lotto_id = ? AND data > ?',
             (lotto_id, fine.isoformat()))},
+        # plessi con giorni del calendario (chiusure, eventi): non si tolgono
+        'scuole_nel_calendario': {r['scuola_id'] for r in _righe(
+            conn, 'SELECT DISTINCT scuola_id FROM napoli_calendario WHERE scuola_id IS NOT NULL')},
         'imports': _righe(conn, 'SELECT id, anno, mese, nome_file, sha256, n_righe, esito_json, annullato, data '
                                 'FROM napoli_import WHERE lotto_id = ? ORDER BY id', (lotto_id,)),
         'chiuso': conn.execute('SELECT 1 FROM napoli_mesi_chiusi WHERE lotto_id = ? AND anno = ? AND mese = ?',
@@ -1199,6 +1215,7 @@ def _impronta_contesto(ctx):
     conferma, la conferma si rifiuta (l'anteprima non direbbe piu' il vero)."""
     parti = {k: v for k, v in ctx.items() if k not in ('regole', 'inizio', 'fine', 'figure')}
     parti['coppie_con_ore_dopo_il_mese'] = sorted(ctx['coppie_con_ore_dopo_il_mese'])
+    parti['scuole_nel_calendario'] = sorted(ctx['scuole_nel_calendario'])
     return hashlib.sha256(json.dumps(parti, sort_keys=True, default=str).encode('utf-8')).hexdigest()[:24]
 
 
@@ -1213,7 +1230,8 @@ def _versione(ctx, modo):
 
 def _scelte(scelte, ctx):
     """Le scelte fatte nella pagina, controllate: qualifiche nuove -> figura, grado delle
-    scuole nuove, lettura delle ore ambigue, sovrascrivere le ore scritte a mano,
+    scuole nuove, lettura delle ore ambigue, municipalita' (plesso) delle righe che non la
+    scrivono in una scuola con piu' plessi, sovrascrivere le ore scritte a mano,
     conferme, subentri e chiusure proposte (None = la proposta)."""
     if scelte in (None, ''):
         scelte = {}
@@ -1243,6 +1261,7 @@ def _scelte(scelte, ctx):
         'qualifiche': {pulito(k): v for k, v in dizionario('qualifiche', set(ctx['figure'])).items()},
         'gradi': dizionario('gradi', set(GRADI_SCUOLA) | {''}),
         'ore_ambigue': dizionario('ore_ambigue', {'ore_e_minuti', 'decimale'}),
+        'plessi': dizionario('plessi', {str(m) for m in range(1, 100)}),
         'sovrascrivi_manuali': napoli_db._booleano(scelte.get('sovrascrivi_manuali'), False, 'sovrascrivi_manuali'),
         'conferme': elenco('conferme', str) or set(),
         'subentri': elenco('subentri', int),
@@ -1293,6 +1312,21 @@ def _elenco_municipalita(valori):
     return ' e '.join(testi)
 
 
+def _plessi_testo(valori, articolo, articolo_plurale):
+    """{2} -> 'il plesso della municipalità 2'; {1, 2} -> 'i plessi delle municipalità 1 e
+    2'; None -> 'senza municipalità' (articolo: 'il', 'al', 'nel'...)."""
+    numeri = sorted(v for v in valori if v is not None)
+    parti = []
+    if numeri:
+        parti.append(('della municipalità ' if len(numeri) == 1 else 'delle municipalità ')
+                     + ' e '.join(str(v) for v in numeri))
+    if None in valori:
+        parti.append('senza municipalità')
+    if len(numeri) + (None in valori) == 1:
+        return f'{articolo} plesso {parti[0]}'
+    return f'{articolo_plurale} plessi {" e ".join(parti)}'
+
+
 class _Piano:
     """Cosa farebbe l'import, senza scrivere: si costruisce dalla lettura del file e dai
     dati di Napoli (ctx); la conferma lo applica cosi' com'e'. Nel modo 'anagrafica' le
@@ -1314,6 +1348,8 @@ class _Piano:
         self.conferme = collections.OrderedDict()
         self.subentri, self.chiusure, self.coppie_del_mese = [], [], []
         self.togliere, self.solo_in_assisto, self.manuali_diverse = [], [], []
+        self.plessi_da_scegliere = []          # righe senza municipalita' di una scuola con piu' plessi
+        self.plessi_da_togliere = []           # plessi di Assisto senza municipalita' rimasti vuoti
         self.ambigue = {}                      # 'riga:colonna' -> {'scelta', 'ricordata'} (ore da confermare)
         self.municipalita_file = collections.defaultdict(set)     # identita' della scuola -> municipalita' nel file
         self.scuole_db = {s['id']: s for s in ctx['scuole']}
@@ -1355,6 +1391,12 @@ class _Piano:
     def _costruisci(self):
         if self.ctx['chiuso'] and not self.solo_confronto:
             self.avviso(None, 'mese_chiuso', mese_testo(self.anno, self.mese))
+        # un file di un mese precedente all'ultimo caricamento (marzo dopo aprile) aggiunge le
+        # coppie di quel mese e porta indietro i PEI: quasi sempre e' il file sbagliato
+        dopo = [i for i in self.ctx['imports'] if not i['annullato'] and i['anno'] and i['mese']
+                and (i['anno'], i['mese']) > (self.anno, self.mese)]
+        if dopo and not self.solo_confronto:
+            self.conferme['mese_precedente'] = max(dopo, key=lambda i: (i['anno'], i['mese'], i['id']))
         municipalita_note = self._municipalita_delle_scuole()
         for r in self.lettura['righe']:
             self.righe.append(self._riga(r, municipalita_note))
@@ -1368,6 +1410,7 @@ class _Piano:
             if voce['valida'] and voce['ruolo'] == 'sostituto':
                 self._titolare_del_sostituto(voce)
         self._subentri()
+        self._plessi_senza_municipalita()
         self._scuole_usate()
         for voce in self.righe:
             if not voce['valida']:
@@ -1428,9 +1471,13 @@ class _Piano:
             self.avviso(n, 'righe_del_coordinatore')
             voce['valida'] = False
             voce['coordinatore'] = True
-        voce['scuola'] = self._scuola(r, municipalita_note)
         voce['alunno'] = self._alunno(r, voce)
         voce['operatore'] = self._operatore(r, voce)
+        # la scuola dopo alunno e operatore: senza municipalita', in una scuola con piu'
+        # plessi, vale quella del plesso della coppia gia' in Assisto (_scuola)
+        voce['scuola'] = self._scuola(r, municipalita_note, voce)
+        if voce['alunno'] is not None and voce['alunno']['scuola'] is None:
+            voce['alunno']['scuola'] = voce['scuola']
         if voce['scuola'] is None or voce['alunno'] is None or voce['operatore'] is None:
             voce['valida'] = False
         return voce
@@ -1459,16 +1506,25 @@ class _Piano:
         return voce['figura']
 
     # ---------- scuole ----------
-    def _scuola(self, r, municipalita_note):
+    def _scuola(self, r, municipalita_note, voce_riga):
         n = r['riga']
         identita = self._identita_scuola(r)
         if identita is None:
             self.avviso(n, 'riga_senza_scuola')
             return None
         mun = r['municipalita']
-        if mun is None and len(municipalita_note.get(identita, ())) == 1:
-            mun = next(iter(municipalita_note[identita]))
+        possibili = municipalita_note.get(identita, set())
+        if mun is None and len(possibili) == 1:
+            mun = next(iter(possibili))
             self.avviso(n, 'municipalita_presa_dalla_scuola', str(mun))
+        elif mun is None and possibili and not self.solo_confronto:
+            # REGOLE 12: la municipalita' e' della scuola, e questa ne ha piu' di una (piu'
+            # plessi). Mai un plesso "senza municipalita'" in piu': vale quella del plesso
+            # della coppia gia' in Assisto, altrimenti si sceglie nella pagina (il solo
+            # confronto non scrive nulla e guarda solo le coppie: non serve sceglierla).
+            mun = self._municipalita_da_scegliere(r, identita, sorted(possibili), voce_riga)
+            if mun is None:
+                return None
         chiave = f'{identita[0]}:{identita[1]}|{"" if mun is None else mun}'
         voce = self.scuole.get(chiave)
         if voce is None:
@@ -1488,6 +1544,31 @@ class _Piano:
             self.scuole[chiave] = voce
         voce['righe'].append(n)
         return voce
+
+    def _municipalita_da_scegliere(self, r, identita, possibili, voce_riga):
+        """La municipalita' di una riga che non la scrive, per una scuola con piu' plessi (nel
+        file o in Assisto): quella del plesso della coppia gia' in Assisto, se ne ha una;
+        altrimenti quella scelta nella pagina («Plessi da scegliere»). Finche' non si sceglie
+        la riga non si carica (bloccante 'municipalita_da_scegliere'): None."""
+        n = r['riga']
+        if not voce_riga['valida']:
+            return None            # una riga che non si carica comunque (coordinatore, altro lotto...)
+        if voce_riga['alunno'] is not None and voce_riga['operatore'] is not None:
+            esistente = self._coppia_in_assisto(voce_riga, self.inizio)
+            plesso = self.scuole_db.get(esistente['scuola_id']) if esistente else None
+            if plesso and plesso['municipalita'] is not None and self._stessa_scuola(plesso, identita):
+                self.avviso(n, 'municipalita_presa_dalla_coppia', f'municipalità {plesso["municipalita"]}')
+                return plesso['municipalita']
+        chiave = f'{n}|{identita[0]}:{identita[1]}'
+        scelta = self.scelte['plessi'].get(chiave)
+        voce = {'chiave': chiave, 'riga': n, 'nome': r['scuola']['nome'] or r['scuola']['testo'],
+                'codice': r['scuola']['codice'], 'possibili': possibili, 'alunno': voce_riga['alunno'],
+                'operatore': voce_riga['operatore'], 'figura': voce_riga['figura'],
+                'scelta': int(scelta) if scelta is not None and int(scelta) in possibili else None}
+        self.plessi_da_scegliere.append(voce)
+        if voce['scelta'] is None:
+            self.avviso(n, 'municipalita_da_scegliere', 'municipalità ' + ' o '.join(str(m) for m in possibili))
+        return voce['scelta']
 
     def _plessi_in_assisto(self, identita):
         """I plessi di Assisto della stessa scuola (stesso codice meccanografico; senza
@@ -1521,11 +1602,62 @@ class _Piano:
     def _scuole_usate(self):
         """Una scuola (o un plesso) nuova si crea solo se serve: se tutte le sue righe sono
         di coppie gia' in Assisto, quelle restano nella scuola della coppia (con un avviso o
-        la conferma dei plessi) e nelle anagrafiche non resta una scuola vuota."""
+        la conferma dei plessi) e nelle anagrafiche non resta una scuola vuota. Serve anche a
+        una coppia che passa li' da un plesso senza municipalita'."""
         for s in self.scuole.values():
             if s['nuova']:
                 voci = [v for v in self.righe if v.get('scuola') is s and not v.get('coordinatore')]
-                s['usata'] = any(not v['valida'] or v.get('coppia_nuova') for v in voci)
+                s['usata'] = any(not v['valida'] or v.get('coppia_nuova') or v.get('sposta_in') for v in voci)
+
+    def _plessi_senza_municipalita(self):
+        """REGOLE 12, coppie di Assisto in un plesso senza municipalita' (caricato quando nel
+        file mancava) la cui riga ora ce l'ha (scritta, presa dalla scuola o scelta). Se
+        tutte le coppie di quel plesso sono nel file e qualcuna va in una municipalita' che in
+        Assisto non ha ancora un plesso, il plesso prende quella municipalita' (la piu'
+        frequente fra le righe) e quelle coppie restano dove sono. Le altre passano al plesso
+        della loro municipalita' (gia' in Assisto o nuovo), con l'alunno se la sua scuola era
+        quel plesso e nessuna sua coppia ci resta. Un plesso senza municipalita' rimasto vuoto
+        (senza coppie, alunni o giorni del calendario) si toglie. Si conferma con i plessi."""
+        per_plesso = collections.OrderedDict()
+        for v in self.righe:
+            if v['valida'] and v.get('senza_municipalita'):
+                per_plesso.setdefault(v['scuola_coppia']['id'], []).append(v)
+        alunni_voce = {a['id']: a for a in self.alunni.values() if a.get('id')}
+        for plesso_id, voci in per_plesso.items():
+            plesso = self.scuole_db[plesso_id]
+            coppie = {c['id'] for c in self.ctx['coppie'] if c['scuola_id'] == plesso_id}
+            tutte_nel_file = coppie <= {v['coppia_id'] for v in voci}
+            conta = collections.Counter(v['scuola']['chiave'] for v in voci if v['scuola']['nuova'])
+            completato = None
+            if tutte_nel_file and conta:
+                chiave = min(conta, key=lambda k: (-conta[k], self.scuole[k]['municipalita']))
+                completato = self.scuole[chiave]
+                completato.update(id=plesso_id, nome=plesso['nome'], grado=plesso['grado'], nuova=False,
+                                  completa=True, completa_fra_piu=True)
+            for v in voci:
+                if v['scuola'] is not completato:
+                    v['sposta_in'] = v['scuola']
+            # gli alunni la cui scuola e' questo plesso: vanno dove vanno le loro coppie
+            alunni_restano = False
+            for a in (x for x in self.ctx['alunni'] if x['scuola_id'] == plesso_id):
+                voce_al = alunni_voce.get(a['id'])
+                righe_al = [v for v in self.righe if v['valida'] and voce_al is not None and v['alunno'] is voce_al]
+                resta = any(self._plesso_finale(v).get('id') == plesso_id for v in righe_al)
+                destinazioni = [v['sposta_in'] for v in righe_al if v.get('sposta_in')]
+                if resta or not destinazioni:
+                    alunni_restano = True
+                else:
+                    voce_al['sposta_in'] = destinazioni[0]
+            if completato is None and tutte_nel_file and not alunni_restano \
+                    and plesso_id not in self.ctx['scuole_nel_calendario']:
+                self.plessi_da_togliere.append(plesso)
+
+    @staticmethod
+    def _plesso_finale(voce):
+        """Il plesso di una riga dopo l'import: quello nuovo o di arrivo, o quello della coppia."""
+        if voce.get('coppia_nuova') or voce.get('sposta_in'):
+            return voce.get('sposta_in') or voce['scuola']
+        return voce.get('scuola_coppia') or voce['scuola']
 
     # ---------- alunni ----------
     def _alunno(self, r, voce_riga):
@@ -1537,11 +1669,12 @@ class _Piano:
         voce = self.alunni.get(chiave)
         if voce is None:
             esistente = self._alunno_in_assisto(al['cf'])
-            voce = {'chiave': chiave, 'cf': al['cf'], 'cf_esito': al['cf_esito'], 'righe': [],
-                    'scuola': voce_riga['scuola']}
+            # la scuola (per un alunno nuovo) e' quella della prima riga che ne ha una (_riga)
+            voce = {'chiave': chiave, 'cf': al['cf'], 'cf_esito': al['cf_esito'], 'righe': [], 'scuola': None}
             if esistente:
                 voce.update(id=esistente['id'], cognome=esistente['cognome'], nome=esistente['nome'],
-                            grado=esistente['grado'], nuovo=False, cf_assisto=esistente['codice_fiscale'])
+                            grado=esistente['grado'], nuovo=False, cf_assisto=esistente['codice_fiscale'],
+                            scuola_id_assisto=esistente['scuola_id'])
                 if not _uguali_nomi(_nome_persona(esistente), al['nome_completo']) and \
                         not _uguali_nomi(f'{esistente["nome"]} {esistente["cognome"]}', al['nome_completo']):
                     self.avviso(n, 'alunno_nome_diverso_in_assisto')
@@ -1775,10 +1908,14 @@ class _Piano:
         scuola_coppia = self.scuole_db.get(esistente['scuola_id'])
         voce['scuola_coppia'] = scuola_coppia
         if scuola_coppia and voce['scuola'].get('id') != scuola_coppia['id']:
-            if self._stessa_scuola(scuola_coppia, voce['scuola']['identita']):
-                voce['plesso_diverso'] = True        # stessa scuola, altra municipalita': si conferma (_plessi)
-            else:
+            if not self._stessa_scuola(scuola_coppia, voce['scuola']['identita']):
                 self.avviso(voce['riga'], 'coppia_scuola_diversa')
+            elif scuola_coppia['municipalita'] is None and voce['scuola']['municipalita'] is not None:
+                # la coppia e' in un plesso senza municipalita' e il file la porta: passa al
+                # plesso di quella municipalita' (_plessi_senza_municipalita)
+                voce['senza_municipalita'] = True
+            else:
+                voce['plesso_diverso'] = True        # stessa scuola, altra municipalita': si conferma (_plessi)
 
     def _coppia_in_assisto(self, voce, dal):
         """La coppia di Assisto con lo stesso alunno, operatore, figura e ruolo, valida nel
@@ -2037,25 +2174,35 @@ class _Piano:
         for identita, lista in per_scuola.items():
             in_assisto = self._plessi_in_assisto(identita)
             nuovi = [s for s in lista if s['nuova'] and s['usata']]
-            restano = [v for v in self.righe if v['valida'] and v.get('plesso_diverso')
-                       and v['scuola']['identita'] == identita]
+            della_scuola = [v for v in self.righe if v['valida'] and v['scuola']['identita'] == identita]
+            restano = [v for v in della_scuola if v.get('plesso_diverso')]
+            spostate = [v for v in della_scuola if v.get('sposta_in')]
+            completati = [s for s in lista if s.get('completa_fra_piu')]
+            tolti = [s for s in self.plessi_da_togliere if self._stessa_scuola(s, identita)]
             mun_file = {s['municipalita'] for s in lista}
             mun_assisto = {s['municipalita'] for s in in_assisto}
-            if not ((nuovi and len(mun_file | mun_assisto) > 1) or restano):
+            if not ((nuovi and len(mun_file | mun_assisto) > 1) or restano or spostate or completati):
                 continue
             testo = f'nel file municipalità {_elenco_municipalita(mun_file)}'
             if in_assisto:
                 testo += f', in Assisto {_elenco_municipalita(mun_assisto)}'
             esiti = []
             if nuovi:
-                mun_nuovi = {s['municipalita'] for s in nuovi}
-                esiti.append(('si aggiunge il plesso della municipalità ' if len(nuovi) == 1 else
-                              'si aggiungono i plessi delle municipalità ') + _elenco_municipalita(mun_nuovi))
+                esiti.append('si ' + ('aggiunge ' if len(nuovi) == 1 else 'aggiungono ')
+                             + _plessi_testo({s['municipalita'] for s in nuovi}, 'il', 'i'))
+            if completati:
+                esiti.append('il plesso senza municipalità prende la municipalità '
+                             + _elenco_municipalita({s['municipalita'] for s in completati}))
+            if spostate:
+                esiti.append('le coppie già in Assisto nel plesso senza municipalità passano '
+                             + _plessi_testo({v['sposta_in']['municipalita'] for v in spostate}, 'al', 'ai'))
+            if tolti:
+                esiti.append('il plesso senza municipalità, rimasto vuoto, si toglie')
             if restano:
-                mun_coppie = {v['scuola_coppia']['municipalita'] for v in restano}
-                esiti.append('le coppie già in Assisto restano nel plesso della municipalità '
-                             + _elenco_municipalita(mun_coppie))
-            righe = {n for s in nuovi for n in s['righe']} | {v['riga'] for v in restano}
+                esiti.append('le coppie già in Assisto restano '
+                             + _plessi_testo({v['scuola_coppia']['municipalita'] for v in restano}, 'nel', 'nei'))
+            righe = ({n for s in nuovi for n in s['righe']} | {v['riga'] for v in restano}
+                     | {v['riga'] for v in spostate} | {n for s in completati for n in s['righe']})
             voci.append({'nome': lista[0]['nome'], 'codice': lista[0]['codice'], 'testo': f'{testo}: {"; ".join(esiti)}',
                          'righe': sorted(righe)})
         if voci:
@@ -2063,7 +2210,7 @@ class _Piano:
 
     # ---------- riepiloghi ----------
     def grado_della_riga(self, voce):
-        scuola = voce.get('scuola_coppia') or voce['scuola']
+        scuola = voce.get('sposta_in') or voce.get('scuola_coppia') or voce['scuola']
         g = calc.grado_fattura(voce['alunno'].get('grado')) or calc.grado_fattura(scuola.get('grado'))
         return g or 'da_decidere'
 
@@ -2081,7 +2228,8 @@ class _Piano:
         celle = [c for v in valide for c in v['celle']]
         azioni = collections.Counter(c['azione'] for c in celle)
         coppie_nuove = sum(1 for v in valide if v.get('coppia_nuova'))
-        coppie_cambiate = sum(1 for v in valide if not v.get('coppia_nuova') and v.get('coppia_cambi'))
+        coppie_cambiate = sum(1 for v in valide if not v.get('coppia_nuova')
+                              and (v.get('coppia_cambi') or v.get('sposta_in')))
         coppie_cambiate += sum(1 for s in self.subentri if s['scelto'] and s['titolare'].get('riga') is None)
         coppie_cambiate += sum(1 for c in self.chiusure if c['scelto'])
         fogli = collections.Counter((v.get('foglio') or {}).get('azione') for v in valide)
@@ -2106,7 +2254,9 @@ class _Piano:
             'aggiornati': {'coppie': coppie_cambiate, 'pei': pei['cambia_dal_mese'] + pei['cambia_ore'] + pei['anticipa'],
                            'operatori': operatori_cambiati, 'fogli': fogli['cambia'],
                            'scuole': sum(1 for s in self.scuole.values() if s.get('completa')),
-                           'alunni': sum(1 for a in self.alunni.values() if a.get('cf_nuovo'))},
+                           'alunni': sum(1 for a in self.alunni.values() if a.get('cf_nuovo') or a.get('sposta_in'))},
+            # plessi senza municipalita' rimasti vuoti (le loro coppie passano a un altro plesso)
+            'tolti': {'scuole': len(self.plessi_da_togliere)},
             'presenze': {'nuove': azioni['nuova'], 'uguali': azioni['uguale'], 'cambiate': azioni['cambia'],
                          'da_programmato': azioni['da_programmato'],
                          'manuali_diverse': azioni['manuale_diversa'] + azioni['sovrascrivi'],
@@ -2130,7 +2280,7 @@ class _Piano:
 
     def nessun_cambiamento(self):
         c = self.conteggi()
-        return (not any(c['nuovi'].values()) and not any(c['aggiornati'].values())
+        return (not any(c['nuovi'].values()) and not any(c['aggiornati'].values()) and not any(c['tolti'].values())
                 and not (c['presenze']['nuove'] or c['presenze']['cambiate'] or c['presenze']['da_programmato']
                          or c['presenze']['sovrascritte'] or c['presenze']['da_togliere']))
 
@@ -2182,12 +2332,13 @@ class _Registro:
     i PEI e i codici fiscali sbagliati corretti dal file: di quelli si salva solo la
     differenza (differenza_cf, al piu' due caratteri), mai il codice. La nota di un foglio
     si salva con i codici fiscali mascherati. Le grafie delle qualifiche create si salvano
-    con la figura scelta."""
+    con la figura scelta. Un plesso senza municipalita' rimasto vuoto si toglie e se ne
+    salva la riga (nome, codice meccanografico, grado: nessun dato personale)."""
 
     def __init__(self, conn):
         self.conn = conn
         self.create = collections.defaultdict(list)
-        self.cambiate, self.tolte = [], []
+        self.cambiate, self.tolte, self.tolte_scuole = [], [], []
 
     def inserisci(self, tabella, valori, registra=True):
         assert tabella in TABELLE_IMPORT, tabella
@@ -2237,9 +2388,20 @@ class _Registro:
         self.conn.execute('DELETE FROM napoli_presenze WHERE id = ?', (presenza_id,))
         self.tolte.append({'riga': riga, 'fasce': fasce})
 
+    def togli_scuola(self, scuola_id):
+        """Un plesso senza municipalita' rimasto vuoto: si toglie solo se davvero nessuna
+        coppia, nessun alunno e nessun giorno del calendario lo usa (altrimenti resta)."""
+        for tabella in ('coppie', 'alunni', 'calendario'):
+            if self.conn.execute(f'SELECT 1 FROM napoli_{tabella} WHERE scuola_id = ? LIMIT 1',
+                                 (scuola_id,)).fetchone():
+                return
+        riga = dict(self.conn.execute('SELECT * FROM napoli_scuole WHERE id = ?', (scuola_id,)).fetchone())
+        self.conn.execute('DELETE FROM napoli_scuole WHERE id = ?', (scuola_id,))
+        self.tolte_scuole.append(riga)
+
     def json(self):
-        return json.dumps({'versione': 1, 'create': dict(self.create), 'cambiate': self.cambiate, 'tolte': self.tolte},
-                          ensure_ascii=False, default=str)
+        return json.dumps({'versione': 1, 'create': dict(self.create), 'cambiate': self.cambiate, 'tolte': self.tolte,
+                           'tolte_scuole': self.tolte_scuole}, ensure_ascii=False, default=str)
 
 
 def _iso(valore):
@@ -2279,9 +2441,12 @@ def _applica(conn, piano, import_id, ora):
         if a['nuovo']:
             a['id'] = reg.inserisci('alunni', {
                 'lotto_id': lotto_id, 'cognome': a['cognome'], 'nome': a['nome'], 'codice_fiscale': a['cf'],
-                'scuola_id': a['scuola']['id'], 'data_inserimento': ora})
-        elif a.get('cf_nuovo'):
+                'scuola_id': (a['scuola'] or {}).get('id'), 'data_inserimento': ora})
+            continue
+        if a.get('cf_nuovo'):
             reg.correggi_cf('alunni', a['id'], a['cf_assisto'], a['cf_nuovo'])
+        if a.get('sposta_in'):            # la sua scuola era un plesso senza municipalita'
+            reg.cambia('alunni', a['id'], {'scuola_id': a['sposta_in']['id']})
     valide = [v for v in piano.righe if v['valida']]
     for v in sorted(valide, key=lambda v: v['ruolo'] != 'titolare'):        # i titolari prima dei sostituti
         if v['coppia_nuova']:
@@ -2292,8 +2457,11 @@ def _applica(conn, piano, import_id, ora):
                 'titolare_coppia_id': titolare['coppia_id'] if titolare else None,
                 'valido_da': _iso(v['valido_da']), 'valido_a': _iso(v['valido_a']), 'origine': 'import_excel',
                 'data_inserimento': ora})
-        elif v['coppia_cambi']:
-            reg.cambia('coppie', v['coppia_id'], {k: _iso(x) for k, x in v['coppia_cambi'].items()})
+        elif v['coppia_cambi'] or v.get('sposta_in'):
+            valori = {k: _iso(x) for k, x in v['coppia_cambi'].items()}
+            if v.get('sposta_in'):        # da un plesso senza municipalita' a quello della sua municipalita'
+                valori['scuola_id'] = v['sposta_in']['id']
+            reg.cambia('coppie', v['coppia_id'], valori)
     for s in piano.subentri:
         t = s['titolare']
         if s['scelto'] and t.get('riga') is None and t.get('coppia_cambi'):
@@ -2301,6 +2469,8 @@ def _applica(conn, piano, import_id, ora):
     for c in piano.chiusure:
         if c['scelto']:
             reg.cambia('coppie', c['coppia']['id'], {'valido_a': c['chiudi_al'].isoformat()})
+    for s in piano.plessi_da_togliere:
+        reg.togli_scuola(s['id'])
     fonte = f'Foglio presenze di {mese_testo(piano.anno, piano.mese)}'
     for p in piano.pei.values():
         base = {'alunno_id': p['alunno']['id'], 'figura': p['figura'], 'ore_settimanali': float(p['ore']),
@@ -2345,7 +2515,7 @@ def _esito(piano):
     c = piano.conteggi()
     return {'modo': piano.modo, 'righe': c['righe'], 'righe_importate': c['righe_importate'],
             'operatori': c['operatori'], 'alunni': c['alunni'], 'scuole': c['scuole'], 'minuti': c['minuti'],
-            'nuovi': c['nuovi'], 'aggiornati': c['aggiornati'], 'presenze': c['presenze'],
+            'nuovi': c['nuovi'], 'aggiornati': c['aggiornati'], 'tolti': c['tolti'], 'presenze': c['presenze'],
             'avvisi': dict(collections.Counter(a['codice'] for a in piano.anomalie()))}
 
 
@@ -2372,6 +2542,10 @@ def _annulla_registro(conn, registro, import_id):
     """Rimette com'era tutto quello che l'import ha fatto (in ordine inverso)."""
     cambiate = registro.get('cambiate') or []
     create = registro.get('create') or {}
+    # prima i plessi tolti (le coppie e gli alunni che tornano li' li usano)
+    for riga in registro.get('tolte_scuole') or []:
+        nomi = ', '.join(riga)
+        conn.execute(f'INSERT INTO napoli_scuole ({nomi}) VALUES ({", ".join("?" * len(riga))})', tuple(riga.values()))
     # le presenze create dall'import: quelle con il suo numero che prima non c'erano
     cambiate_presenze = {c['id'] for c in cambiate if c['tabella'] == 'presenze'}
     for (id_,) in conn.execute('SELECT id FROM napoli_presenze WHERE import_id = ?', (import_id,)).fetchall():
@@ -2431,6 +2605,13 @@ def _cambiati_dopo(conn, registro):
         riga = conn.execute(f'SELECT {", ".join(dopo)} FROM napoli_{tabella} WHERE id = ?', (voce['id'],)).fetchone()
         if riga is not None and any(not _stesso_valore(riga[k], v) for k, v in dopo.items()):
             n += 1
+    for riga in registro.get('tolte_scuole') or []:
+        # un plesso tolto torna solo se nel frattempo non ne e' nato un altro uguale
+        if riga.get('codice_meccanografico') and conn.execute(
+                'SELECT 1 FROM napoli_scuole WHERE lotto_id = ? AND codice_meccanografico = ? '
+                'AND COALESCE(municipalita, 0) = COALESCE(?, 0)',
+                (riga['lotto_id'], riga['codice_meccanografico'], riga['municipalita'])).fetchone():
+            n += 1
     for voce in (registro.get('create') or {}).get('alias_qualifiche') or []:
         if isinstance(voce, dict):
             riga = conn.execute('SELECT figura, origine FROM napoli_alias_qualifiche WHERE testo = ?',
@@ -2475,6 +2656,15 @@ class _Nomi:
 
 def _nome_voce(voce):
     return _nome_persona(voce) if voce else ''
+
+
+def _data_ora_it(iso):
+    """'2026-04-30T10:15:00' -> '30/04/2026 alle 10:15'."""
+    try:
+        quando = datetime.datetime.fromisoformat(str(iso))
+    except ValueError:
+        return str(iso or '')
+    return quando.strftime('%d/%m/%Y alle %H:%M')
 
 
 def _risposta(piano, lettura, ctx, sha, nome_file, modo):
@@ -2536,13 +2726,32 @@ def _risposta(piano, lettura, ctx, sha, nome_file, modo):
             'alternative': [{'lettura': a['lettura'], 'testo': a['testo'], 'minuti': a['minuti']}
                             for a in cella['alternative']]})
     out['ore_ambigue_da_scegliere'] = len(piano.ore_ambigue_da_scegliere())
+    # righe senza municipalita' di una scuola con piu' plessi: il plesso si sceglie (REGOLE 12)
+    out['plessi_da_scegliere'] = [{
+        'chiave': x['chiave'], 'riga': x['riga'], 'nome': x['nome'], 'codice': x['codice'] or '',
+        'possibili': x['possibili'], 'scelta': x['scelta'], 'alunno': _nome_voce(x['alunno']),
+        'operatore': _nome_voce(x['operatore']), 'figura': napoli_db.nome_figura(x['figura']) if x['figura'] else ''}
+        for x in piano.plessi_da_scegliere]
     out['conferme'] = []
+    if 'mese_precedente' in piano.conferme:
+        ultimo_mese = piano.conferme['mese_precedente']
+        mese_file, mese_ultimo = mese_testo(piano.anno, piano.mese), mese_testo(ultimo_mese['anno'], ultimo_mese['mese'])
+        cosa = 'questo file aggiunge le coppie che c\'erano a ' + mese_file + ' e può portare indietro a quel mese ' \
+            'le date dei PEI'
+        out['conferme'].append({
+            'codice': 'mese_precedente', 'titolo': 'File di un mese precedente all\'ultimo caricamento',
+            'testo': f'Questo file è di {mese_file}, ma il lotto ha già un caricamento di {mese_ultimo} (fatto il '
+                     f'{_data_ora_it(ultimo_mese["data"])}, file {ultimo_mese["nome_file"] or "senza nome"}): '
+                     f'{cosa}. Di solito si carica il file più recente: se è proprio questo quello giusto, '
+                     'spunta la casella.',
+            'voci': []})
     if 'plessi' in piano.conferme:
         out['conferme'].append({
             'codice': 'plessi', 'titolo': 'La stessa scuola in due municipalità',
             'testo': 'La municipalità è quella della scuola. Queste scuole compaiono con municipalità diverse, nel '
                      'file o fra il file e Assisto: una municipalità nuova diventa un altro plesso della stessa '
-                     'scuola, le coppie già in Assisto restano nel loro plesso. Se è un errore di scrittura, '
+                     'scuola e le coppie già in Assisto restano nel loro plesso; solo quelle in un plesso senza '
+                     'municipalità passano al plesso della municipalità del file. Se è un errore di scrittura, '
                      'correggi il file e rifai l\'anteprima.',
             'voci': [{'testo': f'{v["nome"]} ({v["codice"] or "senza codice"}): {v["testo"]}',
                       'righe': v['righe'][:20]} for v in piano.conferme['plessi']]})
@@ -2807,12 +3016,20 @@ def storico(lotto_id):
     return out
 
 
-def _controlla_cambiati_dopo(conn, registro):
+def _nomi_import(anagrafica):
+    """('il caricamento', 'dal caricamento') per l'anagrafica, ('l'import', 'dall'import') per le ore:
+    come li chiama la pagina."""
+    return ('il caricamento', 'dal caricamento') if anagrafica else ('l\'import', 'dall\'import')
+
+
+def _controlla_cambiati_dopo(conn, registro, anagrafica=False):
     n = _cambiati_dopo(conn, registro)
     if n:
-        raise Conflitto(f'Dopo l\'import {"un dato scritto" if n == 1 else f"{n} dati scritti"} dall\'import (nelle '
-                        'anagrafiche o nelle qualifiche) è stato cambiato a mano: l\'import non si può più annullare '
-                        'tutto insieme, perché si perderebbe la modifica.', codice='IMPORT_CAMBIATO_DOPO')
+        il, dal = _nomi_import(anagrafica)
+        dati = 'un dato scritto' if n == 1 else f'{n} dati scritti'
+        raise Conflitto(f'Dopo {il} {dati} {dal} (nelle anagrafiche o nelle qualifiche) '
+                        f'{"è stato cambiato" if n == 1 else "sono stati cambiati"} a mano: {il} non si può più '
+                        'annullare tutto insieme, perché si perderebbe la modifica.', codice='IMPORT_CAMBIATO_DOPO')
 
 
 def annulla_import(import_id):
@@ -2823,20 +3040,22 @@ def annulla_import(import_id):
     with db.get_db_context() as conn:
         imp = conn.execute('SELECT * FROM napoli_import WHERE id = ?', (import_id,)).fetchone()
         if imp is None:
-            raise NonTrovato('Questo import non c\'è più: ricarica la pagina.')
+            raise NonTrovato('Questo caricamento non c\'è più: ricarica la pagina.')
         imp = dict(imp)
+        anagrafica = _modo_salvato(imp) == 'anagrafica'
+        il, dal = _nomi_import(anagrafica)
         lotto = napoli_db.lotto(imp['lotto_id'], conn)
         imports = _righe(conn, 'SELECT id, annullato FROM napoli_import WHERE lotto_id = ? ORDER BY id',
                          (imp['lotto_id'],))
         testo_mese = mese_testo(imp['anno'], imp['mese'])
         if imp['annullato']:
-            raise Conflitto('Questo import è già stato annullato.', codice='IMPORT_GIA_ANNULLATO')
+            raise Conflitto(f'{il[:1].upper() + il[1:]} è già stato annullato.', codice='IMPORT_GIA_ANNULLATO')
         if _ultimo_import(imports)['id'] != imp['id']:
-            raise Conflitto('Si può annullare solo l\'ultimo import del lotto: annulla prima quelli fatti dopo.',
+            raise Conflitto('Si può annullare solo l\'ultimo caricamento del lotto: annulla prima quelli fatti dopo.',
                             codice='IMPORT_NON_ULTIMO')
         if conn.execute('SELECT 1 FROM napoli_mesi_chiusi WHERE lotto_id = ? AND anno = ? AND mese = ?',
                         (imp['lotto_id'], imp['anno'], imp['mese'])).fetchone():
-            raise Conflitto(f'Il mese di {testo_mese} del lotto è chiuso: riaprilo prima di annullare l\'import.',
+            raise Conflitto(f'Il mese di {testo_mese} del lotto è chiuso: riaprilo prima di annullare {il}.',
                             codice='MESE_CHIUSO_LOTTO')
         cambiate_dopo = conn.execute('SELECT COUNT(*) FROM napoli_presenze WHERE import_id = ? AND '
                                      "(origine <> 'import_excel' OR modificato_il <> ?)",
@@ -2849,9 +3068,8 @@ def annulla_import(import_id):
         except ValueError:
             registro = {}
         if not isinstance(registro, dict) or registro.get('versione') != 1:
-            raise Conflitto('Questo import non si può annullare da qui.', codice='IMPORT_NON_ANNULLABILE')
-        _controlla_cambiati_dopo(conn, registro)
-    anagrafica = _modo_salvato(imp) == 'anagrafica'
+            raise Conflitto(f'{il[:1].upper() + il[1:]} non si può annullare da qui.', codice='IMPORT_NON_ANNULLABILE')
+        _controlla_cambiati_dopo(conn, registro, anagrafica)
     copia = db.create_backup()
     if not copia:
         raise NonRiuscito('Non sono riuscito a fare la copia di sicurezza del database: l\'annullamento non è stato '
@@ -2860,13 +3078,13 @@ def annulla_import(import_id):
         with db.get_db_context() as conn:
             conn.execute('BEGIN IMMEDIATE')
             if conn.execute('SELECT annullato FROM napoli_import WHERE id = ?', (import_id,)).fetchone()[0]:
-                raise Conflitto('Questo import è già stato annullato.', codice='IMPORT_GIA_ANNULLATO')
+                raise Conflitto(f'{il[:1].upper() + il[1:]} è già stato annullato.', codice='IMPORT_GIA_ANNULLATO')
             create = set(registro.get('create', {}).get('coppie') or [])
             if create and conn.execute(f'SELECT 1 FROM napoli_orari WHERE coppia_id IN '
                                        f'({", ".join("?" * len(create))}) LIMIT 1', tuple(create)).fetchone():
-                raise Conflitto('Dopo l\'import sono stati aggiunti gli orari di coppie create dall\'import: '
-                                'l\'import non si può più annullare.', codice='IMPORT_CAMBIATO_DOPO')
-            _controlla_cambiati_dopo(conn, registro)
+                raise Conflitto(f'Dopo {il} sono stati aggiunti gli orari di coppie create {dal}: {il} non si può '
+                                'più annullare.', codice='IMPORT_CAMBIATO_DOPO')
+            _controlla_cambiati_dopo(conn, registro, anagrafica)
             _annulla_registro(conn, registro, import_id)
             conn.execute('UPDATE napoli_import SET annullato = 1 WHERE id = ?', (import_id,))
             for r in _righe(conn, "SELECT id, dati FROM napoli_annullamenti WHERE tipo = 'import'"):
@@ -2876,7 +3094,7 @@ def annulla_import(import_id):
                 except (ValueError, AttributeError):
                     continue
     except sqlite3.IntegrityError:
-        raise Conflitto('Non si può annullare: dopo l\'import sono stati aggiunti dati collegati (per esempio '
+        raise Conflitto(f'Non si può annullare: dopo {il} sono stati aggiunti dati collegati (per esempio '
                         'nelle anagrafiche).', codice='IMPORT_CAMBIATO_DOPO') from None
     cosa = f'il caricamento dell\'anagrafica dal file di {testo_mese}' if anagrafica else \
         f'l\'import del foglio presenze di {testo_mese}'

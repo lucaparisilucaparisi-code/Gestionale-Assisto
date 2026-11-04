@@ -501,8 +501,12 @@ def test_qualifiche_aggiunte_cambiate_e_predefinite(napoli, database_isolato):
     _ok(napoli.put('/api/napoli/qualifiche', json={'testo': 'ASACM', 'figura': 'EDUCATORE'}))
     righe = {r['testo']: r for r in _ok(napoli.get('/api/napoli/qualifiche'))}
     assert righe['EDUCATRICE PROF.LE']['figura'] == 'EDUCATORE' and righe['EDUCATRICE PROF.LE']['origine'] == 'utente'
-    assert (righe['ASACM']['figura'], righe['ASACM']['origine']) == ('EDUCATORE', 'utente')
+    # una grafia predefinita con un'altra figura resta predefinita: non si elimina (serve all'import)
+    assert (righe['ASACM']['figura'], righe['ASACM']['origine']) == ('EDUCATORE', 'sistema')
+    _errore(napoli.delete('/api/napoli/qualifiche', json={'testo': 'ASACM'}), 409, 'QUALIFICA_PREDEFINITA')
     _errore(napoli.delete('/api/napoli/qualifiche', json={'testo': 'PSICOLOGA'}), 409, 'QUALIFICA_PREDEFINITA')
+    _errore(napoli.post('/api/napoli/qualifiche', json={'testo': 'PSICOLOGA DOTT.SSA', 'figura': ''}), 400, None,
+            'figura')
     _ok(napoli.delete('/api/napoli/qualifiche', json={'testo': 'educatrice prof.le'}))
     _errore(napoli.put('/api/napoli/qualifiche', json={'testo': 'NON ESISTE', 'figura': 'ASACOM'}), 404)
     # Ctrl+Z: l'eliminazione e poi il cambio di figura
@@ -573,7 +577,10 @@ def test_controlli_del_lotto_dicono_cosa_manca(napoli):
     lotto = crea_lotto_proposto(napoli, cig='')['id']
     controlli = {c['codice']: c for c in _ok(napoli.get(f'/api/napoli/lotti/{lotto}/controlli?giorno=2026-06-15'))}
     assert {k: c['stato'] for k, c in controlli.items() if c['stato'] != 'ok'} == {
-        'cooperativa': 'manca', 'destinatario': 'manca', 'cig': 'manca', 'contratti': 'manca', 'tariffa_LIS': 'avviso'}
+        'cooperativa': 'manca', 'destinatario': 'manca', 'cig': 'manca', 'contratti': 'manca'}
+    # la tariffa LIS e' lasciata vuota apposta: senza coppie LIS nel lotto non e' un avviso
+    assert controlli['tariffa_LIS']['testo'] == ('Tariffa Interprete LIS: non c\'è, ma nel lotto nessuna coppia ha '
+                                                 'questa figura')
     assert controlli['cooperativa']['testo'] == ("Dati della cooperativa: mancano la ragione sociale, la partita IVA "
                                                  "e l'IBAN")
     assert all(c['sezione'] in ('cooperativa', 'destinatario', 'lotto', 'contratti', 'tariffe')
@@ -585,12 +592,44 @@ def test_controlli_del_lotto_dicono_cosa_manca(napoli):
     _ok(napoli.post(f'/api/napoli/lotti/{lotto}/contratti', json={
         'numero': 'XI', 'grado': '', 'valido_da': '2026-06-08', 'valido_a': '2026-07-31'}))
     controlli = {c['codice']: c for c in _ok(napoli.get(f'/api/napoli/lotti/{lotto}/controlli?giorno=2026-06-15'))}
-    assert {k: c['stato'] for k, c in controlli.items() if c['stato'] != 'ok'} == {
-        'determine': 'manca', 'tariffa_LIS': 'avviso'}
+    assert {k: c['stato'] for k, c in controlli.items() if c['stato'] != 'ok'} == {'determine': 'manca'}
+    assert controlli['determine']['testo'] == 'Mancano numero o data della determina (D.D.) del contratto XI'
     assert 'XI' in controlli['contratto_inferiore']['testo'] and 'XI' in controlli['contratto_superiore']['testo']
     # le tariffe che finiscono entro due mesi si segnalano
     controlli = {c['codice']: c for c in _ok(napoli.get(f'/api/napoli/lotti/{lotto}/controlli?giorno=2027-01-10'))}
     assert controlli['tariffa_ASACOM']['stato'] == 'avviso' and '31/01/2027' in controlli['tariffa_ASACOM']['testo']
+
+
+def test_determine_con_il_grado_e_tariffa_lis_quando_serve(napoli, database_isolato):
+    """Due contratti XI, uno per grado: il messaggio della determina dice a quale manca.
+    Con una coppia di interprete LIS nel lotto la tariffa LIS vuota diventa un avviso."""
+    lotto = crea_lotto_proposto(napoli)['id']
+    for grado in ('inferiore', 'superiore'):
+        _ok(napoli.post(f'/api/napoli/lotti/{lotto}/contratti', json={
+            'numero': 'XI', 'grado': grado, 'valido_da': '2026-06-08', 'valido_a': '2026-07-31'}))
+    controlli = {c['codice']: c for c in _ok(napoli.get(f'/api/napoli/lotti/{lotto}/controlli?giorno=2026-06-15'))}
+    assert controlli['determine']['testo'] == ('Mancano numero o data della determina (D.D.) dei contratti '
+                                               'XI (grado inferiore), XI (grado superiore)')
+    assert controlli['tariffa_LIS']['stato'] == 'ok'
+    conn = sqlite3.connect(database_isolato)
+    try:
+        with conn:
+            ora = '2026-06-01T10:00:00'
+            scuola = conn.execute("INSERT INTO napoli_scuole (lotto_id, nome, municipalita, data_inserimento) "
+                                  "VALUES (?, 'SCUOLA DI PROVA', 1, ?)", (lotto, ora)).lastrowid
+            alunno = conn.execute("INSERT INTO napoli_alunni (lotto_id, cognome, nome, codice_fiscale, scuola_id, "
+                                  "data_inserimento) VALUES (?, 'ALUNNO', 'PROVA', 'ZZZZZZ00A01Z999Z', ?, ?)",
+                                  (lotto, scuola, ora)).lastrowid
+            operatore = conn.execute("INSERT INTO napoli_operatori (cognome, nome, figura, data_inserimento) "
+                                     "VALUES ('OPERATORE', 'PROVA', 'LIS', ?)", (ora,)).lastrowid
+            conn.execute("INSERT INTO napoli_coppie (lotto_id, alunno_id, operatore_id, scuola_id, figura, valido_da, "
+                         "data_inserimento) VALUES (?, ?, ?, ?, 'LIS', '2026-06-01', ?)",
+                         (lotto, alunno, operatore, scuola, ora))
+    finally:
+        conn.close()
+    controlli = {c['codice']: c for c in _ok(napoli.get(f'/api/napoli/lotti/{lotto}/controlli?giorno=2026-06-15'))}
+    assert controlli['tariffa_LIS']['stato'] == 'avviso'
+    assert controlli['tariffa_LIS']['testo'].startswith('Oggi non c\'è una tariffa per Interprete LIS')
 
 
 # ==================== Roma non cambia, pagine ====================

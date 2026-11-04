@@ -60,6 +60,13 @@
 .napoli-menu-parti a:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .napoli-menu-segno { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); flex-shrink: 0; }
 .napoli-annulla { margin-top: 10px; justify-content: flex-start; }
+/* Nel menu a sinistra (220px) il pulsante non si taglia: meno spazio ai lati e, se il
+   carattere di Windows e' piu' largo, il testo va a capo. */
+.napoli-menu-parti .napoli-annulla {
+    padding-left: 10px; padding-right: 10px;
+    white-space: normal; text-align: left; line-height: 1.3;
+}
+.napoli-menu-parti .napoli-annulla svg { flex-shrink: 0; }
 .napoli-parti { min-width: 0; }   /* la colonna puo' stringersi: le tabelle scorrono dentro la loro cornice */
 
 @media (max-width: 1100px) {
@@ -274,6 +281,8 @@ details.napoli-parte-conferma[open] > summary { margin-bottom: 6px; }
 /* Qualifiche nuove dell'import: la tendina della figura e' larga quanto la cella, cosi'
    il nome della figura con la descrizione si legge tutto (anche a 1366x768). */
 .napoli-import .napoli-tabella-compatta select.form-control.napoli-scelta-figura { min-width: 320px; max-width: none; width: 100%; }
+/* Plessi da scegliere: la tendina della municipalita' (corta) non va a capo. */
+.napoli-import .napoli-tabella-compatta select.form-control.napoli-scelta-plesso { min-width: 170px; }
 
 /* Opzione secondaria della scheda Importa (REGOLE 14): le ore dei giorni di un mese, in
    una parte chiusa sotto l'azione principale "Carica l'anagrafica". */

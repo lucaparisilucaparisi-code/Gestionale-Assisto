@@ -11,7 +11,7 @@
  * - NapoliProcedura: "Crea il primo lotto" (anche "Nuovo lotto") in tre passi;
  * - NapoliMese, NapoliImport e NapoliImpostazioni: le schede (Importa: dal file Excel
  *   "master" l'anagrafica, l'azione principale, o in una parte secondaria le ore di un
- *   mese; anteprima, scelte da confermare, caricamento e "Annulla import").
+ *   mese; anteprima, scelte da confermare, caricamento e "Annulla il caricamento").
  * Ogni controllo vero e' sul server: qui si guardano solo i campi vuoti, per non far
  * aspettare la risposta.
  */
@@ -497,6 +497,8 @@ const NAPOLI_GRADI_SCUOLA = [
     ['inferiore', 'Grado inferiore'], ['superiore', 'Grado superiore'],
     ['misto', 'Misto (si sceglie per alunno)'], ['', 'Da decidere'],
 ];
+// Bloccanti che si sistemano scegliendo nella pagina (non correggendo il file).
+const NAPOLI_SCELTE_BLOCCANTI = ['qualifica_non_collegata', 'municipalita_da_scegliere'];
 const NAPOLI_ICONE_LIVELLO = { bloccante: NAPOLI_ICONE_STATO.manca, avviso: NAPOLI_ICONE_STATO.avviso, nota: NAPOLI_ICONE_STATO.ok };
 
 function napoliDataOra(iso) {
@@ -747,7 +749,14 @@ const NapoliImport = {
             this.statoImporta();
             return;
         }
-        if (tipo === 'qualifica') (s.qualifiche = s.qualifiche || {})[el.dataset.chiave] = el.value;
+        // «— scegli —» toglie la scelta (il server accetta solo figure e municipalita' vere)
+        const scegli = (nome) => {
+            s[nome] = s[nome] || {};
+            if (el.value) s[nome][el.dataset.chiave] = el.value;
+            else delete s[nome][el.dataset.chiave];
+        };
+        if (tipo === 'qualifica') scegli('qualifiche');
+        else if (tipo === 'plesso') scegli('plessi');
         else if (tipo === 'grado') (s.gradi = s.gradi || {})[el.dataset.chiave] = el.value;
         else if (tipo === 'ambigua') (s.ore_ambigue = s.ore_ambigue || {})[el.dataset.chiave] = el.value;
         else if (tipo === 'sovrascrivi') s.sovrascrivi_manuali = el.checked;
@@ -766,6 +775,7 @@ const NapoliImport = {
         s.qualifiche = Object.fromEntries((a.qualifiche || []).filter(q => q.figura).map(q => [q.testo, q.figura]));
         s.gradi = Object.fromEntries((a.scuole_nuove || []).map(x => [x.chiave, x.grado || '']));
         s.ore_ambigue = Object.fromEntries((a.ore_ambigue || []).filter(x => x.scelta).map(x => [x.chiave, x.scelta]));
+        s.plessi = Object.fromEntries((a.plessi_da_scegliere || []).filter(x => x.scelta).map(x => [x.chiave, String(x.scelta)]));
         s.subentri = (a.subentri || []).filter(x => x.scelto).map(x => x.riga);
         s.chiusure = (a.chiusure || []).filter(x => x.scelto).map(x => x.id);
         s.conferme = (s.conferme || []).filter(c => (a.conferme_richieste || []).includes(c));
@@ -871,7 +881,7 @@ const NapoliImport = {
         return `
             <div class="napoli-blocco napoli-blocco-danger">
                 <h3>Da correggere prima di ${a.modo === 'anagrafica' ? 'caricare' : 'importare'}</h3>
-                <p class="napoli-intro">Le qualifiche si collegano qui sotto, in «Da confermare». Il resto si corregge nel file: correggilo in Excel, salvalo, chiudilo e sceglilo di nuovo qui sopra.</p>
+                <p class="napoli-intro">Le figure delle qualifiche nuove e i plessi si scelgono qui sotto, in «Da confermare». Il resto si corregge nel file: correggilo in Excel, salvalo, chiudilo e sceglilo di nuovo qui sopra.</p>
                 ${a.bloccanti.map(g => this.htmlGruppo(g, true)).join('')}
             </div>`;
     },
@@ -918,6 +928,25 @@ const NapoliImport = {
                     </table></div>
                 </div>`);
         }
+        if ((a.plessi_da_scegliere || []).length) {
+            const daScegliere = a.plessi_da_scegliere.filter(x => !x.scelta).length;
+            parti.push(`
+                <div class="napoli-parte-conferma">
+                    <h4>Plessi da scegliere${daScegliere ? ` <span class="badge badge-warning">${napoliNumeroIt(daScegliere)} da scegliere</span>` : ''}</h4>
+                    <p class="napoli-intro">In queste righe manca la municipalità e la scuola è in più municipalità (plessi diversi). La municipalità è quella della scuola: scegli tu in quale plesso va ogni coppia. Se preferisci, scrivi la municipalità nel file e sceglilo di nuovo.</p>
+                    <div class="table-container"><table class="table napoli-tabella-compatta">
+                        <thead><tr><th scope="col">Riga</th><th scope="col">Coppia</th><th scope="col">Scuola</th><th scope="col">Plesso</th></tr></thead>
+                        <tbody>${a.plessi_da_scegliere.map(x => `
+                            <tr><td>${x.riga}</td>
+                                <td>${escapeHtml(x.operatore)} con ${escapeHtml(x.alunno)}${x.figura ? ` <span class="napoli-vuoto">(${escapeHtml(x.figura)})</span>` : ''}</td>
+                                <td>${escapeHtml(x.nome)} <span class="napoli-vuoto">(${escapeHtml(x.codice) || 'senza codice'})</span></td>
+                                <td><select class="form-control napoli-scelta-plesso" data-scelta="plesso" data-chiave="${escapeHtml(x.chiave)}" aria-label="Plesso della riga ${x.riga}">
+                                    <option value=""${x.scelta ? '' : ' selected'}>— scegli —</option>
+                                    ${x.possibili.map(m => `<option value="${m}"${x.scelta === m ? ' selected' : ''}>Municipalità ${m}</option>`).join('')}
+                                </select></td></tr>`).join('')}</tbody>
+                    </table></div>
+                </div>`);
+        }
         if (a.ore_ambigue.length) {
             parti.push(`
                 <div class="napoli-parte-conferma">
@@ -939,7 +968,7 @@ const NapoliImport = {
                 <div class="${classeParte}">
                     <h4>${escapeHtml(conf.titolo)}</h4>
                     <p class="napoli-intro">${escapeHtml(conf.testo)}</p>
-                    <ul class="napoli-elenco">${conf.voci.map(v => `<li>${escapeHtml(v.testo)} <span class="napoli-vuoto">(righe ${v.righe.join(', ')})</span></li>`).join('')}</ul>
+                    ${conf.voci.length ? `<ul class="napoli-elenco">${conf.voci.map(v => `<li>${escapeHtml(v.testo)} <span class="napoli-vuoto">(righe ${v.righe.join(', ')})</span></li>`).join('')}</ul>` : ''}
                     ${conf.solo_avviso
                         ? '<p class="napoli-nota napoli-nota-stretta">Il file non cambia niente in Assisto, quindi qui non c\'è niente da confermare: è solo un avviso.</p>'
                         : `<label class="napoli-scelta napoli-ho-controllato"><input type="checkbox" value="${escapeHtml(conf.codice)}" data-scelta="conferma"${(s.conferme || []).includes(conf.codice) ? ' checked' : ''}> <strong>Ho controllato</strong></label>`}
@@ -1065,11 +1094,12 @@ const NapoliImport = {
         const nuovi = napoliElenco([[c.nuovi.scuole, 'scuole', 'scuola'], [c.nuovi.alunni, 'alunni', 'alunno'], [c.nuovi.operatori, 'operatori', 'operatore'],
             [c.nuovi.coppie, 'coppie operatore-alunno', 'coppia operatore-alunno'], [c.nuovi.pei, 'PEI (ore settimanali da progetto)'],
             [c.nuovi.qualifiche, 'qualifiche collegate a una figura', 'qualifica collegata a una figura']]);
-        const aggiornati = napoliElenco([[c.aggiornati.coppie, 'coppie (date)', 'coppia (date)'], [c.aggiornati.pei, 'PEI (ore settimanali da progetto)'],
+        const aggiornati = napoliElenco([[c.aggiornati.coppie, 'coppie (date o plesso)', 'coppia (date o plesso)'], [c.aggiornati.pei, 'PEI (ore settimanali da progetto)'],
             [c.aggiornati.operatori, 'operatori (ore di contratto o codice fiscale)', 'operatore (ore di contratto o codice fiscale)'],
-            [c.aggiornati.alunni, 'alunni (codice fiscale corretto)', 'alunno (codice fiscale corretto)'],
+            [c.aggiornati.alunni, 'alunni (codice fiscale corretto o plesso)', 'alunno (codice fiscale corretto o plesso)'],
             [c.aggiornati.scuole, 'scuole (municipalità aggiunta)', 'scuola (municipalità aggiunta)'],
-            [c.aggiornati.fogli, 'note dei fogli', 'nota di un foglio']]);
+            [c.aggiornati.fogli, 'note dei fogli', 'nota di un foglio'],
+            [(c.tolti || {}).scuole, 'plessi senza municipalità tolti (erano rimasti vuoti)', 'plesso senza municipalità tolto (era rimasto vuoto)']]);
         if (anagrafica) {
             return `
                 <div class="napoli-blocco">
@@ -1134,6 +1164,12 @@ const NapoliImport = {
             testo = anagrafica ? 'Il mese del file è chiuso per questo lotto: riaprilo, oppure usa il file di un mese non ancora chiuso.'
                 : 'Il mese del lotto è chiuso: riaprilo prima di importare.';
             stato = ['badge-danger', 'Mese chiuso'];
+        } else if (a.bloccanti.length && a.bloccanti.every(g => NAPOLI_SCELTE_BLOCCANTI.includes(g.codice))) {
+            // si sistemano nella pagina, senza cambiare il file
+            const cosa = [a.bloccanti.some(g => g.codice === 'qualifica_non_collegata') ? 'le figure delle qualifiche nuove' : '',
+                a.bloccanti.some(g => g.codice === 'municipalita_da_scegliere') ? 'i plessi' : ''].filter(Boolean).join(' e ');
+            testo = `Scegli ${cosa} nella parte «Da confermare».`;
+            stato = ['badge-warning', `${napoliNumeroIt(a.bloccanti.reduce((n, g) => n + g.n, 0))} da scegliere`];
         } else if (a.bloccanti.length) {
             testo = 'Prima correggi il file (parte «Da correggere»).';
             stato = ['badge-danger', `${napoliNumeroIt(a.bloccanti.reduce((n, g) => n + g.n, 0))} da correggere`];
@@ -1164,13 +1200,13 @@ const NapoliImport = {
             const nuovi = napoliElenco([[c.nuovi.scuole, 'scuole', 'scuola'], [c.nuovi.alunni, 'alunni', 'alunno'],
                 [c.nuovi.operatori, 'operatori', 'operatore'], [c.nuovi.coppie, 'coppie', 'coppia']]);
             showConfirmDialog('Caricare l\'anagrafica dal file?',
-                `Nel lotto ${a.lotto.nome}${nuovi ? ` si aggiungono ${nuovi}` : ' si aggiornano i dati indicati'}. Le ore dei giorni non si caricano. Prima viene fatta da sola una copia di sicurezza del database; se poi qualcosa non va, «Annulla import» rimette tutto com'era.`,
+                `Nel lotto ${a.lotto.nome}${nuovi ? ` si aggiungono ${nuovi}` : ' si aggiornano i dati indicati'}. Le ore dei giorni non si caricano. Prima viene fatta da sola una copia di sicurezza del database; se poi qualcosa non va, «Annulla il caricamento» (nell'elenco in fondo alla pagina) rimette tutto com'era.`,
                 () => this.conferma(),
                 { confirmText: 'Carica l\'anagrafica', cancelText: 'Non ancora', type: 'info' });
             return;
         }
         showConfirmDialog(`Importare le ore di ${a.file.mese_testo}?`,
-            `${napoliNumeroIt(c.righe_importate)} righe e ${a.totale_importato.ore} ore nel lotto ${a.lotto.nome}. Prima viene fatta da sola una copia di sicurezza del database; se poi qualcosa non va, «Annulla import» rimette tutto com'era.`,
+            `${napoliNumeroIt(c.righe_importate)} righe e ${a.totale_importato.ore} ore nel lotto ${a.lotto.nome}. Prima viene fatta da sola una copia di sicurezza del database; se poi qualcosa non va, «Annulla l'import» (nell'elenco in fondo alla pagina) rimette tutto com'era.`,
             () => this.conferma(),
             { confirmText: `Importa le ore di ${a.file.mese_testo}`, cancelText: 'Non ancora', type: 'info' });
     },
@@ -1183,8 +1219,9 @@ const NapoliImport = {
             const r = await this.invia('/api/napoli/import/conferma', {
                 modo: a.modo, sha256: a.file.sha256, versione_dati: a.versione_dati, scelte: JSON.stringify(this.scelte),
             });
+            const annulla = a.modo === 'anagrafica' ? '«Annulla il caricamento»' : '«Annulla l\'import»';
             showToast(r.nessun_cambiamento ? r.messaggio
-                : `${r.messaggio}. Se c'è un errore, «Annulla import» (o Ctrl+Z) rimette tutto com'era.`, 'success', 9000);
+                : `${r.messaggio}. Se c'è un errore, ${annulla} (o Ctrl+Z) rimette tutto com'era.`, 'success', 9000);
             this.mostraEsito(r);
             await this.caricaStorico();
         } catch (e) {
@@ -1312,7 +1349,7 @@ const NapoliImport = {
                         <td>${escapeHtml(napoliDataOra(i.data))}</td>
                         <td class="napoli-numero">${napoliNumeroIt(i.righe)}</td>
                         <td class="napoli-numero">${escapeHtml(i.ore) || '—'}</td>
-                        <td class="napoli-azioni">${i.annullabile ? `<button type="button" class="btn btn-sm btn-secondary" data-annulla-import="${i.id}">Annulla import</button>` : ''}</td>
+                        <td class="napoli-azioni">${i.annullabile ? `<button type="button" class="btn btn-sm btn-secondary" data-annulla-import="${i.id}">${i.modo === 'anagrafica' ? 'Annulla il caricamento' : 'Annulla l\'import'}</button>` : ''}</td>
                     </tr>`).join('')}</tbody>
             </table></div>
             <p class="napoli-nota">Si può annullare solo l'ultimo caricamento del lotto, se il mese non è chiuso.</p>`;
@@ -2021,7 +2058,9 @@ const NapoliImpostazioni = {
         napoliPulisciErrori(form);
         this.modifica.qualifica = q ? q.testo : null;
         this.el('qualifica-titolo').textContent = q ? 'Cambia la figura' : 'Nuova qualifica';
-        this.el('qualifica-figura').innerHTML = NapoliComune.opzioniFigure(q ? q.figura : 'ASACOM');
+        // per una qualifica nuova nessuna figura e' gia' scelta (come nell'import): si sceglie
+        this.el('qualifica-figura').innerHTML = q ? NapoliComune.opzioniFigure(q.figura)
+            : `<option value="" selected>— scegli —</option>${NapoliComune.opzioniFigure(null)}`;
         this.el('qualifica-testo').value = q ? q.testo : '';
         this.el('qualifica-testo').readOnly = !!q;
         openModal('napoli-modal-qualifica');
@@ -2031,6 +2070,7 @@ const NapoliImpostazioni = {
         const form = this.el('form-qualifica');
         napoliPulisciErrori(form);
         if (!napoliCampoObbligatorio(this.el('qualifica-testo'), 'Scrivi la qualifica come compare nel file.')) return;
+        if (!napoliCampoObbligatorio(this.el('qualifica-figura'), 'Scegli la figura professionale.')) return;
         const nuova = !this.modifica.qualifica;
         try {
             const r = await this.inviaModulo('/api/napoli/qualifiche', nuova ? 'POST' : 'PUT', napoliLeggiCampi(form), form, this.pulsanteDi(form));

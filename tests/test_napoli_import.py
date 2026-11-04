@@ -4,6 +4,9 @@ Sul master inventato (tests/napoli_sintetico.py, 41 righe, 1.554 ore):
 - anteprima senza scritture: totali attesi per figura dalle celle dei giorni (la
   VERIFICA non conta), avvisi per codice, ore da confermare ("1,30"), grado proposto
   dal codice meccanografico, la stessa scuola in due municipalita' = due plessi da
+  confermare, la municipalita' mancante di una scuola con piu' plessi da scegliere (mai un
+  plesso senza municipalita' in piu'), le coppie di un plesso senza municipalita' che
+  passano al plesso del file; un file di un mese precedente all'ultimo caricamento da
   confermare;
 - conferma: stesso file (sha256) e stessi dati dell'anteprima, copia di sicurezza,
   un'unica transazione; coppie titolari e sostituti, subentro, PEI, fogli, giorni
@@ -392,11 +395,35 @@ def test_annullare_l_anagrafica_ripristina_lo_stato_di_prima(napoli, master):
     r = _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
     assert r['messaggio'].startswith('Annullato il caricamento dell\'anagrafica dal file di marzo 2026')
     assert impronta_dati(napoli.percorso) == prima
+    # i messaggi parlano di «caricamento», come la pagina
+    e = _errore(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}), 409, 'IMPORT_GIA_ANNULLATO')
+    assert e['error'] == 'Il caricamento è già stato annullato.'
     # anche con Ctrl+Z
     carica_anagrafica(napoli, dati)
     ultima = _ok(napoli.get('/api/napoli/annulla/ultima'))['azione']
     _ok(napoli.post('/api/napoli/annulla', json={'id': ultima['id']}))
     assert impronta_dati(napoli.percorso) == prima
+
+
+def test_un_file_di_un_mese_precedente_all_ultimo_caricamento_va_confermato(napoli, master, tmp_path):
+    """Il file di marzo dopo l'anagrafica di aprile aggiungerebbe le coppie di marzo e
+    porterebbe indietro i PEI: si carica solo dopo aver spuntato «Ho controllato»."""
+    dati, _atteso = master
+    carica_anagrafica(napoli, aprile(tmp_path))
+    for modo in ('anagrafica', 'import'):
+        a = _ok(anteprima(napoli, dati, modo=modo))
+        assert a['conferme_richieste'][0] == 'mese_precedente' and not a['nessun_cambiamento']
+        conf = a['conferme'][0]
+        assert conf['codice'] == 'mese_precedente' and conf['voci'] == [] and not conf['solo_avviso']
+        assert conf['testo'].startswith('Questo file è di marzo 2026, ma il lotto ha già un caricamento di aprile 2026 '
+                                        '(fatto il ')
+    a = _ok(anteprima(napoli, dati, modo='anagrafica'))
+    altre = [c for c in a['conferme_richieste'] if c != 'mese_precedente']
+    e = _errore(conferma(napoli, dati, a, {'conferme': altre}), 400, 'DA_CONFERMARE')
+    assert e['mancano'] == ['mese_precedente']
+    _ok(conferma(napoli, dati, a, {'conferme': a['conferme_richieste']}))
+    # aprile di nuovo (il mese piu' recente): niente da confermare per il mese
+    assert 'mese_precedente' not in _ok(anteprima(napoli, aprile(tmp_path), modo='anagrafica'))['conferme_richieste']
 
 
 def test_la_conferma_vale_solo_nel_modo_dell_anteprima(napoli, master):
@@ -926,6 +953,145 @@ def test_il_mese_dopo_la_municipalita_mancante_si_aggiunge_alla_scuola(napoli, t
     _a, esito = importa(napoli, apr)
     assert righe(napoli.percorso, "SELECT id, municipalita FROM napoli_scuole "
                                   "WHERE codice_meccanografico = 'NAIC8ZZ001'") == [{'id': plesso['id'], 'municipalita': 2}]
+    _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
+    assert impronta_dati(napoli.percorso) == prima
+
+
+RIGA_7, RIGA_41 = 5, 39          # indici delle righe 7 (DE PROVA DELTA con NOVIZIO ZETA) e 41 del foglio
+
+
+def un_plesso_nella_2(r):
+    """LICEO ZETA ETA (NAPC0ZZ004) e' nella municipalita' 1, la riga 41 nella 2: due plessi.
+    La riga 7 non ha la municipalita'."""
+    r[RIGA_41]['municipalita'] = 2
+
+
+def plessi_zeta(percorso):
+    """(municipalita', coppie) dei plessi di LICEO ZETA ETA."""
+    return [(p['municipalita'], p['coppie']) for p in righe(
+        percorso, 'SELECT s.municipalita, COUNT(c.id) AS coppie FROM napoli_scuole s '
+                  'LEFT JOIN napoli_coppie c ON c.scuola_id = s.id '
+                  "WHERE s.codice_meccanografico = 'NAPC0ZZ004' GROUP BY s.id ORDER BY s.municipalita")]
+
+
+def coppia_riga_7(percorso):
+    return righe(percorso, 'SELECT c.id, c.scuola_id, c.alunno_id, a.scuola_id AS scuola_alunno FROM napoli_coppie c '
+                           'JOIN napoli_operatori o ON o.id = c.operatore_id JOIN napoli_alunni a ON a.id = c.alunno_id '
+                           "WHERE o.cognome = 'DE PROVA' AND a.cognome = 'NOVIZIO' AND a.nome = 'ZETA'")[0]
+
+
+def test_municipalita_mancante_in_una_scuola_con_piu_plessi_si_sceglie(napoli, tmp_path):
+    """REGOLE 12: la municipalita' e' della scuola. Se la scuola ha piu' plessi e la riga non
+    la scrive, non si crea un plesso "senza municipalita'" in piu': la riga non si carica
+    finche' non si sceglie il plesso nella pagina (o si scrive nel file). Ricaricando lo stesso
+    file la municipalita' e' quella del plesso della coppia gia' in Assisto."""
+    dati = variante(tmp_path, un_plesso_nella_2)
+    a = _ok(anteprima(napoli, dati, modo='anagrafica'))
+    g = codici(a, 'bloccanti')['municipalita_da_scegliere']
+    assert [(x['riga'], x['dettaglio']) for x in g['righe']] == [(7, 'municipalità 1 o 2')]
+    [x] = a['plessi_da_scegliere']
+    assert (x['riga'], x['codice'], x['possibili'], x['scelta']) == (7, 'NAPC0ZZ004', [1, 2], None)
+    assert (x['operatore'], x['alunno'], x['figura']) == ('DE PROVA DELTA', 'NOVIZIO ZETA', 'Educatore')
+    assert 'municipalita_presa_dalla_scuola' not in codici(a, 'note')
+    _errore(conferma(napoli, dati, a, {'conferme': a['conferme_richieste']}), 400, 'IMPORT_BLOCCATO')
+    # una municipalita' che la scuola non ha non vale come scelta
+    a = _ok(anteprima(napoli, dati, {'plessi': {x['chiave']: '5'}}, modo='anagrafica'))
+    assert 'municipalita_da_scegliere' in codici(a, 'bloccanti')
+    _errore(anteprima(napoli, dati, {'plessi': {x['chiave']: 'senza'}}, modo='anagrafica'), 400, 'SCELTE_NON_VALIDE')
+    a, _esito = carica_anagrafica(napoli, dati, {'plessi': {x['chiave']: '1'}})
+    assert not a['bloccanti'] and a['plessi_da_scegliere'][0]['scelta'] == 1
+    assert plessi_zeta(napoli.percorso) == [(1, 5), (2, 1)]
+    c = coppia_riga_7(napoli.percorso)
+    assert c['scuola_id'] == c['scuola_alunno']
+    assert righe(napoli.percorso, 'SELECT municipalita FROM napoli_scuole WHERE id = ?', (c['scuola_id'],)) == [
+        {'municipalita': 1}]
+    # lo stesso file di nuovo: niente da scegliere (la municipalita' e' quella del plesso della coppia)
+    for modo in ('anagrafica', 'import'):
+        a = _ok(anteprima(napoli, dati, modo=modo))
+        assert a['plessi_da_scegliere'] == [] and not a['bloccanti']
+        assert [x['riga'] for x in codici(a, 'note')['municipalita_presa_dalla_coppia']['righe']] == [7]
+    assert _ok(anteprima(napoli, dati, modo='anagrafica'))['nessun_cambiamento']
+
+
+def test_coppie_in_un_plesso_senza_municipalita_passano_al_plesso_del_file(napoli, tmp_path):
+    """Dati lasciati da un import di prima: la riga 7 senza municipalita' aveva creato un terzo
+    plesso di LICEO ZETA ETA, "senza municipalita'", con la coppia e l'alunno. Con il file
+    corretto (la riga 7 nella municipalita' 1) la coppia e l'alunno passano al plesso della
+    municipalita' 1 (da confermare) e il plesso senza municipalita', rimasto vuoto, si toglie.
+    Annullare rimette tutto com'era."""
+    dati = variante(tmp_path, un_plesso_nella_2)
+    a = _ok(anteprima(napoli, dati, modo='anagrafica'))
+    carica_anagrafica(napoli, dati, {'plessi': {a['plessi_da_scegliere'][0]['chiave']: '1'}})
+    esegui(napoli.percorso, 'INSERT INTO napoli_scuole (lotto_id, nome, codice_meccanografico, grado, municipalita, '
+                            'data_inserimento) SELECT lotto_id, nome, codice_meccanografico, grado, NULL, data_inserimento '
+                            "FROM napoli_scuole WHERE codice_meccanografico = 'NAPC0ZZ004' AND municipalita = 1")
+    [senza] = righe(napoli.percorso, "SELECT id FROM napoli_scuole WHERE codice_meccanografico = 'NAPC0ZZ004' "
+                                     'AND municipalita IS NULL')
+    c = coppia_riga_7(napoli.percorso)
+    esegui(napoli.percorso, 'UPDATE napoli_coppie SET scuola_id = ? WHERE id = ?', (senza['id'], c['id']))
+    esegui(napoli.percorso, 'UPDATE napoli_alunni SET scuola_id = ? WHERE id = ?', (senza['id'], c['alunno_id']))
+    assert plessi_zeta(napoli.percorso) == [(None, 1), (1, 4), (2, 1)]
+    prima = impronta_dati(napoli.percorso)
+
+    def corretto(r):
+        un_plesso_nella_2(r)
+        r[RIGA_7]['municipalita'] = 1
+    file_corretto = variante(tmp_path, corretto, nome='corretto.xlsx')
+    a = _ok(anteprima(napoli, file_corretto, modo='anagrafica'))
+    assert not a['nessun_cambiamento'] and a['conferme_richieste'] == ['plessi']
+    assert a['conteggi']['tolti'] == {'scuole': 1} and a['conteggi']['nuovi']['scuole'] == 0
+    assert (a['conteggi']['aggiornati']['coppie'], a['conteggi']['aggiornati']['alunni']) == (1, 1)
+    [voce] = a['conferme'][0]['voci']
+    assert voce['testo'] == ('LICEO ZETA ETA (NAPC0ZZ004): nel file municipalità 1 e 2, in Assisto 1 e 2 e senza '
+                             'municipalità: le coppie già in Assisto nel plesso senza municipalità passano al plesso '
+                             'della municipalità 1; il plesso senza municipalità, rimasto vuoto, si toglie')
+    assert voce['righe'] == [7]
+    _errore(conferma(napoli, file_corretto, a), 400, 'DA_CONFERMARE')
+    _a, esito = carica_anagrafica(napoli, file_corretto)
+    assert plessi_zeta(napoli.percorso) == [(1, 5), (2, 1)]
+    dopo = coppia_riga_7(napoli.percorso)
+    assert dopo['scuola_id'] == dopo['scuola_alunno'] != senza['id']
+    # la copia per l'annullamento ha la riga del plesso tolto, senza codici fiscali
+    [imp] = righe(napoli.percorso, 'SELECT esito_json, sostituite_json FROM napoli_import WHERE id = ?',
+                  (esito['import_id'],))
+    registro = json.loads(imp['sostituite_json'])
+    assert [r['id'] for r in registro['tolte_scuole']] == [senza['id']]
+    for testo in (imp['esito_json'], imp['sostituite_json'], json.dumps(a)):
+        assert import_napoli.nascondi_codici_fiscali(testo) == testo
+    # ricaricarlo non cambia piu' niente
+    assert _ok(anteprima(napoli, file_corretto, modo='anagrafica'))['nessun_cambiamento']
+    _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
+    assert impronta_dati(napoli.percorso) == prima
+
+
+def test_il_mese_dopo_il_plesso_senza_municipalita_la_prende_dal_file(napoli, tmp_path):
+    """Marzo senza la municipalita' di LICEO ZETA ETA (un plesso senza municipalita'), aprile
+    con la scuola nella 1 e una riga nella 2: il plesso prende la municipalita' 1 (quella
+    della maggior parte delle righe, le sue coppie restano li'), la coppia della riga 41 e il
+    suo alunno passano al plesso nuovo della municipalita' 2."""
+    importa(napoli, variante(tmp_path, municipalita_di('LICEO ZETA', None), nome='marzo_senza.xlsx'))
+    [plesso] = righe(napoli.percorso, "SELECT id, municipalita FROM napoli_scuole WHERE codice_meccanografico = 'NAPC0ZZ004'")
+    assert plessi_zeta(napoli.percorso) == [(None, 6)]
+    prima = impronta_dati(napoli.percorso)
+
+    def nella_1_e_nella_2(r):
+        municipalita_di('LICEO ZETA', 1)(r)
+        un_plesso_nella_2(r)
+    apr = aprile(tmp_path, nella_1_e_nella_2)
+    a, scelte = con_ore_scelte(napoli, apr)
+    assert a['conferme_richieste'] == ['plessi', 'gradi'] and a['plessi_da_scegliere'] == []
+    assert [(s['codice'], s['municipalita']) for s in a['scuole_nuove']] == [('NAPC0ZZ004', 2)]
+    [voce] = a['conferme'][0]['voci']
+    assert voce['testo'] == ('LICEO ZETA ETA (NAPC0ZZ004): nel file municipalità 1 e 2, in Assisto senza '
+                             'municipalità: si aggiunge il plesso della municipalità 2; il plesso senza municipalità '
+                             'prende la municipalità 1; le coppie già in Assisto nel plesso senza municipalità '
+                             'passano al plesso della municipalità 2')
+    _a, esito = importa(napoli, apr)
+    assert plessi_zeta(napoli.percorso) == [(1, 5), (2, 1)]
+    assert righe(napoli.percorso, 'SELECT municipalita FROM napoli_scuole WHERE id = ?', (plesso['id'],)) == [
+        {'municipalita': 1}]
+    assert righe(napoli.percorso, 'SELECT COUNT(*) AS n FROM napoli_alunni a JOIN napoli_scuole s ON s.id = a.scuola_id '
+                                  "WHERE s.codice_meccanografico = 'NAPC0ZZ004' AND s.municipalita = 2")[0]['n'] == 1
     _ok(napoli.post(f'/api/napoli/import/{esito["import_id"]}/annulla', json={}))
     assert impronta_dati(napoli.percorso) == prima
 

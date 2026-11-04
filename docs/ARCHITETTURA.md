@@ -348,9 +348,9 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   riferimento amministrativo del lotto). La banca ore della fase 2 (PROGETTO §4.3,
   la' chiamata v3) sara' quindi la migrazione 5 (`crea_v5`).
 - **Migrazioni gia' pubblicate non si cambiano**: un database puo' essere gia' a
-  quella versione e rieseguirla non lo correggerebbe. `test_la_migrazione_2_pubblicata_non_cambia`
-  e `test_la_migrazione_3_pubblicata_non_cambia` fissano le impronte di `crea_v2` e
-  `crea_v3`; ogni correzione e' una migrazione nuova, sicura anche su un database gia'
+  quella versione e rieseguirla non lo correggerebbe. `test_la_migrazione_2_pubblicata_non_cambia`,
+  `test_la_migrazione_3_pubblicata_non_cambia` e `test_la_migrazione_4_pubblicata_non_cambia`
+  fissano le impronte di `crea_v2`, `crea_v3` e `crea_v4`; ogni correzione e' una migrazione nuova, sicura anche su un database gia'
   aggiornato e con dati (`crea_v4` aggiunge la colonna solo se manca): `crea_v3` ricostruisce
   `napoli_coordinamento` (nuova tabella, copia, `DROP`, `RENAME`, nella stessa
   transazione; le righe della v2, una per operatore, diventano il totale del mese)
@@ -424,11 +424,16 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   le schede
   comuni (`templates/_napoli_tabs.html`, con il lotto scelto ricordato nel browser) per
   ora sono **Mese** (`/napoli`: senza lotti la procedura "Crea il primo lotto", poi cosa
-  manca per le fatture, `GET /api/napoli/lotti/<id>/controlli`), **Importa**
+  manca per le fatture, `GET /api/napoli/lotti/<id>/controlli`: la determina mancante con
+  numero e grado del contratto, per esempio «XI (grado inferiore)»; una tariffa lasciata
+  vuota apposta, senza proposta come quella dell'interprete LIS, e' un avviso solo se nel
+  lotto ci sono coppie o ore di quella figura), **Importa**
   (`/napoli/import`, l'anagrafica dal file Excel "master") e **Impostazioni**
   (`/napoli/impostazioni`, una parte alla volta, `#lotto`, `#contratti`...): dati della
   cooperativa e destinatario (`napoli_impostazioni`), lotti, contratti applicativi per
-  lotto e grado, tariffe e regole con data, qualifiche. Pagine e script
+  lotto e grado, tariffe e regole con data, qualifiche (una nuova si salva solo con la
+  figura scelta, nessuna e' gia' scelta; cambiare la figura di una grafia predefinita non
+  la rende eliminabile, perche' serve a leggere il file master). Pagine e script
   (`static/js/napoli.js`, `static/css/napoli.css`) solo di Napoli: le pagine di Roma non
   li caricano. Le API controllano tutto lato server e rispondono con un messaggio
   semplice e il campo sbagliato (`{error, code, campo}`: 400 dati non validi, 404, 409):
@@ -516,13 +521,27 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     scelte): **non scrive nulla**. Abbina solo dentro Napoli:
     - scuole per codice meccanografico e **municipalita' della scuola** (REGOLE 12):
       municipalita' mancante presa dalla stessa scuola se ne ha una sola (nel file o in
-      Assisto); se la scuola in Assisto c'e' una volta sola e senza municipalita', quella
-      del file si aggiunge allo stesso plesso (avviso, l'annullamento la toglie). La stessa
-      scuola con municipalita' diverse, nel file o fra il file e Assisto, va confermata con
-      "Ho controllato": una municipalita' nuova diventa un altro plesso se serve a una
-      coppia nuova; le righe di coppie gia' in Assisto restano nel plesso della coppia.
-      Una scuola nuova si crea solo se una coppia nuova la usa (niente scuole vuote; una
-      coppia gia' in Assisto con un'altra scuola resta nella sua, con un avviso);
+      Assisto). Se la scuola ne ha piu' di una (piu' plessi) non si crea mai un plesso
+      "senza municipalita'" in piu': vale quella del plesso della coppia gia' in Assisto
+      (nota `municipalita_presa_dalla_coppia`), altrimenti il plesso si sceglie nella pagina
+      («Plessi da scegliere», scelta `plessi`: riga e scuola -> municipalita', solo fra
+      quelle della scuola; finche' non si sceglie e' il bloccante
+      `municipalita_da_scegliere` e la riga non si carica; il solo confronto non la chiede).
+      Se la scuola in Assisto c'e' una volta sola e senza municipalita', quella del file si
+      aggiunge allo stesso plesso (avviso, l'annullamento la toglie). La stessa scuola con
+      municipalita' diverse, nel file o fra il file e Assisto, va confermata con "Ho
+      controllato": una municipalita' nuova diventa un altro plesso se serve a una coppia
+      nuova; le righe di coppie gia' in Assisto restano nel plesso della coppia, salvo
+      quelle in un plesso **senza municipalita'** (lasciato da un import di prima), che
+      passano al plesso della municipalita' del file: se tutte le coppie di quel plesso sono
+      nel file e una municipalita' non ha ancora un plesso in Assisto, il plesso prende
+      quella (la piu' frequente fra le righe); le altre coppie (con l'alunno, se la sua
+      scuola era quel plesso e nessuna sua coppia ci resta) passano al plesso della loro
+      municipalita', e il plesso senza municipalita' rimasto vuoto (senza coppie, alunni o
+      giorni del calendario) si toglie (`tolti.scuole`; l'annullamento lo rimette con lo
+      stesso id). Una scuola nuova si crea solo se una coppia nuova (o spostata) la usa
+      (niente scuole vuote; una coppia gia' in Assisto con un'altra scuola resta nella
+      sua, con un avviso);
     - alunni per codice fiscale (mancante o di forma sbagliata = bloccante) o, se non
       c'e', per la radice (i primi 15 caratteri: un codice con l'ultimo carattere sbagliato
       e' la stessa persona); se il file porta il codice giusto e Assisto quello sbagliato,
@@ -544,6 +563,9 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
       titolare; un sostituto con la data di inizio nel mese propone il **subentro**: il
       titolare finisce il giorno prima.
 
+    Un file di un mese **precedente** all'ultimo caricamento del lotto (marzo dopo aprile, in
+    tutti e due i modi) aggiungerebbe le coppie di quel mese e porterebbe indietro i PEI: si
+    carica solo con la conferma `mese_precedente` («Ho controllato»).
     Grado delle scuole nuove proposto dal codice (`napoli_calcoli.grado_da_codice_meccanografico`,
     PROGETTO §4.2), cambiabile nella pagina e **da confermare** («Ho controllato i gradi»,
     conferma `gradi`: il grado decide fattura e fondo, REGOLE 9; i codici con la forma delle
@@ -583,7 +605,8 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     l'anagrafica (l'avviso dice quando e da quale file e' stata caricata l'ultima volta);
   - annulla import (`POST /api/napoli/import/<id>/annulla`, e Ctrl+Z subito dopo:
     `napoli_annullamenti` ha solo `{"versione": 1, "import_id": n}` e `napoli_db.annulla`
-    passa a `import_napoli.annulla_import`): solo l'ultimo import del lotto, mese aperto,
+    passa a `import_napoli.annulla_import`; nella pagina e nei messaggi «Annulla il
+    caricamento» per l'anagrafica, «Annulla l'import» per le ore): solo l'ultimo import del lotto, mese aperto,
     niente di quello che l'import ha scritto cambiato a mano dopo (409
     `IMPORT_CAMBIATO_DOPO`: giorni dell'import, campi cambiati dall'import confrontati con i
     valori di dopo, grafie delle qualifiche create confrontate con la figura scelta); copia
@@ -592,7 +615,8 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     anagrafiche si cambiano solo campi vuoti, come le ore di contratto e la municipalita'
     della scuola, le date delle coppie, i PEI e i codici fiscali sbagliati corretti dal
     file, dei quali si salva solo la differenza, al piu' due caratteri e la loro posizione:
-    mai un codice fiscale). **Da fare al passo 1.6** (Anagrafiche): le righe create
+    mai un codice fiscale; il plesso di coppie e alunni spostati da un plesso senza
+    municipalita', che torna con la riga intera se era stato tolto). **Da fare al passo 1.6** (Anagrafiche): le righe create
     dall'import (alunni, operatori, scuole, coppie, PEI) si cancellano annullando; quando
     una pagina le potra' modificare serve lo stesso controllo "cambiato dopo l'import"
     anche per loro (oggi c'e' solo il vincolo delle chiavi esterne per i dati collegati);
@@ -606,7 +630,7 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
 - **Test**: `tests/test_napoli_schema.py` (migrazione su un database v1.20.1 con
   l'archivio Roma inventato confrontato con il gemello riaperto dalla versione
   vecchia; da un database gia' alla v2 con dati alla v3 e alla v4, da uno alla v3
-  alla v4; rieseguibilita', interruzione, ripristino, impronte delle migrazioni 2 e 3,
+  alla v4; rieseguibilita', interruzione, ripristino, impronte delle migrazioni 2, 3 e 4,
   vincoli);
   `tests/test_napoli_calcoli.py` (con soli dati inventati: le quantita' e le tariffe
   della fattura reale di giugno ricalcolate al centesimo, i due fogli firma ricostruiti
@@ -628,7 +652,11 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   mese chiuso, errori del file, copia di sicurezza, Roma intatta con alunni omonimi; il
   mese dopo (aprile, stesse righe: `napoli_sintetico.genera(anno=, mese=)`): coppie che
   continuano, municipalita' diversa da Assisto o mancante, codici fiscali corretti di
-  operatori e alunni senza doppioni, omonimi, reimport senza una riga; nessun codice
+  operatori e alunni senza doppioni, omonimi, reimport senza una riga, file di un mese
+  precedente da confermare; la municipalita' mancante di una scuola con piu' plessi da
+  scegliere (mai un plesso senza municipalita' in piu'), le coppie di un plesso senza
+  municipalita' che passano al plesso del file, quel plesso che prende la municipalita' o
+  si toglie, e l'annullamento che rimette tutto; nessun codice
   fiscale in risposte, registro, import, Ctrl+Z e log, nemmeno se scritto in una cella).
 
 ## Refactoring pianificati (da fare come interventi dedicati e revisionati)

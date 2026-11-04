@@ -54,6 +54,9 @@ IMPRONTA_V2_PUBBLICATA = '021741e4b449ed75c80dc5942ad45f0d8c9c7da04e26ab783a22c2
 # Impronta della migrazione 3 com'e' stata pubblicata (commit b10d11e): come per la 2,
 # le correzioni vanno in una migrazione nuova (crea_v4).
 IMPRONTA_V3_PUBBLICATA = '2e6514b81b1bd76f12a80abb08a0209be9f5557e3f9ac2a68d9c2bb3bd9db724'
+# Impronta della migrazione 4 com'e' stata pubblicata (commit 24ededa): le correzioni
+# vanno in una migrazione nuova (crea_v5, gia' prevista per la fase 2).
+IMPRONTA_V4_PUBBLICATA = '61cc59026940c1fa4b6d422748ee306540ab8bef8956ea6a94ee8f4915d96a20'
 VALORI_INIZIALI = {'napoli_figure': len(napoli_schema.FIGURE),
                    'napoli_alias_qualifiche': len(napoli_schema.ALIAS_QUALIFICHE)}
 ORA_RIPRISTINO = datetime.datetime(2026, 11, 4, 10, 0)
@@ -201,6 +204,14 @@ def test_la_migrazione_3_pubblicata_non_cambia():
         inspect.getsource(napoli_schema._ricostruisci_coordinamento))).encode('utf-8')).hexdigest()
     assert impronta == IMPRONTA_V3_PUBBLICATA, \
         'crea_v3 e\' gia\' pubblicata: le correzioni dello schema vanno in una migrazione nuova'
+
+
+def test_la_migrazione_4_pubblicata_non_cambia():
+    impronta = hashlib.sha256(repr((
+        napoli_schema.COLONNE_CONTRATTI_V4, inspect.getsource(napoli_schema.crea_v4),
+        inspect.getsource(napoli_schema._colonne))).encode('utf-8')).hexdigest()
+    assert impronta == IMPRONTA_V4_PUBBLICATA, \
+        'crea_v4 e\' gia\' pubblicata: le correzioni dello schema vanno in una migrazione nuova'
 
 
 def test_migrazione_rieseguibile(database_v1_20_1, db_mod):

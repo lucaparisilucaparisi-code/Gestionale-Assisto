@@ -1226,8 +1226,9 @@ def elenco_qualifiche():
 
 
 def salva_qualifica(dati, nuova):
-    """Nuova grafia (nuova=True) o cambio della figura di una grafia che c'e' gia' (diventa
-    'utente')."""
+    """Nuova grafia (nuova=True, origine 'utente') o cambio della figura di una grafia che
+    c'e' gia'. L'origine non cambia: una grafia predefinita con un'altra figura resta
+    predefinita, quindi non si elimina (serve a leggere il file master)."""
     with db.get_db_context() as conn:
         testo = _testo_qualifica(dati)
         figura = _figura(conn, dati)
@@ -1240,8 +1241,7 @@ def salva_qualifica(dati, nuova):
         modifiche = _Modifiche(conn)
         if attuale:
             modifiche.prima('alias_qualifiche', testo)
-            conn.execute("UPDATE napoli_alias_qualifiche SET figura = ?, origine = 'utente' WHERE testo = ?",
-                         (figura['codice'], testo))
+            conn.execute('UPDATE napoli_alias_qualifiche SET figura = ? WHERE testo = ?', (figura['codice'], testo))
         else:
             conn.execute("INSERT INTO napoli_alias_qualifiche (testo, figura, origine) VALUES (?, ?, 'utente')",
                          (testo, figura['codice']))
@@ -1281,6 +1281,10 @@ def controlli_lotto(lotto_id, giorno=None):
         contratti = elenco_contratti(lotto_id, conn)
         tariffe = elenco_tariffe(lotto_id, conn)
         figure = elenco_figure(conn)
+        # figure con coppie o ore nel lotto: senza tariffa le loro ore non si fatturano
+        usate = {r['figura'] for r in _righe(conn, 'SELECT DISTINCT figura FROM napoli_coppie WHERE lotto_id = ? '
+                                                   'UNION SELECT DISTINCT figura FROM napoli_presenze WHERE lotto_id = ?',
+                                             (lotto_id, lotto_id))}
     out = []
 
     def voce(codice, stato, testo, sezione):
@@ -1313,10 +1317,11 @@ def controlli_lotto(lotto_id, giorno=None):
                  (f'Oggi per il {NOMI_GRADO[grado]} vale il contratto {attivi[0]["numero"]} '
                   f'(fino al {calc.data_it(attivi[0]["valido_a"])})') if attivi
                  else f'Oggi nessun contratto applicativo copre il {NOMI_GRADO[grado]}', 'contratti')
-        senza_dd = [c['numero'] for c in contratti if not (c.get('dd_numero') and c.get('dd_data'))]
+        senza_dd = [c for c in contratti if not (c.get('dd_numero') and c.get('dd_data'))]
         if senza_dd:
-            voce('determine', 'manca', 'Mancano numero o data della determina (D.D.) del contratto '
-                 + ', '.join(senza_dd), 'contratti')
+            voce('determine', 'manca', 'Mancano numero o data della determina (D.D.) '
+                 + ('del contratto ' if len(senza_dd) == 1 else 'dei contratti ')
+                 + ', '.join(_nome_contratto(c) for c in senza_dd), 'contratti')
     for f in figure:
         valide = [t for t in tariffe if t['figura'] == f['codice'] and not t.get('livello_ccnl')
                   and calc.data(t['valido_da']) <= giorno
@@ -1329,8 +1334,19 @@ def controlli_lotto(lotto_id, giorno=None):
                  f'Tariffa {f["nome"]}: {t["tariffa"]} euro all\'ora'
                  + (f', finisce il {calc.data_it(fine)}: inserisci la nuova quando la conosci' if vicina else ''),
                  'tariffe')
+        elif f['codice'] not in config_napoli.TARIFFE_PROPOSTE and f['codice'] not in usate:
+            # tariffa lasciata vuota apposta (come quella dell'interprete LIS, REGOLE 8): si
+            # avvisa solo quando nel lotto c'e' una coppia o un'ora di questa figura
+            voce(f'tariffa_{f["codice"]}', 'ok',
+                 f'Tariffa {f["nome"]}: non c\'è, ma nel lotto nessuna coppia ha questa figura', 'tariffe')
         else:
             voce(f'tariffa_{f["codice"]}', 'avviso',
                  f'Oggi non c\'è una tariffa per {f["nome"]}: le sue ore non si possono fatturare',
                  'tariffe')
     return out
+
+
+def _nome_contratto(c):
+    """'XI (grado inferiore)': il numero con il grado (numero e grado non si ripetono nel
+    lotto), per sapere a quale contratto manca qualcosa."""
+    return c['numero'] + (f' ({NOMI_GRADO[c["grado"]]})' if c.get('grado') else '')
