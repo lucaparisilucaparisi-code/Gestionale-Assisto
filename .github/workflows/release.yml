@@ -50,3 +50,14 @@ jobs:
             3. Windows: doppio click su **avvia.bat**. macOS/Linux: **./run.sh**.
 
             I tuoi dati (`gestionale.db`) restano nella tua cartella e non vengono toccati.
+
+            ## Se aggiorni da una versione precedente
+            1. Chiudi il gestionale.
+            2. Estrai la nuova versione in una cartella NUOVA (non sopra la vecchia).
+            3. Prima del primo avvio copia nella cartella nuova il tuo `gestionale.db`
+               (e le cartelle `backups` e `uploads`) dalla cartella vecchia.
+            4. Avvia la nuova versione: il database si aggiorna da solo e prima viene
+               fatto un backup automatico. Tieni la vecchia cartella per qualche settimana.
+
+            I passi completi (compreso il caso del file `gestionale.db-wal`) sono nel README,
+            sezione **Aggiornare a una nuova versione**.

@@ -1,0 +1,10 @@
+{# Pezzi di pagina comuni. Uso: {% from '_macros.html' import modal_close %} #}
+
+{# X per chiudere le finestre: la stessa icona da 18px in tutte, con il nome 'Chiudi'
+   per i lettori di schermo. Prima era scritta a mano in 4 modi (✕, &times;, × e
+   un'icona) con misure diverse, e quasi sempre senza nome. #}
+{% macro modal_close(on_click) -%}
+<button type="button" class="modal-close" onclick="{{ on_click }}" aria-label="Chiudi" title="Chiudi">
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+</button>
+{%- endmacro %}

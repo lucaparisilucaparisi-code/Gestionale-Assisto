@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
+
+{% block title %}Fattura - Napoli - Gestionale OEPAC{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static_url('css/napoli.css') }}">
+{% endblock %}
+
+{% block content %}
+{% include '_napoli_tabs.html' %}
+
+{# Prospetto fattura del mese del lotto scelto (passo 1.9, REGOLE 9): uno per contratto
+   applicativo e grado, con le righe della fattura reale, la ritenuta, l'imponibile, l'IVA e
+   "da pagare" (split payment); i controlli spiegati; le ore del coordinatore (si salvano da
+   sole); Excel, Stampa, «Rendi definitiva» e «Riapri la fattura»; le ritenute cumulate per
+   contratto. Ogni numero arriva dal server (napoli_fattura). #}
+<div class="napoli-fattura" id="napoli-fattura">
+    <div id="fattura-senza-lotto" hidden></div>
+
+    <div id="fattura-pagina" hidden>
+        <section class="card napoli-fattura-barra" aria-labelledby="fattura-titolo">
+            <div class="card-header napoli-presenze-testa">
+                <div class="napoli-presenze-mese">
+                    <button type="button" class="btn btn-ghost btn-sm napoli-freccia" id="fm-prima" title="Mese prima" aria-label="Mese prima">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <h2 class="card-title" id="fattura-titolo"><label for="fm-mese" class="napoli-sr">Mese</label>
+                        <select id="fm-mese" class="form-control napoli-scelta-mese"></select></h2>
+                    <button type="button" class="btn btn-ghost btn-sm napoli-freccia" id="fm-dopo" title="Mese dopo" aria-label="Mese dopo">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                    </button>
+                    <span class="badge badge-secondary" id="fattura-conta"></span>
+                    {# ore del coordinatore: si salvano da sole, come in Rendicontazione #}
+                    <span class="auto-save-indicator" id="fattura-salvataggio" role="status" aria-live="polite">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Salvataggio automatico</span>
+                    </span>
+                </div>
+                <div class="napoli-presenze-azioni">
+                    <a class="btn btn-ghost btn-sm" href="#fattura-ritenute" title="Le ritenute dello 0,50% delle fatture definitive, per contratto applicativo">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                        Ritenute cumulate
+                    </a>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-fattura-annulla" title="Annulla l'ultima modifica (Ctrl+Z): chiede conferma prima di annullare">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+                        Annulla
+                    </button>
+                </div>
+            </div>
+            <div class="napoli-fattura-avvisi-mese" id="fattura-avvisi-mese"></div>
+        </section>
+
+        <div id="fattura-contenuto" aria-live="polite">
+            <div class="loading"><div class="spinner"></div></div>
+        </div>
+
+        <section class="card napoli-ritenute" id="fattura-ritenute" aria-labelledby="ritenute-titolo">
+            <div class="card-header">
+                <h2 class="card-title" id="ritenute-titolo">Ritenute dello 0,50% per contratto applicativo</h2>
+            </div>
+            <div class="card-body">
+                <p class="napoli-intro">La ritenuta dello 0,50% di ogni fattura definitiva si svincola alla fine del contratto applicativo, con la fattura di svincolo: qui la somma, contratto per contratto.</p>
+                <div id="ritenute-contenuto"><div class="loading"><div class="spinner"></div></div></div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- Rendi definitiva: numero e data della fattura emessa -->
+<div class="modal-overlay" id="napoli-modal-definitiva">
+    <div class="modal napoli-modal-media" aria-labelledby="definitiva-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="definitiva-titolo">Rendi definitiva la fattura</h3>
+            {{ modal_close("closeModal('napoli-modal-definitiva')") }}
+        </div>
+        <form class="modal-body" id="form-definitiva" novalidate>
+            <p class="napoli-sottotitolo" id="definitiva-chi"></p>
+            <p class="napoli-modal-testo">Scrivi il numero e la data della fattura che hai emesso con il programma di fatturazione. Da quel momento righe, totali e testi non cambiano più e le ore del periodo di questo grado sono bloccate: per correggerle bisognerà riaprire la fattura, scrivendo il motivo.</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="definitiva-numero">Numero della fattura</label>
+                    <input type="text" class="form-control" id="definitiva-numero" data-campo="numero" maxlength="30" autocomplete="off" placeholder="per esempio 37A2/2026">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="definitiva-data">Data della fattura</label>
+                    <input type="date" class="form-control" id="definitiva-data" data-campo="data">
+                </div>
+            </div>
+            <p class="napoli-aiuto" id="definitiva-scadenza"></p>
+        </form>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('napoli-modal-definitiva')">Annulla</button>
+            <button type="submit" form="form-definitiva" class="btn btn-primary" id="definitiva-conferma">Rendi definitiva</button>
+        </div>
+    </div>
+</div>
+
+<!-- Riapri una fattura definitiva, con il motivo -->
+<div class="modal-overlay" id="napoli-modal-riapri">
+    <div class="modal napoli-modal-media" aria-labelledby="riapri-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="riapri-titolo">Riapri la fattura</h3>
+            {{ modal_close("closeModal('napoli-modal-riapri')") }}
+        </div>
+        <form class="modal-body" id="form-riapri" novalidate>
+            <p class="napoli-sottotitolo" id="riapri-chi"></p>
+            <p class="napoli-modal-testo">Riaprendo, la fattura non è più definitiva: il prospetto si ricalcola dai dati di oggi e le ore del periodo si possono di nuovo cambiare. Numero e data restano, per quando la renderai di nuovo definitiva.</p>
+            <div class="form-group">
+                <label class="form-label" for="riapri-motivo">Motivo della riapertura</label>
+                <input type="text" class="form-control" id="riapri-motivo" data-campo="motivo" maxlength="200" autocomplete="off" placeholder="per esempio: nota di credito per le ore di una coppia">
+                <p class="napoli-aiuto">Il motivo resta nel registro attività. Non scrivere dati personali o motivi di salute.</p>
+            </div>
+        </form>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('napoli-modal-riapri')">Annulla</button>
+            <button type="submit" form="form-riapri" class="btn btn-primary" id="riapri-conferma">Riapri la fattura</button>
+        </div>
+    </div>
+</div>
+
+{% include '_napoli_procedura_lotto.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static_url('js/napoli.js') }}"></script>
+<script>NapoliFattura.avvia();</script>
+{% endblock %}

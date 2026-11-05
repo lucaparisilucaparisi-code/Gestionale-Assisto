@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
+
+{% block title %}Anagrafiche - Napoli - Gestionale OEPAC{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static_url('css/napoli.css') }}">
+{% endblock %}
+
+{% block content %}
+{% include '_napoli_tabs.html' %}
+
+{# Anagrafiche del lotto scelto (passo 1.6): alunni, operatori, scuole e plessi, coppie
+   operatore-alunno, una parte alla volta (#alunni, #operatori, #scuole, #coppie) e la
+   scheda di un alunno o di un operatore (#alunno-12, #operatore-7). I dati arrivano
+   soprattutto dal file Excel (scheda Importa, REGOLE 14): con l'anagrafica vuota la pagina
+   invita a caricarla. Codici fiscali solo mascherati; ogni controllo vero e' sul server
+   (napoli_anagrafiche). #}
+<div class="napoli-anagrafiche" id="napoli-anagrafiche">
+    <div id="anagrafiche-senza-lotto" hidden></div>
+
+    <section class="card" id="anagrafiche-vuota" aria-labelledby="titolo-vuota" hidden>
+        <div class="napoli-benvenuto">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="48" height="48" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <h2 id="titolo-vuota">L'anagrafica di questo lotto è ancora vuota</h2>
+            <p>Alunni, operatori, scuole e plessi, coppie operatore-alunno e ore del PEI si caricano dal file Excel del coordinatore (il «master»): prima vedi l'anteprima, poi confermi.</p>
+            <a class="btn btn-primary" href="/napoli/import">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Carica l'anagrafica dal file Excel
+            </a>
+            <p class="napoli-aiuto napoli-vuota-a-mano">Oppure aggiungi i dati a mano, cominciando dalle scuole:
+                <button type="button" class="btn btn-ghost btn-sm" data-azione="nuova-scuola">Aggiungi una scuola</button></p>
+        </div>
+    </section>
+
+    <div id="anagrafiche-contenuto" hidden>
+        <div class="napoli-barra-parti">
+            <nav class="napoli-sottoschede" aria-label="Parti dell'anagrafica">
+                <a href="#alunni" data-parte-link="alunni">Alunni <span class="napoli-conta" data-conta="alunni"></span></a>
+                <a href="#operatori" data-parte-link="operatori">Operatori <span class="napoli-conta" data-conta="operatori"></span></a>
+                <a href="#scuole" data-parte-link="scuole">Scuole e plessi <span class="napoli-conta" data-conta="scuole"></span></a>
+                <a href="#coppie" data-parte-link="coppie">Coppie <span class="napoli-conta" data-conta="coppie"></span></a>
+            </nav>
+            <button type="button" class="btn btn-ghost btn-sm" id="napoli-annulla-ultima" title="Come Ctrl+Z: chiede conferma prima di annullare">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+                Annulla l'ultima modifica
+            </button>
+        </div>
+
+        <div id="anagrafiche-elenco">
+            <div class="filters napoli-filtri" id="anagrafiche-filtri" role="search" aria-label="Cerca e filtra">
+                <div class="filter-group napoli-filtro-cerca">
+                    <label class="filter-label" for="filtro-cerca">Cerca</label>
+                    <input type="search" id="filtro-cerca" class="form-control" placeholder="Nome o codice fiscale" autocomplete="off" spellcheck="false">
+                </div>
+                <div class="filter-group" data-filtro="scuola_id">
+                    <label class="filter-label" for="filtro-scuola">Scuola</label>
+                    <select id="filtro-scuola" class="form-control" data-campo-filtro="scuola_id"></select>
+                </div>
+                <div class="filter-group" data-filtro="municipalita">
+                    <label class="filter-label" for="filtro-municipalita">Municipalità</label>
+                    <select id="filtro-municipalita" class="form-control" data-campo-filtro="municipalita"></select>
+                </div>
+                <div class="filter-group" data-filtro="figura">
+                    <label class="filter-label" for="filtro-figura">Figura</label>
+                    <select id="filtro-figura" class="form-control" data-campo-filtro="figura"></select>
+                </div>
+                <div class="filter-group" data-filtro="grado">
+                    <label class="filter-label" for="filtro-grado">Grado</label>
+                    <select id="filtro-grado" class="form-control" data-campo-filtro="grado">
+                        <option value="">Tutti</option>
+                        <option value="inferiore">Inferiore</option>
+                        <option value="superiore">Superiore</option>
+                        <option value="misto" data-solo="scuole">Misto</option>
+                        <option value="da_decidere">Da decidere</option>
+                    </select>
+                </div>
+                <div class="filter-group" data-filtro="ruolo">
+                    <label class="filter-label" for="filtro-ruolo">Ruolo</label>
+                    <select id="filtro-ruolo" class="form-control" data-campo-filtro="ruolo">
+                        <option value="">Tutti</option>
+                        <option value="titolare">Titolari</option>
+                        <option value="sostituto">Sostituti</option>
+                    </select>
+                </div>
+                <div class="filter-group" data-filtro="stato">
+                    <label class="filter-label" for="filtro-stato">Stato</label>
+                    <select id="filtro-stato" class="form-control" data-campo-filtro="stato"></select>
+                </div>
+            </div>
+            <div class="napoli-trovato" id="anagrafiche-trovato" aria-live="polite" hidden></div>
+
+            <section class="card" aria-labelledby="elenco-titolo">
+                <div class="card-header">
+                    <div class="napoli-titolo-conta">
+                        <h2 class="card-title" id="elenco-titolo">Alunni</h2>
+                        <span class="badge badge-secondary" id="elenco-conta"></span>
+                        <button type="button" class="badge badge-warning badge-toggle" id="elenco-da-sistemare" aria-pressed="false" hidden></button>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" id="btn-nuovo">Nuovo alunno</button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-container napoli-elenco" id="elenco-tabella">
+                        <div class="loading"><div class="spinner"></div></div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <section class="card napoli-scheda" id="anagrafiche-scheda" aria-live="polite" hidden></section>
+    </div>
+</div>
+
+<!-- Finestra dei moduli delle anagrafiche: i campi li mette napoli.js (NapoliAnagrafiche.MODULI) -->
+<div class="modal-overlay" id="napoli-modal-anagrafica">
+    <div class="modal napoli-modal-larga" aria-labelledby="anagrafica-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="anagrafica-titolo">Anagrafica</h3>
+            {{ modal_close("closeModal('napoli-modal-anagrafica')") }}
+        </div>
+        <form class="modal-body" id="form-anagrafica" novalidate></form>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('napoli-modal-anagrafica')">Annulla</button>
+            <button type="submit" form="form-anagrafica" class="btn btn-primary" id="anagrafica-salva">Salva</button>
+        </div>
+    </div>
+</div>
+
+{% include '_napoli_procedura_lotto.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static_url('js/napoli.js') }}"></script>
+<script>NapoliAnagrafiche.avvia();</script>
+{% endblock %}

@@ -1,0 +1,821 @@
+/* Sezione Napoli: solo le pagine /napoli (le pagine di Roma non caricano questo foglio).
+   Si carica dopo style.css -> components.css -> refine.css (block head di base.html) e
+   aggiunge solo le parti nuove: colori, raggi e misure vengono dai token di style.css,
+   quindi tema chiaro e scuro sono quelli del resto del programma. */
+
+/* Un elemento con l'attributo hidden non si vede, anche se e' un pulsante (.btn ha display) */
+[hidden] { display: none !important; }
+
+/* ---------- testata: lotto scelto ---------- */
+.napoli-scelta-lotto { display: flex; align-items: center; gap: 10px; }
+.napoli-scelta-lotto[hidden] { display: none; }
+.napoli-scelta-lotto .form-label { margin: 0; white-space: nowrap; }
+.napoli-scelta-lotto select { min-width: 240px; width: auto; }
+@media (max-width: 1024px) {
+    .napoli-scelta-lotto { width: 100%; }
+    .napoli-scelta-lotto select { flex: 1; min-width: 0; }
+}
+
+.napoli-intro { color: var(--text-secondary); font-size: 0.9rem; margin: 0 0 16px; max-width: 72ch; }
+
+/* ---------- Impostazioni: menu delle parti a sinistra, una parte alla volta ---------- */
+.napoli-impostazioni {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+.napoli-menu-parti {
+    position: sticky;
+    top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-card-solid);
+}
+.napoli-menu-titolo {
+    padding: 10px 10px 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+}
+.napoli-menu-parti a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+.napoli-menu-parti a:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.napoli-menu-parti a.attiva { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.napoli-menu-parti a:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.napoli-menu-segno { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); flex-shrink: 0; }
+.napoli-annulla { margin-top: 10px; justify-content: flex-start; }
+/* Nel menu a sinistra (220px) il pulsante non si taglia: meno spazio ai lati e, se il
+   carattere di Windows e' piu' largo, il testo va a capo. */
+.napoli-menu-parti .napoli-annulla {
+    padding-left: 10px; padding-right: 10px;
+    white-space: normal; text-align: left; line-height: 1.3;
+}
+.napoli-menu-parti .napoli-annulla svg { flex-shrink: 0; }
+.napoli-parti { min-width: 0; }   /* la colonna puo' stringersi: le tabelle scorrono dentro la loro cornice */
+
+@media (max-width: 1100px) {
+    .napoli-impostazioni { grid-template-columns: 1fr; }
+    .napoli-menu-parti { position: static; flex-direction: row; flex-wrap: wrap; }
+    .napoli-menu-titolo { display: none; }
+    .napoli-annulla { margin: 0 0 0 auto; }
+}
+
+/* ---------- tabelle e righe ---------- */
+.napoli-parte .table-container { max-height: none; }
+.napoli-parte .table td, .napoli-parte .table th { padding: 10px 14px; }
+.napoli-parte .table .napoli-azioni { white-space: nowrap; text-align: right; width: 1%; }
+.napoli-azioni .btn + .btn { margin-left: 6px; }
+.napoli-figura-nome { font-weight: 600; color: var(--text-primary); }
+.napoli-figura-descrizione { font-size: 0.78rem; color: var(--text-tertiary); }
+.napoli-parte tr.napoli-stessa-figura td { border-top: 0; }
+.napoli-vuoto { color: var(--text-tertiary); font-style: italic; }
+.napoli-numero { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* .table th/td { text-align: left } di style.css e' piu' specifica di .napoli-numero da sola */
+.table td.napoli-numero, .table th.napoli-numero { text-align: right; }
+.napoli-badge-riga { margin-left: 6px; vertical-align: 1px; }
+.napoli-tabella-compatta td, .napoli-tabella-compatta th { padding: 4px 12px; }
+.napoli-tabella-compatta input.form-control { max-width: 130px; margin-left: auto; padding: 6px 10px; text-align: right; }
+
+/* dati del lotto */
+.napoli-dati { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; }
+.napoli-dati .dati-riga-larga { grid-column: 1 / -1; }
+.dati-riga-larga .dati-riga { flex-direction: column; align-items: flex-start; gap: 4px; }
+.dati-riga-larga .dati-valore { text-align: left; }
+.napoli-modello { display: block; margin-top: 2px; font-size: 0.8rem; font-weight: 400; color: var(--text-tertiary); }
+@media (max-width: 768px) { .napoli-dati { grid-template-columns: 1fr; } }
+.napoli-esempio { color: var(--text-secondary); }
+
+/* ---------- moduli ---------- */
+.napoli-modal-larga { max-width: 680px; }
+/* tariffa e qualifica: la figura per esteso ("Asacom (Assistente all'autonomia e alla
+   comunicazione)") entra nella tendina senza tagli */
+.napoli-modal-media { max-width: 580px; }
+/* tre campi corti su una riga (servizio, numero e data della determina) */
+.napoli-riga-tre { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 640px) { .napoli-riga-tre { grid-template-columns: 1fr; } }
+.napoli-avviso-nome { margin-bottom: 12px; }
+.napoli-riga-indirizzo { grid-template-columns: minmax(0, 2fr) 96px minmax(0, 1.2fr) 80px; }
+@media (max-width: 900px) { .napoli-riga-indirizzo { grid-template-columns: minmax(0, 1fr) 96px; } }
+@media (max-width: 640px) { .napoli-riga-indirizzo { grid-template-columns: 1fr; } }
+.napoli-campo-medio { max-width: 320px; }
+.napoli-azioni-modulo { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.napoli-gruppo { border: 1px solid var(--border-color); border-radius: var(--radius); padding: 12px 16px 4px; margin: 4px 0 16px; }
+.napoli-gruppo legend { padding: 0 6px; font-weight: 600; font-size: 0.9rem; color: var(--text-secondary); }
+.napoli-altri-dati { margin-top: 4px; }
+.napoli-scelta { display: inline-flex; align-items: center; gap: 6px; margin-right: 18px; cursor: pointer; }
+.napoli-giorni { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.napoli-regola-nome { font-weight: 600; margin: 0 0 4px; }
+
+/* ---------- regole ---------- */
+.napoli-gruppo-regole + .napoli-gruppo-regole { margin-top: 20px; }
+.napoli-gruppo-regole h3 { font-size: 0.95rem; font-weight: 600; margin: 0 0 8px; color: var(--text-primary); }
+.napoli-regola-etichetta { font-weight: 500; color: var(--text-primary); }
+.napoli-regola-spiegazione { font-size: 0.8rem; color: var(--text-tertiary); margin-top: 2px; }
+.napoli-tabella-regole { table-layout: fixed; }
+.napoli-tabella-regole col.c-regola { width: 46%; }
+.napoli-tabella-regole col.c-valore { width: 26%; }
+.napoli-tabella-regole col.c-dove { width: 15%; }
+.napoli-tabella-regole col.c-azioni { width: 13%; }
+.napoli-tabella-regole td { overflow-wrap: anywhere; }
+.napoli-parte .napoli-tabella-regole .napoli-azioni { width: auto; }
+.napoli-regola-valore { font-weight: 600; }
+.napoli-regola-valore.lungo { font-weight: 400; font-size: 0.82rem; color: var(--text-secondary); }
+.napoli-storico td { background: var(--bg-tertiary); font-size: 0.82rem; }
+.napoli-storico td:first-child { padding-left: 28px; }
+
+/* ---------- procedura "Crea il primo lotto" ---------- */
+.napoli-passi { display: flex; gap: 8px; margin: 0 0 20px; padding: 0; list-style: none; flex-wrap: wrap; }
+.napoli-passi li {
+    display: flex; align-items: center; gap: 8px; flex: 1 1 0; min-width: 140px;
+    padding: 8px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+    color: var(--text-tertiary); font-size: 0.9rem;
+}
+.napoli-passo-num {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg-tertiary); color: var(--text-secondary); font-weight: 700; font-size: 0.8rem;
+}
+.napoli-passi li.attivo { border-color: var(--accent); color: var(--text-primary); font-weight: 600; }
+.napoli-passi li.attivo .napoli-passo-num { background: var(--accent-strong); color: #fff; }
+.napoli-passi li.fatto .napoli-passo-num { background: var(--success-strong); color: #fff; }
+.napoli-riepilogo .dati-riga { padding: 6px 0; }
+
+/* ---------- scheda Mese ---------- */
+.napoli-benvenuto { text-align: center; padding: 40px 24px; }
+.napoli-benvenuto h2 { font-size: 1.25rem; margin: 12px 0 8px; }
+.napoli-benvenuto p { color: var(--text-secondary); max-width: 60ch; margin: 0 auto 20px; }
+.napoli-benvenuto > svg { width: 48px; height: 48px; color: var(--accent-text); }
+.da-fare-ok .da-fare-icona { color: var(--success); }
+details.napoli-controlli-ok { margin-top: 0; border-top: 0; }
+details.napoli-controlli-ok > summary { padding: 12px 16px; }
+.napoli-controlli-ok .da-fare-item { padding: 8px 16px; border-bottom: 0; }
+.napoli-controlli-ok .da-fare-titolo { font-weight: 400; color: var(--text-secondary); }
+.napoli-nota { color: var(--text-tertiary); font-size: 0.85rem; margin: 16px 2px 0; }
+
+/* ore del coordinatore (passo 1.8): una casella per mese, contratto e grado */
+.napoli-coordinatore { margin-top: 20px; }
+.napoli-coord-titolo { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.napoli-coord-corpo .napoli-intro { margin-bottom: 12px; }
+.napoli-coord-tabella-box { border: 1px solid var(--border-color); border-radius: var(--radius); }
+.napoli-tabella-coordinatore { margin: 0; }
+.napoli-tabella-coordinatore td, .napoli-tabella-coordinatore th { padding: 8px 14px; vertical-align: middle; }
+.napoli-tabella-coordinatore thead th:nth-child(3) { width: 150px; }
+.napoli-tabella-coordinatore thead th:nth-child(4) { width: 40%; }
+/* il mese sopra le sue righe: piu' grande delle intestazioni delle colonne (refine.css le
+   vuole a 0,7rem con !important) */
+.napoli-coord-mese-riga th {
+    background: var(--bg-tertiary); font-weight: 600; text-transform: none; letter-spacing: 0;
+    font-size: 0.88rem !important; color: var(--text-primary) !important;
+}
+/* la casella sbagliata resta rossa (anche la nota, che e' un .form-control di refine.css) */
+.napoli-tabella-coordinatore input.input-error {
+    border-color: var(--danger) !important; background-color: rgba(255, 69, 58, 0.1) !important;
+}
+.napoli-coord-mese-riga th:first-child, .napoli-coord-mese-riga th:last-child { border-radius: 0; }
+.napoli-coord-mese.chiuso td { color: var(--text-tertiary); }
+/* mese chiuso: la nota si legge come testo, senza la casella */
+.napoli-coord-mese.chiuso input.napoli-coord-nota:disabled {
+    background-color: transparent !important; border-color: transparent !important; color: var(--text-secondary);
+}
+.napoli-coord-riga:hover td { background: var(--bg-secondary); }
+.napoli-tabella-coordinatore input.napoli-coord-ore {
+    width: 110px; margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; padding: 7px 10px;
+}
+.napoli-tabella-coordinatore input.napoli-coord-nota { width: 100%; padding: 6px 10px; }
+.napoli-tabella-coordinatore input:disabled { background: var(--bg-secondary); cursor: not-allowed; }
+.napoli-tabella-coordinatore .napoli-coord-messaggio td { border-top: 0; padding-top: 0; }
+.napoli-coord-errore, .napoli-coord-lettura { font-size: 0.84rem; padding: 6px 10px; border-radius: var(--radius); }
+.napoli-coord-errore {
+    color: var(--danger); font-weight: 500;
+    background: rgba(255, 69, 58, 0.1); background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.napoli-coord-lettura { color: var(--text-secondary); background: var(--bg-secondary); }
+.napoli-coord-tutti { margin-top: 10px; }
+.napoli-coord-vuoto { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--text-secondary); margin: 0; }
+
+/* ---------- scheda Importa (foglio presenze del mese) ---------- */
+.napoli-import { display: flex; flex-direction: column; gap: 20px; }
+.napoli-import > .card, .napoli-import > div > .card { margin-bottom: 0; }
+.napoli-file { padding: 28px 24px; }
+.napoli-file .file-upload-icon { width: 44px; height: 44px; margin-bottom: 10px; }
+.napoli-file:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.napoli-aiuto { margin: 8px 0 0; font-size: 0.82rem; color: var(--text-tertiary); }
+.napoli-file-scelto {
+    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-secondary);
+}
+.napoli-file-scelto > svg { color: var(--success); flex-shrink: 0; }
+.napoli-file-nome { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.napoli-file-nome strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.napoli-file-nome span { font-size: 0.82rem; color: var(--text-tertiary); }
+.napoli-attesa { text-align: center; color: var(--text-secondary); margin: 0 0 24px; }
+.napoli-esito { padding: 16px; }
+.napoli-esito .alert, .napoli-alert { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 16px; }
+.napoli-esito .alert > svg, .napoli-alert > svg { flex-shrink: 0; margin-top: 1px; }
+.napoli-esito .napoli-azioni-modulo { margin-top: 0; }
+.napoli-esito .alert:focus, .napoli-esito .alert:focus-visible { outline: none; box-shadow: none; }  /* focus per lettore di schermo e tastiera (Tab porta al pulsante) */
+/* portati in vista dalla pagina (messaggi, attesa, anteprima): non sotto la barra in alto */
+.napoli-esito, .napoli-anteprima { scroll-margin-top: 72px; }
+.napoli-sottotitolo { margin: 4px 0 0; font-size: 0.85rem; color: var(--text-secondary); }
+
+/* l'anteprima si sta ricalcolando dopo una scelta; overflow visibile (le card lo
+   nascondono) perche' la barra con "Importa" resti in fondo allo schermo scorrendo */
+.napoli-anteprima { transition: opacity var(--transition-fast); overflow: visible; }
+.napoli-in-aggiornamento { opacity: 0.6; pointer-events: none; }
+
+/* numeri principali */
+.napoli-numeri { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 20px; }
+.napoli-numero-box {
+    display: flex; flex-direction: column; gap: 2px; padding: 12px 16px;
+    border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-secondary);
+}
+.napoli-numero-valore { font-size: 1.45rem; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.napoli-numero-etichetta { font-size: 0.82rem; color: var(--text-secondary); }
+@media (max-width: 900px) { .napoli-numeri { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* blocchi dell'anteprima */
+.napoli-blocco { margin-top: 24px; }
+.napoli-blocco:first-child { margin-top: 0; }
+.napoli-blocco > h3 { font-size: 1.02rem; font-weight: 600; margin: 0 0 6px; color: var(--text-primary); }
+.napoli-blocco-danger > h3 { color: var(--danger); }
+.napoli-blocco-warning > h3 { color: var(--warning); }
+.napoli-blocco .napoli-intro { margin-bottom: 10px; }
+.napoli-parte-conferma {
+    border: 1px solid var(--border-color); border-radius: var(--radius); padding: 12px 16px; margin: 10px 0;
+    background: var(--bg-card-solid);
+}
+.napoli-parte-conferma h4 { font-size: 0.95rem; font-weight: 600; margin: 0 0 4px; display: inline-flex; gap: 8px; align-items: center; }
+details.napoli-parte-conferma > summary { cursor: pointer; list-style-position: outside; margin-left: 16px; }
+details.napoli-parte-conferma[open] > summary { margin-bottom: 6px; }
+.napoli-conferma-obbligatoria { border-color: var(--warning); }
+.napoli-ho-controllato { margin-top: 6px; }
+.napoli-scelta-riga { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; }
+.napoli-scelta-riga input { margin-top: 3px; flex-shrink: 0; }
+.napoli-ambigua { border: 0; padding: 6px 0; margin: 0; }
+.napoli-ambigua legend { font-weight: 500; padding: 0; margin-bottom: 4px; }
+.napoli-elenco { margin: 4px 0 8px; padding-left: 20px; }
+.napoli-elenco li { margin: 2px 0; }
+.napoli-import .table td, .napoli-import .table th { padding: 8px 12px; }
+.napoli-import .napoli-tabella-compatta td, .napoli-import .napoli-tabella-compatta th { padding: 5px 12px; }
+.napoli-import .napoli-tabella-compatta select.form-control { min-width: 200px; max-width: 280px; padding: 5px 10px; }
+.napoli-import .table-container { max-height: none; }
+.napoli-import .napoli-tabella-alta { max-height: 320px; overflow-y: auto; }
+.napoli-tabella-ore tfoot th, .napoli-tabella-ore tfoot td { border-top: 2px solid var(--border-color); font-weight: 600; }
+.napoli-da-decidere { color: var(--warning); font-weight: 600; }
+
+/* avvisi raggruppati: titolo, quante volte, righe del file */
+.napoli-gruppo-avviso { border: 1px solid var(--border-color); border-radius: var(--radius-sm); margin: 6px 0; background: var(--bg-card-solid); }
+.napoli-gruppo-avviso > summary {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; list-style: none;
+}
+.napoli-gruppo-avviso > summary::-webkit-details-marker { display: none; }
+.napoli-gruppo-avviso > summary::after { content: '▸'; margin-left: 4px; color: var(--text-tertiary); }
+.napoli-gruppo-avviso[open] > summary::after { content: '▾'; }
+.napoli-gruppo-avviso > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.napoli-icona-livello { flex-shrink: 0; }
+.livello-bloccante { border-color: var(--danger); }
+.livello-bloccante .napoli-icona-livello { color: var(--danger); }
+.livello-avviso .napoli-icona-livello { color: var(--warning); }
+.livello-nota .napoli-icona-livello { color: var(--success); }
+.napoli-avviso-titolo { flex: 1; font-weight: 500; color: var(--text-primary); }
+.napoli-avviso-conta {
+    font-size: 0.8rem; color: var(--text-secondary); background: var(--bg-tertiary); border-radius: 999px;
+    padding: 2px 10px; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.napoli-avviso-spiega { margin: 0 12px 6px 40px; font-size: 0.86rem; color: var(--text-secondary); }
+.napoli-righe-avviso {
+    margin: 0 12px 10px 40px; padding: 0; list-style: none; columns: 3 220px; column-gap: 24px;
+    font-size: 0.84rem; color: var(--text-secondary);
+}
+.napoli-righe-avviso li { break-inside: avoid; padding: 1px 0; }
+.napoli-dettaglio { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.napoli-gruppo-avviso .table-container { margin: 0 12px 10px; }
+.napoli-note-file { margin-top: 12px; }
+.napoli-note-file > summary { cursor: pointer; color: var(--text-secondary); padding: 6px 0; }
+
+/* barra in fondo all'anteprima: resta visibile scorrendo */
+.napoli-barra-import {
+    position: sticky; bottom: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding: 12px 20px; border-top: 1px solid var(--border-color); background: var(--bg-card-solid);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.napoli-barra-testo { margin: 0; font-size: 0.88rem; color: var(--text-secondary); flex: 1; min-width: 220px; }
+.napoli-barra-pulsanti { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* elenco degli import */
+.napoli-riga-annullata td { color: var(--text-tertiary); }
+.napoli-nome-file { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Qualifiche nuove dell'import: la tendina della figura e' larga quanto la cella, cosi'
+   il nome della figura con la descrizione si legge tutto (anche a 1366x768). */
+.napoli-import .napoli-tabella-compatta select.form-control.napoli-scelta-figura { min-width: 320px; max-width: none; width: 100%; }
+/* Plessi da scegliere: la tendina della municipalita' (corta) non va a capo. */
+.napoli-import .napoli-tabella-compatta select.form-control.napoli-scelta-plesso { min-width: 170px; }
+
+/* Opzione secondaria della scheda Importa (REGOLE 14): le ore dei giorni di un mese, in
+   una parte chiusa sotto l'azione principale "Carica l'anagrafica". */
+.napoli-altre-azioni { margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 10px; }
+.napoli-altre-azioni > summary { cursor: pointer; color: var(--text-secondary); font-size: 0.88rem; padding: 4px 0; }
+.napoli-altre-azioni > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.napoli-altre-corpo { padding: 6px 0 0; }
+.napoli-altre-corpo .napoli-intro { font-size: 0.86rem; }
+.napoli-azioni-inizio { justify-content: flex-start; }
+.napoli-nota-stretta { margin-top: 8px; }
+
+/* ---------- scheda Anagrafiche (alunni, operatori, scuole, coppie) ---------- */
+.napoli-anagrafiche { display: flex; flex-direction: column; gap: 16px; }
+.napoli-anagrafiche .card { margin-bottom: 0; }
+.napoli-vuota-a-mano { margin-top: 16px; }
+
+/* le quattro parti: un selettore a segmenti sotto le schede di Napoli */
+.napoli-barra-parti { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.napoli-sottoschede {
+    display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px;
+    border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-card-solid);
+}
+.napoli-sottoschede a {
+    display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: var(--radius-sm);
+    color: var(--text-secondary); font-weight: 500; font-size: 0.92rem; text-decoration: none; white-space: nowrap;
+}
+.napoli-sottoschede a:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.napoli-sottoschede a.attiva { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.napoli-sottoschede a:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.napoli-conta {
+    min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary);
+    font-size: 0.76rem; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums;
+}
+.napoli-sottoschede a.attiva .napoli-conta { background: var(--bg-card-solid); color: var(--accent-text); }
+
+/* filtri su una riga anche a 1366x768: la ricerca prende lo spazio che resta, le tendine
+   restano strette (con la tendina Ruolo delle coppie si va a capo) */
+.napoli-filtri { margin-bottom: 0; padding: 12px 16px; gap: 10px 12px; flex-wrap: wrap; }
+.napoli-filtri .filter-group { min-width: 0; flex: 0 1 auto; gap: 6px; }
+.napoli-filtri .napoli-filtro-cerca { flex: 1 1 180px; min-width: 150px; max-width: 320px; }
+.napoli-filtri .filter-group select { width: auto; min-width: 104px; max-width: 200px; padding-top: 8px; padding-bottom: 8px; }
+.napoli-filtri .filter-group input { padding-top: 8px; padding-bottom: 8px; }
+.napoli-filtri .filter-group[data-filtro="scuola_id"] select { width: 180px; }
+.napoli-filtri .filter-group[data-filtro="figura"] select { width: 122px; }
+/* "Da sistemare", "Da cominciare": la tendina prende la larghezza della voce piu' lunga
+   (con il carattere di Windows 134px fissi la tagliavano) */
+.napoli-filtri .filter-group[data-filtro="stato"] select { width: auto; min-width: 134px; }
+.napoli-filtri .filter-group[data-filtro="municipalita"] select,
+.napoli-filtri .filter-group[data-filtro="grado"] select,
+.napoli-filtri .filter-group[data-filtro="ruolo"] select { width: 112px; }
+@media (max-width: 768px) { .napoli-filtri .filter-group select, .napoli-filtri .napoli-filtro-cerca { width: 100%; max-width: none; } }
+.napoli-trovato { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0; }
+
+.napoli-titolo-conta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* tabelle degli elenchi */
+.napoli-elenco { max-height: none; }
+.napoli-tabella-anagrafica td { vertical-align: top; padding: 10px 14px; }
+.napoli-tabella-anagrafica th { padding: 10px 14px; }
+.napoli-tabella-anagrafica .napoli-azioni { white-space: nowrap; text-align: right; width: 1%; }
+.napoli-tabella-anagrafica .napoli-azioni .btn + .btn { margin-left: 6px; }
+.napoli-tabella-anagrafica td > .badge { margin-left: 6px; vertical-align: 1px; }
+.napoli-periodo { white-space: nowrap; }
+.napoli-riga-cliccabile { cursor: pointer; }
+.napoli-riga-cliccabile:hover td { background: var(--bg-tertiary); }
+.napoli-riga-archiviata td { color: var(--text-tertiary); }
+.napoli-nome { font-weight: 600; color: var(--text-primary); text-decoration: none; }
+a.napoli-nome:hover { color: var(--accent-text); text-decoration: underline; }
+.napoli-sotto {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 3px;
+    font-size: 0.8rem; color: var(--text-tertiary);
+}
+.napoli-sotto-destra { justify-content: flex-end; }
+.napoli-sotto-in { font-size: 0.8rem; color: var(--text-tertiary); }
+.napoli-cf { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.napoli-chip {
+    display: inline-flex; align-items: baseline; gap: 4px; margin: 0 6px 4px 0; padding: 2px 9px;
+    border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.82rem; white-space: nowrap;
+}
+.napoli-chip strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.napoli-op { white-space: nowrap; }
+.napoli-op + .napoli-op { margin-top: 3px; }
+.napoli-op .napoli-sotto-in { white-space: normal; }
+.napoli-elenco-vuoto { padding: 20px; margin: 0; }
+.napoli-esito-elenco { margin: 16px; }
+
+/* scheda di un alunno o di un operatore */
+.napoli-scheda-testa { align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.napoli-scheda-nome { min-width: 0; }
+.napoli-scheda-titolo { font-size: 1.3rem; font-weight: 600; letter-spacing: -0.01em; margin: 4px 0 2px; color: var(--text-primary); }
+.napoli-scheda-titolo:focus { outline: none; }
+.napoli-scheda-pulsanti { display: flex; gap: 8px; flex-wrap: wrap; }
+.napoli-indietro {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--text-secondary); text-decoration: none;
+}
+.napoli-indietro:hover { color: var(--accent-text); }
+.napoli-indietro:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
+.napoli-sezione { margin-top: 28px; }
+.napoli-sezione-testa { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.napoli-sezione-testa h3 { font-size: 1.02rem; font-weight: 600; margin: 0; color: var(--text-primary); }
+.napoli-sezione .table-container { max-height: none; border: 1px solid var(--border-color); border-radius: var(--radius); }
+.napoli-scheda .napoli-storico td:first-child { padding-left: 28px; }
+.napoli-credito {
+    display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px;
+    border: 1px dashed var(--border-color); border-radius: var(--radius); background: var(--bg-secondary);
+}
+.napoli-credito > svg { flex-shrink: 0; color: var(--text-tertiary); margin-top: 1px; }
+.napoli-credito-titolo { margin: 0 0 4px; font-weight: 600; color: var(--text-primary); }
+.napoli-credito-testo { margin: 0 0 8px; font-size: 0.86rem; color: var(--text-secondary); max-width: 90ch; }
+.napoli-credito-figure { display: flex; flex-wrap: wrap; }
+
+/* finestra dei moduli */
+.napoli-campo-solo { padding: 8px 0; font-weight: 500; color: var(--text-primary); }
+.napoli-gruppo-casella { display: flex; flex-direction: column; justify-content: flex-end; }
+.napoli-gruppo-casella .napoli-scelta-riga { margin: 8px 0 0; cursor: pointer; }
+#napoli-modal-anagrafica .modal-body { max-height: calc(100vh - 220px); overflow-y: auto; }
+
+/* ---------- scheda Presenze: la griglia del mese (passo 1.7) ----------
+   Come il foglio "master" del Comune: colonne fisse a sinistra (alunno, operatore, figura,
+   PEI, sostituzione), un giorno per colonna con la VERIFICA dopo ogni settimana, totale e
+   credito/debito fissi a destra. Scorre solo la tabella (REGOLE 13: 1366x768 e 1536x864):
+   napoli.js le da' l'altezza che resta sotto. Colori dai token del tema (chiaro e scuro). */
+.napoli-presenze {
+    display: flex; flex-direction: column; gap: 12px;
+    --g-w-alunno: 136px; --g-w-operatore: 118px; --g-w-figura: 80px; --g-w-pei: 44px; --g-w-sost: 46px;
+    --g-w-giorno: 38px; --g-w-ver: 44px; --g-w-tot: 54px; --g-w-cd: 64px;
+}
+.napoli-presenze .card { margin-bottom: 0; }
+.napoli-sr {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+/* una riga sola: il nome del filtro e' la prima voce della tendina */
+.napoli-presenze-filtri { padding: 8px 12px; gap: 8px 10px; align-items: center; }
+.napoli-presenze-filtri .form-control { font-size: 0.86rem; padding-top: 7px; padding-bottom: 7px; }
+.napoli-presenze-filtri .filter-group[data-filtro="scuola"] select { width: 170px; }
+.napoli-presenze-filtri .filter-group[data-filtro="operatore"] select { width: 166px; }
+.napoli-presenze-filtri .filter-group[data-filtro="figura"] select { width: 146px; }
+.napoli-presenze-filtri .filter-group[data-filtro="grado"] select { width: 134px; }
+.napoli-presenze-filtri .filter-group[data-filtro="municipalita"] select { width: 184px; }
+.napoli-presenze-filtri .napoli-filtro-cerca { flex: 1 1 150px; min-width: 130px; max-width: 260px; }
+/* a 1366 il testo d'aiuto «Alunno o operatore» si legge intero (il nome intero e' nell'etichetta) */
+.napoli-presenze-filtri .napoli-filtro-cerca .form-control { padding-left: 10px; padding-right: 8px; }
+.napoli-presenze-testa .badge-toggle { display: inline-flex; align-items: center; gap: 4px; }
+.napoli-presenze-testa .auto-save-indicator { white-space: nowrap; }
+/* a 1366 la testata sta su una riga: "Nota del giorno" diventa "Nota" (il titolo lo spiega) */
+@media (max-width: 1500px) { .napoli-solo-largo { display: none; } }
+.napoli-presenze-testa #btn-presenze-riprova { padding-top: 4px; padding-bottom: 4px; }
+
+.napoli-presenze-testa { gap: 8px 10px; flex-wrap: wrap; padding: 8px 12px; }
+.napoli-presenze-mese { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.napoli-presenze-mese .card-title { margin: 0; }
+.napoli-scelta-mese { width: 172px; font-size: 0.95rem; font-weight: 600; padding-top: 5px; padding-bottom: 5px; padding-left: 10px; }
+.napoli-freccia { padding: 5px 5px; }
+.napoli-presenze-azioni { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.napoli-presenze-azioni .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+
+/* la casella scelta per esteso, come la barra della formula di Excel */
+.napoli-barra-casella {
+    min-height: 31px; padding: 6px 12px; font-size: 0.83rem; color: var(--text-secondary);
+    border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.napoli-barra-casella strong { color: var(--text-primary); }
+/* mese chiuso: una riga sola dentro la scheda, sopra la barra della casella */
+.napoli-mese-chiuso {
+    display: flex; align-items: center; gap: 8px; min-height: 31px; padding: 5px 12px; font-size: 0.83rem;
+    color: var(--text-secondary); border-top: 1px solid var(--border-color);
+    background: rgba(10, 132, 255, 0.08); background: color-mix(in srgb, var(--primary) 10%, var(--bg-card-solid));
+}
+.napoli-mese-chiuso svg { flex: none; color: var(--primary); }
+.napoli-mese-chiuso > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.napoli-mese-chiuso strong { color: var(--text-primary); }
+.napoli-mese-chiuso:not([hidden]) + .napoli-barra-casella { border-top: 0; }
+.napoli-barra-casella svg { vertical-align: -2px; }
+.g-barra-errore { color: var(--danger); font-weight: 600; }
+.napoli-barra-invito { color: var(--text-tertiary); }
+.g-barra-avviso { color: var(--warning); }
+
+.napoli-griglia-box {
+    overflow: auto; position: relative; max-height: 60vh; outline: none;
+    /* le caselle portate in vista con le frecce non finiscono sotto le colonne fisse */
+    scroll-padding: 38px calc(var(--g-w-tot) + var(--g-w-cd)) 0
+        calc(var(--g-w-alunno) + var(--g-w-operatore) + var(--g-w-figura) + var(--g-w-pei) + var(--g-w-sost));
+}
+.napoli-griglia-box > .loading { padding: 40px; }
+.napoli-griglia-niente { padding: 20px 16px; }
+.napoli-griglia-vuota { margin: 0; padding: 16px; color: var(--text-tertiary); font-style: italic; }
+.napoli-griglia {
+    border-collapse: separate; border-spacing: 0; width: max-content;
+    font-size: 0.8rem; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;
+}
+.napoli-griglia th, .napoli-griglia td {
+    height: 30px; padding: 0; border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color);
+    background: var(--bg-card-solid); color: var(--text-primary); vertical-align: middle; box-sizing: border-box;
+}
+.napoli-griglia thead th {
+    position: sticky; top: 0; z-index: 4; height: 36px; padding: 3px 2px;
+    background: var(--bg-tertiary); color: var(--text-tertiary);
+    font-size: 0.68rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+    text-align: center; line-height: 1.15; white-space: nowrap;
+}
+.napoli-griglia thead .g-g { color: var(--text-primary); font-size: 0.8rem; text-transform: none; letter-spacing: 0; }
+.napoli-griglia thead .g-g span {
+    display: block; font-size: 0.64rem; font-weight: 500; color: var(--text-tertiary); text-transform: uppercase;
+}
+.napoli-griglia thead .g-g.g-chiuso, .napoli-griglia thead .g-g.g-futuro { color: var(--text-quaternary); }
+.g-evento {
+    display: block; width: 5px; height: 5px; margin: 1px auto 0; border-radius: 50%; background: var(--primary);
+}
+
+/* colonne fisse a sinistra. Livelli: casella scelta 1, angolo e triangolo della nota 2 (sopra la
+   casella), colonne fisse 3 (le caselle che scorrono passano sotto, angoli compresi),
+   intestazione 4, angoli dell'intestazione 6 */
+.napoli-griglia .g-fissa {
+    position: sticky; z-index: 3; padding: 0 8px; text-align: left;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+}
+.napoli-griglia thead .g-fissa { z-index: 6; cursor: default; }
+.napoli-griglia .g-alunno { left: 0; width: var(--g-w-alunno); min-width: var(--g-w-alunno); max-width: var(--g-w-alunno); }
+.napoli-griglia .g-operatore {
+    left: var(--g-w-alunno); width: var(--g-w-operatore); min-width: var(--g-w-operatore); max-width: var(--g-w-operatore);
+    color: var(--text-secondary);
+}
+.napoli-griglia .g-figura {
+    left: calc(var(--g-w-alunno) + var(--g-w-operatore));
+    width: var(--g-w-figura); min-width: var(--g-w-figura); max-width: var(--g-w-figura); color: var(--text-secondary);
+}
+.napoli-griglia .g-pei {
+    left: calc(var(--g-w-alunno) + var(--g-w-operatore) + var(--g-w-figura));
+    width: var(--g-w-pei); min-width: var(--g-w-pei); max-width: var(--g-w-pei); text-align: right;
+}
+.napoli-griglia .g-sost {
+    left: calc(var(--g-w-alunno) + var(--g-w-operatore) + var(--g-w-figura) + var(--g-w-pei));
+    width: var(--g-w-sost); min-width: var(--g-w-sost); max-width: var(--g-w-sost); text-align: center;
+    color: var(--text-tertiary); font-size: 0.72rem; padding: 0 4px;
+    border-right: 2px solid var(--border-light); box-shadow: 4px 0 6px -4px rgba(0, 0, 0, 0.35);
+}
+.napoli-griglia .g-sost strong { color: var(--text-primary); }
+.napoli-griglia thead .g-pei, .napoli-griglia thead .g-sost { text-align: center; letter-spacing: 0; }
+.g-nome {
+    display: block; width: 100%; padding: 0; border: 0; background: none; font: inherit; font-weight: 600;
+    color: var(--text-primary); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis;
+}
+.g-nome:hover { color: var(--accent-text); text-decoration: underline; }
+.g-nome:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; border-radius: 3px; }
+.napoli-griglia tbody tr:hover > .g-fissa,
+.napoli-griglia tbody tr:hover > .g-tot,
+.napoli-griglia tbody tr:hover > .g-cd { background: var(--bg-secondary); background: color-mix(in srgb, var(--primary) 7%, var(--bg-card-solid)); }
+/* una riga con avvisi ha la barra arancione a sinistra, come gli utenti senza ore in Rendicontazione */
+.napoli-griglia .g-riga-avvisi > .g-alunno { box-shadow: inset 3px 0 0 var(--warning); }
+.napoli-griglia .g-riga-sost > .g-alunno, .napoli-griglia .g-riga-sost > .g-operatore { font-style: italic; }
+
+/* colonne fisse a destra: totale e credito/debito */
+.napoli-griglia .g-tot, .napoli-griglia .g-cd {
+    position: sticky; z-index: 3; padding: 0 8px; text-align: right; font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.napoli-griglia .g-tot {
+    right: var(--g-w-cd); width: var(--g-w-tot); min-width: var(--g-w-tot);
+    border-left: 2px solid var(--border-light); box-shadow: -4px 0 6px -4px rgba(0, 0, 0, 0.35);
+}
+.napoli-griglia .g-cd { right: 0; width: var(--g-w-cd); min-width: var(--g-w-cd); }
+.napoli-griglia thead .g-tot, .napoli-griglia thead .g-cd { z-index: 6; text-align: right; cursor: default; }
+.napoli-griglia .g-cd-titolare { color: var(--text-tertiary); text-align: center; font-weight: 400; }
+/* previste dal PEI intero su piu' titolari: il credito/debito va controllato (sottolineato arancione) */
+.napoli-griglia .g-cd.g-cd-dubbio { text-decoration: underline wavy var(--warning); text-underline-offset: 3px; }
+
+/* caselle dei giorni */
+.napoli-griglia .g-c, .napoli-griglia thead .g-g { width: var(--g-w-giorno); min-width: var(--g-w-giorno); max-width: var(--g-w-giorno); }
+.napoli-griglia .g-c { position: relative; }
+.g-in {
+    display: block; width: 100%; height: 29px; margin: 0; padding: 0 2px; border: 0; border-radius: 0;
+    background: transparent; color: inherit; font: inherit; font-size: 0.84rem; text-align: center; outline: none;
+}
+.g-in:focus { background: var(--bg-input); box-shadow: inset 0 0 0 2px var(--primary); position: relative; z-index: 1; }
+.g-in:disabled { cursor: not-allowed; color: var(--text-tertiary); }
+.g-in::placeholder { color: var(--text-quaternary); font-style: italic; }
+.napoli-griglia .g-c.g-sab, .napoli-griglia thead .g-g.g-sab {
+    background: var(--bg-secondary); background: color-mix(in srgb, var(--bg-tertiary) 40%, var(--bg-card-solid));
+}
+.napoli-griglia thead .g-g.g-sab { background: var(--bg-tertiary); }
+.napoli-griglia .g-c.g-chiuso, .napoli-griglia .g-c.g-fuori, .napoli-griglia thead .g-g.g-chiuso {
+    background: repeating-linear-gradient(135deg, var(--bg-tertiary) 0 3px, var(--bg-card-solid) 3px 7px);
+}
+.napoli-griglia .g-c.g-futuro { background: var(--bg-secondary); }
+.napoli-griglia .g-c.g-futuro .g-in { opacity: 0.5; }
+/* alunno assente: salmone come nel master del Comune (accent2 E97132 tinta 0,8) */
+.napoli-griglia .g-c.g-assente { background: rgba(233, 113, 50, 0.24); background: color-mix(in srgb, #E97132 26%, var(--bg-card-solid)); }
+.napoli-griglia .g-c.g-assente .g-in { font-weight: 700; }
+.napoli-griglia .g-c.g-sigla { background: color-mix(in srgb, var(--text-tertiary) 14%, var(--bg-card-solid)); }
+.napoli-griglia .g-c.g-sigla .g-in { font-weight: 700; color: var(--text-secondary); }
+.napoli-griglia .g-c.g-nota::before {
+    content: ''; position: absolute; top: 0; right: 0; z-index: 2; pointer-events: none;
+    border-style: solid; border-width: 0 8px 8px 0; border-color: transparent var(--primary) transparent transparent;
+}
+.napoli-griglia .g-c.g-avviso .g-in { box-shadow: inset 0 -3px 0 var(--warning); }
+.napoli-griglia .g-c.g-avviso .g-in:focus { box-shadow: inset 0 0 0 2px var(--primary), inset 0 -4px 0 var(--warning); }
+.napoli-griglia .g-c.g-cambiata { background: rgba(59, 130, 246, 0.16); background: color-mix(in srgb, var(--primary) 18%, var(--bg-card-solid)); }
+.napoli-griglia .g-c.g-errore { background: rgba(255, 69, 58, 0.18); background: color-mix(in srgb, var(--danger) 20%, var(--bg-card-solid)); }
+.napoli-griglia .g-c.g-errore .g-in { box-shadow: inset 0 0 0 1px var(--danger); }
+.napoli-griglia .g-c.g-errore .g-in:focus { box-shadow: inset 0 0 0 2px var(--danger); }
+.g-ang {
+    position: absolute; right: 2px; bottom: 1px; z-index: 2; pointer-events: none;
+    font-size: 0.6rem; font-weight: 600; line-height: 1; color: var(--text-secondary);
+}
+.g-mese-chiuso .g-in { cursor: default; color: var(--text-secondary); }
+/* con le ore riconosciute nell'angolo il testo sale un poco (A e 1,5 non si toccano) */
+.napoli-griglia .g-c.g-con-angolo .g-in { padding-bottom: 7px; }
+
+/* VERIFICA per settimana: verde come nel master; giallo oltre il PEI, rosso oltre il PEI + 20% */
+.napoli-griglia .g-ver {
+    width: var(--g-w-ver); min-width: var(--g-w-ver); max-width: var(--g-w-ver); padding: 0 4px;
+    text-align: center; font-weight: 600; cursor: pointer;
+    background: rgba(48, 209, 88, 0.1); background: color-mix(in srgb, var(--success) 11%, var(--bg-card-solid));
+}
+.napoli-griglia thead .g-ver {
+    color: var(--text-primary); cursor: default;
+    background: color-mix(in srgb, var(--success) 32%, var(--bg-tertiary));
+}
+.napoli-griglia .g-ver.g-giallo { background: rgba(255, 214, 10, 0.4); background: color-mix(in srgb, #FFD60A 42%, var(--bg-card-solid)); }
+.napoli-griglia .g-ver.g-rosso {
+    background: rgba(255, 69, 58, 0.32); background: color-mix(in srgb, var(--danger) 34%, var(--bg-card-solid));
+}
+
+/* sotto la griglia: riepilogo delle righe mostrate e "Come si scrive" */
+.napoli-presenze-piede {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 4px 16px; flex-wrap: wrap;
+    padding: 4px 12px; border-top: 1px solid var(--border-color);
+}
+.napoli-presenze-riepilogo { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 4px 0; font-size: 0.86rem; color: var(--text-secondary); }
+.napoli-presenze-riepilogo strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.napoli-presenze-riepilogo .napoli-stima-pei { color: var(--text-tertiary); font-style: italic; cursor: help; }
+/* vacanze di Natale o di Pasqua non ancora nel calendario: le previste le contano */
+.napoli-presenze-riepilogo .napoli-avviso-vacanze { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); cursor: help; }
+.napoli-presenze-aiuto > summary { cursor: pointer; color: var(--text-secondary); font-size: 0.86rem; padding: 4px 0; text-align: right; }
+.napoli-presenze-aiuto > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.napoli-presenze-aiuto[open] { flex-basis: 100%; }
+.napoli-aiuto-corpo { font-size: 0.86rem; color: var(--text-secondary); padding: 4px 0 6px; }
+.napoli-aiuto-corpo p { margin: 0 0 6px; max-width: 120ch; }
+.napoli-aiuto-corpo kbd, .napoli-intro kbd {
+    display: inline-block; padding: 0 5px; border: 1px solid var(--border-light); border-radius: 4px;
+    background: var(--bg-secondary); color: var(--text-primary); font-family: var(--font-code); font-size: 0.8rem;
+}
+.napoli-legenda { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.napoli-legenda span { display: inline-flex; align-items: center; gap: 6px; }
+.napoli-legenda .lg { display: inline-block; width: 14px; height: 14px; border: 1px solid var(--border-color); border-radius: 3px; }
+.lg-assente { background: color-mix(in srgb, #E97132 26%, var(--bg-card-solid)); }
+.lg-sigla { background: color-mix(in srgb, var(--text-tertiary) 14%, var(--bg-card-solid)); }
+.lg-nota { background: linear-gradient(225deg, var(--primary) 0 30%, var(--bg-card-solid) 30%); }
+.lg-chiuso { background: repeating-linear-gradient(135deg, var(--bg-tertiary) 0 3px, var(--bg-card-solid) 3px 7px); }
+.lg-giallo { background: color-mix(in srgb, #FFD60A 42%, var(--bg-card-solid)); }
+.lg-rosso { background: color-mix(in srgb, var(--danger) 34%, var(--bg-card-solid)); }
+
+/* finestre della griglia */
+.napoli-scelte-nota { border: 0; padding: 0; margin: 4px 0 12px; }
+/* la nota del giorno sta tutta nella finestra a 1366x768 (anche la frase sulla riservatezza):
+   la spiegazione di ogni scelta sulla stessa riga, "Assenza recuperata" su una riga sola */
+.napoli-scelte-nota .napoli-scelta-riga { cursor: pointer; flex-wrap: wrap; align-items: baseline; margin: 4px 0; }
+.napoli-scelte-nota .napoli-scelta-riga input { margin-top: 0; align-self: center; }
+.napoli-scelte-nota .napoli-sotto-in::before { content: '— '; }
+#form-nota .napoli-riga-tre { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+#form-nota .napoli-gruppo-casella .napoli-scelta-riga { white-space: nowrap; }
+#nota-aiuto-programmati { margin-bottom: 10px; }
+.napoli-nota-chi { margin: 0 0 12px; }
+.napoli-modal-dettaglio { max-width: 860px; }
+#napoli-modal-coppia .modal-body, #napoli-modal-nota .modal-body { max-height: calc(100vh - 200px); overflow-y: auto; }
+.napoli-modal-dettaglio .napoli-sezione { margin-top: 18px; }
+/* settimane della VERIFICA su una riga ciascuna anche a 1366 (con la colonna "Tutte le coppie") */
+.napoli-tabella-settimane td, .napoli-tabella-settimane th { white-space: nowrap; padding-left: 10px; padding-right: 10px; }
+.napoli-tabella-settimane .napoli-periodo { margin-left: 4px; }
+.napoli-numeri-tre { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 8px; }
+#domanda-pulsanti { flex-wrap: wrap; }
+@media (max-width: 1100px) {
+    .napoli-presenze { --g-w-alunno: 120px; --g-w-operatore: 100px; --g-w-figura: 66px; }
+}
+
+/* ---------- scheda Fattura: i prospetti del mese (passo 1.9) ----------
+   Un riquadro per contratto applicativo e grado: a sinistra le righe come la fattura reale
+   (descrizione, ore, prezzo, importo, ritenuta, totali, da pagare), a destra le ore del
+   coordinatore e i controlli; sotto i testi da ricopiare, i pulsanti e il dettaglio. A 1366x768
+   le due colonne stanno affiancate; sotto i 1180 px vanno una sotto l'altra. */
+.napoli-fattura { display: flex; flex-direction: column; gap: 16px; }
+.napoli-fattura .card { margin-bottom: 0; }
+.napoli-fattura-barra .card-header { border-bottom: 0; }
+.napoli-fattura-avvisi-mese:empty { display: none; }
+.napoli-fattura-avvisi-mese .napoli-alert { margin: 0; border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; }
+.napoli-fattura-avvisi-mese .napoli-mese-chiuso > span { white-space: normal; }
+#fattura-contenuto { display: flex; flex-direction: column; gap: 16px; }
+#fattura-contenuto > .loading { padding: 40px; }
+.napoli-fattura-vuota { text-align: center; padding: 32px 24px; }
+.napoli-fattura-vuota > svg { color: var(--accent-text); }
+.napoli-fattura-vuota h2 { font-size: 1.15rem; margin: 10px 0 6px; }
+.napoli-fattura-vuota p { color: var(--text-secondary); max-width: 64ch; margin: 0 auto 16px; }
+
+.napoli-prospetto-testa { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.napoli-prospetto-testa .card-title { margin: 0; }
+.napoli-prospetto-testa .napoli-sottotitolo { margin-top: 2px; }
+.nf-stato { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.napoli-badge-stato { display: inline-flex; align-items: center; gap: 5px; font-size: 0.8rem; padding: 4px 10px; }
+.napoli-prospetto.nf-definitiva { border-color: color-mix(in srgb, var(--success) 45%, var(--border-color)); }
+
+.napoli-prospetto-corpo { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 1180px) { .napoli-prospetto-corpo { grid-template-columns: minmax(0, 1fr); } }
+.napoli-prospetto-righe { min-width: 0; }
+.napoli-fattura-tabella-box { max-height: none; border: 1px solid var(--border-color); border-radius: var(--radius); }
+.napoli-tabella-fattura { margin: 0; font-variant-numeric: tabular-nums; }
+.napoli-tabella-fattura td, .napoli-tabella-fattura th { padding: 7px 12px; }
+.napoli-tabella-fattura thead th:nth-child(2) { width: 90px; }
+.napoli-tabella-fattura thead th:nth-child(3) { width: 120px; }
+.napoli-tabella-fattura thead th:nth-child(4) { width: 120px; }
+.napoli-tabella-fattura tbody td:first-child { font-weight: 500; color: var(--text-primary); }
+.napoli-tabella-fattura tr.nf-ritenuta td { font-style: italic; font-weight: 400; color: var(--text-secondary); font-size: 0.86rem; }
+/* i totali si leggono come testo normale (refine.css fa le intestazioni piccole e maiuscole) */
+.napoli-tabella-fattura tfoot th { text-align: right; background: var(--bg-secondary); text-transform: none; letter-spacing: 0;
+    font-size: 0.88rem !important; font-weight: 500 !important; color: var(--text-secondary) !important; }
+.napoli-tabella-fattura tr.nf-somma td { border-top: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 500; }
+.napoli-tabella-fattura tfoot td { background: var(--bg-secondary); font-weight: 600; color: var(--text-primary); }
+.napoli-tabella-fattura tfoot tr:first-child th, .napoli-tabella-fattura tfoot tr:first-child td { border-top: 2px solid var(--border-color); }
+.napoli-tabella-fattura tfoot tr.nf-da-pagare th, .napoli-tabella-fattura tfoot tr.nf-da-pagare td {
+    background: var(--accent-soft); color: var(--accent-text) !important; font-weight: 700 !important; font-size: 0.98rem !important;
+}
+.napoli-tabella-fattura tfoot tr.nf-da-pagare .napoli-sotto-in { display: block; font-weight: 400; font-size: 0.76rem; }
+
+.napoli-prospetto-lato { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.napoli-prospetto-coord { border: 1px solid var(--border-color); border-radius: var(--radius); padding: 10px 12px; background: var(--bg-secondary); }
+.napoli-prospetto-coord .form-label { margin-bottom: 4px; font-weight: 600; }
+.nf-coord-riga { display: flex; align-items: center; gap: 10px; }
+.nf-coord-riga .napoli-sotto-in { font-size: 0.8rem; color: var(--text-tertiary); line-height: 1.3; }
+input.nf-coord { width: 96px; flex: none; text-align: right; padding: 6px 10px; font-weight: 600; font-variant-numeric: tabular-nums;
+    background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+input.nf-coord:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent); }
+/* fattura definitiva o mese chiuso: le ore si leggono come testo, non come una casella da compilare */
+input.nf-coord:disabled { cursor: not-allowed; background: transparent; border-color: transparent; color: var(--text-primary); }
+input.nf-coord.input-error { border-color: var(--danger); box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 25%, transparent); }
+.nf-coord-messaggio { margin-top: 6px; }
+
+.nf-titolo-controlli { font-size: 0.9rem; font-weight: 600; margin: 0; }
+.nf-titolo-controlli.nf-danger { color: var(--danger); }
+.nf-titolo-controlli.nf-warning { color: var(--warning); }
+.nf-controlli { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.nf-controllo { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border-color);
+    border-left-width: 3px; border-radius: var(--radius-sm); background: var(--bg-card-solid); }
+.nf-controllo.livello-bloccante { border-left-color: var(--danger); }
+.nf-controllo.livello-avviso { border-left-color: var(--warning); }
+.nf-controllo .napoli-icona-livello { margin-top: 1px; }
+.nf-controllo strong { color: var(--text-primary); font-weight: 600; font-size: 0.88rem; }
+.nf-controllo p { margin: 2px 0 0; font-size: 0.83rem; color: var(--text-secondary); }
+.nf-sistema { display: inline-block; margin-top: 4px; font-size: 0.83rem; font-weight: 600; }
+.nf-pronta { display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 10px 12px; border-radius: var(--radius);
+    background: color-mix(in srgb, var(--success) 10%, var(--bg-card-solid)); color: var(--text-primary); font-size: 0.88rem; }
+.nf-pronta svg { flex: none; color: var(--success); margin-top: 1px; }
+
+.napoli-prospetto-testi { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; margin: 18px 0 0;
+    padding: 12px 14px; border: 1px solid var(--border-color); border-radius: var(--radius); }
+.nf-testo { min-width: 0; }
+.nf-testo:first-child, .nf-testo:nth-child(2) { grid-column: 1 / -1; }
+.nf-testo dt { display: flex; align-items: center; gap: 8px; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.03em;
+    color: var(--text-tertiary); font-weight: 600; }
+.nf-testo dd { margin: 2px 0 0; font-size: 0.88rem; color: var(--text-primary); overflow-wrap: anywhere; }
+.nf-copia { padding: 1px 8px; font-size: 0.75rem; text-transform: none; letter-spacing: 0; }
+
+.napoli-prospetto-azioni { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.napoli-prospetto-azioni .nf-spazio { flex: 1; }
+.napoli-prospetto-azioni .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+.napoli-prospetto-dettaglio { margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 8px; }
+.napoli-prospetto-dettaglio > summary { cursor: pointer; color: var(--text-secondary); font-size: 0.88rem; padding: 4px 0; }
+.napoli-prospetto-dettaglio > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.nf-dettaglio-corpo { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; margin-top: 8px; }
+.nf-dettaglio-corpo .table-container { max-height: 320px; overflow-y: auto; }
+@media (max-width: 1180px) { .nf-dettaglio-corpo { grid-template-columns: minmax(0, 1fr); } }
+
+.napoli-prospetto-vuoto .card-header { border-bottom: 0; }
+.napoli-prospetto-vuoto-corpo { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; padding-top: 0; }
+.napoli-prospetto-vuoto-corpo .napoli-prospetto-coord { flex: 0 1 460px; }
+.napoli-prospetto-vuoto-corpo .nf-controlli { flex: 1 1 320px; }
+
+.napoli-tabella-ritenute { margin: 0; font-variant-numeric: tabular-nums; }
+.napoli-tabella-ritenute td, .napoli-tabella-ritenute th { padding: 7px 12px; }
+.napoli-tabella-ritenute .nf-ritenute-contratto th { background: var(--bg-secondary); font-weight: 600; color: var(--text-primary); }
+.napoli-tabella-ritenute .nf-ritenute-totale th, .napoli-tabella-ritenute .nf-ritenute-totale td { font-weight: 600; }
+.napoli-tabella-ritenute tfoot th, .napoli-tabella-ritenute tfoot td { font-weight: 700; border-top: 2px solid var(--border-color); }
+.napoli-ritenute { scroll-margin-top: 72px; }
+.napoli-tabella-ritenute tbody th, .napoli-tabella-ritenute tfoot th { text-transform: none; letter-spacing: 0;
+    font-size: 0.88rem !important; color: var(--text-primary) !important; }
+.napoli-tabella-ritenute tfoot td { background: transparent; }
+#form-definitiva .napoli-sottotitolo, #form-riapri .napoli-sottotitolo { margin: 0 0 10px; font-weight: 600; }
+.napoli-modal-testo { margin: 0 0 14px; }
+
+/* griglia presenze: i giorni di una fattura definitiva sono bloccati (passo 1.9) */
+.napoli-griglia td.g-definitiva { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--success) 10%, var(--bg-card-solid)) 0 4px, var(--bg-card-solid) 4px 8px); }
+.napoli-griglia td.g-definitiva input:disabled { cursor: not-allowed; }

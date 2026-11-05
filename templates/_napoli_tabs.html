@@ -1,0 +1,58 @@
+{# Testata comune delle pagine di Napoli: titolo, lotto scelto (ricordato nel browser,
+   napoli.js) e schede. Si mostrano solo le schede che ci sono gia' (Mese, Presenze,
+   Anagrafiche, Fattura, Importa, Impostazioni): Programmazione e Calendario arrivano con i
+   passi successivi. #}
+<div class="page-header">
+    <div class="page-header-row">
+        <div>
+            <h1 class="page-title">Napoli</h1>
+            <p class="page-subtitle">Assistenza specialistica all'integrazione scolastica &middot; Comune di Napoli</p>
+        </div>
+        <div class="header-actions napoli-scelta-lotto" id="napoli-scelta-lotto" hidden>
+            <label class="form-label" for="napoli-lotto">Lotto</label>
+            <select id="napoli-lotto" class="form-control" title="Il lotto scelto vale per tutte le schede di Napoli"></select>
+        </div>
+    </div>
+</div>
+
+<div class="tabs-container">
+    <nav class="tabs" aria-label="Sezioni di Napoli">
+        <a href="/napoli" class="tab {% if request.path == '/napoli' %}active{% endif %}" {% if request.path == '/napoli' %}aria-current="page"{% endif %}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Mese
+        </a>
+        <a href="/napoli/presenze" class="tab {% if request.path == '/napoli/presenze' %}active{% endif %}" {% if request.path == '/napoli/presenze' %}aria-current="page"{% endif %}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Presenze
+        </a>
+        <a href="/napoli/anagrafiche" class="tab {% if request.path == '/napoli/anagrafiche' %}active{% endif %}" {% if request.path == '/napoli/anagrafiche' %}aria-current="page"{% endif %}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            Anagrafiche
+        </a>
+        <a href="/napoli/fattura" class="tab {% if request.path == '/napoli/fattura' %}active{% endif %}" {% if request.path == '/napoli/fattura' %}aria-current="page"{% endif %}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+            </svg>
+            Fattura
+        </a>
+        <a href="/napoli/import" class="tab {% if request.path == '/napoli/import' %}active{% endif %}" {% if request.path == '/napoli/import' %}aria-current="page"{% endif %}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Importa
+        </a>
+        <a href="/napoli/impostazioni" class="tab {% if request.path == '/napoli/impostazioni' %}active{% endif %}" {% if request.path == '/napoli/impostazioni' %}aria-current="page"{% endif %}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Impostazioni
+        </a>
+    </nav>
+</div>

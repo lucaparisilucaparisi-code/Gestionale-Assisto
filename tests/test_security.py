@@ -64,15 +64,21 @@ def test_reset_password_cambia_hash_senza_perdere_dati(db_mod, sample_data, monk
     import reset_password
 
     utenti_prima = len(db_mod.get_all_utenti())
+    # L'auth e' condivisa nell'intera sessione di test: salvo l'hash originale e
+    # lo ripristino a fine test, cosi' i test di login/logout non falliscono se
+    # questo gira prima di loro (isolamento indipendente dall'ordine casuale).
+    hash_originale = db_mod.auth_get_user()['password_hash']
+    try:
+        monkeypatch.setattr('sys.argv', ['reset_password.py', '--password', 'nuovapass123'])
+        assert reset_password.main() == 0
 
-    monkeypatch.setattr('sys.argv', ['reset_password.py', '--password', 'nuovapass123'])
-    assert reset_password.main() == 0
-
-    hash_nuovo = db_mod.auth_get_user()['password_hash']
-    assert check_password_hash(hash_nuovo, 'nuovapass123')
-    assert not check_password_hash(hash_nuovo, 'secret')  # vecchia password non valida
-    # I dati non sono stati toccati
-    assert len(db_mod.get_all_utenti()) == utenti_prima
+        hash_nuovo = db_mod.auth_get_user()['password_hash']
+        assert check_password_hash(hash_nuovo, 'nuovapass123')
+        assert not check_password_hash(hash_nuovo, 'secret')  # vecchia password non valida
+        # I dati non sono stati toccati
+        assert len(db_mod.get_all_utenti()) == utenti_prima
+    finally:
+        db_mod.auth_update_credentials(password_hash=hash_originale)
 
 
 def test_reset_password_rifiuta_password_corta(db_mod, monkeypatch):

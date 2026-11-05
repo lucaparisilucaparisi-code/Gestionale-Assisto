@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
 
 {% block title %}Dipendenti - Gestionale OEPAC{% endblock %}
 
@@ -29,11 +30,11 @@
 <div class="filters">
     <div class="filter-group">
         <label class="filter-label">Cerca</label>
-        <input type="text" id="filter-q" class="form-control" placeholder="Nome, cognome o C.F." style="width: 240px;">
+        <input type="text" id="filter-q" class="form-control w-md" placeholder="Nome, cognome o C.F.">
     </div>
     <div class="filter-group">
         <label class="filter-label">Commessa</label>
-        <select id="filter-commessa" class="form-control" style="width: 180px;">
+        <select id="filter-commessa" class="form-control w-md">
             <option value="">Tutte</option>
         </select>
     </div>
@@ -48,7 +49,7 @@
 <div class="card">
     <div class="card-header">
         <h2 class="card-title">Elenco Dipendenti</h2>
-        <span class="badge badge-secondary" id="count-badge">0</span>
+        <span class="badge badge-secondary" id="count-badge">0 dipendenti</span>
     </div>
     <div class="card-body p-0">
         <div class="table-container" id="tabella-dipendenti">
@@ -62,9 +63,7 @@
     <div class="modal" style="max-width: 620px;">
         <div class="modal-header">
             <h3 class="modal-title" id="modal-titolo">Nuovo Dipendente</h3>
-            <button class="modal-close" onclick="closeModal('modal-dipendente')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
+            {{ modal_close("closeModal('modal-dipendente')") }}
         </div>
         <div class="modal-body">
             <input type="hidden" id="dip-id">
@@ -171,7 +170,9 @@ async function carica() {
 }
 
 function render() {
-    document.getElementById('count-badge').textContent = dipendenti.length;
+    // '8 dipendenti' come '35 utenti' in Utenti (prima c'era il solo numero)
+    const n = dipendenti.length;
+    document.getElementById('count-badge').textContent = n + (n === 1 ? ' dipendente' : ' dipendenti');
     const c = document.getElementById('tabella-dipendenti');
     if (!dipendenti.length) {
         c.innerHTML = '<div class="empty-state"><h3 class="empty-state-title">Nessun dipendente</h3><p class="empty-state-text">Aggiungi un operatore o importa l\'anagrafica da Excel.</p></div>';
@@ -182,7 +183,7 @@ function render() {
             <thead><tr>
                 <th>Cognome e Nome</th><th>Qualifica</th><th>Commessa</th>
                 <th class="text-right">Ore contr.</th><th class="text-right">Assistiti</th>
-                <th class="text-right">Ore assegn.</th><th></th>
+                <th class="text-right">Ore assegn.</th><th class="text-right">Azioni</th>
             </tr></thead>
             <tbody>
                 ${dipendenti.map(d => `
@@ -191,11 +192,11 @@ function render() {
                             ${d.attivo ? '' : '<span class="badge badge-secondary" style="margin-left:6px">disattivato</span>'}</td>
                         <td>${escapeHtml(d.qualifica || '—')}</td>
                         <td>${escapeHtml(d.commessa || '—')}</td>
-                        <td class="text-right font-mono">${d.ore_contrattuali_settimanali != null ? d.ore_contrattuali_settimanali : '—'}</td>
-                        <td class="text-right font-mono">${d.assistiti}</td>
-                        <td class="text-right font-mono">${d.ore_assegnate}</td>
+                        <td class="text-right">${d.ore_contrattuali_settimanali != null ? formatNumero(d.ore_contrattuali_settimanali) : '—'}</td>
+                        <td class="text-right">${d.assistiti}</td>
+                        <td class="text-right">${formatNumero(d.ore_assegnate)}</td>
                         <td class="text-right">
-                            <button class="btn btn-sm btn-secondary" onclick='apriModifica(${d.id})' title="Modifica">Modifica</button>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick='apriModifica(${d.id})' title="Modifica" aria-label="Modifica ${escapeHtml(d.cognome)} ${escapeHtml(d.nome)}">${icona('matita')}Modifica</button>
                         </td>
                     </tr>`).join('')}
             </tbody>

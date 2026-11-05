@@ -4,20 +4,6 @@
 
 {% block content %}
 {% include '_impostazioni_tabs.html' %}
-<div class="page-header" style="margin-top: -4px;">
-    <div class="page-header-row">
-        <div></div>
-        <div class="header-actions">
-            <button class="btn btn-secondary" id="btn-logout">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                </svg>
-                Esci
-            </button>
-        </div>
-    </div>
-</div>
-
 <div class="flex gap-4 mb-4 flex-wrap">
     <!-- Card account -->
     <div class="card" style="flex: 1; min-width: 340px;">
@@ -30,12 +16,21 @@
                 <span class="info-value" id="current-username">—</span>
             </div>
             <div class="info-row">
-                <span class="info-label">Account creato</span>
+                <span class="info-label">Account creato il</span>
                 <span class="info-value" id="account-created">—</span>
             </div>
             <div class="info-row">
-                <span class="info-label">Ultimo accesso</span>
+                <span class="info-label">Accesso in corso dal</span>
                 <span class="info-value" id="last-login">—</span>
+            </div>
+            {# 'Esci' qui, con i dati dell'account: prima stava da solo sopra le card #}
+            <div class="account-azioni">
+                <button class="btn btn-secondary" id="btn-logout">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    </svg>
+                    Esci
+                </button>
             </div>
         </div>
     </div>
@@ -120,11 +115,12 @@
             </label>
             <div style="display:flex; gap:8px;">
                 <input type="text" id="cartella-esterna" class="form-control" style="flex:1;"
-                       placeholder="Es. D:\Backup oppure C:\Users\...\OneDrive\BackupGestionale">
+                       placeholder="Es. D:\Backup">
                 <button type="button" class="btn btn-secondary" id="btn-salva-cartella">Salva</button>
             </div>
-            <small class="text-muted">Ogni nuovo backup verrà copiato anche lì (chiavetta o cartella
-            sincronizzata col cloud). Lascia vuoto per disattivare.</small>
+            <small class="text-muted">Ogni nuovo backup verrà copiato anche lì: una chiavetta (D:\Backup)
+            o una cartella sincronizzata col cloud (C:\Users\...\OneDrive\BackupGestionale).
+            Lascia vuoto per disattivare.</small>
         </div>
         <div id="backup-list">
             <div class="loading"><div class="spinner"></div></div>
@@ -136,12 +132,17 @@
 .info-row {
     display: flex;
     justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
     padding: 10px 0;
     border-bottom: 1px solid var(--border-color);
 }
 .info-row:last-child { border-bottom: none; }
-.info-label { color: var(--text-secondary); font-size: 0.875rem; }
-.info-value { color: var(--text-primary); font-weight: 600; font-size: 0.875rem; }
+.info-label { flex-shrink: 0; color: var(--text-secondary); font-size: 0.875rem; }
+/* valori a destra anche quando vanno a capo (sul telefono 'Accesso in corso dal'
+   restava allineato a sinistra, diverso dagli altri), come .dati-valore in refine.css */
+.info-value { min-width: 0; text-align: right; color: var(--text-primary); font-weight: 600; font-size: 0.875rem; }
+.account-azioni { margin-top: 16px; display: flex; justify-content: flex-end; }
 
 .credential-item {
     display: flex;
@@ -149,13 +150,13 @@
     gap: 14px;
     padding: 14px;
     background: var(--bg-tertiary);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     margin-bottom: 10px;
 }
 .credential-icon {
     width: 40px; height: 40px;
     border-radius: 10px;
-    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    background: var(--accent);   /* un solo blu, come il quadratino 'A' del marchio */
     display: flex; align-items: center; justify-content: center;
     color: white;
     flex-shrink: 0;
@@ -204,9 +205,14 @@ async function loadAccount() {
         const res = await apiCall('/api/auth/status');
         document.getElementById('current-username').textContent = res.username || '—';
 
-        // Recupera anche dati creazione dal database via endpoint dedicato? Semplifichiamo usando stato corrente
-        if (res.auth_time) {
-            document.getElementById('last-login').textContent = formatDate(res.auth_time);
+        // Dati veri dall'account (prima restavano sempre '—')
+        document.getElementById('account-created').textContent = res.data_creazione ? formatDataIT(res.data_creazione) : '—';
+        if (res.ultimo_accesso) {
+            // spazi non separabili: sul telefono il valore va a capo solo dopo il '·'
+            // (prima si leggeva '23/09/2026, 21:10 · con' e sotto 'password')
+            const unito = (s) => s.replace(/ /g, '\u00A0');
+            const metodo = { password: 'con\u00A0password', webauthn: 'con\u00A0impronta / Windows\u00A0Hello' }[res.ultimo_accesso_metodo];
+            document.getElementById('last-login').textContent = unito(formatDataOraIT(res.ultimo_accesso)) + (metodo ? ' · ' + metodo : '');
         }
     } catch (e) { console.error(e); }
 }
@@ -239,16 +245,22 @@ async function loadCredentials() {
     }
 }
 
-async function deleteCredential(id, nome) {
-    if (!confirm(`Rimuovere l'impronta "${nome}"?`)) return;
-    try {
-        const res = await fetch(`/api/auth/webauthn/credentials/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error();
-        showToast('Impronta rimossa', 'success');
-        loadCredentials();
-    } catch (e) {
-        showToast('Errore nella rimozione', 'error');
-    }
+function deleteCredential(id, nome) {
+    showConfirmDialog(
+        'Rimuovi impronta',
+        `Rimuovere l'impronta "${nome}"? Potrai sempre accedere con username e password.`,
+        async () => {
+            try {
+                const res = await fetch(`/api/auth/webauthn/credentials/${id}`, { method: 'DELETE' });
+                if (!res.ok) throw new Error();
+                showToast('Impronta rimossa', 'success');
+                loadCredentials();
+            } catch (e) {
+                showToast('Errore nella rimozione', 'error');
+            }
+        },
+        { type: 'danger', confirmText: 'Rimuovi' }
+    );
 }
 
 // ==================== Registra nuova impronta ====================
@@ -257,9 +269,15 @@ document.getElementById('btn-register-webauthn').addEventListener('click', async
         showToast('Il tuo browser non supporta WebAuthn', 'error');
         return;
     }
-    const nome = prompt('Nome per questa impronta (es. "PC ufficio"):', 'PC principale');
-    if (!nome) return;
+    showConfirmDialog(
+        'Nuova impronta',
+        'Dai un nome a questa impronta (es. "PC ufficio") e conferma: si aprira\' Windows Hello.',
+        (testo) => registraImpronta((testo || '').trim() || 'PC principale'),
+        { confirmText: 'Continua', type: 'info', requireInput: true, inputPlaceholder: 'Nome impronta (es. PC ufficio)' }
+    );
+});
 
+async function registraImpronta(nome) {
     try {
         // Step 1: ottieni options dal server
         const optRes = await fetch('/api/auth/webauthn/register/begin', { method: 'POST' });
@@ -313,7 +331,7 @@ document.getElementById('btn-register-webauthn').addEventListener('click', async
         console.error(err);
         showToast(err.message || 'Registrazione fallita', 'error');
     }
-});
+}
 
 // ==================== Cambio password ====================
 document.getElementById('change-password-form').addEventListener('submit', async (e) => {
@@ -409,25 +427,50 @@ document.getElementById('btn-create-backup').addEventListener('click', async () 
     }
 });
 
-async function restoreBackup(nome) {
-    if (!confirm(`Ripristinare il backup "${nome}"?\n\nATTENZIONE: i dati attuali verranno sostituiti con quelli del backup. Prima del ripristino viene comunque creato un backup di sicurezza.`)) return;
-    try {
-        const res = await fetch('/api/backup/restore', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ backup: nome, confirm: 'CONFERMA' })
-        });
-        if (!res.ok) throw new Error();
-        showToast('Backup ripristinato. Ricarico la pagina…', 'success');
-        setTimeout(() => location.reload(), 1500);
-    } catch (e) {
-        showToast('Errore nel ripristino', 'error');
-    }
+function restoreBackup(nome) {
+    // L'azione piu' delicata dell'app: la parola di conferma la digita l'operatore
+    // (prima era scritta nel codice e il controllo del server era inutile)
+    showConfirmDialog(
+        `Ripristinare il backup "${nome}"?`,
+        'I dati attuali verranno sostituiti con quelli del backup. Prima del ripristino viene comunque ' +
+        'creato un backup di sicurezza dello stato attuale. Per procedere digita CONFERMA.',
+        async (testo) => {
+            const parola = (testo || '').trim().toUpperCase();
+            if (parola !== 'CONFERMA') {
+                showToast('Ripristino non eseguito: digita CONFERMA per procedere', 'warning');
+                return;
+            }
+            try {
+                const res = await fetch('/api/backup/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ backup: nome, confirm: parola })
+                });
+                const esito = await res.json().catch(() => ({}));
+                // il server spiega il motivo (file vuoto o estraneo, backup di sicurezza non riuscito...)
+                if (!res.ok) throw new Error(esito.error || '');
+                showToast('Backup ripristinato. Ricarico la pagina…', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } catch (e) {
+                showToast(e.message || 'Errore nel ripristino', 'error');
+            }
+        },
+        { type: 'danger', confirmText: 'Ripristina', requireInput: true, inputPlaceholder: 'Digita CONFERMA' }
+    );
 }
 
 // ==================== Logout ====================
 document.getElementById('btn-logout').addEventListener('click', async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* si esce comunque */ }
+    // Svuota le cache del browser: su un PC condiviso nulla di questa sessione
+    // resta disponibile al prossimo operatore
+    try {
+        if (window.caches) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_CACHES' });
+    } catch (e) { /* cache non disponibile */ }
     window.location.href = '/login';
 });
 

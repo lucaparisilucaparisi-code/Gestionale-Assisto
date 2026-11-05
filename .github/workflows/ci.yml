@@ -7,7 +7,9 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Python 3.9 non e' piu' disponibile sull'immagine Ubuntu piu' recente (26.04) usata da
+    # ubuntu-latest: per la 3.9 si resta su Ubuntu 24.04, la 3.12 segue l'ultima immagine.
+    runs-on: ${{ matrix.python-version == '3.9' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -31,3 +33,8 @@ jobs:
 
       - name: Test (pytest + coverage, soglia minima 55%)
         run: pytest --cov=. --cov-report=term-missing --cov-fail-under=55
+
+      - name: Test con i dati di Napoli (doppio giro, docs/ARCHITETTURA.md)
+        run: pytest
+        env:
+          ASSISTO_TEST_CON_NAPOLI: "1"

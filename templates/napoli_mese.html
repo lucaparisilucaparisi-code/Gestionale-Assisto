@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Napoli - Gestionale OEPAC{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static_url('css/napoli.css') }}">
+{% endblock %}
+
+{% block content %}
+{% include '_napoli_tabs.html' %}
+
+{# Senza lotti: l'invito a creare il primo lotto (procedura guidata). Con un lotto: cosa
+   manca per fare le fatture (GET /api/napoli/lotti/<id>/controlli) e le ore del
+   coordinatore del mese (passo 1.8, GET/PUT /api/napoli/lotti/<id>/coordinamento). #}
+<div id="napoli-mese">
+    <div class="loading"><div class="spinner"></div></div>
+</div>
+
+<section class="card napoli-coordinatore" id="napoli-coordinatore" aria-labelledby="titolo-coordinatore" hidden>
+    <div class="card-header">
+        <div class="napoli-coord-titolo">
+            <h2 class="card-title" id="titolo-coordinatore">Ore del coordinatore</h2>
+            {# Stato del salvataggio automatico, come in Rendicontazione (niente pulsante "Salva") #}
+            <span class="auto-save-indicator" id="coord-salvataggio" role="status" aria-live="polite">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span id="coord-salvataggio-testo">Salvataggio automatico</span>
+            </span>
+        </div>
+    </div>
+    <div class="card-body napoli-coord-corpo">
+        <p class="napoli-intro">Il totale delle ore del coordinatore di ogni mese, per contratto applicativo e grado, come la riga «Coordinatore» della fattura: in ore con la virgola, per esempio <strong>71,55</strong>. Si salva da solo. Invio o le frecce ↑ ↓ passano alla casella sotto o sopra; fuori dalle caselle, Ctrl+Z annulla l'ultima modifica.</p>
+        <div id="coord-contenuto"></div>
+    </div>
+</section>
+
+{% include '_napoli_procedura_lotto.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static_url('js/napoli.js') }}"></script>
+<script>NapoliMese.avvia();</script>
+{% endblock %}
