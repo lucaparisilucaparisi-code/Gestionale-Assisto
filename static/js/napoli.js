@@ -110,9 +110,18 @@ function napoliPulisciErrori(contenitore) {
     contenitore.querySelectorAll('.error').forEach(el => el.classList.remove('error'));
 }
 
+/** Il testo di un errore per l'utente: senza collegamento il browser dice "Failed to fetch"
+ *  (in inglese, tecnico), qui diventa una frase in italiano. */
+function napoliTestoErrore(err, riserva = 'Operazione non riuscita: riprova.') {
+    if (err instanceof TypeError && !('status' in err)) {
+        return 'Il collegamento con Assisto si è interrotto: controlla che il programma sia aperto e riprova.';
+    }
+    return (err && err.message) || riserva;
+}
+
 /** Errore di un'API: il messaggio vicino al campo sbagliato (se il server lo dice) e in un avviso. */
 function napoliMostraErrore(err, contenitore) {
-    const messaggio = (err && err.message) || 'Operazione non riuscita: riprova.';
+    const messaggio = napoliTestoErrore(err);
     const campo = err && err.data && err.data.campo;
     if (contenitore) napoliPulisciErrori(contenitore);
     const el = campo && contenitore ? contenitore.querySelector(`[data-campo="${CSS.escape(campo)}"]`) : null;
@@ -206,7 +215,8 @@ const NapoliComune = {
         // conferma gia' aperta (una che si sta chiudendo resta nella pagina ancora 300 ms: non conta)
         if (document.querySelector('#confirm-dialog-overlay.active')) return;
         // le caselle ancora da salvare partono prima: Ctrl+Z annulla l'ultima modifica davvero fatta
-        if (typeof this.primaDiAnnullare === 'function') await this.primaDiAnnullare();
+        // (se non si salvano, la pagina lo dice e non si annulla niente)
+        if (typeof this.primaDiAnnullare === 'function' && (await this.primaDiAnnullare()) === false) return;
         let info;
         try {
             info = await apiCall('/api/napoli/annulla/ultima');
@@ -3470,6 +3480,14 @@ const NapoliImpostazioni = {
 // ==================== scheda Presenze (griglia del mese, passo 1.7) ====================
 
 const NAPOLI_PRESENZE_ATTESA = 2000;          // come il salvataggio automatico della Rendicontazione
+// caselle per richiesta: il server ne prende al massimo 2000 (napoli_presenze.MAX_CELLE); un incolla
+// piu' grande parte a gruppi, una richiesta dopo l'altra
+const NAPOLI_PRESENZE_GRUPPO = 2000;
+// uscendo dalla pagina il browser porta a termine richieste per al massimo 64 KB in tutto (fetch
+// keepalive): quello che non ci sta resta da salvare e la pagina chiede prima di uscire
+const NAPOLI_PRESENZE_USCITA_BYTE = 60000;
+// nuovi tentativi da soli quando il collegamento o il programma non rispondono: 5, 10, 20, 30 secondi
+const NAPOLI_PRESENZE_RIPROVA = [5000, 10000, 20000, 30000];
 const NAPOLI_CHIAVE_MESE = 'napoli.mese';
 const NAPOLI_TESTI_GRADO = { inferiore: 'Inferiore', superiore: 'Superiore', da_decidere: 'Da decidere' };
 const NAPOLI_SIGLE_OPERATORE = { F: 'Ferie dell\'operatore', M: 'Malattia dell\'operatore', P: 'Permesso dell\'operatore (F perm)' };
@@ -3522,8 +3540,11 @@ function napoliNormalizza(testo) {
  * numero mostrato (ore riconosciute, VERIFICA, totali, credito/debito) arriva dal server
  * (napoli_presenze, con napoli_calcoli): la pagina somma solo minuti interi per il
  * riepilogo delle righe mostrate. Salvataggio automatico a gruppi 2 secondi dopo l'ultimo
- * tasto (e uscendo dalla pagina, con fetch keepalive); le caselle da chiarire ("1,30", le ore
- * programmate di un giorno con l'alunno assente) si chiedono una alla volta.
+ * tasto (al massimo 2000 caselle per richiesta, e uscendo dalla pagina con fetch keepalive); se
+ * non riesce, come in Rendicontazione: "Modifiche non salvate", il pulsante "Riprova a salvare"
+ * (anche Ctrl+S), nuovi tentativi da soli se il collegamento o il programma non rispondono, e
+ * la domanda del browser prima di uscire. Le caselle da chiarire ("1,30", le ore programmate di
+ * un giorno con l'alunno assente) si chiedono una alla volta.
  */
 const NapoliPresenze = {
     dati: null,
@@ -3537,6 +3558,9 @@ const NapoliPresenze = {
     inVolo: null,
     ancora: false,
     ultimoSalvataggio: null,
+    erroreSalvataggio: null,   // l'ultimo salvataggio non e' riuscito (rete, programma): il messaggio
+    tentativi: 0,              // salvataggi non riusciti di fila (per l'attesa del prossimo tentativo)
+    riprova: null,             // il nuovo tentativo da solo
     attiva: null,              // la casella scelta {id, i}
     filtri: { cerca: '', scuola: '', operatore: '', figura: '', grado: '', municipalita: '', avvisi: false },
     seqCaricamento: 0,
@@ -3544,9 +3568,13 @@ const NapoliPresenze = {
     el(id) { return document.getElementById(id); },
 
     async avvia() {
-        NapoliComune.alCambioLotto = async () => { await this.salvaInSospeso(); await this.carica(); };
+        NapoliComune.alCambioLotto = async () => {
+            // con caselle non salvate si resta sul lotto e sul mese mostrati (come in Rendicontazione)
+            if (!(await this.puoLasciare())) { this.tornaAlMostrato(); return; }
+            await this.carica();
+        };
         NapoliComune.dopoAnnulla = async () => { await this.carica(true); };
-        NapoliComune.primaDiAnnullare = () => this.salvaInSospeso();
+        NapoliComune.primaDiAnnullare = () => this.puoLasciare('Modifiche non salvate: prima di annullare bisogna salvarle. Riprova il salvataggio.');
         this.collega();
         try {
             await NapoliComune.caricaLotti();
@@ -3594,15 +3622,32 @@ const NapoliPresenze = {
     },
 
     async cambiaMese(passo) {
+        if (!(await this.puoLasciare())) return;
         const scelta = this.el('pm-mese');
         const { anno, mese } = this.meseScelto();
         const d = new Date(anno, mese - 1 + passo, 1);
         const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         if (![...scelta.options].some(o => o.value === v)) this.preparaMesi(v);
         scelta.value = v;
-        await this.salvaInSospeso();
         this.ricordaMese(v);
         await this.carica();
+    },
+
+    /** Il salvataggio non e' riuscito: la scelta del lotto e del mese torna su quelli mostrati. */
+    tornaAlMostrato() {
+        const d = this.dati;
+        if (!d) return;
+        const l = NapoliComune.lotti.find(x => x.id === d.lotto.id);
+        if (l && NapoliComune.lotto !== l) {
+            NapoliComune.lotto = l;
+            NapoliComune.ricorda(l.id);
+            NapoliComune.disegnaScelta();
+        }
+        const v = `${d.anno}-${String(d.mese).padStart(2, '0')}`;
+        const scelta = this.el('pm-mese');
+        if (![...scelta.options].some(o => o.value === v)) this.preparaMesi(v);
+        scelta.value = v;
+        this.ricordaMese(v);
     },
 
     // ---------- eventi ----------
@@ -3625,7 +3670,7 @@ const NapoliPresenze = {
             if (tr && e.target.closest('.g-fissa, .g-ver, .g-tot, .g-cd')) this.apriDettaglio(Number(tr.dataset.id));
         });
         this.el('pm-mese').addEventListener('change', async () => {
-            await this.salvaInSospeso();
+            if (!(await this.puoLasciare())) { this.tornaAlMostrato(); return; }
             this.ricordaMese(this.el('pm-mese').value);
             await this.carica();
         });
@@ -3643,10 +3688,9 @@ const NapoliPresenze = {
             else showToast('Scegli prima una casella della griglia, poi la sua nota del giorno.', 'info');
         });
         this.el('btn-presenze-annulla').addEventListener('click', () => NapoliComune.annulla());
+        // "Riprova a salvare" (compare solo se il salvataggio non riesce) e Ctrl+S (app.js: data-action="save")
+        this.el('btn-presenze-riprova').addEventListener('click', () => this.salvaSubito());
         this.el('btn-mese').addEventListener('click', () => this.apriMese());
-        this.el('presenze-chiuso').addEventListener('click', (e) => {
-            if (e.target.closest('[data-azione="riapri"]')) this.apriMese();
-        });
         this.el('form-nota').addEventListener('submit', (e) => { e.preventDefault(); this.salvaNota(); });
         this.el('form-nota').addEventListener('change', () => this.aggiornaNota());
         this.el('form-mese').addEventListener('submit', (e) => { e.preventDefault(); this.confermaMese(); });
@@ -3665,11 +3709,25 @@ const NapoliPresenze = {
             const i = this.dati.giorni.indexOf(b.dataset.notaGiorno);
             if (r && i >= 0) { closeModal('napoli-modal-coppia'); this.apriNota(r.id, i); }
         });
+        // caselle che uscendo andrebbero perse (salvataggio non riuscito, o troppe per partire
+        // all'uscita): il browser chiede prima di lasciare la pagina
+        window.addEventListener('beforeunload', (e) => {
+            if (this.nonPartono()) { e.preventDefault(); e.returnValue = ''; }
+        });
         // uscita dalla pagina entro i 2 secondi: le caselle cambiate partono subito
         window.addEventListener('pagehide', () => this.inviaInUscita());
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') this.inviaInUscita(); });
         window.addEventListener('resize', () => this.misura());
         document.querySelector('.napoli-presenze-aiuto')?.addEventListener('toggle', () => this.misura());
+        // la testata cambia altezza (stato del salvataggio piu' lungo, "Riprova a salvare", mese
+        // chiuso): la griglia si rimisura, cosi' la pagina non scorre
+        if (typeof ResizeObserver === 'function') {
+            const osserva = new ResizeObserver(() => this.misura());
+            ['.napoli-presenze-testa', '#presenze-chiuso', '#presenze-filtri'].forEach(s => {
+                const el = document.querySelector(s);
+                if (el) osserva.observe(el);
+            });
+        }
     },
 
     // ---------- caricamento e disegno ----------
@@ -3698,7 +3756,7 @@ const NapoliPresenze = {
             dati = await apiCall(`/api/napoli/lotti/${lotto.id}/presenze?anno=${anno}&mese=${mese}`);
         } catch (e) {
             if (seq !== this.seqCaricamento) return;
-            box.innerHTML = `<div class="alert alert-danger napoli-esito-elenco">${escapeHtml(e.message || 'Presenze non disponibili')}</div>`;
+            box.innerHTML = `<div class="alert alert-danger napoli-esito-elenco">${escapeHtml(napoliTestoErrore(e, 'Presenze non disponibili'))}</div>`;
             return;
         }
         if (seq !== this.seqCaricamento) return;          // risposta superata (altro mese o lotto)
@@ -3706,6 +3764,7 @@ const NapoliPresenze = {
         this.righe = new Map(dati.righe.map(r => [r.id, r]));
         this.attese = new Map();
         this.errori = new Map();
+        this.azzeraErrore();
         this.domande = [];
         this.attiva = null;
         this.disegnaFiltri();
@@ -3743,10 +3802,11 @@ const NapoliPresenze = {
         const chiuso = this.el('presenze-chiuso');
         chiuso.hidden = !d.chiuso;
         if (d.chiuso) {
-            chiuso.innerHTML = `${napoliSvg('M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', 20)}
-                <div><strong>${escapeHtml(d.testo)} è chiuso</strong> dal ${escapeHtml(formatDataIT(d.chiusura.data))}: le ore non si cambiano più.${d.chiusura.nota ? ` Nota: ${escapeHtml(d.chiusura.nota)}.` : ''}
-                Per correggere, riapri il mese scrivendo il motivo.</div>
-                <button type="button" class="btn btn-sm btn-secondary" data-azione="riapri">Riapri il mese</button>`;
+            // una riga sola (a 1366x768 la griglia ha bisogno di altezza): per riaprire c'e' il pulsante in alto
+            const nota = d.chiusura.nota ? ` Nota: ${escapeHtml(d.chiusura.nota)}.` : '';
+            chiuso.innerHTML = `${napoliSvg('M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', 16)}
+                <span><strong>${escapeHtml(d.testo)} è chiuso</strong> dal ${escapeHtml(formatDataIT(d.chiusura.data))}: le ore non si cambiano più. Per correggere usa «Riapri il mese» qui sopra e scrivi il motivo.${nota}</span>`;
+            chiuso.title = `${d.testo} è chiuso dal ${formatDataIT(d.chiusura.data)}.${d.chiusura.nota ? ` Nota: ${d.chiusura.nota}.` : ''}`;
         }
         const b = this.el('btn-mese');
         b.hidden = false;
@@ -3754,7 +3814,8 @@ const NapoliPresenze = {
         b.textContent = d.chiuso ? 'Riapri il mese' : 'Chiudi il mese';
         b.title = d.chiuso ? 'Riapre il mese scrivendo il motivo, che resta nel registro attività'
             : (d.finito ? 'Blocca le ore del mese del lotto' : 'Il mese si chiude dall\'ultimo giorno, quando tutte le ore sono scritte');
-        this.el('btn-nota-giorno').disabled = d.chiuso;
+        // a mese chiuso le note non si scrivono: il pulsante non serve (e lascia posto alla testata)
+        this.el('btn-nota-giorno').hidden = d.chiuso;
     },
 
     disegnaFiltri() {
@@ -3831,7 +3892,8 @@ const NapoliPresenze = {
         box.innerHTML = `<span>${escapeHtml(n)}</span>
             <span>Ore del mese <strong>${napoliOreBrevi(ore)}</strong></span>
             ${conPreviste.length ? `<span>Previste <strong>${stima ? '≈ ' : ''}${napoliOreBrevi(previste)}</strong></span>
-            <span>Credito/debito <strong class="${cdClasse}">${stima ? '≈ ' : ''}${napoliOreBrevi(cd)}</strong></span>` : ''}`;
+            <span>Credito/debito <strong class="${cdClasse}">${stima ? '≈ ' : ''}${napoliOreBrevi(cd)}</strong></span>` : ''}
+            ${stima ? '<span class="napoli-stima-pei" title="Per queste righe manca la programmazione settimanale: le ore previste sono le ore PEI della settimana ripartite sui giorni di servizio del mese">≈ = stima dal PEI</span>' : ''}`;
     },
 
     disegnaGriglia() {
@@ -3909,7 +3971,7 @@ const NapoliPresenze = {
             return `<td class="${this.classeCella(r, col, c)}" data-i="${col.i}"><input class="g-in" value="${c ? escapeHtml(c.t) : ''}"${segnaposto}${this.bloccata(r, col, c) ? ' disabled' : ''}${this.dati.chiuso ? ' readonly' : ''} maxlength="12" autocomplete="off" spellcheck="false">${c && c.c ? `<span class="g-ang">${escapeHtml(c.c)}</span>` : ''}</td>`;
         }).join('');
         return `<tr data-id="${r.id}" class="${this.classeRiga(r)}">
-            <th scope="row" class="g-fissa g-alunno"><button type="button" class="g-nome" title="${escapeHtml(r.alunno)}: apri il dettaglio del mese">${escapeHtml(r.alunno)}</button></th>
+            <th scope="row" class="g-fissa g-alunno"><button type="button" class="g-nome" title="${escapeHtml(this.titoloNome(r))}">${escapeHtml(r.alunno)}</button></th>
             <td class="g-fissa g-operatore" title="${escapeHtml(r.operatore)}">${escapeHtml(r.operatore)}</td>
             <td class="g-fissa g-figura">${escapeHtml(r.figura_nome)}</td>
             <td class="g-fissa g-pei"${r.quota ? ' title="Quota della coppia"' : ''}>${escapeHtml(r.pei || '—')}</td>
@@ -3918,6 +3980,12 @@ const NapoliPresenze = {
             <td class="g-tot">${escapeHtml(r.totale_testo)}</td>
             ${this.htmlCredito(r)}
         </tr>`;
+    },
+
+    /** Il suggerimento sul nome: apre il dettaglio; con gli avvisi della riga, per esteso. */
+    titoloNome(r) {
+        const avvisi = r.avvisi.map(a => `• ${this.dati.spiegazioni[a] || a}`);
+        return `${r.alunno}: apri il dettaglio del mese${avvisi.length ? `\nDa controllare:\n${avvisi.join('\n')}` : ''}`;
     },
 
     classeRiga(r) {
@@ -3935,8 +4003,11 @@ const NapoliPresenze = {
         if (r.cd_nel_titolare) return '<td class="g-cd g-cd-titolare" title="Le ore del sostituto contano nel credito/debito della riga del titolare">↑</td>';
         if (r.credito_debito === null) return '<td class="g-cd" title="Manca il PEI: il credito/debito non si calcola">—</td>';
         const classe = r.credito_debito >= 0 ? 'text-success' : 'text-danger';
-        const titolo = r.stima ? 'Stima dal PEI (manca la programmazione settimanale)' : 'Dalla programmazione settimanale';
-        return `<td class="g-cd ${classe}" title="${titolo}">${r.stima ? '≈ ' : ''}${escapeHtml(r.cd_testo)}</td>`;
+        let titolo = r.stima ? 'Stima dal PEI (manca la programmazione settimanale)' : 'Dalla programmazione settimanale';
+        // previste dal PEI intero su piu' titolari: il credito/debito va controllato
+        const dubbio = r.avvisi.includes('pei_su_piu_titolari') ? ' g-cd-dubbio' : '';
+        if (dubbio) titolo += `. Attenzione: ${this.dati.spiegazioni.pei_su_piu_titolari}`;
+        return `<td class="g-cd ${classe}${dubbio}" title="${escapeHtml(titolo)}">${r.stima ? '≈ ' : ''}${escapeHtml(r.cd_testo)}</td>`;
     },
 
     tr(id) { return this.el('presenze-griglia').querySelector(`tr[data-id="${id}"]`); },
@@ -3957,6 +4028,8 @@ const NapoliPresenze = {
         const tr = this.tr(r.id);
         if (!tr) return;
         tr.className = this.classeRiga(r);
+        const nome = tr.querySelector('.g-nome');
+        if (nome) nome.title = this.titoloNome(r);
         tr.querySelectorAll('td.g-c').forEach(td => this.aggiornaCella(r, td));
         tr.querySelectorAll('td.g-ver[data-s]').forEach(td => {
             const nuovo = document.createElement('tbody');
@@ -4013,7 +4086,9 @@ const NapoliPresenze = {
     mostraCasella() {
         const barra = this.el('presenze-casella');
         if (!this.attiva) {
-            barra.innerHTML = '<span class="napoli-barra-invito">Scegli una casella per vederla qui per esteso. Scrivi le ore svolte (2, 1,5 o 1:30) oppure F, M, P, A; si salva da solo.</span>';
+            barra.innerHTML = this.dati && this.dati.chiuso
+                ? '<span class="napoli-barra-invito">Scegli una casella per vederla qui per esteso (il mese è chiuso: solo lettura).</span>'
+                : '<span class="napoli-barra-invito">Scegli una casella per vederla qui per esteso. Scrivi le ore svolte (2, 1,5 o 1:30) oppure F, M, P, A; si salva da solo.</span>';
             return;
         }
         const { id, i } = this.attiva;
@@ -4068,6 +4143,7 @@ const NapoliPresenze = {
             e.preventDefault();
             this.attese.delete(chiave);
             this.errori.delete(chiave);
+            if (!this.attese.size) { clearTimeout(this.timer); this.timer = null; this.azzeraErrore(); }
             this.aggiornaCella(this.righe.get(id), input.closest('td'));
             input.select();
             this.mostraCasella();
@@ -4153,52 +4229,132 @@ const NapoliPresenze = {
         const td = input.closest('td');
         td.classList.add('g-cambiata');
         td.classList.remove('g-errore');
-        clearTimeout(this.timer);
-        this.timer = setTimeout(() => this.salva(), NAPOLI_PRESENZE_ATTESA);
+        this.programma();
         this.mostraStato('in_sospeso');
         if (this.attiva && this.attiva.id === id && this.attiva.i === i) this.mostraCasella();
+    },
+
+    /** Il salvataggio parte 2 secondi dopo l'ultimo tasto (o subito, con attesa 0). */
+    programma(attesa = NAPOLI_PRESENZE_ATTESA) {
+        clearTimeout(this.timer);
+        this.timer = setTimeout(() => this.salva(), attesa);
+    },
+
+    /** I gruppi da mandare: al massimo NAPOLI_PRESENZE_GRUPPO caselle e, se indicato, al massimo
+     *  quei byte per richiesta (l'uscita dalla pagina). */
+    gruppi(voci, maxByte = Infinity) {
+        const out = [];
+        let gruppo = [], byte = 0;
+        for (const voce of voci) {
+            const peso = JSON.stringify(voce[1]).length + 1;
+            if (gruppo.length && (gruppo.length >= NAPOLI_PRESENZE_GRUPPO || byte + peso > maxByte)) {
+                out.push(gruppo);
+                gruppo = [];
+                byte = 0;
+            }
+            gruppo.push(voce);
+            byte += peso;
+        }
+        if (gruppo.length) out.push(gruppo);
+        return out;
     },
 
     async salva() {
         clearTimeout(this.timer);
         this.timer = null;
+        clearTimeout(this.riprova);
+        this.riprova = null;
         if (this.inVolo) { this.ancora = true; return this.inVolo; }
-        if (!this.attese.size || !this.dati) { this.mostraStato(); return; }
-        const inviate = this.attese;
-        this.attese = new Map();
+        if (!this.attese.size || !this.dati) { this.azzeraErrore(); this.mostraStato(); return; }
         this.ancora = false;
         const d = this.dati;
         const lotto = d.lotto.id;
+        // le caselle in sospeso adesso partono a gruppi, una richiesta dopo l'altra; quelle scritte
+        // nel frattempo aspettano i loro 2 secondi (poi partono con il giro dopo)
+        const gruppi = this.gruppi([...this.attese]).map(g => g.map(([chiave]) => chiave));
         this.mostraStato('salvo');
         this.inVolo = (async () => {
             try {
-                const r = await apiCall(`/api/napoli/lotti/${lotto}/presenze`, {
-                    method: 'POST', body: JSON.stringify({ anno: d.anno, mese: d.mese, celle: [...inviate.values()] }),
-                });
-                if (this.dati === d) this.applica(r, inviate);
+                for (const chiavi of gruppi) {
+                    if (this.dati !== d) break;
+                    const inviate = new Map();
+                    chiavi.forEach((k) => { if (this.attese.has(k)) { inviate.set(k, this.attese.get(k)); this.attese.delete(k); } });
+                    if (!inviate.size) continue;
+                    try {
+                        const r = await apiCall(`/api/napoli/lotti/${lotto}/presenze`, {
+                            method: 'POST', body: JSON.stringify({ anno: d.anno, mese: d.mese, celle: [...inviate.values()] }),
+                        });
+                        if (this.dati === d) this.applica(r, inviate);
+                    } catch (e) {
+                        // non salvate: tornano in sospeso (se nel frattempo non sono state riscritte)
+                        inviate.forEach((v, k) => { if (!this.attese.has(k)) this.attese.set(k, v); });
+                        throw e;
+                    }
+                }
             } catch (e) {
-                // non salvate: tornano in sospeso (se nel frattempo non sono state riscritte)
-                inviate.forEach((v, k) => { if (!this.attese.has(k)) this.attese.set(k, v); });
                 if (e.code === 'MESE_CHIUSO_LOTTO') {
                     showToast(e.message, 'warning', 10000);
                     this.attese = new Map();
+                    this.azzeraErrore();
                     await this.carica(true);
-                } else {
-                    this.erroreSalvataggio = e.message || 'Salvataggio non riuscito: riprova.';
-                    showToast(this.erroreSalvataggio, 'error', 9000);
+                } else if (this.dati === d) {
+                    this.nonRiuscito(e);
                 }
             } finally {
                 this.inVolo = null;
             }
-            if (this.ancora && this.attese.size) await this.salva();
+            if (this.ancora && this.attese.size && !this.timer && !this.erroreSalvataggio) await this.salva();
             this.mostraStato();
         })();
         return this.inVolo;
     },
 
-    applica(r, inviate) {
+    /** Salvataggio non riuscito: le caselle restano in sospeso, lo stato dice "Modifiche non
+     *  salvate" con il pulsante per riprovare (come in Rendicontazione); se il collegamento o il
+     *  programma non rispondono, il programma riprova da solo dopo qualche secondo. */
+    nonRiuscito(e) {
+        const rete = !e.status;
+        const ritenta = rete || e.status >= 500;
+        let messaggio;
+        if (rete) messaggio = 'Il collegamento con Assisto si è interrotto: le ore scritte non sono ancora salvate.';
+        else if (e.status === 401) messaggio = 'La sessione è scaduta: entra di nuovo nel programma da un\'altra scheda, poi premi «Riprova a salvare».';
+        else if (e.status >= 500 && e.code !== 'DATABASE_OCCUPATO') messaggio = 'Il programma non è riuscito a salvare: le ore scritte non sono ancora salvate.';
+        else messaggio = e.message || 'Il salvataggio non è riuscito.';
+        const nuovo = this.erroreSalvataggio !== messaggio;
+        this.erroreSalvataggio = messaggio;
+        this.tentativi += 1;
+        if (ritenta) {
+            const attesa = NAPOLI_PRESENZE_RIPROVA[Math.min(this.tentativi, NAPOLI_PRESENZE_RIPROVA.length) - 1];
+            clearTimeout(this.riprova);
+            this.riprova = setTimeout(() => { this.riprova = null; this.salva(); }, attesa);
+        }
+        // un solo avviso per lo stesso problema (i tentativi da soli non ne aggiungono altri)
+        if (nuovo) {
+            showToast(`Modifiche non salvate. ${messaggio}${ritenta ? ' Riprovo da solo fra qualche secondo; puoi anche premere «Riprova a salvare». Non chiudere la pagina.' : ''}`, 'error', 12000);
+        }
+    },
+
+    azzeraErrore() {
         this.erroreSalvataggio = null;
-        let toltaNota = false;
+        this.tentativi = 0;
+        clearTimeout(this.riprova);
+        this.riprova = null;
+    },
+
+    /** "Riprova a salvare" e Ctrl+S: le caselle in sospeso partono subito. */
+    salvaSubito() {
+        if (!this.dati || this.dati.chiuso) return;
+        if (!this.attese.size && !this.inVolo) {
+            this.mostraStato();
+            if (!this.errori.size) showToast('Nessuna modifica da salvare', 'info');
+            return;
+        }
+        this.salva();
+    },
+
+    applica(r, inviate) {
+        this.azzeraErrore();
+        let toltaNota = false, toltaDescrizione = false;
         for (const e of r.celle) {
             const i = this.dati.giorni.indexOf(e.data);
             const chiave = `${e.coppia_id}|${i}`;
@@ -4219,6 +4375,7 @@ const NapoliPresenze = {
             } else {
                 this.errori.delete(chiave);
                 if (e.tolta_nota) toltaNota = true;
+                if (e.tolta_descrizione) toltaDescrizione = true;
             }
         }
         r.righe.forEach(riga => this.aggiornaRiga(riga));
@@ -4228,51 +4385,102 @@ const NapoliPresenze = {
             const td = this.input(id, i)?.closest('td');
             if (td) this.aggiornaCella(this.righe.get(id), td);
         });
-        if (r.salvate) this.ultimoSalvataggio = new Date();
-        if (toltaNota) showToast('Cancellato un giorno con la nota: con Ctrl+Z torna il giorno, ma non la descrizione scritta.', 'info', 8000);
-        if (this.attese.size) { clearTimeout(this.timer); this.timer = setTimeout(() => this.salva(), 300); }
+        this.ultimoSalvataggio = new Date();             // anche senza cambiamenti: niente resta da salvare
+        if (toltaDescrizione) showToast('Cancellato un giorno con la nota del giorno: con Ctrl+Z torna il giorno con la nota, ma non la descrizione scritta.', 'info', 8000);
+        else if (toltaNota) showToast('Cancellato un giorno con la nota del giorno: con Ctrl+Z torna com\'era.', 'info', 8000);
+        // lettura scelta per i valori come "1,30": le caselle ripartono subito con la scelta
+        if (this.attese.size && !this.timer) this.programma(300);
         this.mostraCasella();
         this.riepilogo();
         this.prossimaDomanda();
     },
 
-    /** Le caselle cambiate e non ancora salvate partono adesso (Ctrl+Z, cambio di mese o lotto). */
+    /** Le caselle cambiate e non ancora salvate partono adesso (Ctrl+Z, cambio di mese o lotto,
+     *  chiusura del mese). Ritorna false se qualcuna non si e' salvata (rete, programma). */
     async salvaInSospeso() {
         if (this.inVolo) await this.inVolo;
         if (this.attese.size) await this.salva();
+        return !this.attese.size;
     },
 
-    /** Pagina chiusa entro i 2 secondi: fetch keepalive, che il browser porta a termine lo stesso. */
+    /** Prima di cambiare mese o lotto (o di annullare): con caselle non salvate si resta qui. */
+    async puoLasciare(messaggio = 'Modifiche non salvate: resto sul mese mostrato. Riprova il salvataggio.') {
+        if (await this.salvaInSospeso()) return true;
+        showToast(messaggio, 'error', 9000);
+        return false;
+    },
+
+    /** Pagina chiusa entro i 2 secondi: fetch keepalive, che il browser porta a termine lo stesso
+     *  (al massimo 64 KB: quello che non ci sta resta in sospeso, e il browser ha gia' chiesto
+     *  se lasciare la pagina, vedi nonPartono). */
     inviaInUscita() {
         if (!this.dati || !this.attese.size) return;
         clearTimeout(this.timer);
         this.timer = null;
         const d = this.dati;
-        const inviate = this.attese;
-        this.attese = new Map();
-        fetch(`/api/napoli/lotti/${d.lotto.id}/presenze`, {
-            method: 'POST', keepalive: true, credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ anno: d.anno, mese: d.mese, celle: [...inviate.values()] }),
-        }).then(r => (r.ok ? r.json() : null)).then((r) => {
+        const primo = this.gruppi([...this.attese], NAPOLI_PRESENZE_USCITA_BYTE)[0];
+        const inviate = new Map(primo);
+        inviate.forEach((v, k) => this.attese.delete(k));
+        // non partite (o non arrivate): tornano in sospeso e ripartono se la pagina resta aperta
+        const rimetti = () => {
+            inviate.forEach((v, k) => { if (!this.attese.has(k)) this.attese.set(k, v); });
+            this.ripartiDopo(d);
+        };
+        let invio;
+        try {
+            invio = fetch(`/api/napoli/lotti/${d.lotto.id}/presenze`, {
+                method: 'POST', keepalive: true, credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ anno: d.anno, mese: d.mese, celle: [...inviate.values()] }),
+            });
+        } catch (e) {
+            rimetti();
+            return;
+        }
+        invio.then(r => (r.ok ? r.json() : null)).then((r) => {
             // scheda solo nascosta (la pagina e' ancora aperta): le righe tornano aggiornate
-            if (r && this.dati === d) { this.applica(r, inviate); this.mostraStato(); }
-            else if (!r) inviate.forEach((v, k) => { if (!this.attese.has(k)) this.attese.set(k, v); });
-        }).catch(() => { inviate.forEach((v, k) => { if (!this.attese.has(k)) this.attese.set(k, v); }); });
+            if (r && this.dati === d) {
+                this.applica(r, inviate);
+                this.ripartiDopo(d);
+                this.mostraStato();
+            } else if (!r) rimetti();
+        }).catch(rimetti);
+        // il resto (oltre i 64 KB) riparte da solo se la pagina resta aperta
+        this.ripartiDopo(d);
+    },
+
+    ripartiDopo(d) {
+        if (this.dati !== d || !this.attese.size) return;
+        if (this.inVolo) this.ancora = true;
+        else if (!this.timer) this.programma();
+    },
+
+    /** Caselle che uscendo adesso andrebbero perse: il salvataggio non riesce, oppure sono troppe
+     *  per partire all'uscita (oltre i 64 KB di fetch keepalive). */
+    nonPartono() {
+        if (!this.dati || !this.attese.size) return false;
+        if (this.erroreSalvataggio) return true;
+        return this.gruppi([...this.attese], NAPOLI_PRESENZE_USCITA_BYTE).length > 1;
     },
 
     mostraStato(tipo) {
         const box = this.el('presenze-salvataggio');
-        const testo = (stato, icona, scritta) => {
+        const riprova = this.el('btn-presenze-riprova');
+        const testo = (stato, icona, scritta, titolo = '') => {
             box.className = ['auto-save-indicator', stato].filter(Boolean).join(' ');
-            box.innerHTML = `${icona ? napoliSvg(icona, 14) : ''}<span>${escapeHtml(scritta)}</span>`;
+            box.innerHTML = `${icona === 'gira' ? '<div class="spinner-small"></div>' : (icona ? napoliSvg(icona, 14) : '')}<span>${escapeHtml(scritta)}</span>`;
+            box.title = titolo;
+            // come in Rendicontazione: il pulsante per riprovare c'e' solo se il salvataggio non e' riuscito
+            if (riprova) riprova.hidden = stato !== 'errore' || !this.attese.size;
         };
         if (tipo === 'in_sospeso') return testo('pending', '', 'Modifiche in sospeso…');
-        if (tipo === 'salvo') return testo('saving', '', 'Salvataggio…');
-        if (this.timer || this.inVolo || this.attese.size) return testo('pending', '', 'Modifiche in sospeso…');
+        if (tipo === 'salvo' || this.inVolo) return testo('saving', 'gira', 'Salvataggio…');
+        if (this.erroreSalvataggio && this.attese.size) {
+            return testo('errore', NAPOLI_COORD_ICONA_ERRORE, 'Modifiche non salvate', this.erroreSalvataggio);
+        }
+        if (this.timer || this.attese.size) return testo('pending', '', 'Modifiche in sospeso…');
         const ora = this.ultimoSalvataggio
             ? this.ultimoSalvataggio.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : null;
-        if (this.erroreSalvataggio) return testo('errore', NAPOLI_COORD_ICONA_ERRORE, 'Modifiche non salvate: riprova');
         const errori = this.errori.size;
         if (errori) {
             const caselle = errori === 1 ? '1 casella da correggere' : `${errori} caselle da correggere`;
@@ -4413,6 +4621,14 @@ const NapoliPresenze = {
         const pulsante = this.el('nota-salva');
         const inSospeso = this.attese.get(n.chiave);
         this.attese.delete(n.chiave);                      // parte con la nota, non due volte
+        // era l'unica casella in sospeso: il salvataggio automatico non ha piu' niente da mandare
+        if (!this.attese.size) { clearTimeout(this.timer); this.timer = null; }
+        // se la nota non si salva, la casella torna in sospeso con il suo salvataggio automatico
+        const rimetti = () => {
+            if (inSospeso && !this.attese.has(n.chiave)) this.attese.set(n.chiave, inSospeso);
+            if (this.attese.size && !this.timer && !this.inVolo) this.programma();
+            this.mostraStato();
+        };
         setButtonLoading(pulsante, true);
         try {
             const r = await apiCall(`/api/napoli/lotti/${d.lotto.id}/presenze`, {
@@ -4423,7 +4639,7 @@ const NapoliPresenze = {
                 const err = new Error(e.esito === 'errore' ? e.messaggio : 'Scrivi le ore programmate di quel giorno: servono per la metà.');
                 err.data = { campo: e.esito === 'servono_programmati' ? 'programmati' : (e.campo || null) };
                 r.righe.forEach(riga => this.aggiornaRiga(riga));
-                if (inSospeso && !this.attese.has(n.chiave)) this.attese.set(n.chiave, inSospeso);
+                rimetti();
                 napoliMostraErrore(err, form);
                 return;
             }
@@ -4433,7 +4649,7 @@ const NapoliPresenze = {
             if (e.esito === 'salvata') showToast(r.descrizione ? 'Nota del giorno salvata' : 'Nessun cambiamento da salvare', 'success');
             this.mostraStato();
         } catch (err) {
-            if (inSospeso && !this.attese.has(n.chiave)) this.attese.set(n.chiave, inSospeso);
+            rimetti();
             napoliMostraErrore(err, form);
             if (err.code === 'MESE_CHIUSO_LOTTO') { closeModal('napoli-modal-nota'); await this.carica(true); }
         } finally {
@@ -4456,7 +4672,7 @@ const NapoliPresenze = {
         try {
             x = await apiCall(`/api/napoli/lotti/${d.lotto.id}/presenze/coppie/${id}?anno=${d.anno}&mese=${d.mese}`);
         } catch (e) {
-            corpo.innerHTML = `<div class="alert alert-danger">${escapeHtml(e.message || 'Dettaglio non disponibile')}</div>`;
+            corpo.innerHTML = `<div class="alert alert-danger">${escapeHtml(napoliTestoErrore(e, 'Dettaglio non disponibile'))}</div>`;
             return;
         }
         const c = x.coppia;
@@ -4477,7 +4693,8 @@ const NapoliPresenze = {
                     <div class="napoli-numero-box"><span class="napoli-numero-valore">${escapeHtml(cr.erogate_testo)}</span><span class="napoli-numero-etichetta">Ore riconosciute${x.sostituti.length ? ' (con i sostituti)' : ''}</span></div>
                     <div class="napoli-numero-box"><span class="napoli-numero-valore ${cdClasse}">${cr.stima ? '≈ ' : ''}${escapeHtml(napoliOreDueForme(cr.credito_debito))}</span><span class="napoli-numero-etichetta">Credito/debito</span></div>
                 </div>
-                <p class="napoli-aiuto">Previste ${fonte}. Credito/debito = previste meno riconosciute, come in Rendicontazione: positivo (verde) = ore ancora dovute all'alunno, negativo (rosso) = ore in più.</p>`;
+                <p class="napoli-aiuto">Previste ${fonte}. Credito/debito = previste meno riconosciute, come in Rendicontazione: positivo (verde) = ore ancora dovute all'alunno, negativo (rosso) = ore in più.</p>
+                ${c.avvisi.includes('pei_su_piu_titolari') ? `<div class="alert alert-warning napoli-alert">${escapeHtml(x.spiegazioni.pei_su_piu_titolari)}.</div>` : ''}`;
         }
         const settimane = x.settimane.map(s => `<tr>
                 <td>Settimana ${s.n}</td><td class="napoli-periodo">${escapeHtml(formatDataIT(s.dal).slice(0, 5))} - ${escapeHtml(formatDataIT(s.al).slice(0, 5))}</td>
@@ -4514,7 +4731,7 @@ const NapoliPresenze = {
     // ---------- chiusura e riapertura del mese del lotto ----------
 
     async apriMese() {
-        await this.salvaInSospeso();
+        if (!(await this.puoLasciare('Modifiche non salvate: il mese si chiude dopo averle salvate. Riprova il salvataggio.'))) return;
         const d = this.dati;
         const form = this.el('form-mese');
         napoliPulisciErrori(form);

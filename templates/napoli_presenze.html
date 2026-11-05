@@ -24,7 +24,7 @@
         <div class="filters napoli-filtri napoli-presenze-filtri" id="presenze-filtri" role="search" aria-label="Filtra le righe">
             <div class="filter-group napoli-filtro-cerca">
                 <label class="napoli-sr" for="pf-cerca">Cerca alunno o operatore</label>
-                <input type="search" id="pf-cerca" class="form-control" placeholder="Cerca alunno o operatore" autocomplete="off" spellcheck="false">
+                <input type="search" id="pf-cerca" class="form-control" placeholder="Alunno o operatore" title="Cerca alunno o operatore" autocomplete="off" spellcheck="false">
             </div>
             <div class="filter-group" data-filtro="scuola">
                 <label class="napoli-sr" for="pf-scuola">Scuola</label>
@@ -47,8 +47,6 @@
                 <select id="pf-municipalita" class="form-control" data-filtro="municipalita" title="Municipalità"></select>
             </div>
         </div>
-
-        <div class="alert alert-info napoli-alert napoli-mese-chiuso" id="presenze-chiuso" role="status" hidden></div>
 
         <section class="card" aria-labelledby="presenze-titolo">
             <div class="card-header napoli-presenze-testa">
@@ -75,11 +73,18 @@
                         </svg>
                         <span>Salvataggio automatico</span>
                     </span>
+                    {# Come in Rendicontazione: il pulsante compare solo se il salvataggio non riesce (per
+                       riprovare subito); resta nella pagina per Ctrl+S (salva subito). #}
+                    <button type="button" class="btn btn-primary btn-sm" id="btn-presenze-riprova" data-action="save" hidden
+                            title="Salva adesso le caselle in sospeso (Ctrl+S)">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        Riprova a salvare
+                    </button>
                 </div>
                 <div class="napoli-presenze-azioni">
                     <button type="button" class="btn btn-ghost btn-sm" id="btn-nota-giorno" title="Nota del giorno della casella scelta (Maiusc+F2): assemblea, uscita, ritardo o uscita dell'alunno">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
-                        Nota del giorno
+                        <span>Nota<span class="napoli-solo-largo"> del giorno</span></span>
                     </button>
                     <button type="button" class="btn btn-ghost btn-sm" id="btn-presenze-annulla" title="Annulla l'ultima modifica (Ctrl+Z): chiede conferma prima di annullare">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
@@ -88,6 +93,9 @@
                     <button type="button" class="btn btn-secondary btn-sm" id="btn-mese" hidden></button>
                 </div>
             </div>
+            {# Mese chiuso: una riga sola dentro la scheda (a 1366x768 la griglia ha bisogno di
+               altezza); per riaprirlo c'e' il pulsante "Riapri il mese" qui sopra. #}
+            <div class="napoli-mese-chiuso" id="presenze-chiuso" role="status" hidden></div>
             {# La casella scelta, per esteso (come la barra della formula di Excel): giorno, coppia,
                ore riconosciute, nota, avvisi. Si aggiorna spostandosi con le frecce. #}
             <div class="napoli-barra-casella" id="presenze-casella" aria-live="polite"></div>
@@ -100,17 +108,17 @@
                     <summary>Come si scrive</summary>
                     <div class="napoli-aiuto-corpo">
                         <p><strong>Ore svolte</strong>: <kbd>2</kbd> <kbd>1,5</kbd> <kbd>0,75</kbd> (ore con la virgola, come nel file del Comune) oppure <kbd>1:30</kbd> (ore e minuti). Un valore come <kbd>1,30</kbd> si può leggere in due modi: il programma chiede.</p>
-                        <p><strong>Operatore assente</strong>: <kbd>F</kbd> ferie, <kbd>M</kbd> malattia, <kbd>P</kbd> permesso (F perm): 0 ore. <strong>Alunno assente</strong>: <kbd>A</kbd>, vale la metà delle ore programmate (se il programma non le conosce, le chiede). Casella vuota: il giorno si cancella.</p>
+                        <p><strong>Operatore assente</strong>: <kbd>F</kbd> ferie, <kbd>M</kbd> malattia, <kbd>P</kbd> permesso (F perm): 0 ore. <strong>Alunno assente</strong>: <kbd>A</kbd>, vale la metà delle ore programmate (se il programma non le conosce, le chiede). Casella vuota: il giorno si cancella, anche con la sua nota del giorno.</p>
                         <p><strong>Nota del giorno</strong> (<kbd>Maiusc</kbd>+<kbd>F2</kbd>, o il pulsante in alto): assemblea o uscita didattica (contano le ore svolte), ritardo o uscita anticipata dell'alunno con l'orario (ore svolte più metà della parte persa), assenza recuperata (niente metà).</p>
-                        <p><strong>Tastiera</strong>: frecce, <kbd>Invio</kbd> (casella sotto) e <kbd>Tab</kbd> (casella dopo) come in Rendicontazione; <kbd>Esc</kbd> rimette il valore salvato; <kbd>Ctrl</kbd>+<kbd>Z</kbd> annulla l'ultima modifica salvata. Si salva da solo dopo 2 secondi.</p>
+                        <p><strong>Tastiera</strong>: frecce, <kbd>Invio</kbd> (casella sotto) e <kbd>Tab</kbd> (casella dopo) come in Rendicontazione; <kbd>Esc</kbd> rimette il valore salvato; <kbd>Ctrl</kbd>+<kbd>Z</kbd> annulla l'ultima modifica salvata. Si salva da solo dopo 2 secondi (<kbd>Ctrl</kbd>+<kbd>S</kbd> salva subito); se il salvataggio non riesce compare «Modifiche non salvate» con il pulsante «Riprova a salvare», e il programma riprova da solo.</p>
                         <p class="napoli-legenda">
                             <span><i class="lg lg-assente"></i> alunno assente (metà)</span>
                             <span><i class="lg lg-sigla"></i> operatore assente</span>
                             <span><i class="lg lg-nota"></i> nota del giorno</span>
-                            <span><i class="lg lg-chiuso"></i> chiuso o fuori dalle date</span>
+                            <span><i class="lg lg-chiuso"></i> chiuso o fuori dalle date (le ore scritte in un giorno chiuso contano, con l'avviso)</span>
                             <span><i class="lg lg-giallo"></i> settimana oltre il PEI</span>
                             <span><i class="lg lg-rosso"></i> oltre il PEI + 20%</span>
-                            <span><strong>≈</strong> credito/debito stimato dal PEI (manca la programmazione)</span>
+                            <span><strong>≈</strong> stima dal PEI: previste e credito/debito senza la programmazione settimanale</span>
                         </p>
                     </div>
                 </details>

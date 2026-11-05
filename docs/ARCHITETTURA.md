@@ -686,7 +686,11 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     le due letture, e si salvano con `conferma`); A vale `quota_assenza_alunno` x il
     programmato del giorno (dalla presenza o dalla programmazione settimanale della coppia;
     se non si conosce torna `servono_programmati` e la pagina chiede le ore programmate); vuoto
-    = la presenza si cancella (un giorno preparato dalla programmazione torna "programmato").
+    = la presenza si cancella, nota del giorno compresa (un giorno preparato dalla
+    programmazione torna "programmato"; la risposta dice `tolta_nota` e `tolta_descrizione`, e
+    la pagina avverte che Ctrl+Z rimette il giorno con il tipo e l'orario della nota ma senza la
+    descrizione libera). Una nota scritta dalla sua finestra su una casella vuota (arriva con
+    `nota_tipo`) vale invece un giorno con 0 ore, che la casella mostra come «0».
     La **nota del giorno** (`TIPI_NOTA_GIORNO`): assemblea o evento ed uscita didattica
     contano le ore svolte (REGOLE 2, causali `evento` e `attivita_esterna`, che vincono
     sull'assenza dell'alunno), ritardo e uscita anticipata con l'orario contano le ore svolte
@@ -711,6 +715,15 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     voce del registro attivita' senza nomi. La risposta ha le righe ricalcolate dello stesso
     alunno (la VERIFICA e il credito/debito cambiano anche nelle righe del titolare e dei
     sostituti);
+  - **giorni di chiusura del calendario** (del lotto o della scuola, `napoli_calendario`):
+    grigi nella griglia. Scelta dichiarata (PROGETTO §5.5, dove e' un avviso e non un blocco):
+    le ore scritte a mano in un giorno chiuso contano come ore svolte (`minuti_riconosciuti` =
+    svolte), con l'avviso `ore_in_giorno_di_chiusura` («contano lo stesso: se il servizio non
+    c'era, svuota la casella»); quindi entrano nel totale, nella VERIFICA, nel credito/debito e
+    nella fattura (passo 1.9). La causale `calendario` del §5.2 (0 ore) vale per i giorni
+    preparati dalla programmazione (passi 1.10-1.12), che nei giorni chiusi non si preparano.
+    Le previste del credito/debito non contano i giorni chiusi
+    (`test_ore_in_un_giorno_di_chiusura_contano_con_l_avviso`);
   - **VERIFICA** per alunno e figura (titolari piu' sostituti, `verifica_settimane`): gialla
     oltre il PEI, rossa oltre il tetto (PEI x 1,2); ogni riga mostra le sue ore della
     settimana, il colore e' quello del gruppo;
@@ -722,7 +735,11 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     sostituti rimandano a quella del titolare); credito_debito = previste - erogate, con la
     convenzione e i colori della Rendicontazione di Roma (positivo verde = ore ancora dovute
     all'alunno, negativo rosso). Senza PEI e senza programmazione non si calcola (avviso
-    `pei_mancante`);
+    `pei_mancante`). Due (o piu') titolari della stessa figura per lo stesso alunno negli stessi
+    giorni, con le previste dal PEI intero (senza le ore della coppia): le previste si sommano
+    due volte, il programma non divide il PEI da solo e le due righe hanno l'avviso
+    `pei_su_piu_titolari` (barra arancione, suggerimento sul nome e sul credito/debito, che e'
+    sottolineato);
   - `GET /api/napoli/lotti/<id>/presenze/coppie/<coppia>?anno=&mese=`: il dettaglio della
     coppia nel mese (giorni con la spiegazione del calcolo, «Alunno assente: meta' delle 3:00
     programmate = 1:30 (1,50)», settimane con PEI e tetto, previste ed erogate, sostituti);
@@ -735,13 +752,25 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   - la pagina (`NapoliPresenze` in `napoli.js`): colonne fisse a sinistra (alunno, operatore,
     figura, PEI, sostituzione) e a destra (totale, credito/debito), intestazione fissa, la
     griglia che prende l'altezza che resta e scorre da sola (REGOLE 13: a 1366x768 e 1536x864
-    la pagina non scorre); la barra sopra la griglia descrive per esteso la casella scelta;
+    la pagina non scorre, anche con il mese chiuso e il lotto grande: la testata sta su una
+    riga, sotto i 1500 px «Nota del giorno» diventa «Nota», il mese chiuso e' una riga dentro la
+    scheda, e un `ResizeObserver` rimisura la griglia quando la testata cambia altezza, per
+    esempio con «Riprova a salvare»); la barra sopra la griglia descrive per esteso la casella scelta;
     caselle come in Excel (un clic sceglie tutto il valore), frecce, Invio e Tab come in
     Rendicontazione, Esc rimette il valore salvato, Ctrl+Z (mentre si scrive toglie le
     lettere, a casella salvata annulla l'ultima azione di Napoli), Maiusc+F2 la nota del
-    giorno, incolla di un blocco da Excel; salvataggio automatico a gruppi 2 secondi dopo
-    l'ultimo tasto con lo stato accanto al mese ("Modifiche in sospeso…", "Salvato alle ...",
-    "tranne 1 casella da correggere"), `fetch keepalive` se si lascia la pagina; le domande
+    giorno, incolla di un blocco da Excel; salvataggio automatico 2 secondi dopo l'ultimo tasto
+    (Ctrl+S subito) a gruppi di al massimo 2.000 caselle per richiesta, una dopo l'altra (un
+    incolla di 100 righe per 27 giorni, 2.700 caselle, parte in due), con lo stato accanto al
+    mese ("Modifiche in sospeso…", "Salvataggio…", "Salvato alle ...", "tranne 1 casella da
+    correggere"). Se non riesce, come in Rendicontazione: "Modifiche non salvate" (classe
+    `errore`, il motivo nel suggerimento), il pulsante «Riprova a salvare» e un avviso in
+    italiano (mai «Failed to fetch»); se il collegamento o il programma non rispondono (niente
+    risposta o 5xx) riprova da solo dopo 5, 10, 20 e poi ogni 30 secondi; cambiare mese o lotto,
+    annullare o chiudere il mese con caselle non salvate resta sul mese mostrato. Uscendo dalla
+    pagina le caselle in sospeso partono con `fetch keepalive` (al massimo 64 KB in tutto: un
+    gruppo di circa 60 KB); se il salvataggio non riesce o le caselle non ci stanno il browser
+    chiede prima di uscire (`beforeunload`); le domande
     una alla volta ("1,30": un'ora e trenta minuti o 1,30 ore, anche per le caselle dopo; le
     ore programmate che mancano per la meta'); filtri per scuola, operatore, figura, grado,
     municipalita' della scuola, ricerca per nome e «N con avvisi»; riepilogo delle righe

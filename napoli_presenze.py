@@ -52,12 +52,16 @@ SPIEGAZIONI = {
     'settimana_oltre_pei_piu_20': 'Una settimana supera il PEI di oltre il 20% (in rosso)',
     'ore_giorno_oltre_5': 'Un giorno ha più di 5 ore',
     'giorno_non_registrato': 'Ci sono giorni preparati ma non ancora registrati: valgono 0',
-    'ore_in_giorno_di_chiusura': 'Ore in un giorno di chiusura del calendario',
+    'ore_in_giorno_di_chiusura': 'Ore in un giorno di chiusura del calendario: contano lo stesso (se il servizio '
+                                 'non c\'era, svuota la casella)',
     'ore_fuori_dalle_date': 'Ore fuori dalle date della coppia',
     'ore_in_giorno_non_di_servizio': 'Ore in un giorno senza servizio (domenica)',
     'diverso_dalla_formula': 'Ore diverse dal calcolo con le regole di oggi',
     'ore_svolte_con_alunno_assente': 'Ore svolte in un giorno con l\'alunno assente',
     'pei_mancante': 'Manca il PEI: niente VERIFICA e niente credito/debito',
+    'pei_su_piu_titolari': 'Più titolari della stessa figura per l\'alunno negli stessi giorni, senza le ore della '
+                           'coppia: ciascuno ha come previste il PEI intero (scrivi le ore di ogni coppia '
+                           'nell\'anagrafica)',
     'coppia_senza_ore': 'Nessuna ora in tutto il mese',
 }
 # Le letture dei valori da confermare e i motivi per cui una casella non si salva.
@@ -380,9 +384,11 @@ def _righe(m, alunni=None):
 
     # credito/debito (REGOLE 15): previste dalla programmazione o dal PEI; le ore di un
     # sostituto contano nella riga del suo titolare (se il titolare e' nel mese)
+    giorni_coppia = {c['id']: [g for g in m.giorni if _valida_in(c, g) and not m.chiusura_del_giorno(c['scuola_id'], g)]
+                     for c in coppie}
     for c in coppie:
         riga = per_riga[c['id']]
-        giorni = [g for g in m.giorni if _valida_in(c, g) and not m.chiusura_del_giorno(c['scuola_id'], g)]
+        giorni = giorni_coppia[c['id']]
         titolare = per_id.get(c['titolare_coppia_id']) if c['ruolo'] == 'sostituto' else None
         if titolare is not None:
             riga.update(previste=None, fonte=None, stima=False, erogate=None, credito_debito=None,
@@ -394,6 +400,17 @@ def _righe(m, alunni=None):
         riga.update(previste=previste['minuti'], fonte=previste['fonte'], stima=previste['stima'],
                     erogate=erogate, sostituti=sostituti,
                     credito_debito=calc.credito_debito(previste['minuti'], erogate), cd_nel_titolare=None)
+    # due (o piu') titolari della stessa figura per l'alunno negli stessi giorni, con le previste
+    # dal PEI intero (senza le ore della coppia): le previste si sommano due volte. Il calcolo
+    # resta quello (non si sa come dividere il PEI), la riga lo segnala.
+    for (alunno, figura), membri in gruppi.items():
+        dal_pei = [c for c in membri if c['ruolo'] != 'sostituto' and c['ore_settimanali'] is None
+                   and per_riga[c['id']].get('fonte') == 'pei']
+        for k, a in enumerate(dal_pei):
+            for b in dal_pei[k + 1:]:
+                if set(giorni_coppia[a['id']]) & set(giorni_coppia[b['id']]):
+                    per_riga[a['id']]['avvisi'].add('pei_su_piu_titolari')
+                    per_riga[b['id']]['avvisi'].add('pei_su_piu_titolari')
     finito = m.al < m.oggi
     for riga in righe:
         riga['previste_testo'] = None if riga['previste'] is None else calc.ore_brevi(riga['previste'])
@@ -609,8 +626,14 @@ def _salva_una(conn, m, c, giorno, p, voce, modifiche, ora):
     conferma = voce.get('conferma')
     if conferma not in (None, '', 'ore_e_minuti', 'decimale'):
         return no('La scelta non è valida: riscrivi la casella.')
+    # casella svuotata (senza toccare la nota): il giorno si cancella tutto, nota del giorno
+    # compresa, come dice la pagina ("vuoto = cancella"). Una nota scritta dalla sua finestra
+    # su una casella vuota resta invece un giorno con 0 ore (nota_tipo arriva con la casella).
+    svuotata = 'testo' in voce and testo == '' and 'nota_tipo' not in voce and 'nota' not in voce
     try:
-        if 'nota_tipo' in voce:
+        if svuotata:
+            nota_tipo = None
+        elif 'nota_tipo' in voce:
             nota_tipo = str(voce.get('nota_tipo') or '').strip() or None
             if nota_tipo is not None and nota_tipo not in calc.TIPI_NOTA_GIORNO:
                 return no(MESSAGGI_CELLA['nota_sconosciuta'])
@@ -624,13 +647,19 @@ def _salva_una(conn, m, c, giorno, p, voce, modifiche, ora):
             ora_nota = calc.valida_orario(ora_nota, 'L\'orario')
         else:
             ora_nota = None
-        if 'nota' in voce:
+        if svuotata:
+            nota = None
+        elif 'nota' in voce:
             nota = ndb._testo(voce, 'nota', 'La descrizione', massimo=NOTA_MAX)
             nota = import_napoli.nascondi_codici_fiscali(nota) if nota else None
         else:
             nota = p.get('nota') if p else None
-        recuperata = ndb._booleano(voce.get('recuperata'), False, 'recuperata') if 'recuperata' in voce else bool(
-            p and p['trattamento'] == 'recupero')
+        if svuotata:
+            recuperata = False
+        elif 'recuperata' in voce:
+            recuperata = ndb._booleano(voce.get('recuperata'), False, 'recuperata')
+        else:
+            recuperata = bool(p and p['trattamento'] == 'recupero')
         if voce.get('programmati') not in (None, ''):
             programmati = _leggi_programmati(str(voce.get('programmati')).strip())
         elif p and p['minuti_programmati']:
@@ -660,7 +689,10 @@ def _salva_una(conn, m, c, giorno, p, voce, modifiche, ora):
     if esito['esito'] == 'vuoto':
         if p is None:
             return {'risultato': {'esito': 'invariata'}, 'cambio': None}
-        tolta_nota = bool(p.get('nota'))
+        # il giorno aveva una nota (tipo o descrizione): la pagina lo dice. Ctrl+Z rimette il
+        # giorno con il tipo e l'orario della nota, ma non la descrizione libera (non resta in memoria)
+        tolta_descrizione = bool(p.get('nota'))
+        tolta_nota = tolta_descrizione or bool(p.get('nota_tipo') or calc.tipo_nota_da_causale(p['causale']))
         if m.fasce.get(p['id'], {}).get('P') or p['origine'] == 'programmazione':
             # giorno preparato dalla programmazione: torna "preparato", con il suo programmato
             if p['stato'] == 'programmato':
@@ -674,8 +706,8 @@ def _salva_una(conn, m, c, giorno, p, voce, modifiche, ora):
         else:
             modifiche.prima('presenze', p['id'])
             conn.execute('DELETE FROM napoli_presenze WHERE id = ?', (p['id'],))
-        # Ctrl+Z rimette il giorno senza la descrizione libera (non resta in memoria): la pagina lo dice
-        return {'risultato': {'esito': 'cancellata', 'tolta_nota': tolta_nota}, 'cambio': 'tolte'}
+        return {'risultato': {'esito': 'cancellata', 'tolta_nota': tolta_nota, 'tolta_descrizione': tolta_descrizione},
+                'cambio': 'tolte'}
     originale = (testo or None) if 'testo' in voce else (p['testo_originale'] if p else None)
     campi = dict(esito['campi'], minuti_extra=0, tipo_extra=None, nota_tipo=nota_tipo, nota_ora=ora_nota, nota=nota,
                  testo_originale=originale)

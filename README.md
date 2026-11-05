@@ -173,16 +173,23 @@ le ore del coordinatore; fogli firma e fattura arriveranno con i prossimi aggior
 5. **Scrivi le ore nella griglia delle presenze.** In **Napoli > Presenze** c'è il mese del
    lotto come nel file del Comune: una riga per coppia operatore-alunno, una colonna per
    giorno (da lunedì a sabato; i giorni di chiusura e quelli fuori dalle date della coppia
-   sono a righe grigie), la **VERIFICA** di ogni settimana (gialla se supera le ore del PEI,
+   sono a righe grigie: le ore scritte in un giorno di chiusura contano lo stesso, con un
+   avviso arancione, quindi se quel giorno il servizio non c'era svuota la casella), la **VERIFICA** di ogni settimana (gialla se supera le ore del PEI,
    rossa se le supera di oltre il 20%), il **totale** del mese e il **credito/debito** (ore
    previste meno ore riconosciute, come in Rendicontazione: verde = ore ancora dovute
    all'alunno, rosso = ore in più; con «≈» è una stima dal PEI, perché manca la
-   programmazione settimanale). Nelle caselle scrivi le ore svolte come nel file del Comune:
+   programmazione settimanale, e sotto la griglia c'è scritto «≈ = stima dal PEI»). Se un
+   alunno ha due titolari della stessa figura negli stessi giorni, scrivi le ore di ciascuna
+   coppia nell'anagrafica: altrimenti ognuno ha come previste il PEI intero e la riga ha un
+   avviso. Nelle caselle scrivi le ore svolte come nel file del Comune:
    **2**, **1,5**, **0,75** oppure **1:30**; **F** ferie, **M** malattia, **P** permesso
    dell'operatore (0 ore); **A** alunno assente (vale la metà delle ore programmate: se
-   Assisto non le conosce, te le chiede); casella vuota = giorno cancellato. Per un valore
-   come **1,30** Assisto chiede se è un'ora e trenta minuti o 1,30 ore. Si salva da solo dopo
-   2 secondi; frecce, Invio e Tab passano da una casella all'altra; si può incollare un
+   Assisto non le conosce, te le chiede); casella vuota = giorno cancellato, anche con la sua
+   nota del giorno. Per un valore come **1,30** Assisto chiede se è un'ora e trenta minuti o
+   1,30 ore. Si salva da solo dopo 2 secondi (Ctrl+S salva subito): accanto al mese si legge
+   «Salvato alle ...». Se il collegamento si interrompe compare **«Modifiche non salvate»** con
+   il pulsante **Riprova a salvare** e Assisto riprova da solo: non chiudere la pagina finché
+   non torna «Salvato alle ...» (se provi a chiuderla, il browser chiede conferma). Frecce, Invio e Tab passano da una casella all'altra; si può incollare un
    blocco di celle da Excel. Con **Nota del giorno** (o Maiusc+F2) segni un'assemblea o
    un'uscita didattica (contano le ore svolte), l'alunno entrato in ritardo o uscito prima
    con l'orario (ore svolte più metà della parte persa) o l'assenza recuperata (niente

@@ -469,10 +469,13 @@ a.napoli-nome:hover { color: var(--accent-text); text-decoration: underline; }
 .napoli-presenze-filtri .filter-group[data-filtro="grado"] select { width: 134px; }
 .napoli-presenze-filtri .filter-group[data-filtro="municipalita"] select { width: 184px; }
 .napoli-presenze-filtri .napoli-filtro-cerca { flex: 1 1 150px; min-width: 130px; max-width: 260px; }
+/* a 1366 il testo d'aiuto «Alunno o operatore» si legge intero (il nome intero e' nell'etichetta) */
+.napoli-presenze-filtri .napoli-filtro-cerca .form-control { padding-left: 10px; padding-right: 8px; }
 .napoli-presenze-testa .badge-toggle { display: inline-flex; align-items: center; gap: 4px; }
 .napoli-presenze-testa .auto-save-indicator { white-space: nowrap; }
-.napoli-mese-chiuso { margin: 0; align-items: center; }
-.napoli-mese-chiuso > div { flex: 1; }
+/* a 1366 la testata sta su una riga: "Nota del giorno" diventa "Nota" (il titolo lo spiega) */
+@media (max-width: 1500px) { .napoli-solo-largo { display: none; } }
+.napoli-presenze-testa #btn-presenze-riprova { padding-top: 4px; padding-bottom: 4px; }
 
 .napoli-presenze-testa { gap: 8px 10px; flex-wrap: wrap; padding: 8px 12px; }
 .napoli-presenze-mese { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
@@ -489,6 +492,16 @@ a.napoli-nome:hover { color: var(--accent-text); text-decoration: underline; }
     background: var(--bg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .napoli-barra-casella strong { color: var(--text-primary); }
+/* mese chiuso: una riga sola dentro la scheda, sopra la barra della casella */
+.napoli-mese-chiuso {
+    display: flex; align-items: center; gap: 8px; min-height: 31px; padding: 5px 12px; font-size: 0.83rem;
+    color: var(--text-secondary); border-top: 1px solid var(--border-color);
+    background: rgba(10, 132, 255, 0.08); background: color-mix(in srgb, var(--primary) 10%, var(--bg-card-solid));
+}
+.napoli-mese-chiuso svg { flex: none; color: var(--primary); }
+.napoli-mese-chiuso > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.napoli-mese-chiuso strong { color: var(--text-primary); }
+.napoli-mese-chiuso:not([hidden]) + .napoli-barra-casella { border-top: 0; }
 .napoli-barra-casella svg { vertical-align: -2px; }
 .g-barra-errore { color: var(--danger); font-weight: 600; }
 .napoli-barra-invito { color: var(--text-tertiary); }
@@ -579,6 +592,8 @@ a.napoli-nome:hover { color: var(--accent-text); text-decoration: underline; }
 .napoli-griglia .g-cd { right: 0; width: var(--g-w-cd); min-width: var(--g-w-cd); }
 .napoli-griglia thead .g-tot, .napoli-griglia thead .g-cd { z-index: 6; text-align: right; cursor: default; }
 .napoli-griglia .g-cd-titolare { color: var(--text-tertiary); text-align: center; font-weight: 400; }
+/* previste dal PEI intero su piu' titolari: il credito/debito va controllato (sottolineato arancione) */
+.napoli-griglia .g-cd.g-cd-dubbio { text-decoration: underline wavy var(--warning); text-underline-offset: 3px; }
 
 /* caselle dei giorni */
 .napoli-griglia .g-c, .napoli-griglia thead .g-g { width: var(--g-w-giorno); min-width: var(--g-w-giorno); max-width: var(--g-w-giorno); }
@@ -644,6 +659,7 @@ a.napoli-nome:hover { color: var(--accent-text); text-decoration: underline; }
 }
 .napoli-presenze-riepilogo { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 4px 0; font-size: 0.86rem; color: var(--text-secondary); }
 .napoli-presenze-riepilogo strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.napoli-presenze-riepilogo .napoli-stima-pei { color: var(--text-tertiary); font-style: italic; cursor: help; }
 .napoli-presenze-aiuto > summary { cursor: pointer; color: var(--text-secondary); font-size: 0.86rem; padding: 4px 0; text-align: right; }
 .napoli-presenze-aiuto > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .napoli-presenze-aiuto[open] { flex-basis: 100%; }
@@ -665,8 +681,14 @@ a.napoli-nome:hover { color: var(--accent-text); text-decoration: underline; }
 
 /* finestre della griglia */
 .napoli-scelte-nota { border: 0; padding: 0; margin: 4px 0 12px; }
-.napoli-scelte-nota .napoli-scelta-riga { cursor: pointer; flex-wrap: wrap; }
-.napoli-scelte-nota .napoli-sotto-in { width: 100%; padding-left: 22px; margin-top: -4px; }
+/* la nota del giorno sta tutta nella finestra a 1366x768 (anche la frase sulla riservatezza):
+   la spiegazione di ogni scelta sulla stessa riga, "Assenza recuperata" su una riga sola */
+.napoli-scelte-nota .napoli-scelta-riga { cursor: pointer; flex-wrap: wrap; align-items: baseline; margin: 4px 0; }
+.napoli-scelte-nota .napoli-scelta-riga input { margin-top: 0; align-self: center; }
+.napoli-scelte-nota .napoli-sotto-in::before { content: '— '; }
+#form-nota .napoli-riga-tre { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+#form-nota .napoli-gruppo-casella .napoli-scelta-riga { white-space: nowrap; }
+#nota-aiuto-programmati { margin-bottom: 10px; }
 .napoli-nota-chi { margin: 0 0 12px; }
 .napoli-modal-dettaglio { max-width: 860px; }
 #napoli-modal-coppia .modal-body, #napoli-modal-nota .modal-body { max-height: calc(100vh - 200px); overflow-y: auto; }

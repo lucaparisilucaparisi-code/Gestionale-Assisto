@@ -12,8 +12,10 @@ con il comune Z999; oggi e' il 5 novembre 2026 (napoli_db._oggi).
 """
 import datetime
 import json
+import re
 import sqlite3
 import time
+from pathlib import Path
 
 import pytest
 
@@ -446,6 +448,81 @@ def test_vuoto_cancella_e_nota_da_sola(napoli):
     assert msg['esito'] == 'errore'
 
 
+def test_casella_svuotata_cancella_anche_la_nota_del_giorno(napoli):
+    """Vuoto = il giorno si cancella, anche con la nota del giorno (la pagina e il README lo
+    dicono); Ctrl+Z lo rimette con il tipo della nota ma senza la descrizione libera."""
+    c = napoli.bruno
+    _ok(_salva(napoli, _cella(c, '2026-10-01', testo='3', nota_tipo='evento', nota='assemblea di istituto')))
+    esito = _ok(_salva(napoli, _cella(c, '2026-10-01', testo='')))['celle'][0]
+    assert esito == dict(esito, esito='cancellata', tolta_nota=True, tolta_descrizione=True), esito
+    assert _righe_db(napoli.percorso, 'SELECT * FROM napoli_presenze') == []
+    assert '0' not in json.dumps(_riga(_griglia(napoli), c)['celle'])
+    _ok(napoli.post('/api/napoli/annulla', json={}))
+    p = _righe_db(napoli.percorso, 'SELECT * FROM napoli_presenze')[0]
+    assert (p['minuti_riconosciuti'], p['nota_tipo'], p['causale'], p['nota']) == (180, 'evento', 'evento', None)
+    # solo il tipo della nota, senza descrizione: Ctrl+Z la rimette tutta
+    esito = _ok(_salva(napoli, _cella(c, '2026-10-01', testo='')))['celle'][0]
+    assert (esito['tolta_nota'], esito['tolta_descrizione']) == (True, False)
+    # un giorno senza nota: niente da dire
+    _ok(_salva(napoli, _cella(c, '2026-10-02', testo='2')))
+    esito = _ok(_salva(napoli, _cella(c, '2026-10-02', testo='')))['celle'][0]
+    assert (esito['tolta_nota'], esito['tolta_descrizione']) == (False, False)
+    # la nota scritta dalla sua finestra su una casella vuota resta un giorno con 0 ore
+    esito = _ok(_salva(napoli, _cella(c, '2026-10-05', testo='', nota_tipo='evento', nota='sciopero')))['celle'][0]
+    assert esito['esito'] == 'salvata' and esito['minuti'] == 0
+    # la casella mostra «0»: togliendo la nota dalla sua finestra resta lo 0 scritto, svuotandola si cancella
+    assert _riga(_griglia(napoli), c)['celle'][str(nc.giorni_mese(2026, 10).index(datetime.date(2026, 10, 5)))]['t'] == '0'
+    esito = _ok(_salva(napoli, _cella(c, '2026-10-05', nota_tipo='', nota='')))['celle'][0]
+    assert esito['esito'] == 'salvata' and esito['minuti'] == 0
+    assert _ok(_salva(napoli, _cella(c, '2026-10-05', testo='')))['celle'][0]['esito'] == 'cancellata'
+    assert _righe_db(napoli.percorso, "SELECT * FROM napoli_presenze WHERE data = '2026-10-05'") == []
+
+
+def test_ore_in_un_giorno_di_chiusura_contano_con_l_avviso(napoli):
+    """Scelta dichiarata (PROGETTO 5.5, README, ARCHITETTURA): le ore scritte a mano in un giorno
+    di chiusura del calendario contano (come ore svolte) con l'avviso arancione; il giorno chiuso
+    non entra nelle previste del credito/debito. La causale 'calendario' (0 ore, 5.2) vale per i
+    giorni preparati dalla programmazione, che nei giorni chiusi non si preparano."""
+    _scrivi(napoli.percorso, "INSERT INTO napoli_calendario (lotto_id, data, tipo, descrizione) VALUES "
+                             "(?, '2026-10-02', 'chiusura', 'chiusura della scuola')", (napoli.lotto_id,))
+    c = napoli.bruno
+    prima = _riga(_griglia(napoli), c)
+    esito = _ok(_salva(napoli, _cella(c, '2026-10-02', testo='3')))['celle'][0]
+    assert esito['esito'] == 'salvata' and esito['minuti'] == 180
+    g = _griglia(napoli)
+    colonna = next(x for x in g['colonne'] if x.get('data') == '2026-10-02')
+    riga = _riga(g, c)
+    assert colonna['chiuso'] == 'chiusura della scuola'
+    assert riga['totale'] == 180 and 'ore_in_giorno_di_chiusura' in riga['avvisi']
+    assert 'contano lo stesso' in g['spiegazioni']['ore_in_giorno_di_chiusura']
+    assert riga['previste'] == prima['previste'] and riga['credito_debito'] == prima['previste'] - 180
+
+
+def test_due_titolari_senza_quota_della_coppia_hanno_l_avviso(napoli):
+    """Due titolari della stessa figura per lo stesso alunno negli stessi giorni, con le previste
+    dal PEI intero: la riga lo segnala (le previste si sommerebbero due volte)."""
+    altro = _ok(napoli.post('/api/napoli/operatori', json={'cognome': 'Operatore', 'nome': 'Terzo',
+                                                           'figura': 'ASACOM'}))['operatore_id']
+    alba = _riga(_griglia(napoli), napoli.titolare)['alunno_id']
+    doppia = _ok(napoli.post(f'{napoli.url}/coppie', json={'alunno_id': alba, 'operatore_id': altro,
+                                                          'valido_da': '2026-10-01'}))['coppia_id']
+    g = _griglia(napoli)
+    for coppia in (napoli.titolare, doppia):
+        riga = _riga(g, coppia)
+        assert 'pei_su_piu_titolari' in riga['avvisi'] and riga['fonte'] == 'pei', riga['avvisi']
+    assert 'pei_su_piu_titolari' in g['spiegazioni']
+    assert 'pei_su_piu_titolari' not in _riga(g, napoli.sostituto)['avvisi']
+    assert 'pei_su_piu_titolari' not in _riga(g, napoli.bruno)['avvisi']
+    # dopo un salvataggio le righe ricalcolate lo hanno ancora
+    righe = {r['id']: r for r in _ok(_salva(napoli, _cella(doppia, '2026-10-01', testo='2')))['righe']}
+    assert 'pei_su_piu_titolari' in righe[napoli.titolare]['avvisi']
+    # con le ore della coppia (quota) le previste non sono piu' il PEI intero: niente avviso
+    _scrivi(napoli.percorso, 'UPDATE napoli_coppie SET ore_settimanali = 6 WHERE id = ?', (doppia,))
+    g = _griglia(napoli)
+    assert 'pei_su_piu_titolari' not in _riga(g, napoli.titolare)['avvisi']
+    assert 'pei_su_piu_titolari' not in _riga(g, doppia)['avvisi']
+
+
 @pytest.mark.parametrize('cella, parola', [
     (dict(data='2026-11-06', testo='2'), 'non è di ottobre'),
     (dict(data='2026-10-04', testo='2'), 'non è un giorno di servizio'),      # domenica
@@ -660,6 +737,26 @@ def _lotto_grande(percorso, lotto_id, n=330):
                                   for g in nc.giorni_mese(2026, 10)])
     finally:
         conn.close()
+
+
+def test_un_incolla_grande_parte_a_gruppi_accettati_dal_server(napoli):
+    """La pagina manda al massimo NAPOLI_PRESENZE_GRUPPO caselle per richiesta: e' il limite del
+    server (MAX_CELLE), e un gruppo pieno si salva in una volta (un incolla da Excel di 100 righe
+    per 27 giorni = 2.700 caselle parte in due richieste)."""
+    import napoli_presenze
+    js = (Path(__file__).resolve().parent.parent / 'static' / 'js' / 'napoli.js').read_text(encoding='utf-8')
+    gruppo = int(re.search(r'const NAPOLI_PRESENZE_GRUPPO = (\d+);', js).group(1))
+    assert gruppo == napoli_presenze.MAX_CELLE == 2000
+    _lotto_grande(napoli.percorso, napoli.lotto_id, n=80)
+    g = _griglia(napoli)
+    grandi = [r for r in g['righe'] if r['alunno'].startswith('Grande')]
+    celle = [_cella(r['id'], d, testo='2') for r in grandi for d in g['giorni']][:gruppo]
+    assert len(celle) == gruppo
+    inizio = time.perf_counter()
+    esito = _ok(_salva(napoli, *celle))
+    assert all(e['esito'] in ('salvata', 'invariata') for e in esito['celle'])
+    assert time.perf_counter() - inizio < 5.0
+    _errore(_salva(napoli, *(celle + [_cella(napoli.bruno, '2026-10-01', testo='2')])), 400, campo='celle')
 
 
 def test_330_coppie_si_caricano_in_meno_di_2_secondi(napoli):
