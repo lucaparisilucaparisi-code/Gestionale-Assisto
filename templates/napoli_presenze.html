@@ -78,7 +78,7 @@
                     <button type="button" class="btn btn-primary btn-sm" id="btn-presenze-riprova" data-action="save" hidden
                             title="Salva adesso le caselle in sospeso (Ctrl+S)">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                        Riprova a salvare
+                        Riprova<span class="napoli-solo-largo"> a salvare</span>
                     </button>
                 </div>
                 <div class="napoli-presenze-azioni">
@@ -109,13 +109,13 @@
                     <div class="napoli-aiuto-corpo">
                         <p><strong>Ore svolte</strong>: <kbd>2</kbd> <kbd>1,5</kbd> <kbd>0,75</kbd> (ore con la virgola, come nel file del Comune) oppure <kbd>1:30</kbd> (ore e minuti). Un valore come <kbd>1,30</kbd> si può leggere in due modi: il programma chiede.</p>
                         <p><strong>Operatore assente</strong>: <kbd>F</kbd> ferie, <kbd>M</kbd> malattia, <kbd>P</kbd> permesso (F perm): 0 ore. <strong>Alunno assente</strong>: <kbd>A</kbd>, vale la metà delle ore programmate (se il programma non le conosce, le chiede). Casella vuota: il giorno si cancella, anche con la sua nota del giorno.</p>
-                        <p><strong>Nota del giorno</strong> (<kbd>Maiusc</kbd>+<kbd>F2</kbd>, o il pulsante in alto): assemblea o uscita didattica (contano le ore svolte), ritardo o uscita anticipata dell'alunno con l'orario (ore svolte più metà della parte persa), assenza recuperata (niente metà).</p>
+                        <p><strong>Nota del giorno</strong> (<kbd>Maiusc</kbd>+<kbd>F2</kbd>, o il pulsante in alto): assemblea o uscita didattica (contano le ore svolte), ritardo o uscita anticipata dell'alunno con l'orario (ore svolte più metà della parte persa), assenza recuperata (niente metà). Se poi nella casella scrivi qualcosa che non va d'accordo con la nota (per esempio <kbd>A</kbd> in un giorno con il ritardo), quella parte della nota si toglie da sola e il programma lo dice.</p>
                         <p><strong>Tastiera</strong>: frecce, <kbd>Invio</kbd> (casella sotto) e <kbd>Tab</kbd> (casella dopo) come in Rendicontazione; <kbd>Esc</kbd> rimette il valore salvato; <kbd>Ctrl</kbd>+<kbd>Z</kbd> annulla l'ultima modifica salvata. Si salva da solo dopo 2 secondi (<kbd>Ctrl</kbd>+<kbd>S</kbd> salva subito); se il salvataggio non riesce compare «Modifiche non salvate» con il pulsante «Riprova a salvare», e il programma riprova da solo.</p>
                         <p class="napoli-legenda">
                             <span><i class="lg lg-assente"></i> alunno assente (metà)</span>
                             <span><i class="lg lg-sigla"></i> operatore assente</span>
                             <span><i class="lg lg-nota"></i> nota del giorno</span>
-                            <span><i class="lg lg-chiuso"></i> chiuso o fuori dalle date (le ore scritte in un giorno chiuso contano, con l'avviso)</span>
+                            <span><i class="lg lg-chiuso"></i> festivo, chiuso o fuori dalle date (le ore scritte in un giorno festivo o chiuso contano, con l'avviso)</span>
                             <span><i class="lg lg-giallo"></i> settimana oltre il PEI</span>
                             <span><i class="lg lg-rosso"></i> oltre il PEI + 20%</span>
                             <span><strong>≈</strong> stima dal PEI: previste e credito/debito senza la programmazione settimanale</span>

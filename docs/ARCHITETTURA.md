@@ -669,9 +669,10 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   un giorno di `napoli_presenze` (l'unica fonte delle ore), con le ore riconosciute calcolate
   e salvate (`minuti_riconosciuti`: la fattura legge quelle).
   - `GET /api/napoli/lotti/<id>/presenze?anno=&mese=`: intestazione (mese chiuso con data e
-    nota, `finito` dall'ultimo giorno, oggi), colonne (`napoli_calcoli.colonne_mese`: i giorni
-    di servizio lun-sab, senza domeniche, con le chiusure del calendario del lotto, gli eventi
-    e i giorni futuri, e la VERIFICA dopo ogni settimana), una riga per coppia valida nel mese
+    nota, `finito` dall'ultimo giorno, lo stesso per la chiusura e per l'avviso `coppia_senza_ore`,
+    oggi, `avviso_vacanze`), colonne (`napoli_calcoli.colonne_mese`: i giorni di servizio
+    lun-sab, senza domeniche, con le chiusure del calendario del lotto e le festivita'
+    (`festivo`), gli eventi e i giorni futuri, e la VERIFICA dopo ogni settimana), una riga per coppia valida nel mese
     o con ore nel mese (alunno, operatore, figura, ore PEI o quota della coppia, SI/NO del
     sostituto, scuola e municipalita' della scuola, grado), le caselle in forma corta (`t`
     testo come nel master, `k` tipo, `r` minuti riconosciuti, `c` riconosciute nell'angolo se
@@ -698,6 +699,14 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     svolte non possono superare il programmato), "assenza recuperata" toglie la meta'
     (REGOLE 1, trattamento `recupero`); una descrizione libera facoltativa (100 caratteri,
     codici fiscali mascherati). Una nota senza ore vale un giorno registrato con 0 ore svolte.
+    Scrivendo **solo nella casella** (come in Excel, senza la finestra della nota), la parte
+    della nota del giorno che con il nuovo valore non vale piu' si toglie da sola: il ritardo
+    o l'uscita con «A» (`assente_e_parziale`) o con F, M, P (`operatore_e_parziale`), «assenza
+    recuperata» con le ore svolte o con l'operatore assente (`recupero_senza_assenza`); la
+    risposta lo dice (`tolte`, frasi da mostrare) e Ctrl+Z rimette il giorno com'era. Le ore
+    oltre il programmato con un ritardo gia' scritto non si indovinano: errore
+    `svolte_oltre_il_programmato` con il messaggio che rimanda a «Nota del giorno». Quello che
+    arriva dalla finestra della nota (con `nota_tipo` o `recuperata`) non si tocca.
     La casella si mostra come nel master (`testo_ore_cella`: 90 -> "1,5", 80 -> "1:20", che si
     rilegge uguale); i totali in ore decimali (`ore_brevi`);
   - `POST /api/napoli/lotti/<id>/presenze` (anno, mese, `celle`: coppia, data e i campi che
@@ -715,6 +724,15 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     voce del registro attivita' senza nomi. La risposta ha le righe ricalcolate dello stesso
     alunno (la VERIFICA e il credito/debito cambiano anche nelle righe del titolare e dei
     sostituti);
+  - **festivita'** (`napoli_calcoli.festivita`, funzione pura: le nazionali fisse, il 4
+    ottobre dal 2026, il 19 settembre San Gennaro patrono di Napoli, Pasqua e Pasquetta con
+    `pasqua`): giorni chiusi di tutto il lotto, come le chiusure del calendario (una chiusura
+    scritta nello stesso giorno tiene la sua descrizione); le vacanze di Natale e di Pasqua del
+    calendario regionale non si calcolano (nessuna data inventata): finche' il calendario del
+    mese non ha chiusure, nei mesi in cui cadono (`vacanze_da_calendario`) l'intestazione ha
+    `avviso_vacanze` e la pagina lo mostra sotto la griglia e nel dettaglio
+    (`test_festivita_tolte_dalle_previste_e_grigie`). Il passo 1.12 (scheda Calendario)
+    aggiunge le chiusure;
   - **giorni di chiusura del calendario** (del lotto o della scuola, `napoli_calendario`):
     grigi nella griglia. Scelta dichiarata (PROGETTO §5.5, dove e' un avviso e non un blocco):
     le ore scritte a mano in un giorno chiuso contano come ore svolte (`minuti_riconosciuti` =
@@ -729,7 +747,7 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     settimana, il colore e' quello del gruppo;
   - **credito/debito** (REGOLE 15, `napoli_calcoli.minuti_previsti` e `credito_debito`):
     previste = la programmazione settimanale della coppia nei giorni di servizio validi (senza
-    chiusure e giorni fuori dalle date) oppure, se manca, il PEI (o la quota della coppia)
+    festivita', chiusure e giorni fuori dalle date) oppure, se manca, il PEI (o la quota della coppia)
     diviso per i 6 giorni di servizio della settimana per ogni giorno, con l'avviso "stima dal
     PEI" (≈); erogate = ore riconosciute della coppia e dei suoi sostituti (le righe dei
     sostituti rimandano a quella del titolare); credito_debito = previste - erogate, con la
@@ -753,10 +771,15 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     figura, PEI, sostituzione) e a destra (totale, credito/debito), intestazione fissa, la
     griglia che prende l'altezza che resta e scorre da sola (REGOLE 13: a 1366x768 e 1536x864
     la pagina non scorre, anche con il mese chiuso e il lotto grande: la testata sta su una
-    riga, sotto i 1500 px «Nota del giorno» diventa «Nota», il mese chiuso e' una riga dentro la
-    scheda, e un `ResizeObserver` rimisura la griglia quando la testata cambia altezza, per
-    esempio con «Riprova a salvare»); la barra sopra la griglia descrive per esteso la casella scelta;
-    caselle come in Excel (un clic sceglie tutto il valore), frecce, Invio e Tab come in
+    riga anche con «Modifiche non salvate» o una casella da correggere, perche' sotto i 1500 px
+    «Nota del giorno» diventa «Nota», «Riprova a salvare» diventa «Riprova» (senza «N coppie»,
+    che e' anche nel riepilogo) e «Salvato alle ..., tranne 1 casella da correggere» diventa
+    «1 casella da correggere» (per esteso nel suggerimento); il mese chiuso e' una riga dentro
+    la scheda, e un `ResizeObserver` rimisura la griglia quando la testata cambia altezza); la
+    barra sopra la griglia descrive per esteso la casella scelta; caselle come in Excel (un clic
+    sceglie tutto il valore; la casella scelta con Tab, Invio o le frecce si seleziona subito,
+    senza `setTimeout`, come in Rendicontazione: una selezione rimandata cadeva dopo i tasti gia'
+    in coda e "1,5" diventava "5"), frecce, Invio e Tab come in
     Rendicontazione, Esc rimette il valore salvato, Ctrl+Z (mentre si scrive toglie le
     lettere, a casella salvata annulla l'ultima azione di Napoli), Maiusc+F2 la nota del
     giorno, incolla di un blocco da Excel; salvataggio automatico 2 secondi dopo l'ultimo tasto
@@ -767,12 +790,20 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     `errore`, il motivo nel suggerimento), il pulsante «Riprova a salvare» e un avviso in
     italiano (mai «Failed to fetch»); se il collegamento o il programma non rispondono (niente
     risposta o 5xx) riprova da solo dopo 5, 10, 20 e poi ogni 30 secondi; cambiare mese o lotto,
-    annullare o chiudere il mese con caselle non salvate resta sul mese mostrato. Uscendo dalla
+    annullare o chiudere il mese con caselle non salvate resta sul mese mostrato. Le caselle
+    **da correggere** (in rosso: sigla sconosciuta, «A» o «1,30» lasciati da sistemare) non sono
+    salvate: prima di cambiare mese o lotto, annullare o chiudere il mese la pagina chiede
+    («Resta e correggi», anche con Invio, Esc o un clic fuori, torna sulla prima; «Continua
+    senza salvarle»). Uscendo dalla
     pagina le caselle in sospeso partono con `fetch keepalive` (al massimo 64 KB in tutto: un
-    gruppo di circa 60 KB); se il salvataggio non riesce o le caselle non ci stanno il browser
-    chiede prima di uscire (`beforeunload`); le domande
+    gruppo di circa 60 KB); se ci sono caselle da correggere, se il salvataggio non riesce o se
+    le caselle non ci stanno il browser chiede prima di uscire (`beforeunload`); le domande
     una alla volta ("1,30": un'ora e trenta minuti o 1,30 ore, anche per le caselle dopo; le
-    ore programmate che mancano per la meta'); filtri per scuola, operatore, figura, grado,
+    ore programmate che mancano per la meta'), con il fuoco sul campo delle ore o sulla prima
+    lettura (un Invio nei primi 600 ms, premuto per la griglia, non sceglie niente); la nota
+    del giorno manda anche il valore che si vede in una casella non salvata, in sospeso o da
+    sistemare (una «A» lasciata senza le ore programmate si salva con le ore scritte nella
+    nota); le parti della nota tolte dal server si leggono in un avviso; filtri per scuola, operatore, figura, grado,
     municipalita' della scuola, ricerca per nome e «N con avvisi»; riepilogo delle righe
     mostrate; clic sul nome per il dettaglio della coppia; il mese scelto ricordato nel
     browser.
@@ -956,7 +987,11 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   `napoli_calcoli` ricaricando la pagina; giorni futuri, fuori dalle date e non di servizio;
   mese chiuso anche per Ctrl+Z, chiusura e riapertura con il motivo, indipendente da quello di
   Roma; Ctrl+Z solo di Napoli e senza le descrizioni libere; dettaglio della coppia; codici
-  fiscali mascherati; 330 coppie in meno di 2 secondi); `tests/test_napoli_impostazioni.py` (procedura guidata,
+  fiscali mascherati; la parte della nota tolta scrivendo nella casella; festivita' tolte dalle
+  previste e avviso delle vacanze; l'ultimo giorno del mese; 330 coppie in meno di 2 secondi;
+  la pagina eseguita in node con un DOM finto sulle risposte vere del server: la nota del
+  giorno su una casella da sistemare, la selezione subito, le caselle da correggere uscendo, il
+  fuoco delle domande, lo stato corto della testata); `tests/test_napoli_impostazioni.py` (procedura guidata,
   controlli lato server, sovrapposizioni, IBAN mascherato, Ctrl+Z separato, Roma intatta,
   voce di menu marcata); `tests/test_napoli_import.py` e `tests/test_napoli_privacy.py`
   (passi 1.4-1.5, sul master inventato di `tests/napoli_sintetico.py`, generato durante

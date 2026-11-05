@@ -925,6 +925,58 @@ def giorni_mese(anno, mese, giorni_servizio=None):
     return out
 
 
+# Festivita' con la stessa data ogni anno (giorno, mese, descrizione, dal anno): le nazionali,
+# il 19 settembre (San Gennaro, patrono di Napoli: le scuole della citta' sono chiuse) e il 4
+# ottobre (San Francesco d'Assisi, di nuovo festa nazionale dal 2026). Le vacanze di Natale e di
+# Pasqua del calendario regionale NON sono qui: si scrivono nel calendario di Napoli (nessuna
+# data inventata, PROGETTO §6).
+FESTIVITA_FISSE = (
+    (1, 1, 'Capodanno', None), (6, 1, 'Epifania', None), (25, 4, 'Festa della Liberazione', None),
+    (1, 5, 'Festa del Lavoro', None), (2, 6, 'Festa della Repubblica', None), (15, 8, 'Ferragosto', None),
+    (19, 9, 'San Gennaro, patrono di Napoli', None), (4, 10, "San Francesco d'Assisi", 2026),
+    (1, 11, 'Ognissanti', None), (8, 12, 'Immacolata Concezione', None), (25, 12, 'Natale', None),
+    (26, 12, 'Santo Stefano', None),
+)
+
+
+def pasqua(anno):
+    """La domenica di Pasqua (calendario gregoriano, algoritmo di Meeus/Jones/Butcher)."""
+    a, b, c = anno % 19, anno // 100, anno % 100
+    d, e = b // 4, b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = c // 4, c % 4
+    ld = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * ld) // 451
+    mese = (h + ld - 7 * m + 114) // 31
+    giorno = (h + ld - 7 * m + 114) % 31 + 1
+    return datetime.date(anno, mese, giorno)
+
+
+def festivita(anno):
+    """Le festivita' dell'anno a Napoli: {data: descrizione} (FESTIVITA_FISSE, Pasqua e il
+    lunedi' dell'Angelo). Nella griglia presenze sono giorni chiusi del lotto: le ore
+    previste del credito/debito non li contano."""
+    out = {datetime.date(anno, m, g): nome for g, m, nome, dal in FESTIVITA_FISSE if dal is None or anno >= dal}
+    p = pasqua(anno)
+    out[p] = 'Pasqua'
+    out[p + datetime.timedelta(days=1)] = "Lunedì dell'Angelo (Pasquetta)"
+    return out
+
+
+def vacanze_da_calendario(anno, mese):
+    """Le vacanze scolastiche che cadono di solito nel mese e che il calendario regionale
+    fissa ogni anno (quindi non si calcolano): 'Natale' a dicembre e gennaio, 'Pasqua' nel
+    mese dei giorni intorno a Pasqua (dal giovedi' prima al martedi' dopo). Lista vuota se
+    nessuna: la griglia avvisa se il calendario del mese e' ancora vuoto."""
+    out = ['Natale'] if mese in (12, 1) else []
+    p = pasqua(anno)
+    if any(d.month == mese for d in (p - datetime.timedelta(days=3), p + datetime.timedelta(days=2))):
+        out.append('Pasqua')
+    return out
+
+
 def _chiave_settimana(d):
     iso = d.isocalendar()
     return iso[0], iso[1]
@@ -1156,8 +1208,8 @@ def pei_alla_data(pei, giorno):
 def minuti_previsti(giorni, orari=(), pei=None, giorni_servizio=None):
     """Ore PREVISTE di una coppia in un mese, per il credito/debito di Napoli (REGOLE 15).
 
-    giorni: i giorni di servizio della coppia nel mese, gia' senza le chiusure del
-    calendario e senza i giorni fuori dalle date della coppia.
+    giorni: i giorni di servizio della coppia nel mese, gia' senza le festivita' (festivita),
+    senza le chiusure del calendario e senza i giorni fuori dalle date della coppia.
     - Con la programmazione settimanale (orari: righe con 'giorno' 0-5, ora_inizio,
       ora_fine e validita'; basta una fascia valida in un giorno del mese): la somma delle
       fasce del giorno della settimana valide in ciascun giorno. fonte 'programmazione'.

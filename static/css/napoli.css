@@ -660,6 +660,8 @@ a.napoli-nome:hover { color: var(--accent-text); text-decoration: underline; }
 .napoli-presenze-riepilogo { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 4px 0; font-size: 0.86rem; color: var(--text-secondary); }
 .napoli-presenze-riepilogo strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .napoli-presenze-riepilogo .napoli-stima-pei { color: var(--text-tertiary); font-style: italic; cursor: help; }
+/* vacanze di Natale o di Pasqua non ancora nel calendario: le previste le contano */
+.napoli-presenze-riepilogo .napoli-avviso-vacanze { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); cursor: help; }
 .napoli-presenze-aiuto > summary { cursor: pointer; color: var(--text-secondary); font-size: 0.86rem; padding: 4px 0; text-align: right; }
 .napoli-presenze-aiuto > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .napoli-presenze-aiuto[open] { flex-basis: 100%; }
@@ -693,6 +695,9 @@ a.napoli-nome:hover { color: var(--accent-text); text-decoration: underline; }
 .napoli-modal-dettaglio { max-width: 860px; }
 #napoli-modal-coppia .modal-body, #napoli-modal-nota .modal-body { max-height: calc(100vh - 200px); overflow-y: auto; }
 .napoli-modal-dettaglio .napoli-sezione { margin-top: 18px; }
+/* settimane della VERIFICA su una riga ciascuna anche a 1366 (con la colonna "Tutte le coppie") */
+.napoli-tabella-settimane td, .napoli-tabella-settimane th { white-space: nowrap; padding-left: 10px; padding-right: 10px; }
+.napoli-tabella-settimane .napoli-periodo { margin-left: 4px; }
 .napoli-numeri-tre { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 8px; }
 #domanda-pulsanti { flex-wrap: wrap; }
 @media (max-width: 1100px) {

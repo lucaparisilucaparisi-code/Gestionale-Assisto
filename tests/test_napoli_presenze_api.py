@@ -609,6 +609,114 @@ def test_ctrl_z_su_un_mese_chiuso_nel_frattempo(napoli):
     assert len(_righe_db(napoli.percorso, 'SELECT * FROM napoli_presenze')) == 1
 
 
+def test_scrivendo_nella_casella_si_toglie_la_parte_della_nota_che_non_vale_piu(napoli):
+    """Come in Excel: chi corregge la casella non deve aprire la nota del giorno. Il ritardo o
+    l'uscita con «A» o con F, M, P e «Assenza recuperata» con le ore svolte o con l'operatore
+    assente si tolgono da soli, la risposta dice che cosa (la pagina lo mostra) e Ctrl+Z rimette
+    il giorno com'era. Quello che arriva dalla finestra della nota non si tocca."""
+    c = napoli.bruno
+
+    def presenza(data):
+        return _righe_db(napoli.percorso, 'SELECT * FROM napoli_presenze WHERE data = ?', (data,))[0]
+
+    # ritardo, poi «A»: resta l'alunno assente, meta' delle 3 ore programmate
+    _ok(_salva(napoli, _cella(c, '2026-10-01', testo='2', programmati='3', nota_tipo='ritardo', nota_ora='9:00')))
+    e = _ok(_salva(napoli, _cella(c, '2026-10-01', testo='A')))['celle'][0]
+    assert (e['esito'], e['minuti']) == ('salvata', 90), e
+    assert e['tolte'] == ['Tolta la nota «Alunno entrato in ritardo»: con l\'alunno assente (A) non serve.']
+    p = presenza('2026-10-01')
+    assert (p['causale'], p['nota_tipo'], p['nota_ora'], p['trattamento']) == ('alunno_assente', None, None, 'meta')
+    assert p['minuti_riconosciuti'] == nc.giorno_da_griglia('A', None, 180)['campi']['minuti_riconosciuti']
+    _ok(napoli.post('/api/napoli/annulla', json={}))                          # Ctrl+Z: torna il ritardo
+    p = presenza('2026-10-01')
+    assert (p['nota_tipo'], p['nota_ora'], p['minuti_riconosciuti']) == ('ritardo', '09:00', 150)
+    # «A» con l'assenza recuperata, poi 2 ore: si toglie «Assenza recuperata»
+    _ok(_salva(napoli, _cella(c, '2026-10-02', testo='A', recuperata=True)))
+    e = _ok(_salva(napoli, _cella(c, '2026-10-02', testo='2')))['celle'][0]
+    assert (e['esito'], e['minuti'], len(e['tolte'])) == ('salvata', 120, 1) and 'Assenza recuperata' in e['tolte'][0]
+    assert (presenza('2026-10-02')['trattamento'], presenza('2026-10-02')['causale']) == (None, None)
+    # uscita anticipata recuperata, poi F: si tolgono tutte e due
+    _ok(_salva(napoli, _cella(c, '2026-10-03', testo='1', programmati='3', nota_tipo='uscita_anticipata',
+                              nota_ora='10:00', recuperata=True)))
+    e = _ok(_salva(napoli, _cella(c, '2026-10-03', testo='F')))['celle'][0]
+    assert (e['esito'], e['minuti'], len(e['tolte'])) == ('salvata', 0, 2), e
+    assert 'operatore assente' in e['tolte'][0] and 'Assenza recuperata' in e['tolte'][1]
+    p = presenza('2026-10-03')
+    assert (p['sigla'], p['causale'], p['nota_tipo'], p['trattamento']) == ('F', 'operatore_ferie', None, None)
+    # le ore oltre il programmato con il ritardo non si indovinano: il messaggio dice dove si cambia
+    _ok(_salva(napoli, _cella(c, '2026-10-05', testo='2', programmati='3', nota_tipo='ritardo', nota_ora='9:00')))
+    e = _ok(_salva(napoli, _cella(c, '2026-10-05', testo='4')))['celle'][0]
+    assert e['esito'] == 'errore' and e['codice'] == 'svolte_oltre_il_programmato'
+    assert '«Alunno entrato in ritardo» con 3:00 programmate' in e['messaggio'] and '«Nota del giorno»' in e['messaggio']
+    assert presenza('2026-10-05')['minuti_riconosciuti'] == 150
+    # dalla finestra della nota (tipo e casella insieme) resta l'errore di prima
+    e = _ok(_salva(napoli, _cella(c, '2026-10-05', testo='A', nota_tipo='ritardo', nota_ora='9:00')))['celle'][0]
+    assert (e['esito'], e['codice']) == ('errore', 'assente_e_parziale')
+    e = _ok(_salva(napoli, _cella(c, '2026-10-06', testo='2', recuperata=True)))['celle'][0]
+    assert (e['esito'], e['codice']) == ('errore', 'recupero_senza_assenza')
+    # una casella senza nota non dice niente
+    assert 'tolte' not in _ok(_salva(napoli, _cella(c, '2026-10-07', testo='2')))['celle'][0]
+
+
+def test_festivita_tolte_dalle_previste_e_grigie(napoli):
+    """REGOLE 15: le previste contano i giorni di servizio senza le chiusure e le festivita'.
+    Le festivita' nazionali, Pasquetta e il 19 settembre (San Gennaro) si calcolano; le vacanze
+    di Natale e di Pasqua sono del calendario regionale: finche' il calendario del mese e'
+    vuoto la griglia lo dice."""
+    f26 = nc.festivita(2026)
+    attese = {'2026-01-01', '2026-01-06', '2026-04-05', '2026-04-06', '2026-04-25', '2026-05-01', '2026-06-02',
+              '2026-08-15', '2026-09-19', '2026-10-04', '2026-11-01', '2026-12-08', '2026-12-25', '2026-12-26'}
+    assert {d.isoformat() for d in f26} == attese
+    assert datetime.date(2025, 10, 4) not in nc.festivita(2025)             # festa nazionale dal 2026
+    assert [nc.pasqua(a).isoformat() for a in (2025, 2026, 2027, 2028, 2029)] == [
+        '2025-04-20', '2026-04-05', '2027-03-28', '2028-04-16', '2029-04-01']
+    assert nc.vacanze_da_calendario(2026, 12) == ['Natale'] and nc.vacanze_da_calendario(2027, 3) == ['Pasqua']
+    assert nc.vacanze_da_calendario(2026, 4) == ['Pasqua'] and nc.vacanze_da_calendario(2026, 10) == []
+
+    # dicembre 2026: l'Immacolata (martedi'), Natale (venerdi') e Santo Stefano (sabato) sono grigi
+    g = _griglia(napoli, mese=12)
+    colonne = {c['data']: c for c in g['colonne'] if c['tipo'] == 'giorno'}
+    assert colonne['2026-12-08']['chiuso'] == 'Immacolata Concezione' and colonne['2026-12-08']['festivo']
+    assert colonne['2026-12-25']['festivo'] and colonne['2026-12-26']['festivo']
+    assert not colonne['2026-12-07']['festivo'] and colonne['2026-12-07']['chiuso'] is None
+    servizio = [d for d in nc.giorni_mese(2026, 12) if d not in f26]
+    assert len(servizio) == 27 - 3                                         # 27 giorni da lunedi' a sabato
+    assert _riga(g, napoli.bruno)['previste'] == nc.minuti_previsti(servizio, pei=10)['minuti'] == 24 * 100
+    # vacanze di Natale non ancora nel calendario: l'avviso (con una chiusura scritta, niente avviso)
+    assert 'vacanze di Natale' in g['avviso_vacanze']
+    assert _griglia(napoli)['avviso_vacanze'] is None                     # ottobre: niente vacanze
+    _scrivi(napoli.percorso, "INSERT INTO napoli_calendario (lotto_id, data, tipo, descrizione) VALUES "
+                             "(?, '2026-12-23', 'chiusura', 'Vacanze di prova')", (napoli.lotto_id,))
+    g = _griglia(napoli, mese=12)
+    assert g['avviso_vacanze'] is None and _riga(g, napoli.bruno)['previste'] == 23 * 100
+    d = _ok(napoli.get(f'{napoli.url}/presenze/coppie/{napoli.bruno}?anno=2026&mese=12'))
+    assert d['credito']['giorni_servizio'] == 23 and d['mese']['avviso_vacanze'] is None
+
+    # settembre 2026: San Gennaro e' sabato 19, giorno chiuso; le ore scritte contano con l'avviso
+    t = napoli.titolare                                                     # dal 14/09/2026, PEI 12
+    _ok(_salva(napoli, _cella(t, '2026-09-19', testo='2'), anno=2026, mese=9))
+    g = _griglia(napoli, mese=9)
+    riga = _riga(g, t)
+    i = g['giorni'].index('2026-09-19')
+    assert riga['celle'][str(i)]['a'] == ['ore_in_giorno_di_chiusura'] and 'festivo' in g['spiegazioni'][
+        'ore_in_giorno_di_chiusura']
+    giorni = [d for d in nc.giorni_mese(2026, 9) if d >= datetime.date(2026, 9, 14) and d not in f26]
+    assert riga['previste'] == nc.minuti_previsti(giorni, pei=12)['minuti'] == 14 * 120       # 15 giorni meno il 19
+    assert riga['credito_debito'] == 14 * 120 - 120
+
+
+def test_ultimo_giorno_del_mese_finito_e_coppie_senza_ore(napoli, monkeypatch):
+    """Dall'ultimo giorno il mese e' finito per tutte e due le cose: si chiude e le coppie senza
+    ore hanno l'avviso «Nessuna ora in tutto il mese»."""
+    monkeypatch.setattr(napoli_db, '_oggi', lambda: datetime.date(2026, 10, 31))
+    g = _griglia(napoli)
+    assert g['finito'] is True
+    assert 'coppia_senza_ore' in _riga(g, napoli.ciro)['avvisi']
+    monkeypatch.setattr(napoli_db, '_oggi', lambda: datetime.date(2026, 10, 30))
+    g = _griglia(napoli)
+    assert g['finito'] is False and 'coppia_senza_ore' not in _riga(g, napoli.ciro)['avvisi']
+
+
 # ==================== Ctrl+Z ====================
 
 def test_ctrl_z_annulla_solo_l_ultima_azione_di_napoli(napoli):
@@ -701,6 +809,304 @@ def test_pagina_presenze(napoli):
 def _ok_testo(r):
     assert r.status_code == 200
     return r.get_data(as_text=True)
+
+
+# ==================== la pagina (napoli.js eseguito in node) ====================
+#
+# Il codice vero della scheda Presenze (NapoliPresenze di static/js/napoli.js), con gli aiuti
+# veri di app.js per date e testi, su un DOM finto: ogni elemento cercato per id esiste e
+# ricorda valore, testo, classi, fuoco e select(); le caselle della griglia si preparano con
+# casella(). apiCall risponde con le risposte vere del server raccolte prima (RISPOSTE) e
+# ricorda le richieste (registro.api), che il test poi manda davvero al server.
+
+_DOM_PRESENZE = r"""
+class _El {
+    constructor(id = '') {
+        this.id = id; this.value = ''; this.checked = false; this.hidden = false; this.disabled = false;
+        this.title = ''; this.placeholder = ''; this.dataset = {}; this.style = {}; this.attributi = {};
+        this._testo = ''; this._html = ''; this._figli = {}; this._liste = {}; this._ascolti = {}; this._vicini = {};
+        this._classi = new Set(); this.parentElement = null; this.offsetParent = null; this.isConnected = true;
+        this.selezionata = 0;
+        const el = this;
+        this.classList = {
+            add: (...c) => c.forEach(x => el._classi.add(x)), remove: (...c) => c.forEach(x => el._classi.delete(x)),
+            contains: c => el._classi.has(c),
+            toggle: (c, si) => { if (si ?? !el._classi.has(c)) el._classi.add(c); else el._classi.delete(c); },
+        };
+    }
+    get className() { return [...this._classi].join(' '); }
+    set className(v) { this._classi = new Set(String(v).split(/\s+/).filter(Boolean)); }
+    set textContent(t) {
+        this._testo = String(t);
+        this._html = this._testo.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    get textContent() { return this._testo; }
+    set innerHTML(h) { this._html = String(h); this._testo = this._html.replace(/<[^>]*>/g, ''); this._figli = {}; }
+    get innerHTML() { return this._html; }
+    setAttribute(k, v) { this.attributi[k] = String(v); }
+    getAttribute(k) { return k in this.attributi ? this.attributi[k] : null; }
+    removeAttribute(k) { delete this.attributi[k]; }
+    addEventListener(tipo, fn) { (this._ascolti[tipo] = this._ascolti[tipo] || []).push(fn); }
+    removeEventListener() {}
+    click() { (this._ascolti.click || []).forEach(fn => fn({ target: this })); }
+    focus() { document.activeElement = this; }
+    blur() {}
+    select() { this.selezionata += 1; }
+    remove() { this.isConnected = false; }
+    replaceWith() {}
+    appendChild(x) { x.parentElement = this; return x; }
+    contains() { return false; }
+    matches() { return false; }
+    scrollIntoView() {}
+    getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0 }; }
+    closest(sel) { return this._vicini[sel] || null; }
+    querySelector(sel) {
+        if (this._cerca) { const x = this._cerca(sel); if (x !== undefined) return x; }
+        if (sel in this._figli) return this._figli[sel];
+        // i pulsanti di una domanda, scritti con innerHTML
+        const m = /^button\[data-risposta\]:not\(\[data-risposta="([^"]+)"\]\)$/.exec(sel);
+        if (m) {
+            const b = [...this._html.matchAll(/<button[^>]*data-risposta="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g)]
+                .find(x => x[1] !== m[1]);
+            if (!b) return null;
+            const el = new _El(`pulsante ${b[1]}`);
+            el.dataset.risposta = b[1];
+            el.textContent = b[2].trim();
+            return (this._figli[sel] = el);
+        }
+        return (this._figli[sel] = new _El());
+    }
+    querySelectorAll(sel) { return this._liste[sel] || []; }
+}
+const _elementi = {};
+globalThis.document = {
+    activeElement: null, body: new _El('body'), documentElement: { scrollHeight: 0 }, visibilityState: 'visible',
+    getElementById: id => _elementi[id] || (_elementi[id] = new _El(id)),
+    createElement: () => new _El(),
+    querySelector: sel => (sel === '.modal-overlay.active'
+        ? Object.values(_elementi).find(e => e.id.startsWith('napoli-modal') && e._classi.has('active')) || null : null),
+    querySelectorAll: () => [], addEventListener() {},
+};
+globalThis.window = globalThis;
+window.addEventListener = () => {};
+window.innerHeight = 768; window.scrollY = 0;
+globalThis.CSS = { escape: s => s };
+const registro = { api: [], toast: [], fuoco: [], conferme: [], campi: [] };
+const RISPOSTE = [];
+async function apiCall(url, opzioni = {}) {
+    registro.api.push({ url, metodo: opzioni.method || 'GET', corpo: opzioni.body ? JSON.parse(opzioni.body) : null });
+    if (!RISPOSTE.length) throw new Error('richiesta non prevista: ' + url);
+    return JSON.parse(JSON.stringify(RISPOSTE.shift()));
+}
+function showToast(testo, tipo) { registro.toast.push([String(testo), tipo]); }
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function focusInFinestra(el) { if (el) { el.focus(); registro.fuoco.push(el.id); } }
+function setButtonLoading() {}
+const FormValidator = { showFieldError(el, messaggio) { registro.campi.push([el.id, messaggio]); } };
+// la finestra di conferma di app.js: i suoi pulsanti si premono dal test (registro.conferma)
+function showConfirmDialog(titolo, messaggio, onConfirm, opzioni = {}) {
+    registro.conferme.push({ titolo, messaggio, conferma: opzioni.confirmText, annulla: opzioni.cancelText });
+    const annulla = new _El('confirm-dialog-cancel');
+    _elementi['confirm-dialog-cancel'] = annulla;
+    _elementi['confirm-dialog-overlay'] = new _El('confirm-dialog-overlay');
+    registro.conferma = { principale: () => onConfirm(), secondario: () => annulla.click() };
+}
+const _GIORNI_BREVI = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
+// una casella della griglia: riga, cella e campo, collegati come nella pagina
+function casella(id, i, valore = '') {
+    const griglia = document.getElementById('presenze-griglia');
+    const tr = griglia._figli[`tr[data-id="${id}"]`] || new _El(`riga ${id}`);
+    tr.dataset.id = String(id);
+    griglia._figli[`tr[data-id="${id}"]`] = tr;
+    const td = new _El(`cella ${id}|${i}`);
+    td.dataset.i = String(i); td.parentElement = tr;
+    const input = new _El(`casella ${id}|${i}`);
+    input.value = valore; input._vicini = { td, tr };
+    td._figli['.g-in'] = input; td._figli['.g-ang'] = null;
+    tr._figli[`td[data-i="${i}"] .g-in`] = input;
+    return input;
+}
+// la finestra della nota con le scelte del tipo
+function preparaNota() {
+    const form = document.getElementById('form-nota');
+    const scelte = ['', 'evento', 'attivita_esterna', 'ritardo', 'uscita_anticipata'].map(v => {
+        const r = new _El(`nota_tipo ${v}`); r.value = v; return r;
+    });
+    form._liste['input[name="nota_tipo"]'] = scelte;
+    form._cerca = sel => (sel === 'input[name="nota_tipo"]:checked' ? scelte.find(x => x.checked) || null : undefined);
+}
+function apri(dati) {
+    const P = NapoliPresenze;
+    P.dati = dati; P.righe = new Map(dati.righe.map(r => [r.id, r]));
+    P.attese = new Map(); P.errori = new Map(); P.domande = []; P.domanda = null;
+    preparaNota();
+    return P;
+}
+const aspetta = ms => new Promise(r => setTimeout(r, ms));
+"""
+
+
+def _funzione_app_js(testo, nome):
+    inizio = testo.index(f'function {nome}(')
+    return testo[inizio:testo.index('\n}\n', inizio) + 2]
+
+
+def _pagina_presenze(tmp_path, scenario, dati):
+    """Esegue `scenario` (il corpo di `async function prova()`, che ritorna un oggetto) con il
+    codice vero di napoli.js e DATI; ritorna quello che prova() ritorna."""
+    import shutil
+    import subprocess
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('node non disponibile: il codice della pagina non si può eseguire qui')
+    radice = Path(__file__).resolve().parent.parent
+    app_js = (radice / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+    napoli_js = (radice / 'static' / 'js' / 'napoli.js').read_text(encoding='utf-8')
+    inizio = app_js.index('const MESI = {')
+    programma = '\n'.join([
+        "const DATI = JSON.parse(require('fs').readFileSync(0, 'utf8'));",
+        _DOM_PRESENZE, app_js[inizio:app_js.index('};', inizio) + 2],
+        *(_funzione_app_js(app_js, n) for n in ('escapeHtml', '_dataDaIso', 'formatDataIT', 'formatMeseIT')),
+        napoli_js,
+        'async function prova() {', scenario, '}',
+        "prova().then(x => { process.stdout.write(JSON.stringify(x)); process.exit(0); })"
+        ".catch(e => { console.error(e); process.exit(1); });",
+    ])
+    file = tmp_path / 'pagina_presenze.js'
+    file.write_text(programma, encoding='utf-8')
+    r = subprocess.run([node, str(file)], input=json.dumps(dati), capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+@pytest.mark.parametrize('prima', [None, '0,5'])
+def test_pagina_nota_del_giorno_su_una_casella_da_sistemare(napoli, tmp_path, prima):
+    """«A» senza le ore programmate, «Lascia la casella da sistemare», poi la Nota del giorno
+    (Maiusc+F2) con Ore programmate = 3: la nota manda anche la «A» che si vede nella casella, e
+    il giorno diventa l'alunno assente con la meta' (1:30), anche se prima c'era 0,5. La finestra
+    della domanda si apre con il fuoco sul campo delle ore."""
+    c, data = napoli.bruno, '2026-10-20'
+    if prima:
+        _ok(_salva(napoli, _cella(c, data, testo=prima)))
+    g = _griglia(napoli)
+    i = g['giorni'].index(data)
+    risposta_a = _ok(_salva(napoli, _cella(c, data, testo='A')))          # il salvataggio automatico
+    assert risposta_a['celle'][0]['esito'] == 'servono_programmati'
+    scenario = """
+    const P = apri(DATI.griglia);
+    const { id, i, data } = DATI;
+    const input = casella(id, i, 'A');
+    P.applica(DATI.risposta_a, new Map([[`${id}|${i}`, { coppia_id: id, data, testo: 'A' }]]));
+    const domanda = document.getElementById('napoli-modal-domanda').classList.contains('active');
+    const fuoco = document.activeElement && document.activeElement.id;
+    P.rispondi('lascia');                                   // «Lascia la casella da sistemare»
+    const daSistemare = P.errori.has(`${id}|${i}`) && input.value === 'A';
+    await P.apriNota(id, i);                                // Maiusc+F2
+    document.getElementById('nota-programmati').value = '3';
+    RISPOSTE.push({ celle: [{ coppia_id: id, data, esito: 'salvata', minuti: 90, letture: [] }], righe: [],
+                    messaggio: 'Salvata 1 casella', salvate: 1, descrizione: 'Griglia presenze' });
+    await P.salvaNota();
+    return { domanda, fuoco, daSistemare, corpo: registro.api[0].corpo, errori: P.errori.size, toast: registro.toast };
+    """
+    x = _pagina_presenze(tmp_path, scenario, {'griglia': g, 'id': c, 'i': i, 'data': data, 'risposta_a': risposta_a})
+    assert x['domanda'] and x['fuoco'] == 'domanda-programmati' and x['daSistemare']
+    cella = x['corpo']['celle'][0]
+    assert (cella['testo'], cella['programmati'], cella['nota_tipo']) == ('A', '3', ''), cella
+    assert x['errori'] == 0 and ['Nota del giorno salvata', 'success'] in x['toast']
+    # la richiesta della pagina, mandata davvero: l'alunno assente con la meta' delle 3 ore
+    e = _ok(napoli.post(f'{napoli.url}/presenze', json=x['corpo']))['celle'][0]
+    assert (e['esito'], e['minuti']) == ('salvata', 90)
+    casella = _riga(_griglia(napoli), c)['celle'][str(i)]
+    assert (casella['k'], casella['r'], casella['p']) == ('A', 90, 180)
+
+
+def test_pagina_scegliere_una_casella_la_seleziona_subito(napoli, tmp_path):
+    """La casella scelta (Tab, Invio, frecce, clic) si seleziona subito, non con un setTimeout:
+    i tasti gia' in coda non perdono il primo carattere ("1,5" non diventa "5")."""
+    g = _griglia(napoli)
+    scenario = """
+    const P = apri(DATI.griglia);
+    const input = casella(DATI.id, 3, '2');
+    const vero = globalThis.setTimeout;
+    let rimandati = 0;
+    globalThis.setTimeout = (fn, t) => { rimandati += 1; return vero(fn, t); };
+    P.scelta(input);
+    globalThis.setTimeout = vero;
+    return { selezionata: input.selezionata, rimandati, attiva: P.attiva };
+    """
+    x = _pagina_presenze(tmp_path, scenario, {'griglia': g, 'id': napoli.bruno})
+    assert x == {'selezionata': 1, 'rimandati': 0, 'attiva': {'id': napoli.bruno, 'i': 3}}
+
+
+def test_pagina_caselle_da_correggere_non_si_perdono_uscendo(napoli, tmp_path):
+    """Una casella da correggere (in rosso) non e' salvata: chiudendo la pagina il browser
+    chiede (beforeunload), cambiando mese o lotto, annullando o chiudendo il mese la pagina
+    chiede se restare. «Resta e correggi» (anche Invio) torna sulla casella."""
+    g = _griglia(napoli)
+    i = g['giorni'].index('2026-10-20')
+    scenario = """
+    const P = apri(DATI.griglia);
+    const { id, i } = DATI;
+    const input = casella(id, i, 'X');
+    const senza = P.nonPartono();
+    P.errori.set(`${id}|${i}`, 'sigla sconosciuta');
+    const con = P.nonPartono();
+    let attesa = P.puoLasciare();
+    await aspetta(0);
+    const conferma = registro.conferme[0];
+    registro.conferma.principale();                         // «Resta e correggi»
+    const resta = await attesa;
+    await aspetta(400);
+    const torna = document.activeElement === input && input.selezionata > 0;
+    attesa = P.puoLasciare('Modifiche non salvate', "annulli l'ultima modifica");
+    await aspetta(0);
+    registro.conferma.secondario();                         // «Continua senza salvarle»
+    const va = await attesa;
+    const messaggio2 = registro.conferme[1].messaggio;
+    P.errori.clear();
+    const libero = await P.puoLasciare();
+    return { senza, con, conferma, resta, torna, va, messaggio2, libero, conferme: registro.conferme.length };
+    """
+    x = _pagina_presenze(tmp_path, scenario, {'griglia': g, 'id': napoli.bruno, 'i': i})
+    assert (x['senza'], x['con']) == (False, True)
+    assert x['conferma']['messaggio'].startswith('1 casella da correggere non è salvata (in rosso): se cambi mese')
+    assert (x['conferma']['conferma'], x['conferma']['annulla']) == ('Resta e correggi', 'Continua senza salvarle')
+    assert x['resta'] is False and x['torna'] and x['va'] is True
+    assert "se annulli l'ultima modifica" in x['messaggio2']
+    assert x['libero'] is True and x['conferme'] == 2
+
+
+def test_pagina_domanda_1_30_e_note_tolte(napoli, tmp_path):
+    """La domanda per «1,30» si apre con il fuoco sulla prima lettura proposta; le parti della
+    nota tolte dal server scrivendo nella casella si leggono in un avviso; con caselle da
+    correggere lo stato in alto resta corto a 1366 («1 casella da correggere»)."""
+    c = napoli.bruno
+    risposta_130 = _ok(_salva(napoli, _cella(c, '2026-10-01', testo='1,30')))
+    _ok(_salva(napoli, _cella(c, '2026-10-02', testo='2', programmati='3', nota_tipo='ritardo', nota_ora='9:00')))
+    risposta_a = _ok(_salva(napoli, _cella(c, '2026-10-02', testo='A')))
+    g = _griglia(napoli)
+    scenario = """
+    const P = apri(DATI.griglia);
+    const [i1, i2] = [DATI.griglia.giorni.indexOf('2026-10-01'), DATI.griglia.giorni.indexOf('2026-10-02')];
+    casella(DATI.id, i1, '1,30');
+    casella(DATI.id, i2, 'A');
+    P.applica(DATI.risposta_130, new Map([[`${DATI.id}|${i1}`, { coppia_id: DATI.id, data: '2026-10-01', testo: '1,30' }]]));
+    const fuoco = registro.fuoco.slice(-1)[0];
+    P.lasciaDomanda();
+    P.applica(DATI.risposta_a, new Map([[`${DATI.id}|${i2}`, { coppia_id: DATI.id, data: '2026-10-02', testo: 'A' }]]));
+    P.mostraStato();
+    const stato = document.getElementById('presenze-salvataggio');
+    return { fuoco, toast: registro.toast, stato: stato.innerHTML, titolo: stato.title };
+    """
+    x = _pagina_presenze(tmp_path, scenario, {'griglia': g, 'id': c, 'risposta_130': risposta_130,
+                                              'risposta_a': risposta_a})
+    prima = risposta_130['celle'][0]['alternative'][0]['lettura']
+    assert x['fuoco'] == f'pulsante {prima}'
+    assert any("02/10, Fittizio Bruno: Tolta la nota «Alunno entrato in ritardo»" in t for t, _ in x['toast']), x['toast']
+    assert not any('..' in t for t, _ in x['toast'])
+    assert '<span class="napoli-solo-largo">Salvato alle ' in x['stato'] and '1 casella da correggere' in x['stato']
+    assert x['titolo'].startswith('Salvato alle ') and x['titolo'].endswith(', tranne 1 casella da correggere')
 
 
 # ==================== prestazioni ====================

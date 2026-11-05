@@ -172,33 +172,45 @@ le ore del coordinatore; fogli firma e fattura arriveranno con i prossimi aggior
    si cambia.
 5. **Scrivi le ore nella griglia delle presenze.** In **Napoli > Presenze** c'è il mese del
    lotto come nel file del Comune: una riga per coppia operatore-alunno, una colonna per
-   giorno (da lunedì a sabato; i giorni di chiusura e quelli fuori dalle date della coppia
-   sono a righe grigie: le ore scritte in un giorno di chiusura contano lo stesso, con un
-   avviso arancione, quindi se quel giorno il servizio non c'era svuota la casella), la **VERIFICA** di ogni settimana (gialla se supera le ore del PEI,
+   giorno (da lunedì a sabato; le festività, i giorni di chiusura e quelli fuori dalle date
+   della coppia sono a righe grigie: le ore scritte in un giorno festivo o di chiusura
+   contano lo stesso, con un avviso arancione, quindi se quel giorno il servizio non c'era
+   svuota la casella), la **VERIFICA** di ogni settimana (gialla se supera le ore del PEI,
    rossa se le supera di oltre il 20%), il **totale** del mese e il **credito/debito** (ore
    previste meno ore riconosciute, come in Rendicontazione: verde = ore ancora dovute
    all'alunno, rosso = ore in più; con «≈» è una stima dal PEI, perché manca la
-   programmazione settimanale, e sotto la griglia c'è scritto «≈ = stima dal PEI»). Se un
-   alunno ha due titolari della stessa figura negli stessi giorni, scrivi le ore di ciascuna
-   coppia nell'anagrafica: altrimenti ognuno ha come previste il PEI intero e la riga ha un
-   avviso. Nelle caselle scrivi le ore svolte come nel file del Comune:
-   **2**, **1,5**, **0,75** oppure **1:30**; **F** ferie, **M** malattia, **P** permesso
-   dell'operatore (0 ore); **A** alunno assente (vale la metà delle ore programmate: se
-   Assisto non le conosce, te le chiede); casella vuota = giorno cancellato, anche con la sua
-   nota del giorno. Per un valore come **1,30** Assisto chiede se è un'ora e trenta minuti o
-   1,30 ore. Si salva da solo dopo 2 secondi (Ctrl+S salva subito): accanto al mese si legge
-   «Salvato alle ...». Se il collegamento si interrompe compare **«Modifiche non salvate»** con
-   il pulsante **Riprova a salvare** e Assisto riprova da solo: non chiudere la pagina finché
-   non torna «Salvato alle ...» (se provi a chiuderla, il browser chiede conferma). Frecce, Invio e Tab passano da una casella all'altra; si può incollare un
+   programmazione settimanale, e sotto la griglia c'è scritto «≈ = stima dal PEI»). Le ore
+   previste non contano le domeniche, le festività (quelle nazionali, Pasquetta e il 19
+   settembre, San Gennaro) e le chiusure del calendario di Napoli; le vacanze di Natale e di
+   Pasqua del calendario regionale non si calcolano: finché non sono nel calendario, sotto la
+   griglia c'è l'avviso «Vacanze non ancora nel calendario». Se un alunno ha due titolari
+   della stessa figura negli stessi giorni, scrivi le ore di ciascuna coppia nell'anagrafica:
+   altrimenti ognuno ha come previste il PEI intero e la riga ha un avviso. Nelle caselle
+   scrivi le ore svolte come nel file del Comune: **2**, **1,5**, **0,75** oppure **1:30**;
+   **F** ferie, **M** malattia, **P** permesso dell'operatore (0 ore); **A** alunno assente
+   (vale la metà delle ore programmate: se Assisto non le conosce, te le chiede); casella
+   vuota = giorno cancellato, anche con la sua nota del giorno. Per un valore come **1,30**
+   Assisto chiede se è un'ora e trenta minuti o 1,30 ore. Si salva da solo dopo 2 secondi
+   (Ctrl+S salva subito): accanto al mese si legge «Salvato alle ...». Se il collegamento si
+   interrompe compare **«Modifiche non salvate»** con il pulsante **Riprova a salvare** (sugli
+   schermi piccoli **Riprova**) e Assisto riprova da solo: non chiudere la pagina finché non
+   torna «Salvato alle ...» (se provi a chiuderla, il browser chiede conferma). Le caselle
+   **da correggere** (in rosso, per esempio una sigla sconosciuta) non sono salvate: se cambi
+   mese o lotto Assisto chiede se restare a correggerle, e chiudendo la pagina il browser
+   chiede conferma. Frecce, Invio e Tab passano da una casella all'altra; si può incollare un
    blocco di celle da Excel. Con **Nota del giorno** (o Maiusc+F2) segni un'assemblea o
    un'uscita didattica (contano le ore svolte), l'alunno entrato in ritardo o uscito prima
    con l'orario (ore svolte più metà della parte persa) o l'assenza recuperata (niente
-   metà). Cliccando sul nome dell'alunno si apre il dettaglio della coppia nel mese, con il
-   calcolo di ogni giorno. I filtri in alto scelgono scuola, operatore, figura, grado e
-   municipalità; **«N con avvisi»** mostra solo le righe da controllare. A mese finito,
-   **Chiudi il mese** blocca le ore del lotto (anche quelle del coordinatore); si riapre con
-   **Riapri il mese**, scrivendo il motivo, che resta nel registro attività. Le ore dei mesi
-   passati non si caricano: si scrivono qui da ora in avanti.
+   metà); la nota salva anche quello che è scritto nella casella. Se poi nella casella scrivi
+   qualcosa che non va più d'accordo con la nota (per esempio **A** in un giorno con il
+   ritardo, o le ore svolte con l'assenza recuperata), quella parte della nota si toglie da
+   sola e Assisto lo dice; Ctrl+Z rimette il giorno com'era. Cliccando sul nome dell'alunno
+   si apre il dettaglio della coppia nel mese, con il calcolo di ogni giorno. I filtri in
+   alto scelgono scuola, operatore, figura, grado e municipalità; **«N con avvisi»** mostra
+   solo le righe da controllare. Dall'ultimo giorno del mese, **Chiudi il mese** blocca le
+   ore del lotto (anche quelle del coordinatore); si riapre con **Riapri il mese**, scrivendo
+   il motivo, che resta nel registro attività. Le ore dei mesi passati non si caricano: si
+   scrivono qui da ora in avanti.
 
 Ctrl+Z su una pagina di Napoli annulla l'ultima modifica di Napoli (mai una di Roma),
 dopo una conferma. Le modifiche a nome, cognome, codice fiscale e note (anche le note

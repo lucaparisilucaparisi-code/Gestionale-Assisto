@@ -2,7 +2,8 @@
 
 Come il foglio "master" del Comune: una riga per coppia operatore-alunno (alunno,
 operatore, figura, ore PEI, sostituzione SI/NO), una colonna per giorno di servizio del
-mese (lunedi'-sabato; le domeniche non ci sono, le chiusure del calendario sono grigie),
+mese (lunedi'-sabato; le domeniche non ci sono, le festivita' e le chiusure del calendario
+sono grigie),
 la VERIFICA dopo ogni settimana, il totale del mese e il CREDITO/DEBITO di Napoli.
 Le ore si scrivono qui da ora in avanti (REGOLE 14: nessuno storico): ogni casella e' un
 giorno di napoli_presenze, l'unica fonte delle ore (D5).
@@ -24,8 +25,12 @@ Regole:
   oltre il PEI, rossa oltre il tetto); il credito/debito e' previste - erogate
   (napoli_calcoli.minuti_previsti e credito_debito: previste dalla programmazione
   settimanale se c'e', altrimenti dal PEI ripartito sui giorni di servizio, "stima dal
-  PEI"; erogate = ore riconosciute). Le ore di un sostituto contano nella riga del suo
-  titolare;
+  PEI"; i giorni di servizio sono senza le festivita' di napoli_calcoli.festivita e senza
+  le chiusure del calendario; erogate = ore riconosciute). Le ore di un sostituto contano
+  nella riga del suo titolare;
+- scrivendo solo nella casella, la parte della nota del giorno che non vale piu' con il
+  nuovo valore (il ritardo con 'A', 'assenza recuperata' con le ore svolte) si toglie da
+  sola e la risposta lo dice ('tolte');
 - un mese chiuso del lotto (napoli_mesi_chiusi) non si cambia: 409 MESE_CHIUSO_LOTTO, anche
   con Ctrl+Z. Il mese si chiude a mese finito e si riapre con un motivo, che resta nel
   registro attivita'. Niente ore nei giorni che devono ancora arrivare, fuori dalle date
@@ -52,8 +57,8 @@ SPIEGAZIONI = {
     'settimana_oltre_pei_piu_20': 'Una settimana supera il PEI di oltre il 20% (in rosso)',
     'ore_giorno_oltre_5': 'Un giorno ha più di 5 ore',
     'giorno_non_registrato': 'Ci sono giorni preparati ma non ancora registrati: valgono 0',
-    'ore_in_giorno_di_chiusura': 'Ore in un giorno di chiusura del calendario: contano lo stesso (se il servizio '
-                                 'non c\'era, svuota la casella)',
+    'ore_in_giorno_di_chiusura': 'Ore in un giorno festivo o di chiusura del calendario: contano lo stesso (se il '
+                                 'servizio non c\'era, svuota la casella)',
     'ore_fuori_dalle_date': 'Ore fuori dalle date della coppia',
     'ore_in_giorno_non_di_servizio': 'Ore in un giorno senza servizio (domenica)',
     'diverso_dalla_formula': 'Ore diverse dal calcolo con le regole di oggi',
@@ -76,6 +81,14 @@ MESSAGGI_CELLA = {
     'programmati_non_validi': 'Le ore programmate vanno da 0 a 12.',
     'svolte_oltre_il_programmato': 'Con il ritardo o l\'uscita anticipata le ore svolte non possono superare quelle '
                                    'programmate: controlla le ore o le ore programmate.',
+}
+# Scrivendo solo nella casella, la parte della nota del giorno che non vale piu' si toglie da
+# sola (_salva_una): che cosa e' stato tolto, per la pagina.
+MESSAGGI_TOLTE = {
+    'assente_e_parziale': 'Tolta la nota «{nota}»: con l\'alunno assente (A) non serve.',
+    'operatore_e_parziale': 'Tolta la nota «{nota}»: con l\'operatore assente (F, M o P) non serve.',
+    'recupero_senza_assenza': 'Tolta «Assenza recuperata»: vale solo per l\'alunno assente, in ritardo o uscito '
+                              'prima.',
 }
 TESTI_NOTA = {
     'evento': 'Assemblea, sciopero o evento della scuola',
@@ -197,6 +210,15 @@ class _Mese:
                 dove = self.eventi_lotto if c['scuola_id'] is None else self.eventi_scuola.setdefault(
                     c['scuola_id'], {})
             dove[giorno] = c['descrizione']
+        # il calendario del mese non ha ancora chiusure (vacanze, seggi): la pagina avvisa nei
+        # mesi con le vacanze di Natale o di Pasqua, che il calendario regionale fissa ogni anno
+        self.calendario_vuoto = not self.chiusure_lotto and not self.chiusure_scuola
+        # festivita' (napoli_calcoli.festivita): giorni chiusi di tutto il lotto, come le chiusure
+        # del calendario (una chiusura scritta nello stesso giorno tiene la sua descrizione)
+        self.festivi = {g: nome for g, nome in calc.festivita(anno).items() if g.month == mese}
+        for giorno, nome in self.festivi.items():
+            self.chiusure_lotto.setdefault(giorno, nome)
+        self.finito = self.al <= self.oggi       # dall'ultimo giorno il mese si chiude
 
     def chiusura_del_giorno(self, scuola_id, giorno):
         return self.chiusure_scuola.get(scuola_id, {}).get(giorno) or self.chiusure_lotto.get(giorno)
@@ -208,7 +230,7 @@ class _Mese:
                 out.append({'tipo': 'giorno', 'i': self.indice[valore], 'data': valore.isoformat(),
                             'numero': valore.day, 'nome': GIORNI_BREVI[valore.weekday()],
                             'chiuso': self.chiusure_lotto.get(valore), 'evento': self.eventi_lotto.get(valore),
-                            'futuro': valore > self.oggi})
+                            'festivo': valore in self.festivi, 'futuro': valore > self.oggi})
             else:
                 sett = calc.settimane_mese(self.anno, self.mese, self.servizio)[valore - 1]
                 out.append({'tipo': 'verifica', 'settimana': valore, 'dal': sett[0].isoformat(),
@@ -411,11 +433,10 @@ def _righe(m, alunni=None):
                 if set(giorni_coppia[a['id']]) & set(giorni_coppia[b['id']]):
                     per_riga[a['id']]['avvisi'].add('pei_su_piu_titolari')
                     per_riga[b['id']]['avvisi'].add('pei_su_piu_titolari')
-    finito = m.al < m.oggi
     for riga in righe:
         riga['previste_testo'] = None if riga['previste'] is None else calc.ore_brevi(riga['previste'])
         riga['cd_testo'] = None if riga['credito_debito'] is None else calc.ore_brevi(riga['credito_debito'])
-        if finito and not riga['totale'] and not riga['celle']:
+        if m.finito and not riga['totale'] and not riga['celle']:
             riga['avvisi'].add('coppia_senza_ore')
         if any(cella['k'] == 'prog' for cella in riga['celle'].values()):
             riga['avvisi'].add('giorno_non_registrato')
@@ -450,9 +471,21 @@ def _intestazione(m):
         'chiuso': m.chiusura is not None,
         'chiusura': ({'data': m.chiusura['data_chiusura'][:10], 'nota': m.chiusura.get('nota') or ''}
                      if m.chiusura else None),
-        'finito': m.al <= m.oggi,
+        'finito': m.finito,
         'quota_assenza': calc.numero_it(m.regole_mese['quota_assenza_alunno']),
+        'avviso_vacanze': _avviso_vacanze(m),
     }
+
+
+def _avviso_vacanze(m):
+    """Nei mesi con le vacanze di Natale o di Pasqua, finche' il calendario di Napoli del mese
+    non ha chiusure: le previste del credito/debito contano anche i giorni di vacanza (le
+    festivita' invece sono gia' tolte)."""
+    vacanze = calc.vacanze_da_calendario(m.anno, m.mese) if m.calendario_vuoto else []
+    if not vacanze:
+        return None
+    return (f'Le vacanze di {" e di ".join(vacanze)} non sono ancora nel calendario di Napoli: le ore previste (e '
+            'il credito/debito) contano anche quei giorni. Le festività sono già tolte.')
 
 
 def griglia(lotto_id, anno, mese):
@@ -673,6 +706,21 @@ def _salva_una(conn, m, c, giorno, p, voce, modifiche, ora):
     if testo == '' and nota_tipo is None and nota and 'testo' not in voce:
         return no('Per scrivere la descrizione scrivi anche le ore del giorno (anche 0) o scegli che cosa è successo.')
     esito = calc.giorno_da_griglia(testo, conferma or None, programmati, nota_tipo, recuperata, regole)
+    # scrivendo solo nella casella (come in Excel), la parte della nota del giorno che con il
+    # nuovo valore non vale piu' si toglie da sola, e la pagina lo dice: il ritardo o l'uscita
+    # con «A» o con F, M, P; «Assenza recuperata» con le ore svolte o con l'operatore assente.
+    # Ctrl+Z rimette il giorno com'era. Quello che arriva dalla finestra della nota resta com'e'.
+    tolte = []
+    while esito['esito'] == 'errore' and 'testo' in voce:
+        if esito['codice'] in ('assente_e_parziale', 'operatore_e_parziale') and 'nota_tipo' not in voce:
+            tolte.append(MESSAGGI_TOLTE[esito['codice']].format(nota=TESTI_NOTA[nota_tipo]))
+            nota_tipo = ora_nota = None
+        elif esito['codice'] == 'recupero_senza_assenza' and 'recuperata' not in voce and recuperata:
+            tolte.append(MESSAGGI_TOLTE['recupero_senza_assenza'])
+            recuperata = False
+        else:
+            break
+        esito = calc.giorno_da_griglia(testo, conferma or None, programmati, nota_tipo, recuperata, regole)
     if esito['esito'] == 'da_confermare':
         lettura = esito['lettura']
         return {'risultato': {'esito': 'da_confermare', 'testo': testo, 'domanda': lettura.get('domanda'),
@@ -684,6 +732,11 @@ def _salva_una(conn, m, c, giorno, p, voce, modifiche, ora):
                               'messaggio': 'Per contare la metà servono le ore programmate di quel giorno.'},
                 'cambio': None}
     if esito['esito'] == 'errore':
+        if esito['codice'] == 'svolte_oltre_il_programmato' and 'nota_tipo' not in voce:
+            # il ritardo o l'uscita viene dalla nota del giorno, non da quello che si e' scritto ora
+            return no(f'Questo giorno ha la nota «{TESTI_NOTA[nota_tipo]}» con {calc.hhmm(programmati)} programmate: '
+                      'le ore svolte non possono essere di più. Controlla le ore, oppure cambia la nota o le ore '
+                      'programmate con «Nota del giorno» (Maiusc+F2).', codice=esito['codice'])
         modello = MESSAGGI_CELLA.get(esito['codice'], 'Questo valore non si può salvare: controllalo.')
         return no(modello.format(testo=testo), codice=esito['codice'])
     if esito['esito'] == 'vuoto':
@@ -737,8 +790,10 @@ def _salva_una(conn, m, c, giorno, p, voce, modifiche, ora):
         testo_libero = False         # una riga nuova si annulla togliendola: niente testo di prima da ricordare
     lettura = esito['lettura']
     avvisi = [a for a in lettura.get('avvisi', []) if a.startswith('letto_come') or a == 'ore_arrotondate_al_minuto']
-    return {'risultato': {'esito': 'salvata', 'minuti': campi['minuti_riconosciuti'], 'letture': avvisi},
-            'cambio': cambio, 'testo_libero': testo_libero}
+    risultato = {'esito': 'salvata', 'minuti': campi['minuti_riconosciuti'], 'letture': avvisi}
+    if tolte:
+        risultato['tolte'] = tolte
+    return {'risultato': risultato, 'cambio': cambio, 'testo_libero': testo_libero}
 
 
 def _stesso(a, b):
