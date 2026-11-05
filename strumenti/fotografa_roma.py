@@ -168,6 +168,9 @@ ROTTE_NAPOLI = frozenset({
     '/api/napoli/coppie/<int:coppia_id>',
     '/api/napoli/coppie/<int:coppia_id>/chiudi',
     '/api/napoli/coppie/<int:coppia_id>/subentro',
+    # passo 1.8 (con le minori di 1.6): elenchi con la ricerca in POST, ore del coordinatore
+    '/api/napoli/lotti/<int:lotto_id>/anagrafiche/elenco',
+    '/api/napoli/lotti/<int:lotto_id>/coordinamento',
 })
 PREFISSI_NAPOLI = ('/napoli', '/api/napoli')
 

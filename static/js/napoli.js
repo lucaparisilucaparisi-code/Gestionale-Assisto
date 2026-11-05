@@ -9,7 +9,8 @@
  *   Ctrl+Z di Napoli. window.annullaPagina: app.js lo usa al posto dell'annulla di Roma,
  *   cosi' Ctrl+Z su una pagina di Napoli non annulla mai un'azione di Roma (e viceversa);
  * - NapoliProcedura: "Crea il primo lotto" (anche "Nuovo lotto") in tre passi;
- * - NapoliMese, NapoliAnagrafiche, NapoliImport e NapoliImpostazioni: le schede
+ * - NapoliMese (con NapoliCoordinatore: le ore del coordinatore del mese, passo 1.8),
+ *   NapoliAnagrafiche, NapoliImport e NapoliImpostazioni: le schede
  *   (Anagrafiche: alunni, operatori, scuole e plessi, coppie, con filtri, schede e moduli;
  *   Importa: dal file Excel "master" l'anagrafica, l'azione principale, o in una parte
  *   secondaria le ore di un mese; anteprima, scelte da confermare, caricamento e
@@ -141,6 +142,7 @@ const NapoliComune = {
     figure: null,
     alCambioLotto: null,
     dopoAnnulla: null,
+    primaDiAnnullare: null,
 
     lottoRicordato() {
         try { return Number(localStorage.getItem(NAPOLI_CHIAVE_LOTTO)) || null; } catch (e) { return null; }
@@ -202,6 +204,8 @@ const NapoliComune = {
     async annulla() {
         // conferma gia' aperta (una che si sta chiudendo resta nella pagina ancora 300 ms: non conta)
         if (document.querySelector('#confirm-dialog-overlay.active')) return;
+        // le caselle ancora da salvare partono prima: Ctrl+Z annulla l'ultima modifica davvero fatta
+        if (typeof this.primaDiAnnullare === 'function') await this.primaDiAnnullare();
         let info;
         try {
             info = await apiCall('/api/napoli/annulla/ultima');
@@ -439,6 +443,7 @@ const NapoliMese = {
     async avvia() {
         NapoliComune.alCambioLotto = () => this.disegna();
         NapoliComune.dopoAnnulla = async () => { await NapoliComune.caricaLotti(); await this.disegna(); };
+        NapoliComune.primaDiAnnullare = () => NapoliCoordinatore.salvaInSospeso();
         document.getElementById('napoli-mese').addEventListener('click', (e) => {
             if (e.target.closest('[data-azione="crea-lotto"]')) {
                 NapoliProcedura.apri(async (lotto) => { await NapoliComune.caricaLotti(lotto.id); await this.disegna(); });
@@ -458,8 +463,10 @@ const NapoliMese = {
         const lotto = NapoliComune.lotto;
         if (!lotto) {
             box.innerHTML = `<div class="card">${napoliBenvenuto()}</div>`;
+            await NapoliCoordinatore.carica();
             return;
         }
+        NapoliCoordinatore.carica();          // il riquadro delle ore del coordinatore, sotto i controlli
         let controlli;
         try {
             controlli = await apiCall(`/api/napoli/lotti/${lotto.id}/controlli`);
@@ -497,7 +504,330 @@ const NapoliMese = {
                     </details>` : ''}
                 </div>
             </div>
-            <p class="napoli-nota">L'anagrafica (alunni, operatori, scuole, coppie e PEI) si carica dal file Excel del coordinatore nella scheda <a href="/napoli/import">Importa</a> e si controlla o si corregge nella scheda <a href="/napoli/anagrafiche">Anagrafiche</a>. Presenze, fogli firma e fattura del mese arriveranno nella sezione Napoli con i prossimi aggiornamenti di Assisto.</p>`;
+            <p class="napoli-nota">L'anagrafica (alunni, operatori, scuole, coppie e PEI) si carica dal file Excel del coordinatore nella scheda <a href="/napoli/import">Importa</a> e si controlla o si corregge nella scheda <a href="/napoli/anagrafiche">Anagrafiche</a>. Le ore del coordinatore si scrivono qui sotto. Presenze, fogli firma e fattura del mese arriveranno nella sezione Napoli con i prossimi aggiornamenti di Assisto.</p>`;
+    },
+};
+
+// ==================== ore del coordinatore (scheda Mese, passo 1.8) ====================
+
+const NAPOLI_COORD_ATTESA = 2000;        // come il salvataggio automatico della Rendicontazione
+const NAPOLI_COORD_MESI_VISIBILI = 6;    // gli altri mesi con «Mostra anche i mesi prima»
+const NAPOLI_COORD_ICONA_OK = 'M5 13l4 4L19 7';
+const NAPOLI_COORD_ICONA_ERRORE = 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z';
+
+/**
+ * Il totale mensile delle ore del coordinatore per contratto applicativo e grado (REGOLE 12):
+ * una casella per riga, con il salvataggio automatico (dopo 2 secondi o uscendo dalla
+ * casella) e la navigazione da tastiera della Rendicontazione (Invio e frecce: la casella
+ * sotto o sopra). Ogni riga si salva da sola (PUT .../coordinamento, solo i campi cambiati);
+ * il controllo vero delle ore e' sul server, che risponde con il messaggio da mostrare sotto
+ * la riga. Un mese chiuso ha le caselle bloccate.
+ */
+const NapoliCoordinatore = {
+    dati: null,
+    righe: new Map(),        // chiave -> { riga, mese, salvato, corrente, timer, inVolo, ancora, errore, lettura }
+    tuttiIMesi: false,
+    pronta: false,
+    ultimoSalvataggio: null,
+
+    el(id) { return document.getElementById(id); },
+
+    prepara() {
+        if (this.pronta) return;
+        this.pronta = true;
+        const box = this.el('coord-contenuto');
+        box.addEventListener('input', (e) => {
+            if (e.target.matches('input[data-coord]')) this.modificata(e.target);
+        });
+        box.addEventListener('change', (e) => {
+            if (e.target.matches('input[data-coord]')) this.salvaRiga(e.target.closest('tr').dataset.chiave);
+        });
+        box.addEventListener('keydown', (e) => {
+            if (e.target.matches('input[data-coord]')) this.tasti(e);
+        });
+        // uscendo dalla casella: il valore come l'ha salvato il server (71.55 -> 71,55)
+        box.addEventListener('focusout', (e) => {
+            if (e.target.matches('input[data-coord]')) {
+                const chiave = e.target.closest('tr').dataset.chiave;
+                setTimeout(() => this.aggiornaRiga(chiave), 0);
+            }
+        });
+        box.addEventListener('click', (e) => {
+            if (!e.target.closest('[data-azione="coord-tutti"]')) return;
+            this.tuttiIMesi = !this.tuttiIMesi;
+            this.disegnaTabella();
+        });
+        // uscita dalla pagina entro i 2 secondi: le caselle cambiate partono subito
+        window.addEventListener('pagehide', () => this.inviaInUscita());
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') this.inviaInUscita();
+        });
+    },
+
+    async carica() {
+        const card = this.el('napoli-coordinatore');
+        if (!card) return;
+        const lotto = NapoliComune.lotto;
+        this.prepara();
+        await this.salvaInSospeso();         // cambio di lotto o Ctrl+Z: prima le caselle in sospeso
+        if (!lotto) { card.hidden = true; this.dati = null; return; }
+        let dati;
+        try {
+            dati = await apiCall(`/api/napoli/lotti/${lotto.id}/coordinamento`);
+        } catch (e) {
+            card.hidden = false;
+            this.el('coord-contenuto').innerHTML = `<div class="alert alert-danger">${escapeHtml(e.message || 'Ore del coordinatore non disponibili')}</div>`;
+            return;
+        }
+        if (!NapoliComune.lotto || NapoliComune.lotto.id !== dati.lotto.id) return;   // lotto cambiato nel frattempo
+        this.dati = dati;
+        this.righe = new Map();
+        dati.mesi.forEach(m => m.righe.forEach(r => this.righe.set(r.chiave, {
+            riga: r, mese: m, salvato: { ore: r.ore, nota: r.nota }, corrente: null, timer: null, inVolo: null,
+            ancora: false, errore: null, lettura: null,
+        })));
+        card.hidden = false;
+        this.disegnaTabella();
+        this.mostraStato();
+    },
+
+    disegnaTabella() {
+        const d = this.dati;
+        const box = this.el('coord-contenuto');
+        if (!d.contratti) {
+            box.innerHTML = `<p class="napoli-coord-vuoto">Per scrivere le ore del coordinatore serve almeno un contratto applicativo del lotto (con il numero, il grado e le date).
+                <a class="btn btn-sm btn-secondary" href="/napoli/impostazioni#contratti">Aggiungi un contratto</a></p>`;
+            return;
+        }
+        if (!d.mesi.length) {
+            const f = d.futuri[0];
+            box.innerHTML = `<p class="napoli-coord-vuoto">${f
+                ? `Il contratto ${escapeHtml(f.numero)} comincia il ${escapeHtml(f.dal_testo)}: le ore del coordinatore si scrivono da quel mese.`
+                : 'Nessun mese da compilare: i contratti del lotto sono già finiti.'}</p>`;
+            return;
+        }
+        const mesi = this.tuttiIMesi ? d.mesi : d.mesi.slice(0, NAPOLI_COORD_MESI_VISIBILI);
+        const altri = d.mesi.length - NAPOLI_COORD_MESI_VISIBILI;
+        box.innerHTML = `
+            <div class="table-responsive napoli-coord-tabella-box">
+                <table class="table napoli-tabella-coordinatore">
+                    <thead><tr>
+                        <th scope="col">Contratto applicativo</th>
+                        <th scope="col">Periodo</th>
+                        <th scope="col" class="napoli-numero">Ore del mese</th>
+                        <th scope="col">Nota (facoltativa)</th>
+                    </tr></thead>
+                    ${mesi.map(m => this.htmlMese(m)).join('')}
+                </table>
+            </div>
+            ${altri > 0 ? `<button type="button" class="btn btn-ghost btn-sm napoli-coord-tutti" data-azione="coord-tutti">${this.tuttiIMesi
+                ? 'Mostra solo gli ultimi mesi' : `Mostra anche i mesi prima (${altri})`}</button>` : ''}
+            ${d.futuri.length ? `<p class="napoli-aiuto">${d.futuri.map(f => `Il contratto ${escapeHtml(f.numero)} (${escapeHtml(f.grado_testo)}) comincia il ${escapeHtml(f.dal_testo)}: le sue ore si scrivono da quel mese.`).join(' ')}</p>` : ''}`;
+        this.righe.forEach((st, chiave) => this.aggiornaRiga(chiave));
+    },
+
+    htmlMese(m) {
+        return `<tbody class="napoli-coord-mese${m.chiuso ? ' chiuso' : ''}">
+            <tr class="napoli-coord-mese-riga"><th colspan="4" scope="rowgroup">${escapeHtml(m.testo)}${m.chiuso
+                ? ' <span class="badge badge-secondary badge-sm" title="Il mese del lotto è chiuso: le ore non si cambiano">Mese chiuso</span>' : ''}</th></tr>
+            ${m.righe.map(r => this.htmlRiga(r, m)).join('')}
+        </tbody>`;
+    },
+
+    htmlRiga(r, m) {
+        const st = this.righe.get(r.chiave);
+        const v = st.corrente || st.salvato;
+        const dove = `${m.testo}, contratto ${r.numero}, ${r.grado_testo}`;
+        const bloccata = m.chiuso ? ' disabled' : '';
+        return `<tr data-chiave="${escapeHtml(r.chiave)}" class="napoli-coord-riga">
+                <td><span class="napoli-figura-nome">Contratto ${escapeHtml(r.numero)}</span>
+                    <div class="napoli-sotto-in">${escapeHtml(napoliMaiuscola(r.grado_testo))}</div></td>
+                <td>${escapeHtml(r.periodo_testo)}${r.mese_intero || r.fuori_contratto ? '' : '<div class="napoli-sotto-in">parte del mese</div>'}</td>
+                <td class="napoli-numero"><input type="text" class="table-input napoli-coord-ore" data-coord="ore"
+                    inputmode="decimal" autocomplete="off" value="${escapeHtml(v.ore)}" placeholder="${m.chiuso ? '' : 'da scrivere'}"
+                    aria-label="Ore del coordinatore, ${escapeHtml(dove)}" aria-describedby="coord-msg-${escapeHtml(r.chiave)}"${bloccata}></td>
+                <td><input type="text" class="form-control napoli-coord-nota" data-coord="nota" maxlength="200" autocomplete="off"
+                    value="${escapeHtml(v.nota)}" placeholder="${m.chiuso ? '' : 'facoltativa'}"
+                    aria-label="Nota delle ore del coordinatore, ${escapeHtml(dove)}"${bloccata}></td>
+            </tr>
+            <tr class="napoli-coord-messaggio" data-messaggio="${escapeHtml(r.chiave)}" hidden>
+                <td colspan="4"><div id="coord-msg-${escapeHtml(r.chiave)}"></div></td>
+            </tr>`;
+    },
+
+    /** Riga e messaggio di una riga, senza ridisegnare la tabella (la casella attiva resta). */
+    aggiornaRiga(chiave) {
+        const st = this.righe.get(chiave);
+        const tr = this.el('coord-contenuto').querySelector(`tr[data-chiave="${CSS.escape(chiave)}"]`);
+        if (!st || !tr) return;
+        const ore = tr.querySelector('[data-coord="ore"]');
+        const nota = tr.querySelector('[data-coord="nota"]');
+        // il valore salvato come lo scrive il server (71.55 -> 71,55), se la casella non e' cambiata dopo
+        if (!st.corrente) {
+            if (document.activeElement !== ore) ore.value = st.salvato.ore;
+            if (document.activeElement !== nota) nota.value = st.salvato.nota;
+        }
+        ore.classList.toggle('input-error', !!st.errore && st.errore.campo !== 'nota');
+        nota.classList.toggle('input-error', !!st.errore && st.errore.campo === 'nota');
+        // "cambiata, da salvare" (azzurra) solo senza errore: una casella sbagliata resta rossa
+        ore.classList.toggle('changed', !st.errore && !!st.corrente && st.corrente.ore !== (st.salvato.ore || ''));
+        nota.classList.toggle('changed', !st.errore && !!st.corrente && st.corrente.nota !== (st.salvato.nota || ''));
+        ore.disabled = nota.disabled = !!st.mese.chiuso;
+        const riga = tr.nextElementSibling;
+        const box = riga.querySelector('div');
+        const testo = st.errore ? st.errore.messaggio : (st.lettura || '');
+        box.className = st.errore ? 'napoli-coord-errore' : 'napoli-coord-lettura';
+        box.setAttribute('role', st.errore ? 'alert' : 'status');
+        box.textContent = testo;
+        riga.hidden = !testo;
+    },
+
+    valori(chiave) {
+        const tr = this.el('coord-contenuto').querySelector(`tr[data-chiave="${CSS.escape(chiave)}"]`);
+        if (!tr) {                // riga nascosta («Mostra solo gli ultimi mesi»): i valori ricordati
+            const st = this.righe.get(chiave);
+            return { ...(st.corrente || st.salvato) };
+        }
+        return { ore: tr.querySelector('[data-coord="ore"]').value.trim(), nota: tr.querySelector('[data-coord="nota"]').value.trim() };
+    },
+
+    modificata(input) {
+        const chiave = input.closest('tr').dataset.chiave;
+        const st = this.righe.get(chiave);
+        if (!st) return;
+        st.corrente = this.valori(chiave);
+        st.ancora = true;
+        clearTimeout(st.timer);
+        st.timer = setTimeout(() => this.salvaRiga(chiave), NAPOLI_COORD_ATTESA);
+        this.aggiornaRiga(chiave);
+        this.mostraStato('in_sospeso');
+    },
+
+    /** Solo i campi cambiati rispetto a quelli salvati; null se non e' cambiato niente. */
+    corpo(st) {
+        if (!st.corrente) return null;
+        const r = st.riga;
+        const corpo = { anno: r.anno, mese: r.mese, contratto_id: r.contratto_id, grado: r.grado };
+        if (st.corrente.ore !== (st.salvato.ore || '')) corpo.ore = st.corrente.ore;
+        if (st.corrente.nota !== (st.salvato.nota || '')) corpo.nota = st.corrente.nota;
+        return ('ore' in corpo || 'nota' in corpo) ? corpo : null;
+    },
+
+    async salvaRiga(chiave) {
+        const st = this.righe.get(chiave);
+        if (!st) return;
+        clearTimeout(st.timer);
+        st.timer = null;
+        if (st.inVolo) { st.ancora = true; return st.inVolo; }      // riparte quando finisce quello in corso
+        st.ancora = false;
+        const corpo = this.corpo(st);
+        if (!corpo) {
+            // di nuovo il valore salvato (anche dopo un errore): niente da mandare
+            if (st.corrente || st.errore) { st.corrente = null; st.errore = null; this.aggiornaRiga(chiave); }
+            this.mostraStato();
+            return;
+        }
+        const lotto = this.dati.lotto.id;
+        this.mostraStato('salvo');
+        st.inVolo = (async () => {
+            try {
+                const r = await apiCall(`/api/napoli/lotti/${lotto}/coordinamento`, { method: 'PUT', body: JSON.stringify(corpo) });
+                if ('ore' in corpo) st.salvato.ore = r.riga.ore;
+                if ('nota' in corpo) st.salvato.nota = r.riga.nota;
+                Object.assign(st.riga, { id: r.riga.id, ore: r.riga.ore, nota: r.riga.nota, ore_cent: r.riga.ore_cent });
+                st.errore = null;
+                st.lettura = r.lettura || null;
+                // se le caselle non sono cambiate mentre si salvava, la riga e' tutta salvata
+                const ora = this.valori(chiave);
+                const oreUguali = 'ore' in corpo ? ora.ore === corpo.ore : ora.ore === (st.salvato.ore || '');
+                const noteUguali = 'nota' in corpo ? ora.nota === corpo.nota : ora.nota === (st.salvato.nota || '');
+                st.corrente = oreUguali && noteUguali ? null : ora;
+                this.ultimoSalvataggio = new Date();          // la lettura ("71.55" = 71,55) si vede sotto la riga
+            } catch (e) {
+                st.errore = { messaggio: e.message || 'Salvataggio non riuscito: riprova.', campo: (e.data && e.data.campo) || 'ore' };
+                if (e.code === 'MESE_CHIUSO_LOTTO') {
+                    st.mese.chiuso = true;          // chiuso nel frattempo: le caselle del mese si bloccano
+                    this.righe.forEach((altra, k) => { if (altra.mese === st.mese) this.aggiornaRiga(k); });
+                }
+            } finally {
+                st.inVolo = null;
+            }
+            this.aggiornaRiga(chiave);
+            if (st.ancora) await this.salvaRiga(chiave);
+            this.mostraStato();
+        })();
+        return st.inVolo;
+    },
+
+    /** Le caselle cambiate e non ancora salvate partono adesso (Ctrl+Z, cambio di lotto). */
+    async salvaInSospeso() {
+        const attese = [];
+        this.righe.forEach((st, chiave) => {
+            if (st.timer || st.inVolo || (st.corrente && st.ancora)) attese.push(this.salvaRiga(chiave));
+        });
+        await Promise.all(attese);
+    },
+
+    /** Pagina chiusa entro i 2 secondi: fetch keepalive, che il browser porta a termine lo stesso. */
+    inviaInUscita() {
+        if (!this.dati) return;
+        this.righe.forEach((st, chiave) => {
+            if (!st.timer) return;
+            clearTimeout(st.timer);
+            st.timer = null;
+            const corpo = this.corpo(st);
+            if (!corpo) return;
+            fetch(`/api/napoli/lotti/${this.dati.lotto.id}/coordinamento`, {
+                method: 'PUT', keepalive: true, credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo),
+            }).then(r => (r.ok ? r.json() : null)).then((r) => {
+                // scheda solo nascosta (la pagina e' ancora aperta): la riga torna "salvata"
+                if (!r || !r.riga) return;
+                if ('ore' in corpo) st.salvato.ore = r.riga.ore;
+                if ('nota' in corpo) st.salvato.nota = r.riga.nota;
+                const ora = this.valori(chiave);
+                if (ora.ore === (corpo.ore ?? st.salvato.ore) && ora.nota === (corpo.nota ?? st.salvato.nota)) st.corrente = null;
+                st.errore = null;
+                this.ultimoSalvataggio = new Date();
+                this.aggiornaRiga(chiave);
+                this.mostraStato();
+            }).catch(() => { /* la pagina si sta chiudendo, o l'errore si vedra' al prossimo salvataggio */ });
+        });
+    },
+
+    /** Invio e frecce come in Rendicontazione: la casella della stessa colonna sotto o sopra. */
+    tasti(e) {
+        let passo = 0;
+        if (e.key === 'Enter' || e.key === 'ArrowDown') passo = 1;
+        else if (e.key === 'ArrowUp') passo = -1;
+        else return;
+        e.preventDefault();
+        const colonna = [...this.el('coord-contenuto').querySelectorAll(`input[data-coord="${e.target.dataset.coord}"]`)]
+            .filter(i => !i.disabled);
+        const prossima = colonna[colonna.indexOf(e.target) + passo];
+        if (prossima) { prossima.focus(); prossima.select(); }
+        else if (e.key === 'Enter') e.target.blur();          // ultima riga: si chiude la casella e si salva
+    },
+
+    mostraStato(tipo) {
+        const box = this.el('coord-salvataggio');
+        const testo = (stato, icona, scritta) => {
+            box.className = ['auto-save-indicator', stato].filter(Boolean).join(' ');
+            box.innerHTML = `${icona ? napoliSvg(icona, 14) : ''}<span id="coord-salvataggio-testo">${escapeHtml(scritta)}</span>`;
+        };
+        if (tipo === 'in_sospeso') return testo('pending', '', 'Modifiche in sospeso…');
+        if (tipo === 'salvo') return testo('saving', '', 'Salvataggio…');
+        const st = [...this.righe.values()];
+        if (st.some(x => x.timer || x.inVolo)) return testo('pending', '', 'Modifiche in sospeso…');
+        const errori = st.filter(x => x.errore).length;
+        const ora = this.ultimoSalvataggio
+            ? this.ultimoSalvataggio.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : null;
+        if (errori) {
+            const caselle = errori === 1 ? '1 casella da correggere' : `${errori} caselle da correggere`;
+            return testo('errore', NAPOLI_COORD_ICONA_ERRORE, ora ? `Salvato alle ${ora}, tranne ${caselle}` : caselle);
+        }
+        if (ora) return testo('saved', NAPOLI_COORD_ICONA_OK, `Salvato alle ${ora}`);
+        return testo('', NAPOLI_COORD_ICONA_OK, 'Salvataggio automatico');
     },
 };
 
@@ -681,7 +1011,9 @@ const NapoliAnagrafiche = {
         const r = this.riepilogo;
         const { parte, scheda } = this.indirizzo();
         // anagrafica vuota: l'azione principale e' caricarla dal file Excel (REGOLE 14)
-        if (r.vuota && !r.conteggi.operatori && !scheda) {
+        // vuota = senza scuole, alunni e coppie del lotto: gli operatori sono della
+        // cooperativa e uno aggiunto a mano non vuol dire che l'anagrafica sia caricata
+        if (r.vuota && !scheda) {
             vuota.hidden = false;
             contenuto.hidden = true;
             return;
@@ -782,14 +1114,17 @@ const NapoliAnagrafiche = {
         const lotto = NapoliComune.lotto;
         const parte = this.parte;
         const f = this.filtri[parte];
-        const parametri = new URLSearchParams();
+        // filtri e ricerca nel corpo di una POST: un nome o un codice fiscale scritto nella
+        // ricerca (anche a meta') non finisce nell'indirizzo, cioe' nei log
+        const corpo = { parte };
         Object.entries(f).forEach(([k, v]) => {
-            if (v && (k === 'cerca' || NAPOLI_FILTRI_PARTE[parte].includes(k))) parametri.set(k, v);
+            if (v && (k === 'cerca' || NAPOLI_FILTRI_PARTE[parte].includes(k))) corpo[k] = v;
         });
         const seq = ++this.seq;
         const box = this.el('elenco-tabella');
         try {
-            const r = await apiCall(`/api/napoli/lotti/${lotto.id}/${parte}?${parametri}`);
+            const r = await apiCall(`/api/napoli/lotti/${lotto.id}/anagrafiche/elenco`, {
+                method: 'POST', body: JSON.stringify(corpo) });
             if (seq !== this.seq) return;       // risposta superata da un filtro piu' recente
             this.righe = r.righe;
             this.el('elenco-conta').textContent = `${r.totale} ${r.totale === 1 ? 'riga' : 'righe'}`;
@@ -3134,6 +3469,7 @@ const NapoliImpostazioni = {
 window.NapoliComune = NapoliComune;
 window.NapoliProcedura = NapoliProcedura;
 window.NapoliMese = NapoliMese;
+window.NapoliCoordinatore = NapoliCoordinatore;
 window.NapoliAnagrafiche = NapoliAnagrafiche;
 window.NapoliImport = NapoliImport;
 window.NapoliImpostazioni = NapoliImpostazioni;

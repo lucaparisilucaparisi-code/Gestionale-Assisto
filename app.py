@@ -1564,10 +1564,15 @@ def api_import_dipendenti():
 
 @app.route('/api/utente/<int:utente_id>/assegnazioni', methods=['GET'])
 def api_get_assegnazioni_utente(utente_id):
-    """Operatori assegnati a un assistito + bilancio ore."""
+    """Operatori assegnati a un assistito + bilancio ore. Con `?mese=YYYY-MM` (la scheda
+    dell'utente manda il mese di oggi) il bilancio usa il monte ore di quel mese,
+    variazioni comprese; senza, la base dell'anagrafica (come prima)."""
+    mese = request.args.get('mese')
+    if mese is not None and not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', mese):
+        return jsonify({'error': 'Mese non valido (formato YYYY-MM)'}), 400
     return jsonify({
         'assegnazioni': db.get_assegnazioni_utente(utente_id),
-        'bilancio': db.get_bilancio_assegnazioni_utente(utente_id),
+        'bilancio': db.get_bilancio_assegnazioni_utente(utente_id, mese),
     })
 
 

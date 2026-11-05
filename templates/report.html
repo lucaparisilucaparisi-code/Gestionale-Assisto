@@ -638,11 +638,42 @@ function variazioniConfrontoAnnuale(datiAnni, mese, oggi = new Date()) {
         let nota = null;
         if (!(d.conDati > 0)) nota = 'dati non ancora inseriti';
         else if (d.anno * 12 + Number(mese) >= meseOggi) nota = 'mese non ancora concluso';
-        const diff = nota === null && prima && prima.oreTotal > 0
-            ? (d.oreTotal - prima.oreTotal) / prima.oreTotal * 100
+        // ore al centesimo e variazione al decimo come il server (Statistiche): prima il
+        // Report arrotondava solo scrivendo, per esempio +6,3% contro +6,2% per 16 e 17 ore
+        const ore = arrotondaComePython(d.oreTotal, 2), orePrima = prima ? arrotondaComePython(prima.oreTotal, 2) : 0;
+        const diff = nota === null && prima && orePrima > 0
+            ? arrotondaComePython((ore - orePrima) / orePrima * 100, 1)
             : null;
         return { diff, nota };
     });
+}
+
+/**
+ * round(x, cifre) di Python, che arrotonda la variazione di Statistiche ›
+ * Confronto annuale: il valore esatto del numero al decimale piu' vicino e, a meta'
+ * esatta, alla cifra pari (6,25 -> 6,2; formatNumero da solo scriverebbe 6,3). Il valore
+ * esatto viene dai bit del numero (mantissa x 2^esponente), con i BigInt.
+ */
+function arrotondaComePython(x, cifre) {
+    if (!isFinite(x) || x === 0 || Math.abs(x) >= 1e12) return x;
+    const vista = new DataView(new ArrayBuffer(8));
+    vista.setFloat64(0, Math.abs(x));
+    const bit = vista.getBigUint64(0);
+    const campoEsponente = Number((bit >> 52n) & 0x7FFn);
+    let mantissa = bit & 0xFFFFFFFFFFFFFn;
+    let esponente = -1074;                               // numeri piccolissimi (subnormali)
+    if (campoEsponente) { mantissa |= 1n << 52n; esponente = campoEsponente - 1075; }
+    const scala = 10n ** BigInt(cifre);
+    let unita;
+    if (esponente >= 0) {
+        unita = mantissa * 2n ** BigInt(esponente) * scala;
+    } else {
+        const numeratore = mantissa * scala, divisore = 2n ** BigInt(-esponente);
+        unita = numeratore / divisore;
+        const doppioResto = 2n * (numeratore % divisore);
+        if (doppioResto > divisore || (doppioResto === divisore && unita % 2n === 1n)) unita += 1n;
+    }
+    return (x < 0 ? -1 : 1) * Number(unita) / 10 ** cifre;
 }
 
 async function generaConfrontoAnnuale() {
@@ -672,7 +703,7 @@ async function generaConfrontoAnnuale() {
                 variazione = `-<br><span class="text-muted text-xs">${nota}</span>`;
             } else if (diff !== null) {
                 const color = diff >= 0 ? 'var(--success)' : 'var(--danger)';
-                variazione = `<span style="color: ${color}">${diff >= 0 ? '+' : ''}${formatNumero(diff, 1)}%</span>`;
+                variazione = `<span style="color: ${color}">${diff > 0 ? '+' : ''}${formatNumero(diff, 1)}%</span>`;
             }
             html += `<tr>
                 <td><strong>${d.annoScolastico}</strong></td>

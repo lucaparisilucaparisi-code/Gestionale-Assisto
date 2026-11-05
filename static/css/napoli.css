@@ -168,6 +168,47 @@ details.napoli-controlli-ok > summary { padding: 12px 16px; }
 .napoli-controlli-ok .da-fare-titolo { font-weight: 400; color: var(--text-secondary); }
 .napoli-nota { color: var(--text-tertiary); font-size: 0.85rem; margin: 16px 2px 0; }
 
+/* ore del coordinatore (passo 1.8): una casella per mese, contratto e grado */
+.napoli-coordinatore { margin-top: 20px; }
+.napoli-coord-titolo { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.napoli-coord-corpo .napoli-intro { margin-bottom: 12px; }
+.napoli-coord-tabella-box { border: 1px solid var(--border-color); border-radius: var(--radius); }
+.napoli-tabella-coordinatore { margin: 0; }
+.napoli-tabella-coordinatore td, .napoli-tabella-coordinatore th { padding: 8px 14px; vertical-align: middle; }
+.napoli-tabella-coordinatore thead th:nth-child(3) { width: 150px; }
+.napoli-tabella-coordinatore thead th:nth-child(4) { width: 40%; }
+/* il mese sopra le sue righe: piu' grande delle intestazioni delle colonne (refine.css le
+   vuole a 0,7rem con !important) */
+.napoli-coord-mese-riga th {
+    background: var(--bg-tertiary); font-weight: 600; text-transform: none; letter-spacing: 0;
+    font-size: 0.88rem !important; color: var(--text-primary) !important;
+}
+/* la casella sbagliata resta rossa (anche la nota, che e' un .form-control di refine.css) */
+.napoli-tabella-coordinatore input.input-error {
+    border-color: var(--danger) !important; background-color: rgba(255, 69, 58, 0.1) !important;
+}
+.napoli-coord-mese-riga th:first-child, .napoli-coord-mese-riga th:last-child { border-radius: 0; }
+.napoli-coord-mese.chiuso td { color: var(--text-tertiary); }
+/* mese chiuso: la nota si legge come testo, senza la casella */
+.napoli-coord-mese.chiuso input.napoli-coord-nota:disabled {
+    background-color: transparent !important; border-color: transparent !important; color: var(--text-secondary);
+}
+.napoli-coord-riga:hover td { background: var(--bg-secondary); }
+.napoli-tabella-coordinatore input.napoli-coord-ore {
+    width: 110px; margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; padding: 7px 10px;
+}
+.napoli-tabella-coordinatore input.napoli-coord-nota { width: 100%; padding: 6px 10px; }
+.napoli-tabella-coordinatore input:disabled { background: var(--bg-secondary); cursor: not-allowed; }
+.napoli-tabella-coordinatore .napoli-coord-messaggio td { border-top: 0; padding-top: 0; }
+.napoli-coord-errore, .napoli-coord-lettura { font-size: 0.84rem; padding: 6px 10px; border-radius: var(--radius); }
+.napoli-coord-errore {
+    color: var(--danger); font-weight: 500;
+    background: rgba(255, 69, 58, 0.1); background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.napoli-coord-lettura { color: var(--text-secondary); background: var(--bg-secondary); }
+.napoli-coord-tutti { margin-top: 10px; }
+.napoli-coord-vuoto { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--text-secondary); margin: 0; }
+
 /* ---------- scheda Importa (foglio presenze del mese) ---------- */
 .napoli-import { display: flex; flex-direction: column; gap: 20px; }
 .napoli-import > .card, .napoli-import > div > .card { margin-bottom: 0; }
@@ -331,7 +372,9 @@ details.napoli-parte-conferma[open] > summary { margin-bottom: 6px; }
 .napoli-filtri .filter-group input { padding-top: 8px; padding-bottom: 8px; }
 .napoli-filtri .filter-group[data-filtro="scuola_id"] select { width: 180px; }
 .napoli-filtri .filter-group[data-filtro="figura"] select { width: 122px; }
-.napoli-filtri .filter-group[data-filtro="stato"] select { width: 134px; }
+/* "Da sistemare", "Da cominciare": la tendina prende la larghezza della voce piu' lunga
+   (con il carattere di Windows 134px fissi la tagliavano) */
+.napoli-filtri .filter-group[data-filtro="stato"] select { width: auto; min-width: 134px; }
 .napoli-filtri .filter-group[data-filtro="municipalita"] select,
 .napoli-filtri .filter-group[data-filtro="grado"] select,
 .napoli-filtri .filter-group[data-filtro="ruolo"] select { width: 112px; }

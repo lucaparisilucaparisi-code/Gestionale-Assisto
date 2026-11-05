@@ -12,8 +12,12 @@
 - Confronti: "Utenti con dati" (Statistiche) e "Utenti in servizio" (Report) nei due
   confronti annuali, con la variazione nella stessa riga (l'anno piu' recente,
   rispetto all'anno prima) e le stesse note: la funzione del Report, eseguita con
-  node, da' le variazioni di /api/stats/confronto-annuale-dettaglio; il Confronto
-  mese dice che e' per giorno di scuola.
+  node, da' le variazioni di /api/stats/confronto-annuale-dettaglio, arrotondate e
+  scritte allo stesso modo (6,25% -> "+6,2%"); il Confronto mese dice che e' per giorno
+  di scuola.
+- Prova di comportamento del monte ore mostrato: le funzioni vere di Chiusura mese,
+  Report, Rendicontazione, Dashboard e scheda dell'utente (Assegnazioni, con il monte
+  ore del mese di oggi) eseguite in node con un DOM finto sulle risposte del server.
 
 Solo dati inventati.
 """
@@ -144,6 +148,156 @@ def test_le_pagine_mostrano_il_monte_ore_del_mese():
     assert "getElementById('kpi-monte-ore'), Math.round(monte ? monte.totale : (stats.monte_ore_totale || 0))" in kpi
     app_js = _leggi('static/js/app.js')
     assert 'window.monteOreSettimanaleOggi = monteOreSettimanaleOggi;' in app_js
+
+
+# DOM finto per eseguire in node le funzioni vere delle pagine: ogni elemento cercato per
+# id esiste (vuoto) e ricorda testo, HTML e valore scritti dalla pagina
+_DOM_FINTO = r"""
+class _Elemento {
+    constructor(id) {
+        this.id = id; this._testo = ''; this._html = ''; this.value = ''; this.className = ''; this.title = '';
+        this.style = {}; this.disabled = false; this.checked = false; this.options = []; this.selectedIndex = 0;
+        this.dataset = {}; this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
+    }
+    set textContent(t) {
+        this._testo = String(t);
+        this._html = this._testo.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    get textContent() { return this._testo; }
+    set innerHTML(h) { this._html = String(h); this._testo = this._html.replace(/<[^>]*>/g, ''); }
+    get innerHTML() { return this._html; }
+    setAttribute(k, v) { this[k] = v; }
+    getAttribute(k) { return this[k]; }
+    closest() { return null; }
+    scrollIntoView() {}
+    addEventListener() {}
+    focus() {}
+    querySelector() { return null; }
+    querySelectorAll() { return []; }
+}
+const _elementi = {};
+globalThis.document = {
+    getElementById: id => _elementi[id] || (_elementi[id] = new _Elemento(id)),
+    createElement: () => new _Elemento(''),
+    // un selettore di attributo ('[data-bilancio="base"]') e' un elemento come un id
+    querySelector: sel => sel.startsWith('[') ? document.getElementById(sel) : null,
+    querySelectorAll: () => [], addEventListener() {},
+};
+globalThis.window = globalThis;
+function openModal() {}
+function showToast() {}
+function testo(id) { return document.getElementById(id).textContent.replace(/\s+/g, ' ').trim(); }
+function html(id) { return document.getElementById(id).innerHTML.replace(/\s+/g, ' ').trim(); }
+"""
+
+
+def _funzioni_app_js(*nomi):
+    app_js = _leggi('static/js/app.js')
+    return '\n'.join(_funzione_js(app_js, n) for n in nomi)
+
+
+def test_le_pagine_mostrano_il_monte_ore_del_mese_nel_comportamento(cliente, db_mod):
+    """Prova di comportamento (le funzioni vere delle pagine, eseguite in node sulle
+    risposte vere del server): variazione da 12 a 14 h da novembre 2025, nessuna ora a
+    novembre. Chiusura mese ("senza ore"), anteprima dei Report, storico della
+    Rendicontazione, "Stato del mese" della Dashboard e bilancio della scheda
+    Assegnazioni dell'utente mostrano 14 a novembre e 12 a ottobre, con la base solo
+    dove la variazione la cambia."""
+    db = db_mod
+    db.create_anno_scolastico(2025)
+    (uid,) = _utenti(db, 1, monte=12, commessa='VIS MESE', scuola='IC Vis - Primaria Mese')
+    with db.get_db_context() as conn:
+        conn.execute("UPDATE commesse SET attiva = 0 WHERE nome NOT LIKE 'VIS %'")
+    r = cliente.post(f'/api/utenti/{uid}/variazioni-monte-ore', json={'monte_ore': 14, 'mese_inizio': '2025-11'})
+    assert r.status_code == 200, r.get_json()
+    dip = db.create_dipendente({'nome': 'Primo', 'cognome': 'Operatore'})
+    r = cliente.post(f'/api/utente/{uid}/assegnazioni', json={'dipendente_id': dip, 'ore_settimanali': 12})
+    assert r.status_code == 200, r.get_json()
+
+    report, rend = _leggi('templates/report.html'), _leggi('templates/rendicontazione.html')
+    chiusura, dettaglio = _leggi('templates/chiusura_mese.html'), _leggi('templates/utente_dettaglio.html')
+    dash = _leggi('static/js/dashboard.js')
+    risultati = {}
+    for anno, mese in ((2025, 11), (2025, 10)):
+        periodo = f'{anno}-{mese:02d}'
+        urls = [f'/api/rendicontazione/{anno}/{mese}', f'/api/utente/{uid}/storico',
+                f'/api/stats/utenti-da-completare/{anno}/{mese}', f'/api/stats/filtered?anno={anno}&mese={mese}',
+                '/api/anni-scolastici', f'/api/utente/{uid}/assegnazioni?mese={periodo}']
+        risposte = {}
+        for u in urls:
+            risp = cliente.get(u)
+            assert risp.status_code == 200, (u, risp.get_json())
+            risposte[u] = risp.get_json()
+        codice = '\n'.join([
+            _DOM_FINTO, _mesi_js(), 'const MESI_SCOLASTICI = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6];', _API_FINTA,
+            'const _DataVera = Date;',
+            'globalThis.Date = class extends _DataVera { constructor(...a) { super(...(a.length ? a : [DATI.oggi])); } };',
+            _funzioni_app_js('escapeHtml', 'formatNumero', 'formatNumber', 'formatOre', 'formatCurrency',
+                             'decimalToSessagesimal', 'quanti', 'formatDataIT', 'formatPeriodoIT', '_dataDaIso',
+                             'icona'),
+            'const ICONE = {}; const _GIORNI_BREVI = [];',
+            # Chiusura mese
+            _funzione_js(chiusura, 'getPeriodo'), _funzione_js(chiusura, 'nomePeriodo'),
+            _funzione_js(chiusura, 'urlRendicontazione'), _funzione_js(chiusura, 'loadStep1'),
+            # Report
+            _funzione_js(report, 'getReportParams'), _funzione_js(report, 'applicaFiltriAnteprima'),
+            _funzione_js(report, 'mostraAnteprima'),
+            # Rendicontazione
+            'let allData = []; let periodoCaricato = null;', _funzione_js(rend, 'showStoricoUtente'),
+            # Dashboard
+            'let _caricamento = 0; const _superato = (n) => n !== _caricamento; const DA_COMPLETARE_VISIBILI = 5;',
+            'let _annoWizard = null;',
+            _funzione_js(dash, 'getActiveFilters'), _funzione_js(dash, 'getPeriodoCorrente'),
+            _funzione_js(dash, '_meseInCorso'), _funzione_js(dash, '_annoScolasticoPeriodo'),
+            _funzione_js(dash, 'loadStatoMese'),
+            # Scheda dell'utente, Assegnazioni
+            'const utenteId = DATI.uid; let assegnazioniData = { assegnazioni: [], bilancio: null };',
+            _funzione_js(dettaglio, 'contatoreScheda'), _funzione_js(dettaglio, 'meseDiOggiAssegnazioni'),
+            _funzione_js(dettaglio, 'testiMonteOreAssegnazioni'), _funzione_js(dettaglio, 'loadAssegnazioni'),
+            _funzione_js(dettaglio, 'renderAssegnazioni'),
+            'async function prova() {',
+            "    const sel = document.getElementById('filter-mese');",
+            "    sel.value = `${DATI.mese}-${DATI.anno}`; sel.options = [{ textContent: DATI.nomeMese }];",
+            "    document.getElementById('report-mese').value = `${DATI.mese}-${DATI.anno}`;",
+            "    document.getElementById('filter-periodo').value = `${DATI.mese}-${DATI.anno}`;",
+            '    await loadStep1();',
+            '    await mostraAnteprima();',
+            '    allData = DATI.risposte[`/api/rendicontazione/${DATI.anno}/${DATI.mese}`].dati;',
+            '    periodoCaricato = { anno: DATI.anno, mese: DATI.mese, commessa: "" };',
+            '    await showStoricoUtente(DATI.uid);',
+            '    await loadStatoMese();',
+            '    await loadAssegnazioni();',
+            "    return { chiusura: html('step1-lista'), anteprima: html('preview-content'),",
+            "             storico: html('storico-content'), dashboard: html('lista-da-completare'),",
+            "             etichetta: testo('[data-bilancio=\"etichetta\"]'), monte: testo('bil-monte'),",
+            "             base: testo('[data-bilancio=\"base\"]'), stato: testo('bil-stato') };",
+            '}',
+        ])
+        risultati[mese] = _node(codice, {'oggi': f'{anno}-{mese:02d}-10T10:00:00', 'anno': anno, 'mese': mese,
+                                         'nomeMese': f"{['Ottobre', 'Novembre'][mese - 10]} {anno}", 'uid': uid,
+                                         'risposte': risposte})
+
+    nov, ott = risultati[11], risultati[10]
+    # Chiusura mese e Dashboard: il badge "h/sett." dell'elenco senza ore
+    assert '>14 h/sett.</span>' in nov['chiusura'] and 'con una variazione (base: 12 h)' in nov['chiusura']
+    assert '>12 h/sett.</span>' in ott['chiusura'] and 'variazione' not in ott['chiusura']
+    assert '>14 h/sett.</span>' in nov['dashboard'] and '>12 h/sett.</span>' in ott['dashboard']
+    # anteprima dei Report: "var." e il monte ore del mese, la base nel titolo
+    assert 'var.</span> 14</td>' in nov['anteprima'] and '(base: 12 h)' in nov['anteprima']
+    assert '<td class="text-right">12</td>' in ott['anteprima'] and 'var.' not in ott['anteprima']
+    # storico della Rendicontazione
+    assert 'Monte ore settimanale di Novembre 2025: <strong>14 h</strong> (base: 12 h)' in nov['storico']
+    assert 'Monte ore settimanale: <strong>12 h</strong>' in ott['storico']
+    # scheda dell'utente, Assegnazioni: 12 h assegnate contro 14 del mese (prima: "Bilanciato")
+    assert (nov['etichetta'], nov['monte'], nov['base']) == (
+        'Monte ore settimanale di Novembre 2025', '14h', 'Con una variazione (base: 12 h)')
+    assert nov['stato'] == 'Mancano 2h da assegnare'
+    assert (ott['etichetta'], ott['monte'], ott['base'], ott['stato']) == (
+        'Monte ore settimanale di Ottobre 2025', '12h', '', 'Bilanciato')
+    # senza il mese l'API resta sulla base (come nella fotografia)
+    assert cliente.get(f'/api/utente/{uid}/assegnazioni').get_json()['bilancio'] == {
+        'monte_ore': 12, 'assegnate': 12, 'differenza': 0, 'stato': 'ok'}
+    assert cliente.get(f'/api/utente/{uid}/assegnazioni?mese=2025-13').status_code == 400
 
 
 def _monte_ore_nella_pagina(cliente, oggi, commessa=''):
@@ -390,6 +544,7 @@ def _variazioni_del_report(cliente, mese, commessa, oggi):
         risposte[url] = cliente.get(url).get_json()
     codice = '\n'.join([
         _API_FINTA, _funzione_js(report, 'datiConfrontoAnnuale'), _funzione_js(report, 'variazioniConfrontoAnnuale'),
+        _funzione_js(report, 'arrotondaComePython'),
         'async function prova() {',
         "    const anni = await apiCall('/api/anni-scolastici');",
         '    const datiAnni = await datiConfrontoAnnuale(anni, String(DATI.mese), DATI.commessa);',
@@ -457,3 +612,57 @@ def test_confronto_annuale_di_statistiche_variazione_nella_riga_dell_anno_piu_re
     righe = cliente.get('/api/stats/confronto-annuale-dettaglio?mese=10').get_json()['confronto']
     assert [(r['anno_scolastico'], r['ore_erogate'], r['variazione']) for r in righe
             if r['anno_scolastico'] in ('2024-2025', '2023-2024')] == [('2024-2025', 50, 25.0), ('2023-2024', 40, None)]
+
+
+def test_confronto_annuale_stessa_percentuale_scritta_in_report_e_statistiche(cliente, db_mod):
+    """La percentuale scritta e' la stessa nelle due pagine (le funzioni vere, in node):
+    16 -> 17 ore e' 6,25%, che il server arrotonda come Python (6,2) mentre il Report la
+    scriveva con Intl (6,3); 16 -> 16 e' "0%" in tutte e due (il Report scriveva "+0%")."""
+    from strumenti.fotografa_roma import orologio_fermo
+    db = db_mod
+    for anno in (2023, 2024, 2025):
+        db.create_anno_scolastico(anno)
+    (a,) = _utenti(db, 1, commessa='VIS PERCENTO', scuola='IC Vis - Primaria Percento')
+    with db.get_db_context() as conn:
+        conn.execute("UPDATE commesse SET attiva = 0 WHERE nome NOT LIKE 'VIS %'")
+    _scrivi_ore(cliente, 2025, 10, {a: 17})
+    _scrivi_ore(cliente, 2024, 10, {a: 16})
+    _scrivi_ore(cliente, 2023, 10, {a: 16})
+    oggi = dt.datetime(2026, 3, 10, 10, 0)
+    with orologio_fermo(oggi):
+        server = cliente.get('/api/stats/confronto-annuale-dettaglio?mese=10').get_json()
+    assert [r['variazione'] for r in server['confronto']] == [6.2, 0.0, None]
+
+    report, stat = _leggi('templates/report.html'), _leggi('templates/statistiche.html')
+    anni = cliente.get('/api/anni-scolastici').get_json()
+    risposte = {'/api/anni-scolastici': anni, '/api/commesse': [],
+                '/api/stats/confronto-annuale-dettaglio?mese=10': server}
+    for anno in (2025, 2024, 2023):
+        risposte[f'/api/rendicontazione/{anno}/10'] = cliente.get(f'/api/rendicontazione/{anno}/10').get_json()
+    codice = '\n'.join([
+        _DOM_FINTO, _mesi_js(), _API_FINTA,
+        'const _DataVera = Date;',
+        'globalThis.Date = class extends _DataVera { constructor(...a) { super(...(a.length ? a : [DATI.oggi])); } };',
+        _funzioni_app_js('escapeHtml', 'formatNumero', 'formatNumber', 'formatCurrency'),
+        _funzione_js(report, 'datiConfrontoAnnuale'), _funzione_js(report, 'variazioniConfrontoAnnuale'),
+        _funzione_js(report, 'arrotondaComePython'), _funzione_js(report, 'generaConfrontoAnnuale'),
+        _funzione_js(stat, 'getFilters'), _funzione_js(stat, 'getMeseRiferimento'),
+        _funzione_js(stat, 'loadConfrontoAnnualeDettaglio'),
+        # l'ultima colonna (Variazione) di ogni riga, senza la nota e le frecce di Statistiche
+        'function variazioni(h) {',
+        "    return [...h.matchAll(/<tr[^>]*>([\\s\\S]*?)<\\/tr>/g)].slice(1).map(m => {",
+        "        const celle = [...m[1].matchAll(/<td[^>]*>([\\s\\S]*?)<\\/td>/g)];",
+        "        return celle[celle.length - 1][1].split('<br>')[0].replace(/<[^>]*>|&#9650;|&#9660;/g, '')",
+        "            .replace(/\\s+/g, ' ').trim();",
+        '    });',
+        '}',
+        'async function prova() {',
+        "    document.getElementById('confronto-mese').value = '10';",
+        "    document.getElementById('filter-mese').value = '2025-10';",
+        '    await generaConfrontoAnnuale();',
+        '    await loadConfrontoAnnualeDettaglio();',
+        "    return { report: variazioni(html('preview-content')), statistiche: variazioni(html('confronto-annuale-container')) };",
+        '}',
+    ])
+    pagine = _node(codice, {'oggi': oggi.isoformat(), 'risposte': risposte})
+    assert pagine['report'] == pagine['statistiche'] == ['+6,2%', '0%', '-'], pagine

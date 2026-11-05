@@ -86,7 +86,12 @@ def _righe(percorso, sql, parametri=()):
 
 
 def _elenco(client, cosa, **filtri):
-    return _ok(client.get(f'/api/napoli/lotti/{client.lotto_id}/{cosa}', query_string=filtri))
+    """L'elenco come lo chiede la pagina: filtri e ricerca nel corpo di una POST (mai
+    nell'indirizzo); senza ricerca anche con la GET, che deve dare lo stesso."""
+    r = _ok(client.post(f'/api/napoli/lotti/{client.lotto_id}/anagrafiche/elenco', json=dict(filtri, parte=cosa)))
+    if 'cerca' not in filtri:
+        assert _ok(client.get(f'/api/napoli/lotti/{client.lotto_id}/{cosa}', query_string=filtri)) == r
+    return r
 
 
 def _cf(cognome, nome, anno=2015, sesso='F'):
@@ -211,6 +216,15 @@ def test_ricerca_e_filtri(caricata):
     assert all(a['grado'] is None for a in da_decidere)
     cercati = _elenco(caricata, 'alunni', cerca='di prova')['righe']
     assert cercati and all('DI PROVA' in a['nome_completo'] for a in cercati)
+    # la ricerca non va mai nell'indirizzo (finirebbe nei log): anche un codice fiscale scritto
+    # a meta' o sbagliato si manda con la POST, e la GET con ?cerca= e' rifiutata
+    for testo in ('di prova', cercati[0]['cf'][:6], 'RSSMRA80A01Z99'):
+        _errore(caricata.get(f'/api/napoli/lotti/{caricata.lotto_id}/alunni', query_string={'cerca': testo}), 400,
+                'RICERCA_NELL_INDIRIZZO', campo='cerca')
+    assert _elenco(caricata, 'alunni', cerca='RSSMRA80A01Z99')['totale'] == 0
+    assert _elenco(caricata, 'coppie', stato='tutte', cerca='di prova')['totale'] >= len(cercati)
+    _errore(caricata.post(f'/api/napoli/lotti/{caricata.lotto_id}/anagrafiche/elenco', json={'parte': 'pei'}), 400,
+            campo='parte')
     assert _elenco(caricata, 'alunni', stato='da_sistemare')['totale'] == _ok(caricata.get(
         f'/api/napoli/lotti/{caricata.lotto_id}/anagrafiche'))['da_sistemare']['alunni']
     assert _elenco(caricata, 'operatori', figura='PSICOLOGO')['totale'] == 3
@@ -500,6 +514,100 @@ def test_ctrl_z_delle_anagrafiche_senza_dati_personali(napoli):
     for dove, testo in (('memoria di Ctrl+Z', memoria), ('registro attivita', registro)):
         assert not [x for x in codici | nomi if x in testo], dove
     assert any('"tabella": "alunni"' in a['dati'] for a in azioni) and 'napoli_alunno' in registro
+
+
+def test_subentro_sposta_i_sostituti_che_cominciano_dopo(napoli):
+    """I sostituti della coppia di prima che cominciano dal giorno del subentro in poi
+    sostituiscono il nuovo operatore: passano alla coppia nuova (Ctrl+Z li rimette). Uno gia'
+    cominciato e che continua resta sulla coppia di prima, con un avviso."""
+    s = _scuola(napoli)
+    alunno = _alunno(napoli, s)
+    primo, secondo = _operatore(napoli), _operatore(napoli, 'MANUALE', 'SECONDA')
+    sost_a, sost_b = _operatore(napoli, 'MANUALE', 'TERZA'), _operatore(napoli, 'MANUALE', 'QUARTA')
+    _ok(napoli.post(f'/api/napoli/alunni/{alunno}/pei', json={'figura': 'ASACOM', 'ore_settimanali': 10,
+                                                               'valido_da': '2026-09-14'}))
+    titolare = _coppia(napoli, alunno, primo)['coppia_id']
+    prima = _coppia(napoli, alunno, sost_a, ruolo='sostituto', titolare_coppia_id=titolare,
+                    valido_da='2026-10-05', valido_a='2026-10-09')['coppia_id']
+    a_cavallo = _coppia(napoli, alunno, sost_b, ruolo='sostituto', titolare_coppia_id=titolare,
+                        valido_da='2026-10-26', valido_a='2026-11-06')['coppia_id']
+    dopo = _coppia(napoli, alunno, sost_a, ruolo='sostituto', titolare_coppia_id=titolare,
+                   valido_da='2026-11-16', valido_a='2026-11-20')['coppia_id']
+    r = _ok(napoli.post(f'/api/napoli/coppie/{titolare}/subentro', json={'operatore_id': secondo, 'dal': '2026-11-02'}))
+    nuova = r['coppia_id']
+    assert r['sostituti_spostati'] == 1
+    assert 'il sostituto che comincia dal 02/11/2026 in poi passa alla coppia nuova' in r['messaggio']
+    assert len(r['avvisi']) == 1 and 'MANUALE QUARTA' in r['avvisi'][0] and 'resta collegato' in r['avvisi'][0]
+    collegati = {c['id']: c['titolare_coppia_id'] for c in _righe(napoli.percorso, 'SELECT * FROM napoli_coppie')}
+    assert (collegati[prima], collegati[a_cavallo], collegati[dopo]) == (titolare, titolare, nuova)
+    # un solo Ctrl+Z: la coppia nuova sparisce e il sostituto torna alla coppia di prima
+    _ok(napoli.post('/api/napoli/annulla', json={}))
+    collegati = {c['id']: c for c in _righe(napoli.percorso, 'SELECT * FROM napoli_coppie')}
+    assert nuova not in collegati and collegati[dopo]['titolare_coppia_id'] == titolare
+    assert collegati[titolare]['valido_a'] is None
+
+
+def test_non_si_riapre_la_coppia_di_una_persona_archiviata(napoli):
+    """Allungare o riaprire la coppia di un operatore (o di un alunno) archiviato e' bloccato
+    come crearla; accorciarla si puo'."""
+    s = _scuola(napoli)
+    alunno = _alunno(napoli, s)
+    operatore = _operatore(napoli)
+    coppia = _coppia(napoli, alunno, operatore)['coppia_id']
+    _ok(napoli.post(f'/api/napoli/coppie/{coppia}/chiudi', json={'valido_a': '2026-10-31'}))
+    _ok(napoli.post(f'/api/napoli/operatori/{operatore}/archivia', json={'dal': '2026-11-01'}))
+    for dati in ({'valido_a': ''}, {'valido_a': '2026-12-31'}):
+        dati = _errore(napoli.put(f'/api/napoli/coppie/{coppia}', json=dati), 409, 'ARCHIVIATO', campo='valido_a')
+        assert "L'operatore è archiviato" in dati['error']
+    _ok(napoli.put(f'/api/napoli/coppie/{coppia}', json={'valido_a': '2026-10-30'}))      # accorciare: si'
+    _ok(napoli.post(f'/api/napoli/operatori/{operatore}/ripristina', json={}))
+    _ok(napoli.post(f'/api/napoli/alunni/{alunno}/archivia', json={'dal': '2026-11-01'}))
+    dati = _errore(napoli.put(f'/api/napoli/coppie/{coppia}', json={'valido_a': ''}), 409, 'ARCHIVIATO')
+    assert "L'alunno è archiviato" in dati['error']
+    _ok(napoli.post(f'/api/napoli/alunni/{alunno}/ripristina', json={}))
+    assert _ok(napoli.put(f'/api/napoli/coppie/{coppia}', json={'valido_a': ''}))['messaggio'] == 'Coppia salvata'
+
+
+def test_ctrl_z_senza_le_note_di_coppie_e_pei(napoli):
+    """Le note delle coppie e la nota del PEI (testo libero: un nome o un dato sanitario
+    scritto per sbaglio) non restano nella memoria di Ctrl+Z: cambiarle non si annulla e lo
+    dice; una riga eliminata torna senza; il nome della scuola non si ripete nella conferma."""
+    s = _scuola(napoli)
+    alunno = _alunno(napoli, s)
+    operatore = _operatore(napoli)
+    coppia = _coppia(napoli, alunno, operatore, note='Nota libera della coppia')['coppia_id']
+    pei = _ok(napoli.post(f'/api/napoli/alunni/{alunno}/pei', json={
+        'figura': 'ASACOM', 'ore_settimanali': 10, 'valido_da': '2026-09-14', 'fonte': 'Verbale di prova'}))['pei_id']
+    # cambiare le ore e le date si annulla, e la nota resta quella di adesso
+    _ok(napoli.put(f'/api/napoli/coppie/{coppia}', json={'ore_settimanali': '8'}))
+    _ok(napoli.put(f'/api/napoli/pei/{pei}', json={'ore_settimanali': '12'}))
+    _ok(napoli.post('/api/napoli/annulla', json={}))
+    _ok(napoli.post('/api/napoli/annulla', json={}))
+    riga = _righe(napoli.percorso, 'SELECT ore_settimanali, note FROM napoli_coppie WHERE id = ?', (coppia,))[0]
+    assert (riga['ore_settimanali'], riga['note']) == (None, 'Nota libera della coppia')
+    riga = _righe(napoli.percorso, 'SELECT ore_settimanali, fonte FROM napoli_pei WHERE id = ?', (pei,))[0]
+    assert (riga['ore_settimanali'], riga['fonte']) == (10, 'Verbale di prova')
+    # cambiare le note non si annulla, e la risposta e Ctrl+Z lo dicono
+    r = _ok(napoli.put(f'/api/napoli/coppie/{coppia}', json={'note': 'Altra nota della coppia'}))
+    assert 'Ctrl+Z non annulla le modifiche alle note' in r['messaggio']
+    info = _ok(napoli.get('/api/napoli/annulla/ultima'))
+    assert info['azione'] is None and 'le note di prima non restano' in info['non_annullabile']['motivo']
+    r = _ok(napoli.put(f'/api/napoli/pei/{pei}', json={'fonte': 'Altro verbale'}))
+    assert 'Ctrl+Z non annulla le modifiche alla nota' in r['messaggio']
+    _errore(napoli.post('/api/napoli/annulla', json={}), 400, 'NON_ANNULLABILE')
+    # eliminata, la coppia torna con Ctrl+Z senza le note
+    r = _ok(napoli.delete(f'/api/napoli/coppie/{coppia}'))
+    assert 'torna senza le note' in r['messaggio']
+    _ok(napoli.post('/api/napoli/annulla', json={}))
+    riga = _righe(napoli.percorso, 'SELECT operatore_id, note FROM napoli_coppie WHERE id = ?', (coppia,))[0]
+    assert (riga['operatore_id'], riga['note']) == (operatore, None)
+    memoria = json.dumps(_righe(napoli.percorso, 'SELECT * FROM napoli_annullamenti'), ensure_ascii=False)
+    for testo in ('Nota libera', 'Altra nota', 'Verbale di prova', 'Altro verbale'):
+        assert testo not in memoria, testo
+    # la conferma di Ctrl+Z di una scuola: il nome sta gia' nella descrizione, non si ripete
+    _ok(napoli.put(f'/api/napoli/scuole/{s}', json={'grado': 'superiore'}))
+    azione = _ok(napoli.get('/api/napoli/annulla/ultima'))['azione']
+    assert azione['descrizione'].count('IC FANTASIA - PLESSO PROVA') == 1 and azione['chi'] == ''
 
 
 def test_annullare_il_caricamento_non_cancella_le_modifiche_a_mano(caricata):

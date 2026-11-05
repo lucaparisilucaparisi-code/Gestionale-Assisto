@@ -50,9 +50,15 @@ reimplementarla inline (a schermo, in SQL o negli export).
   Le colonne "Monte Ore" di tutti gli export mostrano `monte_ore_effettivo` del mese
   (l'annuale: la media dei mesi attivi), mai la base di oggi. Lo stesso nelle pagine:
   tabella e storico dell'utente in Rendicontazione (con la base tra parentesi se e'
-  diversa), elenco "senza ore" di Chiusura mese, anteprima dei Report, "Stato del
-  mese" della Dashboard, tutte da `monte_ore_effettivo` di
-  `/api/rendicontazione/<anno>/<mese>`. Le due somme "di oggi", "monte ore a
+  diversa), elenco "senza ore" di Chiusura mese e anteprima dei Report, da
+  `monte_ore_effettivo` di `/api/rendicontazione/<anno>/<mese>`; l'elenco "senza ore"
+  dello "Stato del mese" della Dashboard da `monte_ore` di
+  `/api/stats/utenti-da-completare/<anno>/<mese>` (`get_monte_ore_effettivo_bulk`);
+  il bilancio della scheda dell'utente (scheda Assegnazioni: monte ore contro ore
+  assegnate agli operatori) da `/api/utente/<id>/assegnazioni?mese=YYYY-MM` con il mese
+  di oggi (`get_bilancio_assegnazioni_utente(id, periodo)`, `risolvi_monte_ore`, con la
+  base sotto se una variazione la cambia; senza `mese` l'API resta sulla base, come
+  nella fotografia). Le due somme "di oggi", "monte ore a
   settimana" della Dashboard e "Monte ore settimanale oggi" delle Statistiche, hanno
   una sola funzione, `monteOreSettimanaleOggi` di `static/js/app.js` (utenti attivi,
   ognuno col monte ore del mese di oggi; chi non e' nella vista del mese resta con la
@@ -64,7 +70,10 @@ reimplementarla inline (a schermo, in SQL o negli export).
   piu' recente, variazione nella riga dell'anno piu' recente rispetto all'anno prima,
   sulle ore erogate; nessuna variazione con "dati non ancora inseriti" se nel mese
   nessun utente ha la riga (ore o pasti, anche a zero) o con "mese non ancora
-  concluso"; un mese con le righe ma 0 ore da' -100% in tutte e due. I conteggi sono
+  concluso"; un mese con le righe ma 0 ore da' -100% in tutte e due. La percentuale si
+  arrotonda una volta sola, al decimo e come il server (`round` di Python: ore al
+  centesimo, poi la variazione; a meta' esatta la cifra pari, 6,25% -> 6,2%): nel Report
+  con `arrotondaComePython`, perche' Intl scriverebbe 6,3%; il "+" solo sopra zero. I conteggi sono
   diversi e lo dicono le etichette: "Utenti con dati" (righe del mese) in Statistiche,
   "Utenti in servizio" (tutti quelli del mese) nel Report, "utenti con ore" (ore > 0)
   nel Confronto mese, che confronta le ore per giorno di scuola.
@@ -308,7 +317,13 @@ dati inventati:
   revisione del passo, le impronte della cornice di Import, Report, Statistiche e
   Utenti (plurali, monte ore di oggi, "Utenti con dati", regola del Confronto annuale),
   del contenuto di Import (l'anteprima scrive "1 riga valida trovata su 1 riga
-  totale") e di nuovo di `dashboard.js`. `app.js` non ha impronta (`STATICI_MODIFICABILI`): le
+  totale") e di nuovo di `dashboard.js`; **passo minori-1.8**, solo l'impronta della
+  cornice del Report (la percentuale del Confronto annuale arrotondata come il server).
+  Il bilancio della scheda dell'utente (Assegnazioni) col monte ore del mese non cambia la
+  fotografia: `/api/utente/<id>/assegnazioni` senza `mese` resta sulla base, e lo script
+  della pagina sta dentro `<main>`, di cui la fotografia guarda id, intestazioni e testo
+  ma non gli script (lo controlla `test_le_pagine_mostrano_il_monte_ore_del_mese_nel_comportamento`).
+  `app.js` non ha impronta (`STATICI_MODIFICABILI`): le
   sue funzioni di Roma nuove (`quanti`, `monteOreSettimanaleOggi`) e quelle del Report
   le esegue con node `tests/test_roma_visualizzazione.py`, sulle risposte del server.
 - **Invarianza** (`tests/test_roma_invariata.py`): fotografia, poi i dati di Napoli
@@ -320,7 +335,9 @@ dati inventati:
   operatore omonimi di quelli di Roma, con anteprima e conferma: prima l'anagrafica, poi le
   ore del mese; dal passo 1.6 le Anagrafiche scritte a mano con le loro API, con un alunno e
   un operatore omonimi di Roma: scuola, PEI con il cambio da una data, coppia, sostituto,
-  subentro, chiusura, modifiche, archiviazione e ripristino; ogni passo di
+  subentro, chiusura, modifiche, archiviazione e ripristino; dal passo 1.8 le ore del
+  coordinatore di ottobre 2025, scritte, cambiate e annullate con le loro API prima che il
+  mese si chiuda; ogni passo di
   Napoli sposta i suoi dati sulle sue API), poi di nuovo la fotografia, che deve
   essere uguale; tabelle di Roma (schema e righe; del registro attivita' le voci non
   `napoli%`, nel loro ordine e senza il loro `id`, che le voci di Napoli scritte prima
@@ -467,7 +484,8 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   manca per le fatture, `GET /api/napoli/lotti/<id>/controlli`: la determina mancante con
   numero e grado del contratto, per esempio «XI (grado inferiore)»; una tariffa lasciata
   vuota apposta, senza proposta come quella dell'interprete LIS, e' un avviso solo se nel
-  lotto ci sono coppie o ore di quella figura), **Anagrafiche** (`/napoli/anagrafiche`,
+  lotto ci sono coppie o ore di quella figura; sotto, le **ore del coordinatore**, passo
+  1.8: vedi il punto "Ore del coordinatore"), **Anagrafiche** (`/napoli/anagrafiche`,
   passo 1.6: vedi il punto "Anagrafiche"), **Importa**
   (`/napoli/import`, l'anagrafica dal file Excel "master") e **Impostazioni**
   (`/napoli/impostazioni`, una parte alla volta, `#lotto`, `#contratti`...): dati della
@@ -522,9 +540,17 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     colonne, e un'azione che cambia quei dati o elimina una persona si registra come non
     annullabile (`registra_non_annullabile`, `{"versione": 1, "non_annullabile": motivo}`),
     cosi' Ctrl+Z non annulla in silenzio l'azione di prima e dice perche' (`non_annullabile`
-    in `/api/napoli/annulla/ultima`, 400 `NON_ANNULLABILE`). Le descrizioni non hanno nomi
+    in `/api/napoli/annulla/ultima`, 400 `NON_ANNULLABILE`). Allo stesso modo il testo
+    libero di coppie e PEI (`COLONNE_TESTO_LIBERO`: le note della coppia, la nota "da dove
+    viene" del PEI, dove potrebbe finire per sbaglio un nome o un dato sanitario): non si
+    salva, cambiarlo non si annulla (`MOTIVO_TESTO_LIBERO`) e una coppia o un PEI eliminati
+    tornano con Ctrl+Z senza (la risposta lo dice). Ctrl+Z non cambia le righe di un mese
+    chiuso del lotto (`TABELLE_DEL_MESE`, oggi le ore del coordinatore: 409
+    `MESE_CHIUSO_LOTTO`). Le descrizioni non hanno nomi
     ("Modifica di un alunno (scheda n. 12): grado"); il nome per la finestra di conferma si
-    legge al momento dalle anagrafiche (`chi`), mai salvato. Le azioni
+    legge al momento dalle anagrafiche (`chi`, solo di persone, coppie e PEI: il nome di una
+    scuola e' gia' nella descrizione), mai salvato. Prima di chiedere conferma la pagina
+    salva le caselle ancora in sospeso (`NapoliComune.primaDiAnnullare`). Le azioni
     scadute restano solo con la descrizione (senza valori): le righe di prima, IBAN
     compreso, si tolgono (`dati = '{}'`) a ogni nuova azione, a Ctrl+Z e all'apertura
     delle pagine di Napoli (`napoli_db.pulisci_annullamenti`). In `app.js`
@@ -543,14 +569,19 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     nell'indirizzo: scuola, municipalita' (della scuola, REGOLE 12), figura, grado
     (dell'alunno, altrimenti della scuola; `da_decidere`), stato (in servizio, da
     sistemare, archiviati, tutti; per le coppie in corso, da cominciare, finite), ruolo e
-    nome; mai un codice fiscale nell'indirizzo, che finisce nei log: la ricerca per codice
-    fiscale e' `POST /api/napoli/anagrafiche/codice-fiscale` e la risposta non lo ripete.
+    nome; mai la ricerca nell'indirizzo, che finisce nei log (anche un codice fiscale
+    scritto a meta' o sbagliato): la pagina chiede gli elenchi con
+    `POST /api/napoli/lotti/<id>/anagrafiche/elenco` (`parte`, filtri e `cerca` nel corpo),
+    la GET con `?cerca=` e' 400 `RICERCA_NELL_INDIRIZZO`; la ricerca di un codice fiscale
+    intero e' `POST /api/napoli/anagrafiche/codice-fiscale` e la risposta non lo ripete.
     `GET /api/napoli/lotti/<id>/anagrafiche`: conteggi, cosa c'e' da sistemare (scuole con
     il grado da decidere o senza municipalita', alunni senza PEI o senza coppie in corso,
     operatori con il codice fiscale da controllare o con piu' ore del contratto, coppie
     con una figura diversa da quella dell'operatore...), scuole e municipalita' per i
-    filtri, `vuota`. Gli operatori non sono di un lotto: un lotto mostra quelli con coppie
-    nel lotto e quelli senza nessuna coppia. "Oggi" decide cosa e' in corso;
+    filtri, `vuota` (senza scuole, alunni e coppie del lotto: la pagina invita a caricare
+    l'anagrafica anche se c'e' gia' un operatore, che e' della cooperativa). Gli operatori
+    non sono di un lotto: un lotto mostra quelli con coppie nel lotto e quelli senza nessuna
+    coppia. "Oggi" decide cosa e' in corso;
   - schede (`GET /api/napoli/alunni/<id>`, `GET /api/napoli/operatori/<id>?lotto_id=`):
     dati con il codice fiscale mascherato, da dove vengono (il caricamento che li ha
     creati o "aggiunto in Assisto"), PEI per figura con lo storico e la riga in vigore,
@@ -574,7 +605,10 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     `COPPIA_GIA_PRESENTE`; le date devono comprendere i giorni con ore, 409
     `ORE_FUORI_DATE`; avvisi per figura diversa, PEI mancante, due titolari),
     **chiusura** (`/chiudi`) e **subentro** (`/subentro`: la coppia finisce il giorno prima
-    e ne nasce una con l'altro operatore, la stessa scuola e le stesse ore, in un'azione);
+    e ne nasce una con l'altro operatore, la stessa scuola e le stesse ore, in un'azione; i
+    sostituti della coppia di prima che cominciano dal giorno del subentro passano alla
+    coppia nuova, uno gia' cominciato resta dov'e' con un avviso). Allungare o riaprire la
+    coppia di un operatore o di un alunno archiviato e' 409 `ARCHIVIATO`, come crearla;
   - **archiviazione al posto della cancellazione**: si elimina solo cio' che non ha dati
     collegati (una scuola senza alunni, coppie e giorni del calendario; un alunno senza ore,
     fogli firma e orari, con i suoi PEI e coppie; un operatore senza coppie e ore del
@@ -587,6 +621,36 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     chiusi;
   - ogni scrittura riempie `modificato_il` e passa da Ctrl+Z di Napoli; registro
     attivita' con il numero della scheda, mai nomi o codici fiscali.
+- **Ore del coordinatore** (scheda **Mese**, riquadro sotto i controlli; passo 1.8,
+  `napoli_coordinamento.py`, REGOLE 9 e 12): il coordinatore si fattura a ore con un
+  **totale mensile per lotto, grado e contratto applicativo** (`napoli_coordinamento` nella
+  forma della migrazione 3: una riga per mese, operatore facoltativo che la pagina non
+  chiede e mai in fattura, nota facoltativa con i codici fiscali mascherati, `modificato_il`).
+  - `GET /api/napoli/lotti/<id>/coordinamento`: i mesi dei contratti del lotto fino al mese
+    di oggi (dal piu' recente; le ore si scrivono da ora in avanti, REGOLE 14), per ogni mese
+    i contratti che lo toccano e i loro gradi (senza grado = tutti e due), con il periodo
+    tagliato al contratto (`periodo_fattura`: «dal 08/06/2026 al 30/06/2026»), le ore
+    salvate («71,55»), la nota, il mese chiuso; i contratti che cominciano dopo (`futuri`).
+    La pagina mostra gli ultimi sei mesi e, a richiesta, gli altri;
+  - `PUT /api/napoli/lotti/<id>/coordinamento` (anno, mese, contratto, grado, `ore` e/o
+    `nota`: un campo che non arriva resta com'e'): ore in decimale al centesimo con
+    `napoli_calcoli.leggi_ore_coordinatore` («71,55»; «71.55» vale 71,55 e la risposta lo
+    dice in `lettura`; «71,555» ha troppi decimali, «71:33» sono ore e minuti con il loro
+    decimale, «7155» propone «71,55», oltre 744 ore o negative: 400 sul campo `ore` con il
+    messaggio da mostrare); casella vuota = ore tolte; una nota senza ore no. Il contratto
+    deve essere del lotto, del grado e del mese (400 `FUORI_CONTRATTO`), il mese gia'
+    cominciato (400 `MESE_FUTURO`) e aperto (409 `MESE_CHIUSO_LOTTO`);
+  - Ctrl+Z di Napoli (`coordinamento` in `TABELLE_ANNULLABILI`, la nota compresa: e' del
+    lotto e del mese, non di un alunno) e registro attivita' (`napoli_coordinamento`, senza
+    nomi: «ottobre 2026, contratto XI (grado inferiore), 71,55»);
+  - un contratto con ore del coordinatore non si elimina e non cambia date o grado che le
+    lascerebbero fuori (409 `CONTRATTO_USATO`, `_ore_coordinatore_fuori`);
+  - la pagina (`NapoliCoordinatore` in `napoli.js`): una casella per riga con il
+    salvataggio automatico dopo 2 secondi o uscendo dalla casella (solo i campi cambiati,
+    "Salvato alle ..." accanto al titolo, `fetch keepalive` se si lascia la pagina), Invio
+    e frecce come in Rendicontazione, il messaggio del server sotto la riga, le caselle di
+    un mese chiuso bloccate. Le ore entrano nella riga «Coordinatore» della fattura
+    (`righe_fattura`, con la tariffa COORDINATORE del periodo), che arriva al passo 1.9.
 - **Import del file Excel "master"** (del coordinatore, PROGETTO §7.1):
   - **tre modi** (REGOLE 14: lo storico delle ore di Napoli non si carica, le ore si
     scriveranno in Assisto). `anagrafica`, l'azione principale della pagina («Carica
@@ -755,8 +819,13 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   servizio della determina); `tests/test_napoli_anagrafiche.py` (passo 1.6: elenchi uguali al
   master inventato caricato, anagrafica vuota, filtri e ricerca per codice fiscale, controlli
   lato server, PEI con le date, coppie, sostituti, subentro e chiusura, archiviazione al posto
-  della cancellazione, Ctrl+Z senza dati personali, annullamento del caricamento bloccato
-  dalle modifiche a mano, Roma intatta con omonimi); `tests/test_napoli_impostazioni.py` (procedura guidata,
+  della cancellazione, Ctrl+Z senza dati personali e senza le note di coppie e PEI, ricerca
+  sempre in POST, sostituti spostati dal subentro, coppie di persone archiviate che non si
+  riaprono, annullamento del caricamento bloccato
+  dalle modifiche a mano, Roma intatta con omonimi); `tests/test_napoli_coordinamento.py`
+  (passo 1.8: lettura delle ore scritte, mesi e contratti fino a oggi, scrivere, cambiare,
+  togliere e Ctrl+Z, mese chiuso anche per Ctrl+Z, contratto con le ore, registro senza
+  nomi, riga «Coordinatore» della fattura); `tests/test_napoli_impostazioni.py` (procedura guidata,
   controlli lato server, sovrapposizioni, IBAN mascherato, Ctrl+Z separato, Roma intatta,
   voce di menu marcata); `tests/test_napoli_import.py` e `tests/test_napoli_privacy.py`
   (passi 1.4-1.5, sul master inventato di `tests/napoli_sintetico.py`, generato durante

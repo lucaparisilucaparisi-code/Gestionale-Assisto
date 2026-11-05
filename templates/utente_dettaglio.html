@@ -87,8 +87,9 @@
         <div class="card-body">
             <div class="flex items-center justify-between flex-wrap gap-3">
                 <div>
-                    <div class="text-muted text-sm">Monte ore settimanale dell'assistito</div>
+                    <div class="text-muted text-sm" data-bilancio="etichetta">Monte ore settimanale dell'assistito</div>
                     <div style="font-size:1.4rem;font-weight:700" id="bil-monte">—</div>
+                    <div class="text-muted text-xs" data-bilancio="base"></div>
                 </div>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="text-muted"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14"/></svg>
                 <div>
@@ -476,9 +477,15 @@ async function loadUtenteDettaglio() {
 let assegnazioniData = { assegnazioni: [], bilancio: null };
 let dipendentiCache = null;
 
+/** 'YYYY-MM' del mese di oggi: il bilancio usa il monte ore di questo mese, variazioni
+ * comprese (come la Rendicontazione e la Dashboard), non la base dell'anagrafica. */
+function meseDiOggiAssegnazioni(oggi = new Date()) {
+    return `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}`;
+}
+
 async function loadAssegnazioni() {
     try {
-        assegnazioniData = await apiCall(`/api/utente/${utenteId}/assegnazioni`);
+        assegnazioniData = await apiCall(`/api/utente/${utenteId}/assegnazioni?mese=${meseDiOggiAssegnazioni()}`);
     } catch (e) {
         document.getElementById('lista-assegnazioni').innerHTML = '<div class="empty-state"><p class="empty-state-text">Errore nel caricamento</p></div>';
         return;
@@ -490,6 +497,9 @@ function renderAssegnazioni() {
     const b = assegnazioniData.bilancio || { monte_ore: 0, assegnate: 0, differenza: 0, stato: 'ok' };
     contatoreScheda('badge-assegnazioni', assegnazioniData.assegnazioni.length);
     document.getElementById('bil-monte').textContent = formatNumero(b.monte_ore) + 'h';
+    const testi = testiMonteOreAssegnazioni(b);
+    document.querySelector('[data-bilancio="etichetta"]').textContent = testi.etichetta;
+    document.querySelector('[data-bilancio="base"]').textContent = testi.base;
     document.getElementById('bil-assegnate').textContent = formatNumero(b.assegnate) + 'h';
     const stato = document.getElementById('bil-stato');
     if (b.stato === 'ok') {
@@ -520,6 +530,18 @@ function renderAssegnazioni() {
                 </span></td></tr>`;
         }).join('')}
         </tbody></table></div>`;
+}
+
+/** Etichetta e nota del monte ore del bilancio: "Monte ore settimanale di Novembre 2026"
+ * e, con una variazione che lo cambia, "Con una variazione (base: 12 h)". */
+function testiMonteOreAssegnazioni(b) {
+    const parti = String(b.mese || '').split('-');
+    const etichetta = parti.length === 2
+        ? `Monte ore settimanale di ${MESI[Number(parti[1])]} ${parti[0]}`
+        : "Monte ore settimanale dell'assistito";
+    const base = b.variato && b.monte_ore_base != null && Number(b.monte_ore_base) !== Number(b.monte_ore)
+        ? `Con una variazione (base: ${formatNumero(b.monte_ore_base)} h)` : '';
+    return { etichetta, base };
 }
 
 async function apriAssegnazione(id) {

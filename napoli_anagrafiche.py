@@ -672,6 +672,15 @@ def elenco_coppie(lotto_id, filtri=None):
     return {'righe': out, 'totale': len(out), 'filtri': f}
 
 
+def elenco(lotto_id, parte, filtri=None):
+    """L'elenco di una parte delle anagrafiche ('alunni', 'operatori', 'scuole', 'coppie')."""
+    funzioni = {'alunni': elenco_alunni, 'operatori': elenco_operatori, 'scuole': elenco_scuole,
+                'coppie': elenco_coppie}
+    if parte not in funzioni:
+        raise DatiNonValidi('Elenco sconosciuto: ricarica la pagina.', 'parte')
+    return funzioni[parte](lotto_id, filtri)
+
+
 def cerca_codice_fiscale(testo):
     """Chi ha questo codice fiscale (alunni e operatori di tutti i lotti): il codice arriva
     nel corpo della richiesta (mai nell'indirizzo, che finisce nei log) e non torna indietro."""
@@ -1182,12 +1191,21 @@ def aggiorna_pei(pei_id, dati):
         if not cambiati:
             return {'pei_id': pei_id, 'messaggio': 'Nessun cambiamento da salvare'}
         modifiche = ndb._Modifiche(conn)
-        modifiche.prima('pei', pei_id)
+        testo_libero = [k for k in cambiati if k in ndb.COLONNE_TESTO_LIBERO['pei']]
+        if not testo_libero:
+            modifiche.prima('pei', pei_id)
         _aggiorna_riga(conn, 'pei', pei_id, dict({k: valori[k] for k in cambiati}, modificato_il=_ora()))
-        modifiche.salva('pei', f'Modifica del PEI di un alunno ({_scheda_n(alunno["id"])}): {_descrivi_pei(valori)}')
+        descrizione = f'Modifica del PEI di un alunno ({_scheda_n(alunno["id"])}): {_descrivi_pei(valori)}'
+        if testo_libero:
+            ndb.registra_non_annullabile(conn, 'pei', descrizione, ndb.MOTIVO_TESTO_LIBERO)
+        else:
+            modifiche.salva('pei', descrizione)
     db.log_audit('modifica', 'napoli_pei', pei_id,
                  dettagli=f'Napoli: modificato il PEI di un alunno ({_scheda_n(alunno["id"])}): {_descrivi_pei(valori)}')
-    return {'pei_id': pei_id, 'messaggio': f'PEI salvato: {_descrivi_pei(valori)}'}
+    messaggio = f'PEI salvato: {_descrivi_pei(valori)}'
+    if testo_libero:
+        messaggio += ' (Ctrl+Z non annulla le modifiche alla nota)'
+    return {'pei_id': pei_id, 'messaggio': messaggio}
 
 
 def elimina_pei(pei_id):
@@ -1210,7 +1228,10 @@ def elimina_pei(pei_id):
     db.log_audit('eliminazione', 'napoli_pei', pei_id,
                  dettagli=f'Napoli: eliminato il PEI di un alunno ({_scheda_n(attuale["alunno_id"])}): '
                           f'{_descrivi_pei(attuale)}')
-    return {'messaggio': 'Ore del PEI eliminate'}
+    messaggio = 'Ore del PEI eliminate'
+    if str(attuale.get('fonte') or '').strip():
+        messaggio += ' (con Ctrl+Z tornano senza la nota, che non resta in memoria)'
+    return {'messaggio': messaggio}
 
 
 # ==================== operatori ====================
@@ -1504,6 +1525,16 @@ def _valida_coppia(conn, an, dati, attuale=None):
                             'aggiungerne un\'altra.', 'valido_da', codice='COPPIA_GIA_PRESENTE', coppia_id=altra['id'])
     if attuale is not None:
         _controlla_date_ore(an, attuale, dal, al)
+        vecchia_fine = attuale.get('valido_a')
+        if vecchia_fine and (al is None or al > vecchia_fine):
+            # allungare (o riaprire) la coppia di una persona archiviata: come crearla
+            operatore = _riga(conn, 'SELECT attivo FROM napoli_operatori WHERE id = ?', (operatore_id,)) or {}
+            if not operatore.get('attivo'):
+                raise Conflitto('L\'operatore è archiviato: ripristinalo prima di allungare o riaprire la coppia.',
+                                'valido_a', codice='ARCHIVIATO')
+            if not (an.alunno.get(alunno_id) or {}).get('attivo'):
+                raise Conflitto('L\'alunno è archiviato: ripristinalo prima di allungare o riaprire la coppia.',
+                                'valido_a', codice='ARCHIVIATO')
     return valori
 
 
@@ -1532,14 +1563,23 @@ def aggiorna_coppia(coppia_id, dati):
         if not cambiati:
             return {'coppia_id': coppia_id, 'avvisi': [], 'messaggio': 'Nessun cambiamento da salvare'}
         modifiche = ndb._Modifiche(conn)
-        modifiche.prima('coppie', coppia_id)
+        testo_libero = [k for k in cambiati if k in ndb.COLONNE_TESTO_LIBERO['coppie']]
+        if not testo_libero:
+            modifiche.prima('coppie', coppia_id)
         _aggiorna_riga(conn, 'coppie', coppia_id, dict({k: valori[k] for k in cambiati}, modificato_il=_ora()))
         cosa = _elenco([NOMI_CAMPI.get(k, k) for k in cambiati])
-        modifiche.salva('coppia', f'Modifica di una coppia ({_descrivi_coppia(valori)}): {cosa}')
+        descrizione = f'Modifica di una coppia ({_descrivi_coppia(valori)}): {cosa}'
+        if testo_libero:
+            ndb.registra_non_annullabile(conn, 'coppia', descrizione, ndb.MOTIVO_TESTO_LIBERO)
+        else:
+            modifiche.salva('coppia', descrizione)
         avvisi = _avvisi_coppia(an, dict(valori, id=coppia_id))
     db.log_audit('modifica', 'napoli_coppia', coppia_id,
                  dettagli=f'Napoli: modificata una coppia operatore-alunno ({_descrivi_coppia(valori)}): {cosa}')
-    return {'coppia_id': coppia_id, 'avvisi': avvisi, 'messaggio': 'Coppia salvata'}
+    messaggio = 'Coppia salvata'
+    if testo_libero:
+        messaggio += ' (Ctrl+Z non annulla le modifiche alle note)'
+    return {'coppia_id': coppia_id, 'avvisi': avvisi, 'messaggio': messaggio}
 
 
 def chiudi_coppia(coppia_id, dati):
@@ -1589,16 +1629,35 @@ def subentro(coppia_id, dati):
         nuova_id = _inserisci(conn, 'coppie', dict(nuova, lotto_id=attuale['lotto_id'], origine='manuale',
                                                    data_inserimento=ora, modificato_il=ora))
         modifiche.nuova('coppie', nuova_id)
+        # I sostituti della coppia di prima che cominciano dal giorno del subentro in poi
+        # sostituiscono il nuovo operatore: passano alla coppia nuova. Quelli gia' cominciati
+        # restano dove sono (i loro giorni di prima sostituivano l'operatore di prima).
+        sostituti = [c for c in an.coppie_alunno.get(attuale['alunno_id'], ())
+                     if c.get('titolare_coppia_id') == coppia_id and c['ruolo'] == 'sostituto']
+        spostati = [c for c in sostituti if c['valido_da'] >= dal]
+        for c in spostati:
+            modifiche.prima('coppie', c['id'])
+            _aggiorna_riga(conn, 'coppie', c['id'], {'titolare_coppia_id': nuova_id, 'modificato_il': ora})
+        a_cavallo = [c for c in sostituti if c['valido_da'] < dal and (c.get('valido_a') is None or c['valido_a'] >= dal)]
         modifiche.salva('coppia', f'Subentro in una coppia ({ndb.nome_figura(attuale["figura"])}) dal '
                                   f'{calc.data_it(dal)}')
         avvisi = _avvisi_coppia(an, dict(nuova, id=nuova_id), chiusa=coppia_id)
+        for c in a_cavallo:
+            avvisi.append(f'Il sostituto {nome_persona(an.operatore.get(c["operatore_id"]))} '
+                          f'({_periodo_it(c["valido_da"], c.get("valido_a"))}) resta collegato alla coppia di prima: '
+                          'se dal subentro sostituisce il nuovo operatore, chiudilo e aggiungi un sostituto della '
+                          'coppia nuova.')
         nome = nome_persona(an.operatore.get(nuova['operatore_id']))
     db.log_audit('creazione', 'napoli_coppia', nuova_id,
                  dettagli=f'Napoli, {an.lotto["nome"]}: subentro nella coppia n. {coppia_id} dal {calc.data_it(dal)} '
                           f'(nuova coppia n. {nuova_id})')
-    return {'coppia_id': nuova_id, 'avvisi': avvisi,
-            'messaggio': f'Subentro fatto: dal {calc.data_it(dal)} la coppia è con {nome}; quella di prima finisce il '
-                         f'{calc.data_it(_giorno_prima(dal))}'}
+    messaggio = (f'Subentro fatto: dal {calc.data_it(dal)} la coppia è con {nome}; quella di prima finisce il '
+                 f'{calc.data_it(_giorno_prima(dal))}')
+    if len(spostati) == 1:
+        messaggio += f'; il sostituto che comincia dal {calc.data_it(dal)} in poi passa alla coppia nuova'
+    elif spostati:
+        messaggio += f'; i {len(spostati)} sostituti che cominciano dal {calc.data_it(dal)} in poi passano alla coppia nuova'
+    return {'coppia_id': nuova_id, 'avvisi': avvisi, 'messaggio': messaggio, 'sostituti_spostati': len(spostati)}
 
 
 def elimina_coppia(coppia_id):
@@ -1620,4 +1679,7 @@ def elimina_coppia(coppia_id):
         modifiche.salva('coppia', f'Eliminazione di una coppia ({_descrivi_coppia(attuale)})')
     db.log_audit('eliminazione', 'napoli_coppia', coppia_id,
                  dettagli=f'Napoli: eliminata una coppia operatore-alunno ({_descrivi_coppia(attuale)})')
-    return {'messaggio': 'Coppia eliminata'}
+    messaggio = 'Coppia eliminata'
+    if str(attuale.get('note') or '').strip():
+        messaggio += ' (con Ctrl+Z torna senza le note, che non restano in memoria)'
+    return {'messaggio': messaggio}

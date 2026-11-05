@@ -141,8 +141,8 @@ ambiente isolato dentro la cartella (`.venv`) da `avvia.bat` / `run.sh` al primo
 La voce **Napoli** del menu (Alt+8) è la sezione dell'assistenza specialistica del
 Comune di Napoli. Ha dati suoi, separati da quelli di Roma: le pagine di Roma non
 cambiano e non mostrano mai i dati di Napoli. È in costruzione: per ora ci sono le
-impostazioni, il caricamento dell'anagrafica e le anagrafiche; presenze, fogli firma e
-fattura arriveranno con i prossimi aggiornamenti.
+impostazioni, il caricamento dell'anagrafica, le anagrafiche e le ore del coordinatore;
+presenze, fogli firma e fattura arriveranno con i prossimi aggiornamenti.
 
 1. **Crea il lotto.** Apri **Napoli**: la prima volta la pagina propone **Crea il primo
    lotto**. Il programma propone il nome, i testi della fattura e le tariffe del contratto
@@ -163,11 +163,18 @@ fattura arriveranno con i prossimi aggiornamenti.
    aggiungono e si correggono i dati a mano. Chi lascia il servizio si **archivia** (resta
    per i mesi passati); si elimina solo ciò che è stato aggiunto per sbaglio e non ha ore.
    I codici fiscali si vedono solo in parte (per esempio `ABC••••••••••12X`).
+4. **Scrivi le ore del coordinatore.** In **Napoli > Mese**, nel riquadro **Ore del
+   coordinatore**, c'è una riga per ogni mese, contratto applicativo e grado: scrivi il
+   totale del mese in ore con la virgola, per esempio **71,55** (come nella fattura), e
+   una nota se serve. Si salva da solo; Invio o le frecce passano alla riga sotto. Se
+   scrivi 71.55 Assisto lo legge come 71,55 e te lo dice; 71,555 (tre decimali) o 71:33
+   (ore e minuti) non si salvano e il messaggio spiega come scriverle. Un mese chiuso non
+   si cambia.
 
 Ctrl+Z su una pagina di Napoli annulla l'ultima modifica di Napoli (mai una di Roma),
-dopo una conferma. Le modifiche a nome, cognome, codice fiscale e note, e l'eliminazione
-di una persona, non si annullano: per la riservatezza i valori di prima non restano in
-memoria.
+dopo una conferma. Le modifiche a nome, cognome, codice fiscale e note (anche le note
+delle coppie e la nota del PEI), e l'eliminazione di una persona, non si annullano: per la
+riservatezza i valori di prima non restano in memoria.
 
 ## Parametri di calcolo
 
@@ -210,7 +217,7 @@ Gestionale-Assisto-<versione>/
 ├── routes_export.py    # Route export/report (Excel, Word)
 ├── database.py         # Gestione database SQLite
 ├── config.py           # Configurazione
-├── napoli_*.py         # Sezione Napoli: schema, calcoli, dati, anagrafiche (con routes_napoli.py,
+├── napoli_*.py         # Sezione Napoli: schema, calcoli, dati, anagrafiche, ore del coordinatore (con routes_napoli.py,
 │                       #   import_napoli.py, config_napoli.py)
 ├── requirements.txt    # Dipendenze Python
 ├── gestionale.db       # Database (creato al primo avvio)

@@ -302,6 +302,72 @@ def valida_euro(valore, nome='La tariffa', minimo=Decimal('0.01'), massimo=Decim
     return int(euro * 100)
 
 
+def ore_it(valore):
+    """Ore decimali all'italiana, senza decimali inutili: 71.55 -> '71,55', 71.5 -> '71,50',
+    12 -> '12', 7155 -> '7.155'."""
+    testo = numero_it(valore)
+    return testo[:-3] if testo.endswith(',00') else testo
+
+
+# Ore del coordinatore in un mese (per lotto, grado e contratto): piu' delle ore di un
+# mese intero (31 giorni x 24 ore) e' certamente un errore di battitura.
+ORE_COORDINATORE_MAX = 744
+
+
+def leggi_ore_coordinatore(valore):
+    """Il totale mensile delle ore del coordinatore scritto nella casella, in ore decimali
+    al centesimo come in fattura ('71,55'). Ritorna (ore_cent, nota): (None, None) se la
+    casella e' vuota (niente ore); la nota dice come si e' letto un valore scritto in modo
+    diverso dal solito ('71.55' con il punto vale 71,55). ValueError con un messaggio
+    semplice se non e' un numero di ore: ore e minuti ('71:33', con il decimale giusto),
+    piu' di due decimali ('71,555'), negativo, oltre ORE_COORDINATORE_MAX (con la proposta
+    '71,55' per '7155')."""
+    if isinstance(valore, bool):
+        raise ValueError('Le ore non sono un numero: scrivi per esempio 71,55.')
+    if isinstance(valore, (int, float)):
+        # un numero (non un testo scritto nella casella): il punto e' quello dei decimali
+        if valore != valore or valore in (float('inf'), float('-inf')):
+            raise ValueError('Le ore non sono un numero: scrivi per esempio 71,55.')
+        valore = numero_it(valore, 2) if decimale(valore) == decimale(valore).quantize(CENT) else \
+            str(decimale(valore)).replace('.', ',')
+    scritto = '' if valore is None else re.sub(r'\s+', '', str(valore))
+    scritto = re.sub(r'(?i)(h|ore)$', '', scritto)
+    if not scritto:
+        return None, None
+    if scritto.startswith('-'):
+        raise ValueError('Le ore non possono essere negative.')
+    m = re.fullmatch(r'(\d{1,4}):(\d{2})', scritto)
+    if m:
+        h, mi = int(m.group(1)), int(m.group(2))
+        if mi < 60:
+            raise ValueError(f'"{scritto}" sono ore e minuti: in decimale fanno '
+                             f'{numero_it(Decimal(h) + Decimal(mi) / SESSANTA)}. Le ore del coordinatore si '
+                             'scrivono in decimale, con la virgola.')
+        raise ValueError(f'"{scritto}" non è un numero di ore: scrivi le ore in decimale, con la virgola (per '
+                         'esempio 71,55).')
+    if re.fullmatch(r'\d{1,3}(\.\d{3})+,\d+', scritto):           # 1.234,56: punto delle migliaia
+        scritto = scritto.replace('.', '')
+    m = re.fullmatch(r'(\d*)(?:([.,])(\d*))?', scritto)
+    if not m or not (m.group(1) or m.group(3)):
+        raise ValueError(f'"{scritto}" non è un numero di ore: scrivi per esempio 71,55.')
+    intere, separatore, decimali = m.group(1) or '0', m.group(2), m.group(3) or ''
+    if len(decimali) > 2:
+        dopo = 'il punto' if separatore == '.' else 'la virgola'
+        raise ValueError(f'"{scritto}" ha {len(decimali)} cifre dopo {dopo}: le ore si scrivono con al massimo due '
+                         'decimali, per esempio 71,55.')
+    ore = Decimal(f'{intere}.{decimali or "0"}')
+    if ore > ORE_COORDINATORE_MAX:
+        proposta = ''
+        if separatore is None and len(intere) >= 3 and Decimal(f'{intere[:-2]}.{intere[-2:]}') <= ORE_COORDINATORE_MAX:
+            proposta = f' Forse volevi scrivere {intere[:-2]},{intere[-2:]}?'
+        raise ValueError(f'{ore_it(ore)} ore in un mese sono troppe (al massimo {ORE_COORDINATORE_MAX}).{proposta}')
+    nota = None
+    if separatore == '.':
+        nota = (f'Hai scritto "{scritto}" con il punto: vale {ore_it(ore)} ore (i decimali si scrivono dopo la '
+                'virgola).')
+    return int(ore * 100), nota
+
+
 def _iban_mod97(iban):
     """Resto della divisione per 97 dell'IBAN (ISO 13616): 1 se le cifre di controllo tornano."""
     riordinato = iban[4:] + iban[:4]

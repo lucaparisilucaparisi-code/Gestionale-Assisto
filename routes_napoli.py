@@ -15,8 +15,11 @@ l'anagrafica (azione principale, REGOLE 14) o, come opzione secondaria, anche le
 un mese; anteprima, conferma, solo confronto, elenco e annullamento (import_napoli).
 Passo 1.6: scheda Anagrafiche (/napoli/anagrafiche): alunni, operatori, scuole e plessi,
 coppie operatore-alunno e PEI, con ricerca, filtri, creazione e modifica a mano,
-archiviazione (napoli_anagrafiche). I filtri degli elenchi arrivano nell'indirizzo (GET),
-ma mai un codice fiscale: la ricerca per codice fiscale e' una POST.
+archiviazione (napoli_anagrafiche). La ricerca non va mai nell'indirizzo (un nome o un
+codice fiscale finirebbe nei log): la pagina chiede gli elenchi con una POST
+(/api/napoli/lotti/<id>/anagrafiche/elenco); la GET degli elenchi ha solo i filtri.
+Passo 1.8: ore del coordinatore nella scheda Mese (napoli_coordinamento): un totale
+mensile per lotto, grado e contratto applicativo.
 """
 import json
 import logging
@@ -27,6 +30,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 import import_napoli
 import napoli_anagrafiche as anagrafiche
+import napoli_coordinamento as coordinamento
 import napoli_db
 
 napoli_bp = Blueprint('napoli', __name__)
@@ -180,6 +184,20 @@ def api_elimina_lotto(lotto_id):
 @napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/controlli', methods=['GET'])
 def api_controlli_lotto(lotto_id):
     return jsonify(napoli_db.controlli_lotto(lotto_id, request.args.get('giorno')))
+
+
+# ==================== ore del coordinatore (passo 1.8) ====================
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/coordinamento', methods=['GET'])
+def api_coordinamento(lotto_id):
+    """I mesi dei contratti del lotto fino a oggi, con le ore del coordinatore per contratto e grado."""
+    return jsonify(coordinamento.elenco(lotto_id))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/coordinamento', methods=['PUT'])
+def api_salva_coordinamento(lotto_id):
+    """Ore (e nota) del coordinatore di un mese, contratto e grado; ore vuote = tolte."""
+    return _ok(**coordinamento.salva(lotto_id, _dati()))
 
 
 # ==================== contratti applicativi ====================
@@ -342,15 +360,33 @@ def api_import_annulla(import_id):
 
 # ==================== anagrafiche (passo 1.6) ====================
 
+FILTRI_ANAGRAFICHE = ('scuola_id', 'municipalita', 'figura', 'grado', 'stato', 'ruolo')
+
+
 def _filtri_della_richiesta():
-    return {k: request.args.get(k, '') for k in ('scuola_id', 'municipalita', 'figura', 'grado', 'stato', 'ruolo',
-                                                 'cerca')}
+    """Filtri di un elenco nell'indirizzo (GET). La ricerca no: anche un codice fiscale
+    scritto a meta' finirebbe nei log, quindi si manda solo con la POST di
+    /api/napoli/lotti/<id>/anagrafiche/elenco."""
+    if request.args.get('cerca'):
+        raise napoli_db.DatiNonValidi('La ricerca non va nell\'indirizzo: ricarica la pagina e riprova.', 'cerca',
+                                      codice='RICERCA_NELL_INDIRIZZO')
+    return {k: request.args.get(k, '') for k in FILTRI_ANAGRAFICHE}
 
 
 @napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/anagrafiche', methods=['GET'])
 def api_anagrafiche(lotto_id):
     """Conteggi, cosa c'e' da sistemare, scuole e municipalita' per i filtri, anagrafica vuota."""
     return jsonify(anagrafiche.riepilogo(lotto_id))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/anagrafiche/elenco', methods=['POST'])
+def api_elenco_anagrafiche(lotto_id):
+    """Un elenco (alunni, operatori, scuole o coppie) con filtri e ricerca nel corpo della
+    richiesta: la pagina cerca sempre cosi', perche' un nome o un codice fiscale scritto
+    nella ricerca non deve finire nell'indirizzo (e nei log)."""
+    dati = _dati()
+    filtri = {k: dati.get(k, '') for k in FILTRI_ANAGRAFICHE + ('cerca',)}
+    return jsonify(anagrafiche.elenco(lotto_id, dati.get('parte'), filtri))
 
 
 @napoli_bp.route('/api/napoli/anagrafiche/codice-fiscale', methods=['POST'])

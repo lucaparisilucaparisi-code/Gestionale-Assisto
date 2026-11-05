@@ -34,7 +34,11 @@ MAX_ANNULLAMENTI = 50
 # Tabelle che Ctrl+Z sa rimettere com'erano (senza il prefisso napoli_) e la loro chiave.
 TABELLE_ANNULLABILI = {'lotti': 'id', 'contratti': 'id', 'tariffe': 'id', 'regole': 'id',
                        'alias_qualifiche': 'testo', 'impostazioni': 'chiave',
-                       'scuole': 'id', 'alunni': 'id', 'operatori': 'id', 'coppie': 'id', 'pei': 'id'}
+                       'scuole': 'id', 'alunni': 'id', 'operatori': 'id', 'coppie': 'id', 'pei': 'id',
+                       'coordinamento': 'id'}
+# Tabelle con righe di un mese del lotto: Ctrl+Z non le cambia se nel frattempo il mese e'
+# stato chiuso (come le scritture: 409 MESE_CHIUSO_LOTTO).
+TABELLE_DEL_MESE = ('coordinamento',)
 # Dati personali che la memoria di Ctrl+Z non salva mai (PROGETTO D11: codici fiscali e
 # nomi non stanno negli annullamenti): delle righe di queste tabelle si salvano solo le
 # altre colonne. Un'azione che li cambia o che elimina la persona non si annulla con
@@ -43,6 +47,13 @@ COLONNE_PERSONALI = {'alunni': ('cognome', 'nome', 'codice_fiscale', 'note'),
                      'operatori': ('cognome', 'nome', 'codice_fiscale', 'cf_valido', 'note')}
 MOTIVO_DATI_PERSONALI = ('per la riservatezza nome, cognome, codice fiscale e note di prima non restano in '
                          'memoria. Se hai sbagliato, correggili di nuovo dalla scheda')
+# Testo libero di coppie e PEI (le note, la nota "da dove viene" del PEI): potrebbe avere un
+# nome o un dato sanitario scritto per sbaglio, quindi come i dati personali non resta nella
+# memoria di Ctrl+Z. Una modifica che lo cambia non si annulla; una riga eliminata torna con
+# Ctrl+Z senza questo testo.
+COLONNE_TESTO_LIBERO = {'coppie': ('note',), 'pei': ('fonte',)}
+MOTIVO_TESTO_LIBERO = ('per la riservatezza le note di prima non restano in memoria. Se hai sbagliato, correggile '
+                       'di nuovo dalla scheda')
 # Tabelle con dati di un lotto che impediscono di eliminarlo (oltre a contratti, tariffe e regole).
 TABELLE_DATI_LOTTO = ('scuole', 'alunni', 'coppie', 'presenze', 'import', 'coordinamento', 'mesi_chiusi',
                       'fatture', 'calendario')
@@ -229,7 +240,7 @@ class _Modifiche:
         colonna = TABELLE_ANNULLABILI[tabella]
         riga = _riga(self.conn, f'SELECT * FROM napoli_{tabella} WHERE {colonna} = ?', (chiave,))
         voce = {'tabella': tabella, 'chiave': chiave, 'prima': riga}
-        personali = COLONNE_PERSONALI.get(tabella)
+        personali = COLONNE_PERSONALI.get(tabella) or COLONNE_TESTO_LIBERO.get(tabella)
         if personali and riga is not None:
             # i dati personali non si salvano: Ctrl+Z rimette solo le altre colonne
             voce['prima'] = {k: v for k, v in riga.items() if k not in personali}
@@ -294,7 +305,7 @@ def _ripristina(conn, voce):
     esistenti = {r[1] for r in conn.execute(f'PRAGMA table_info(napoli_{tabella})')}
     valori = {k: v for k, v in prima.items() if k in esistenti and k not in (voce.get('senza') or ())}
     esiste = conn.execute(f'SELECT 1 FROM napoli_{tabella} WHERE {colonna} = ?', (chiave,)).fetchone()
-    if not esiste and (voce.get('senza') or tabella in COLONNE_PERSONALI):
+    if not esiste and tabella in COLONNE_PERSONALI:
         # senza i dati personali la riga non si puo' rimettere (non succede: chi elimina una
         # persona registra un'azione non annullabile)
         raise DatiNonValidi(f'Questa modifica non si può annullare: {MOTIVO_DATI_PERSONALI}.', codice='NON_ANNULLABILE')
@@ -306,6 +317,20 @@ def _ripristina(conn, voce):
         nomi = ', '.join(valori)
         segnaposto = ', '.join('?' * len(valori))
         conn.execute(f'INSERT INTO napoli_{tabella} ({nomi}) VALUES ({segnaposto})', tuple(valori.values()))
+
+
+def _controlla_mesi_chiusi(conn, voci):
+    """Ctrl+Z non cambia le righe di un mese chiuso del lotto (TABELLE_DEL_MESE)."""
+    for voce in voci:
+        if not isinstance(voce, dict) or voce.get('tabella') not in TABELLE_DEL_MESE:
+            continue
+        riga = voce.get('prima') or _riga(conn, f'SELECT lotto_id, anno, mese FROM napoli_{voce["tabella"]} '
+                                                f'WHERE id = ?', (voce.get('chiave'),))
+        if riga and conn.execute('SELECT 1 FROM napoli_mesi_chiusi WHERE lotto_id = ? AND anno = ? AND mese = ?',
+                                 (riga['lotto_id'], riga['anno'], riga['mese'])).fetchone():
+            raise Conflitto(f'Non si può annullare: {calc.MESI[riga["mese"] - 1].lower()} {riga["anno"]} è stato '
+                            'chiuso nel frattempo. Per correggere bisogna prima riaprire il mese.',
+                            codice='MESE_CHIUSO_LOTTO')
 
 
 def _annullabile(timestamp, adesso=None):
@@ -338,15 +363,14 @@ def _nome(riga):
 def _chi(conn, voci):
     """Di chi o di che cosa e' la modifica, letto adesso dalle anagrafiche (la memoria di
     Ctrl+Z non ha nomi): solo per la finestra di conferma, mai salvato."""
-    ordine = ('alunni', 'operatori', 'coppie', 'pei', 'scuole')      # prima le persone
+    # prima le persone; le scuole no: il nome della scuola e' gia' nella descrizione
+    ordine = ('alunni', 'operatori', 'coppie', 'pei')
     voci = [v for v in voci if isinstance(v, dict) and v.get('tabella') in ordine] if isinstance(voci, list) else []
     for v in sorted(voci, key=lambda v: ordine.index(v['tabella'])):
         tabella, chiave = v['tabella'], v.get('chiave')
         riga = _riga(conn, f'SELECT * FROM napoli_{tabella} WHERE id = ?', (chiave,)) or v.get('prima') or {}
         if tabella in ('alunni', 'operatori'):
             return _nome(riga)
-        if tabella == 'scuole':
-            return riga.get('nome') or ''
         alunno = _riga(conn, 'SELECT cognome, nome FROM napoli_alunni WHERE id = ?', (riga.get('alunno_id'),))
         if tabella == 'pei':
             return _nome(alunno)
@@ -406,6 +430,7 @@ def annulla(atteso=None):
             if import_id is None:
                 if not isinstance(voci, list):
                     raise DatiNonValidi('Questa modifica non si può annullare da qui.', codice='NON_ANNULLABILE')
+                _controlla_mesi_chiusi(conn, voci)
                 for voce in reversed(voci):
                     _ripristina(conn, voce)
                 conn.execute('DELETE FROM napoli_annullamenti WHERE id = ?', (ultima['id'],))
@@ -835,10 +860,28 @@ def contratto(contratto_id, conn=None):
     return riga
 
 
+def _ore_coordinatore_fuori(conn, contratto_id, valori):
+    """Le ore del coordinatore di un contratto che con le date e il grado nuovi resterebbero
+    fuori dal contratto ('ottobre 2026 (grado superiore)')."""
+    fuori = []
+    for r in _righe(conn, 'SELECT anno, mese, grado FROM napoli_coordinamento WHERE contratto_id = ? '
+                          'ORDER BY anno, mese, grado', (contratto_id,)):
+        if calc.periodo_fattura(r['anno'], r['mese'], valori['valido_da'], valori['valido_a']) is None \
+                or (valori['grado'] and r['grado'] != valori['grado']):
+            fuori.append(f'{calc.MESI[r["mese"] - 1].lower()} {r["anno"]} ({NOMI_GRADO[r["grado"]]})')
+    return fuori
+
+
 def aggiorna_contratto(contratto_id, dati):
     with db.get_db_context() as conn:
         attuale = contratto(contratto_id, conn)
         valori = _valida_contratto(conn, attuale['lotto_id'], dati, contratto_id)
+        fuori = _ore_coordinatore_fuori(conn, contratto_id, valori)
+        if fuori:
+            raise Conflitto(f'Il contratto {attuale["numero"]} ha le ore del coordinatore di {", ".join(fuori[:3])}'
+                            f'{" e altri mesi" if len(fuori) > 3 else ""}: con queste date o questo grado resterebbero '
+                            'fuori dal contratto. Togli prima quelle ore nella scheda Mese.', 'valido_da',
+                            codice='CONTRATTO_USATO')
         modifiche = _Modifiche(conn)
         modifiche.prima('contratti', contratto_id)
         assegna = ', '.join(f'{k} = ?' for k in valori)

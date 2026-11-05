@@ -2938,16 +2938,28 @@ def get_assistiti_dipendente(dipendente_id):
         return [dict(r) for r in cursor.fetchall()]
 
 
-def get_bilancio_assegnazioni_utente(utente_id):
+def get_bilancio_assegnazioni_utente(utente_id, periodo=None):
     """Confronta il monte ore settimanale dell'assistito con la somma delle ore
-    assegnate agli operatori. Ritorna monte_ore, assegnate, differenza, stato."""
+    assegnate agli operatori. Ritorna monte_ore, assegnate, differenza, stato.
+
+    Con `periodo` ('YYYY-MM', la scheda dell'utente passa il mese di oggi) il monte ore
+    e' quello del mese, variazioni comprese (`risolvi_monte_ore`, la regola unica), e la
+    risposta dice anche la base, il mese e se c'e' una variazione (`monte_ore_base`,
+    `mese`, `variato`). Senza, il monte ore base dell'anagrafica, come prima."""
     with get_db_context() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT monte_ore_settimanale FROM utenti WHERE id = ?", (utente_id,))
         r = cursor.fetchone()
-        monte = (r['monte_ore_settimanale'] if r else 0) or 0
+        base = (r['monte_ore_settimanale'] if r else 0) or 0
         cursor.execute("SELECT COALESCE(SUM(ore_settimanali), 0) as tot FROM assegnazioni WHERE utente_id = ?", (utente_id,))
         assegnate = cursor.fetchone()['tot'] or 0
+    monte, variato = base, False
+    if periodo is not None:
+        variazioni = get_variazioni_monte_ore(utente_id)
+        monte = risolvi_monte_ore(base, variazioni, periodo)
+        # come monte_ore_variato della vista mensile: c'e' una variazione in corso nel mese
+        variato = any(v['mese_inizio'] <= periodo and (not v['mese_fine'] or v['mese_fine'] >= periodo)
+                      for v in variazioni)
     diff = round(assegnate - monte, 2)
     if abs(diff) < 0.01:
         stato = 'ok'
@@ -2955,8 +2967,11 @@ def get_bilancio_assegnazioni_utente(utente_id):
         stato = 'sotto'   # mancano ore da assegnare
     else:
         stato = 'sopra'   # assegnate piu' ore del monte
-    return {'monte_ore': round(monte, 2), 'assegnate': round(assegnate, 2),
-            'differenza': diff, 'stato': stato}
+    bilancio = {'monte_ore': round(monte, 2), 'assegnate': round(assegnate, 2),
+                'differenza': diff, 'stato': stato}
+    if periodo is not None:
+        bilancio.update({'monte_ore_base': round(base, 2), 'mese': periodo, 'variato': variato})
+    return bilancio
 
 
 def create_assegnazione(utente_id, dipendente_id, ore_settimanali, valido_da=None, valido_a=None, note=None):

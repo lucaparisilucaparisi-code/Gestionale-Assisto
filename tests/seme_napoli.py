@@ -17,7 +17,9 @@ pagina), poi anche le ore del mese (l'opzione secondaria), dopo le righe scritte
 direttamente, cosi' l'import ritrova un plesso gia' presente; dal passo 1.6 le
 Anagrafiche scritte a mano (_seme_anagrafiche: una scuola, un alunno e un operatore
 omonimi di Roma, PEI con il cambio da una data, coppia, sostituto, subentro, chiusura,
-modifiche, archiviazione e ripristino, ricerca per codice fiscale).
+modifiche, archiviazione e ripristino, ricerca per codice fiscale); dal passo 1.8 le ore
+del coordinatore di ottobre 2025 (_seme_coordinamento: scritte, cambiate, Ctrl+Z, "3.75" con
+il punto), prima che il mese si chiuda.
 Il resto, e tutto senza client o con versione_schema=2 (forma della v2, per provare la
 migrazione 3), si scrive direttamente nelle tabelle napoli_* con una connessione
 SQLite a parte: mai nelle tabelle di Roma. Ogni passo che aggiunge una funzione di
@@ -138,12 +140,34 @@ def _seme_con_le_api(client):
     for c in CONTRATTI_SEME:
         dati = dict(c, importo=f'{c["importo_cent"] // 100},00' if 'importo_cent' in c else '')
         contratti.append(_ok(client.post(f'/api/napoli/lotti/{lotto}/contratti', json=dati))['contratto']['id'])
+    coordinamento = _seme_coordinamento(client, lotto, contratti)
     for regola in ({'chiave': 'quota_assenza_alunno', 'valore': '0,5', 'valido_da': '2025-09-01',
                     'valido_a': '2027-01-31', 'fonte': 'prova'},
                    {'chiave': 'quota_assenza_alunno', 'valore': '0', 'valido_da': '2027-02-01', 'fonte': 'prova'},
                    {'chiave': 'giorni_pagamento', 'valore': 30, 'valido_da': '2025-09-01', 'lotto_id': lotto}):
         _ok(client.post('/api/napoli/regole', json=regola))
-    return {'lotto': lotto, 'inferiore_x': contratti[0], 'superiore_x': contratti[2]}
+    return {'lotto': lotto, 'inferiore_x': contratti[0], 'superiore_x': contratti[2], 'coordinamento': coordinamento}
+
+
+def _seme_coordinamento(client, lotto, contratti):
+    """Le ore del coordinatore di ottobre 2025 con le API (passo 1.8), prima che il resto del
+    seme chiuda il mese: 12,50 h del grado inferiore (scritte, cambiate e riportate a 12,50
+    con Ctrl+Z) e 3.75 h del superiore (scritte con il punto). Il mese chiuso le rifiuta."""
+    url = f'/api/napoli/lotti/{lotto}/coordinamento'
+
+    def scrivi(grado, contratto, **campi):
+        return _ok(client.put(url, json=dict(anno=2025, mese=10, contratto_id=contratto, grado=grado, **campi)))
+
+    inferiore = scrivi('inferiore', contratti[0], ore='12,50', nota='Ore di prova')['riga']['id']
+    scrivi('inferiore', contratti[0], ore='13')
+    _ok(client.post('/api/napoli/annulla', json={}))
+    superiore = scrivi('superiore', contratti[2], ore='3.75')
+    assert superiore['lettura'], superiore
+    elenco = _ok(client.get(url))
+    ottobre = next(m for m in elenco['mesi'] if (m['anno'], m['mese']) == (2025, 10))
+    assert [r['ore'] for r in ottobre['righe'] if r['contratto_id'] in (contratti[0], contratti[2])] == [
+        '12,50', '3,75'], ottobre
+    return {'inferiore': inferiore, 'superiore': superiore['riga']['id']}
 
 
 def _seme_impostazioni_diretto(ins, ora):
@@ -285,6 +309,9 @@ def _scrivi_seme(ins, versione_schema, ids=None):
     if versione_schema == 2:            # v2: una riga per coordinatore, operatore obbligatorio
         ins('napoli_coordinamento', lotto_id=lotto, grado='inferiore', contratto_id=inferiore_x, anno=2025, mese=10,
             operatore_id=sesta, ore_cent=1250, nota='Ore di prova')
+    elif ids.get('coordinamento'):      # scritte con le API (passo 1.8): l'operatore facoltativo qui
+        ins.conn.execute('UPDATE napoli_coordinamento SET operatore_id = ? WHERE id = ?',
+                         (sesta, ids['coordinamento']['superiore']))
     else:                               # dalla v3: totale del mese, senza nome (come in fattura)
         ins('napoli_coordinamento', lotto_id=lotto, grado='inferiore', contratto_id=inferiore_x, anno=2025, mese=10,
             ore_cent=1250, nota='Ore di prova', modificato_il='2025-11-04T09:00:00')
