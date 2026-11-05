@@ -9,9 +9,11 @@
  *   Ctrl+Z di Napoli. window.annullaPagina: app.js lo usa al posto dell'annulla di Roma,
  *   cosi' Ctrl+Z su una pagina di Napoli non annulla mai un'azione di Roma (e viceversa);
  * - NapoliProcedura: "Crea il primo lotto" (anche "Nuovo lotto") in tre passi;
- * - NapoliMese, NapoliImport e NapoliImpostazioni: le schede (Importa: dal file Excel
- *   "master" l'anagrafica, l'azione principale, o in una parte secondaria le ore di un
- *   mese; anteprima, scelte da confermare, caricamento e "Annulla il caricamento").
+ * - NapoliMese, NapoliAnagrafiche, NapoliImport e NapoliImpostazioni: le schede
+ *   (Anagrafiche: alunni, operatori, scuole e plessi, coppie, con filtri, schede e moduli;
+ *   Importa: dal file Excel "master" l'anagrafica, l'azione principale, o in una parte
+ *   secondaria le ore di un mese; anteprima, scelte da confermare, caricamento e
+ *   "Annulla il caricamento").
  * Ogni controllo vero e' sul server: qui si guardano solo i campi vuoti, per non far
  * aspettare la risposta.
  */
@@ -198,12 +200,20 @@ const NapoliComune = {
 
     /** Ctrl+Z delle pagine di Napoli: prima si chiede, con la descrizione e l'ora della modifica. */
     async annulla() {
-        if (document.getElementById('confirm-dialog-overlay')) return;   // conferma gia' aperta
+        // conferma gia' aperta (una che si sta chiudendo resta nella pagina ancora 300 ms: non conta)
+        if (document.querySelector('#confirm-dialog-overlay.active')) return;
         let info;
         try {
             info = await apiCall('/api/napoli/annulla/ultima');
         } catch (e) {
             showToast(e.message || 'Annulla non disponibile', 'warning');
+            return;
+        }
+        if (info.non_annullabile) {
+            // l'ultima azione ha cambiato dati personali (o eliminato una persona): i valori di
+            // prima non restano in memoria, quindi Ctrl+Z non la annulla e lo dice
+            const n = info.non_annullabile;
+            showToast(`«${n.descrizione}» (${n.quando}) non si annulla con Ctrl+Z: ${n.motivo}.`, 'warning', 10000);
             return;
         }
         if (!info.azione) {
@@ -214,7 +224,7 @@ const NapoliComune = {
         }
         showConfirmDialog(
             'Annullare questa modifica?',
-            `${info.azione.descrizione}. Modifica fatta il ${info.azione.quando}.`,
+            `${info.azione.descrizione}${info.azione.chi ? ` (${info.azione.chi})` : ''}. Modifica fatta il ${info.azione.quando}.`,
             async () => {
                 try {
                     const r = await apiCall('/api/napoli/annulla', { method: 'POST', body: JSON.stringify({ id: info.azione.id }) });
@@ -487,7 +497,974 @@ const NapoliMese = {
                     </details>` : ''}
                 </div>
             </div>
-            <p class="napoli-nota">L'anagrafica (alunni, operatori, scuole, coppie e PEI) si carica dal file Excel del coordinatore nella scheda <a href="/napoli/import">Importa</a>. Presenze, fogli firma e fattura del mese arriveranno nella sezione Napoli con i prossimi aggiornamenti di Assisto.</p>`;
+            <p class="napoli-nota">L'anagrafica (alunni, operatori, scuole, coppie e PEI) si carica dal file Excel del coordinatore nella scheda <a href="/napoli/import">Importa</a> e si controlla o si corregge nella scheda <a href="/napoli/anagrafiche">Anagrafiche</a>. Presenze, fogli firma e fattura del mese arriveranno nella sezione Napoli con i prossimi aggiornamenti di Assisto.</p>`;
+    },
+};
+
+// ==================== scheda Anagrafiche (alunni, operatori, scuole, coppie) ====================
+
+const NAPOLI_STATI_FILTRO = {
+    alunni: [['attivi', 'In servizio'], ['da_sistemare', 'Da sistemare'], ['archiviati', 'Archiviati'], ['tutti', 'Tutti']],
+    operatori: [['attivi', 'In servizio'], ['da_sistemare', 'Da sistemare'], ['archiviati', 'Archiviati'], ['tutti', 'Tutti']],
+    scuole: [['attive', 'Attive'], ['da_sistemare', 'Da sistemare'], ['archiviate', 'Archiviate'], ['tutte', 'Tutte']],
+    coppie: [['in_corso', 'In corso'], ['future', 'Da cominciare'], ['finite', 'Finite'], ['da_sistemare', 'Da sistemare'], ['tutte', 'Tutte']],
+};
+// filtri che valgono per ogni parte (gli altri si nascondono)
+const NAPOLI_FILTRI_PARTE = {
+    alunni: ['scuola_id', 'municipalita', 'figura', 'grado', 'stato'],
+    operatori: ['scuola_id', 'municipalita', 'figura', 'grado', 'stato'],
+    scuole: ['municipalita', 'figura', 'grado', 'stato'],
+    coppie: ['scuola_id', 'municipalita', 'figura', 'grado', 'ruolo', 'stato'],
+};
+const NAPOLI_PARTI_ANAGRAFICA = {
+    alunni: { titolo: 'Alunni', nuovo: 'Nuovo alunno', vuoto: 'Nessun alunno' },
+    operatori: { titolo: 'Operatori', nuovo: 'Nuovo operatore', vuoto: 'Nessun operatore' },
+    scuole: { titolo: 'Scuole e plessi', nuovo: 'Nuova scuola', vuoto: 'Nessuna scuola' },
+    coppie: { titolo: 'Coppie operatore-alunno', nuovo: 'Nuova coppia', vuoto: 'Nessuna coppia' },
+};
+const NAPOLI_DA_SISTEMARE = {
+    grado_da_decidere: 'Grado da decidere',
+    senza_pei: 'Senza ore del PEI',
+    senza_coppie: 'Senza coppie in corso',
+    senza_scuola: 'Senza scuola',
+    scuola_archiviata: 'Scuola archiviata',
+    codice_fiscale: 'Codice fiscale da controllare',
+    codice_fiscale_mancante: 'Codice fiscale mancante',
+    ore_contratto_mancanti: 'Ore di contratto mancanti',
+    ore_oltre_contratto: 'Più ore del contratto',
+    municipalita_mancante: 'Municipalità mancante',
+    alunni_senza_grado: 'Alunni senza grado',
+    figura_diversa: 'Figura diversa da quella dell\'operatore',
+    operatore_archiviato: 'Operatore archiviato',
+    alunno_archiviato: 'Alunno archiviato',
+};
+const NAPOLI_STATO_COPPIA = { in_corso: ['In corso', 'badge-success'], futura: ['Da cominciare', 'badge-info'], finita: ['Finita', 'badge-secondary'] };
+const NAPOLI_GRADO_SCUOLA = { inferiore: 'Grado inferiore', superiore: 'Grado superiore', misto: 'Misto' };
+const NAPOLI_STATI_PEI = [['definitivo', 'Definitivo'], ['provvisorio', 'Provvisorio'], ['sospeso', 'Sospeso']];
+const NAPOLI_LIVELLI = ['C3', 'D1', 'D2', 'E2'];
+// un codice fiscale intero scritto nella ricerca: si cerca con una POST, mai nell'indirizzo
+const NAPOLI_RX_CF = /^[A-Za-z]{6}[0-9LMNPQRSTUVlmnpqrstuv]{2}[A-Za-z][0-9LMNPQRSTUVlmnpqrstuv]{2}[A-Za-z][0-9LMNPQRSTUVlmnpqrstuv]{3}[A-Za-z]$/;
+
+function napoliBadge(testo, classe = 'badge-warning') {
+    return `<span class="badge ${classe} badge-sm">${escapeHtml(testo)}</span>`;
+}
+
+function napoliDaSistemare(codici) {
+    return (codici || []).map(c => napoliBadge(NAPOLI_DA_SISTEMARE[c] || c)).join('');
+}
+
+function napoliMunicipalita(m) {
+    return m ? `Municipalità ${m}` : 'Municipalità mancante';
+}
+
+function napoliGradoTesto(g) {
+    return g ? (NAPOLI_GRADO_SCUOLA[g] || g) : 'Grado da decidere';
+}
+
+function napoliOre(testo) {
+    return testo ? `${escapeHtml(testo)} h` : '';
+}
+
+/** Primi `n` nomi e "e altri N". */
+function napoliPrimi(voci, n = 3) {
+    if (voci.length <= n) return voci;
+    return voci.slice(0, n).concat([`e ${voci.length - n === 1 ? 'un altro' : `altri ${voci.length - n}`}`]);
+}
+
+const NapoliAnagrafiche = {
+    PARTI: ['alunni', 'operatori', 'scuole', 'coppie'],
+    parte: 'alunni',
+    riepilogo: null,
+    filtri: {},
+    righe: [],
+    seq: 0,
+    attesaCerca: null,
+    modulo: null,
+    schedaDati: null,
+
+    el(id) { return document.getElementById(id); },
+
+    async avvia() {
+        this.azzeraFiltri();
+        NapoliComune.alCambioLotto = () => {
+            this.azzeraFiltri();
+            if (window.location.hash.replace('#', '') !== this.parte) window.location.hash = this.parte;
+            else this.mostra();
+        };
+        NapoliComune.dopoAnnulla = async () => { await this.mostra(); };
+        window.addEventListener('hashchange', () => this.mostra());
+        this.collega();
+        try {
+            await Promise.all([NapoliComune.caricaLotti(), NapoliComune.caricaFigure()]);
+        } catch (e) {
+            showToast(e.message || 'Dati non disponibili', 'error');
+        }
+        await this.mostra();
+    },
+
+    azzeraFiltri() {
+        this.filtri = {};
+        this.PARTI.forEach(p => { this.filtri[p] = { stato: NAPOLI_STATI_FILTRO[p][0][0] }; });
+        const cerca = this.el('filtro-cerca');
+        if (cerca) cerca.value = '';
+    },
+
+    /** #alunni, #operatori, #scuole, #coppie o la scheda #alunno-12, #operatore-7. */
+    indirizzo() {
+        const h = window.location.hash.replace('#', '');
+        const m = /^(alunno|operatore)-(\d+)$/.exec(h);
+        if (m) return { parte: m[1] === 'alunno' ? 'alunni' : 'operatori', scheda: { tipo: m[1], id: Number(m[2]) } };
+        return { parte: this.PARTI.includes(h) ? h : 'alunni', scheda: null };
+    },
+
+    collega() {
+        this.el('napoli-annulla-ultima').addEventListener('click', () => NapoliComune.annulla());
+        this.el('btn-nuovo').addEventListener('click', () => this.nuovo(this.parte));
+        this.el('elenco-da-sistemare').addEventListener('click', () => {
+            const f = this.filtri[this.parte];
+            f.stato = f.stato === 'da_sistemare' ? NAPOLI_STATI_FILTRO[this.parte][0][0] : 'da_sistemare';
+            this.el('filtro-stato').value = f.stato;
+            this.carica();
+        });
+        this.el('form-anagrafica').addEventListener('submit', (e) => { e.preventDefault(); this.invia(); });
+        document.querySelectorAll('[data-campo-filtro]').forEach(sel => {
+            sel.addEventListener('change', () => {
+                this.filtri[this.parte][sel.dataset.campoFiltro] = sel.value;
+                this.carica();
+            });
+        });
+        const cerca = this.el('filtro-cerca');
+        cerca.addEventListener('input', () => {
+            clearTimeout(this.attesaCerca);
+            this.attesaCerca = setTimeout(() => this.cerca(cerca.value.trim()), 300);
+        });
+        cerca.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); clearTimeout(this.attesaCerca); this.cerca(cerca.value.trim()); }
+        });
+        document.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-azione]');
+            if (!b || !b.closest('#napoli-anagrafiche')) return;
+            if (b.dataset.azione === 'crea-lotto') {
+                NapoliProcedura.apri(async (lotto) => { await NapoliComune.caricaLotti(lotto.id); await this.mostra(); });
+                return;
+            }
+            this.azione(b.dataset.azione, b.dataset.id ? Number(b.dataset.id) : null, b);
+        });
+        // una riga dell'elenco si apre anche con un clic sulla riga (fuori dai pulsanti)
+        this.el('elenco-tabella').addEventListener('click', (e) => {
+            if (e.target.closest('a, button')) return;
+            const tr = e.target.closest('tr[data-apri]');
+            if (tr) window.location.hash = tr.dataset.apri;
+        });
+    },
+
+    async mostra() {
+        const lotto = NapoliComune.lotto;
+        const senza = this.el('anagrafiche-senza-lotto');
+        const vuota = this.el('anagrafiche-vuota');
+        const contenuto = this.el('anagrafiche-contenuto');
+        if (!lotto) {
+            senza.innerHTML = `<div class="card">${napoliBenvenuto()}</div>`;
+            senza.hidden = false;
+            vuota.hidden = contenuto.hidden = true;
+            return;
+        }
+        senza.hidden = true;
+        try {
+            this.riepilogo = await apiCall(`/api/napoli/lotti/${lotto.id}/anagrafiche`);
+        } catch (e) {
+            senza.innerHTML = `<div class="alert alert-danger">${escapeHtml(e.message || 'Anagrafiche non disponibili')}</div>`;
+            senza.hidden = false;
+            vuota.hidden = contenuto.hidden = true;
+            return;
+        }
+        const r = this.riepilogo;
+        const { parte, scheda } = this.indirizzo();
+        // anagrafica vuota: l'azione principale e' caricarla dal file Excel (REGOLE 14)
+        if (r.vuota && !r.conteggi.operatori && !scheda) {
+            vuota.hidden = false;
+            contenuto.hidden = true;
+            return;
+        }
+        vuota.hidden = true;
+        contenuto.hidden = false;
+        this.disegnaConteggi();
+        if (scheda) await this.apriScheda(scheda);
+        else await this.mostraParte(parte);
+    },
+
+    disegnaConteggi() {
+        const c = this.riepilogo.conteggi, d = this.riepilogo.da_sistemare;
+        const valori = { alunni: c.alunni, operatori: c.operatori, scuole: c.scuole, coppie: c.coppie_in_corso };
+        document.querySelectorAll('[data-conta]').forEach(el => { el.textContent = String(valori[el.dataset.conta]); });
+        this.daSistemare = d;
+    },
+
+    /** "N da sistemare" accanto al titolo dell'elenco: un clic mostra solo quelle righe. */
+    disegnaDaSistemare() {
+        const n = (this.daSistemare || {})[this.parte] || 0;
+        const b = this.el('elenco-da-sistemare');
+        const attivo = this.filtri[this.parte].stato === 'da_sistemare';
+        b.hidden = !n;
+        b.textContent = attivo ? `${n} da sistemare: mostra tutti` : `${n} da sistemare`;
+        b.setAttribute('aria-pressed', attivo ? 'true' : 'false');
+        b.title = attivo ? 'Mostra di nuovo tutte le righe' : 'Mostra solo le righe con qualcosa da sistemare';
+    },
+
+    segnaParte(parte) {
+        document.querySelectorAll('[data-parte-link]').forEach(a => {
+            const attiva = a.dataset.parteLink === parte;
+            a.classList.toggle('attiva', attiva);
+            if (attiva) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+        });
+    },
+
+    async mostraParte(parte) {
+        this.parte = parte;
+        this.segnaParte(parte);
+        this.el('anagrafiche-elenco').hidden = false;
+        this.el('anagrafiche-scheda').hidden = true;
+        const info = NAPOLI_PARTI_ANAGRAFICA[parte];
+        this.el('elenco-titolo').textContent = info.titolo;
+        this.el('btn-nuovo').textContent = info.nuovo;
+        this.preparaFiltri(parte);
+        await this.carica();
+    },
+
+    preparaFiltri(parte) {
+        const f = this.filtri[parte];
+        const ammessi = NAPOLI_FILTRI_PARTE[parte];
+        document.querySelectorAll('[data-filtro]').forEach(g => { g.hidden = !ammessi.includes(g.dataset.filtro); });
+        const r = this.riepilogo;
+        this.el('filtro-scuola').innerHTML = '<option value="">Tutte</option>' + r.scuole.filter(s => s.attiva)
+            .map(s => `<option value="${s.id}">${escapeHtml(s.nome)}${r.municipalita.length > 1 && s.municipalita ? ` (mun. ${s.municipalita})` : ''}</option>`).join('');
+        this.el('filtro-municipalita').innerHTML = '<option value="">Tutte</option>'
+            + r.municipalita.map(m => `<option value="${m}">${m}</option>`).join('');
+        this.el('filtro-figura').innerHTML = '<option value="">Tutte</option>' + (NapoliComune.figure || [])
+            .filter(x => parte === 'operatori' || !x.ore_di_lotto)
+            .map(x => `<option value="${escapeHtml(x.codice)}">${escapeHtml(x.nome)}</option>`).join('');
+        this.el('filtro-grado').querySelectorAll('[data-solo]').forEach(o => { o.hidden = o.disabled = o.dataset.solo !== parte; });
+        this.el('filtro-stato').innerHTML = NAPOLI_STATI_FILTRO[parte].map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+        document.querySelectorAll('[data-campo-filtro]').forEach(sel => { sel.value = f[sel.dataset.campoFiltro] || ''; });
+        if (!this.el('filtro-stato').value) this.el('filtro-stato').value = NAPOLI_STATI_FILTRO[parte][0][0];
+        this.el('filtro-cerca').value = f.cerca || '';
+        this.el('filtro-cerca').placeholder = parte === 'scuole' ? 'Nome o codice'
+            : (parte === 'coppie' ? 'Alunno o operatore' : 'Nome o codice fiscale');
+        this.el('anagrafiche-trovato').hidden = true;
+    },
+
+    async cerca(testo) {
+        const box = this.el('anagrafiche-trovato');
+        if (NAPOLI_RX_CF.test(testo.replace(/\s/g, '')) && ['alunni', 'operatori'].includes(this.parte)) {
+            // il codice fiscale non va nell'indirizzo (finirebbe nei log): una POST, e la risposta non lo ripete
+            try {
+                const r = await apiCall('/api/napoli/anagrafiche/codice-fiscale', {
+                    method: 'POST', body: JSON.stringify({ codice_fiscale: testo }) });
+                box.innerHTML = r.trovati.length
+                    ? `<strong>Codice fiscale ${escapeHtml(r.cf)}:</strong> ` + r.trovati.map(t =>
+                        `${escapeHtml(t.nome)} (${t.tipo === 'alunno' ? `alunno${t.lotto_id !== NapoliComune.lotto.id ? ', ' + escapeHtml(t.lotto) : ''}` : 'operatore'}${t.attivo ? '' : ', archiviato'})
+                         ${t.tipo === 'operatore' || t.lotto_id === NapoliComune.lotto.id ? `<a class="btn btn-sm btn-secondary" href="#${t.tipo}-${t.id}">Apri la scheda</a>` : ''}`).join(' · ')
+                    : `Nessun alunno e nessun operatore ha il codice fiscale ${escapeHtml(r.cf)}.`;
+                const tipo = r.trovati.length ? 'alert-info' : 'alert-warning';
+                box.className = `napoli-trovato alert ${tipo}`;
+                box.hidden = false;
+            } catch (e) {
+                napoliMostraErrore(e);
+            }
+            return;
+        }
+        box.hidden = true;
+        this.filtri[this.parte].cerca = testo;
+        await this.carica();
+    },
+
+    async carica() {
+        const lotto = NapoliComune.lotto;
+        const parte = this.parte;
+        const f = this.filtri[parte];
+        const parametri = new URLSearchParams();
+        Object.entries(f).forEach(([k, v]) => {
+            if (v && (k === 'cerca' || NAPOLI_FILTRI_PARTE[parte].includes(k))) parametri.set(k, v);
+        });
+        const seq = ++this.seq;
+        const box = this.el('elenco-tabella');
+        try {
+            const r = await apiCall(`/api/napoli/lotti/${lotto.id}/${parte}?${parametri}`);
+            if (seq !== this.seq) return;       // risposta superata da un filtro piu' recente
+            this.righe = r.righe;
+            this.el('elenco-conta').textContent = `${r.totale} ${r.totale === 1 ? 'riga' : 'righe'}`;
+            this.disegnaDaSistemare();
+            box.innerHTML = r.righe.length ? this['tabella_' + parte](r.righe) : this.vuoto(parte);
+        } catch (e) {
+            if (seq !== this.seq) return;
+            box.innerHTML = `<div class="alert alert-danger napoli-esito-elenco">${escapeHtml(e.message || 'Elenco non disponibile')}</div>`;
+        }
+    },
+
+    vuoto(parte) {
+        const f = this.filtri[parte];
+        const filtrato = f.cerca || NAPOLI_FILTRI_PARTE[parte].some(k => k !== 'stato' && f[k])
+            || f.stato !== NAPOLI_STATI_FILTRO[parte][0][0];
+        return `<p class="napoli-vuoto napoli-elenco-vuoto">${NAPOLI_PARTI_ANAGRAFICA[parte].vuoto}${filtrato
+            ? ' con questi filtri: cambia o togli i filtri qui sopra.' : '.'}</p>`;
+    },
+
+    // ---------- elenchi ----------
+
+    tabella_alunni(righe) {
+        return `<table class="table napoli-tabella-anagrafica">
+            <thead><tr><th scope="col">Alunno</th><th scope="col">Scuola</th><th scope="col">Ore del PEI a settimana</th>
+                <th scope="col">Operatori</th><th scope="col" aria-label="Azioni"></th></tr></thead>
+            <tbody>${righe.map(a => `
+                <tr data-apri="alunno-${a.id}" class="napoli-riga-cliccabile${a.attivo ? '' : ' napoli-riga-archiviata'}">
+                    <td><a class="napoli-nome" href="#alunno-${a.id}">${escapeHtml(a.nome_completo)}</a>
+                        <div class="napoli-sotto"><span class="napoli-cf" title="Codice fiscale (mascherato)">${escapeHtml(a.cf)}</span>
+                        ${a.esami ? napoliBadge('Esami', 'badge-info') : ''}
+                        ${a.attivo ? '' : napoliBadge(`Archiviato dal ${formatDataIT(a.archiviato_dal)}`, 'badge-secondary')}
+                        ${napoliDaSistemare(a.da_sistemare)}</div></td>
+                    <td>${a.scuola ? escapeHtml(a.scuola.nome) : '<span class="napoli-vuoto">nessuna</span>'}
+                        <div class="napoli-sotto">${a.scuola ? `${napoliMunicipalita(a.municipalita)} · ${napoliGradoTesto(a.grado)}` : ''}</div></td>
+                    <td>${a.pei.length ? a.pei.map(p => `<span class="napoli-chip">${escapeHtml(p.nome_figura)} <strong>${napoliOre(p.ore_testo)}</strong></span>`).join('') : '<span class="napoli-vuoto">nessuna</span>'}</td>
+                    <td>${a.operatori.length ? napoliPrimi(a.operatori.map(o => `${escapeHtml(o.nome)} <span class="napoli-sotto-in">· ${escapeHtml(o.nome_figura)}${o.ruolo === 'sostituto' ? ', sostituto' : ''}${o.stato === 'futura' ? ', da cominciare' : ''}</span>`)).map(x => `<div class="napoli-op">${x}</div>`).join('') : '<span class="napoli-vuoto">nessuno</span>'}</td>
+                    <td class="napoli-azioni"><a class="btn btn-sm btn-secondary" href="#alunno-${a.id}" aria-label="Apri la scheda di ${escapeHtml(a.nome_completo)}">Apri</a></td>
+                </tr>`).join('')}</tbody></table>`;
+    },
+
+    tabella_operatori(righe) {
+        return `<table class="table napoli-tabella-anagrafica">
+            <thead><tr><th scope="col">Operatore</th><th scope="col">Figura</th><th scope="col" class="napoli-numero">Ore a settimana</th>
+                <th scope="col">Alunni (coppie in corso)</th><th scope="col" aria-label="Azioni"></th></tr></thead>
+            <tbody>${righe.map(o => `
+                <tr data-apri="operatore-${o.id}" class="napoli-riga-cliccabile${o.attivo ? '' : ' napoli-riga-archiviata'}">
+                    <td><a class="napoli-nome" href="#operatore-${o.id}">${escapeHtml(o.nome_completo)}</a>
+                        <div class="napoli-sotto">${o.cf ? `<span class="napoli-cf" title="Codice fiscale (mascherato)">${escapeHtml(o.cf)}</span>` : ''}
+                        ${o.attivo ? '' : napoliBadge(`Archiviato dal ${formatDataIT(o.archiviato_dal)}`, 'badge-secondary')}
+                        ${napoliDaSistemare(o.da_sistemare)}</div></td>
+                    <td>${escapeHtml(o.nome_figura)}${o.livello_ccnl ? `<div class="napoli-sotto">Livello ${escapeHtml(o.livello_ccnl)}</div>` : ''}</td>
+                    <td class="napoli-numero">${o.ore_progetto_testo ? `<strong>${escapeHtml(o.ore_progetto_testo)}</strong>` : '—'}
+                        <div class="napoli-sotto napoli-sotto-destra">${o.ore_contratto_testo ? `su ${escapeHtml(o.ore_contratto_testo)} di contratto` : 'contratto: —'}</div></td>
+                    <td>${o.alunni.length ? napoliPrimi(o.alunni.map(escapeHtml)).map(x => `<div class="napoli-op">${x}</div>`).join('') : '<span class="napoli-vuoto">nessuno</span>'}
+                        ${o.scuole.length ? `<div class="napoli-sotto">${escapeHtml(napoliPrimi(o.scuole, 2).join(', '))}</div>` : ''}</td>
+                    <td class="napoli-azioni"><a class="btn btn-sm btn-secondary" href="#operatore-${o.id}" aria-label="Apri la scheda di ${escapeHtml(o.nome_completo)}">Apri</a></td>
+                </tr>`).join('')}</tbody></table>`;
+    },
+
+    tabella_scuole(righe) {
+        return `<table class="table napoli-tabella-anagrafica">
+            <thead><tr><th scope="col">Scuola o plesso</th><th scope="col">Municipalità</th><th scope="col">Grado</th>
+                <th scope="col" class="napoli-numero">Alunni</th><th scope="col" class="napoli-numero">Coppie in corso</th><th scope="col" aria-label="Azioni"></th></tr></thead>
+            <tbody>${righe.map(s => `
+                <tr class="${s.attiva ? '' : 'napoli-riga-archiviata'}">
+                    <td><span class="napoli-nome">${escapeHtml(s.nome)}</span>
+                        <div class="napoli-sotto">${s.codice_meccanografico ? `<span>${escapeHtml(s.codice_meccanografico)}</span>` : '<span>senza codice meccanografico</span>'}
+                        ${s.plessi > 1 ? napoliBadge(`${s.plessi} plessi con questo codice`, 'badge-info') : ''}
+                        ${s.paritaria ? napoliBadge('Codice da paritaria', 'badge-info') : ''}
+                        ${s.attiva ? '' : napoliBadge('Archiviata', 'badge-secondary')}
+                        ${napoliDaSistemare(s.da_sistemare.filter(c => c !== 'grado_da_decidere'))}</div></td>
+                    <td>${s.municipalita ? escapeHtml(String(s.municipalita)) : napoliBadge('Mancante')}</td>
+                    <td>${s.grado ? escapeHtml(napoliGradoTesto(s.grado)) : napoliBadge('Da decidere')}
+                        ${!s.grado && s.grado_proposto ? `<div class="napoli-sotto">dal codice: ${escapeHtml(NAPOLI_GRADO_SCUOLA[s.grado_proposto].toLowerCase())}</div>` : ''}</td>
+                    <td class="napoli-numero">${s.alunni}</td>
+                    <td class="napoli-numero">${s.coppie_in_corso}</td>
+                    <td class="napoli-azioni">
+                        <button type="button" class="btn btn-sm btn-secondary" data-azione="modifica-scuola" data-id="${s.id}" aria-label="Modifica ${escapeHtml(s.nome)}">${icona('matita')} Modifica</button>
+                        <button type="button" class="btn btn-sm btn-secondary btn-solo-icona" data-azione="altro-scuola" data-id="${s.id}" title="Altre azioni" aria-label="Altre azioni su ${escapeHtml(s.nome)}" aria-haspopup="menu" aria-expanded="false">${icona('altro')}</button>
+                    </td>
+                </tr>`).join('')}</tbody></table>`;
+    },
+
+    periodoCoppia(c) {
+        const [testo, classe] = NAPOLI_STATO_COPPIA[c.stato];
+        return `<span class="napoli-periodo">dal ${escapeHtml(formatDataIT(c.valido_da))}</span>${c.valido_a
+            ? `<br><span class="napoli-periodo">al ${escapeHtml(formatDataIT(c.valido_a))}</span>` : ''}<div class="napoli-sotto">${napoliBadge(testo, classe)}</div>`;
+    },
+
+    oreCoppia(c) {
+        if (!c.ore_testo) return '<span class="napoli-vuoto">—</span>';
+        return `<strong>${escapeHtml(c.ore_testo)}</strong><div class="napoli-sotto napoli-sotto-destra">${c.ore_da === 'quota' ? 'della coppia' : 'dal PEI'}</div>`;
+    },
+
+    pulsantiCoppia(c) {
+        return `<td class="napoli-azioni">
+            <button type="button" class="btn btn-sm btn-secondary" data-azione="modifica-coppia" data-id="${c.id}" aria-label="Modifica la coppia">${icona('matita')} Modifica</button>
+            <button type="button" class="btn btn-sm btn-secondary btn-solo-icona" data-azione="altro-coppia" data-id="${c.id}" title="Altre azioni" aria-label="Altre azioni sulla coppia" aria-haspopup="menu" aria-expanded="false">${icona('altro')}</button>
+        </td>`;
+    },
+
+    tabella_coppie(righe, colonne = ['alunno', 'operatore']) {
+        const conAlunno = colonne.includes('alunno'), conOperatore = colonne.includes('operatore');
+        return `<table class="table napoli-tabella-anagrafica">
+            <thead><tr>${conAlunno ? '<th scope="col">Alunno</th>' : ''}${conOperatore ? '<th scope="col">Operatore</th>' : ''}
+                <th scope="col">Figura</th><th scope="col">Scuola</th><th scope="col">Periodo</th><th scope="col" class="napoli-numero">Ore a settimana</th><th scope="col" aria-label="Azioni"></th></tr></thead>
+            <tbody>${righe.map(c => `
+                <tr class="${c.stato === 'finita' ? 'napoli-riga-archiviata' : ''}">
+                    ${conAlunno ? `<td><a class="napoli-nome" href="#alunno-${c.alunno.id}">${escapeHtml(c.alunno.nome)}</a>${c.alunno.attivo ? '' : `<div class="napoli-sotto">${napoliBadge('Alunno archiviato', 'badge-secondary')}</div>`}</td>` : ''}
+                    ${conOperatore ? `<td><a class="napoli-nome" href="#operatore-${c.operatore.id}">${escapeHtml(c.operatore.nome)}</a>
+                        <div class="napoli-sotto">${c.ruolo === 'sostituto' ? `<span>sostituto${c.titolare ? ` di ${escapeHtml(c.titolare.operatore)}` : ''}</span>` : '<span>titolare</span>'}</div></td>` : ''}
+                    <td>${escapeHtml(c.nome_figura)}${!conOperatore && c.ruolo === 'sostituto' ? '<div class="napoli-sotto">sostituto</div>' : ''}
+                        ${c.da_sistemare.length ? `<div class="napoli-sotto">${napoliDaSistemare(c.da_sistemare)}</div>` : ''}</td>
+                    <td>${c.scuola ? escapeHtml(c.scuola.nome) : ''}<div class="napoli-sotto">${napoliMunicipalita(c.municipalita)}</div></td>
+                    <td>${this.periodoCoppia(c)}</td>
+                    <td class="napoli-numero">${this.oreCoppia(c)}</td>
+                    ${this.pulsantiCoppia(c)}
+                </tr>`).join('')}</tbody></table>`;
+    },
+
+    // ---------- schede di alunno e operatore ----------
+
+    async apriScheda(scheda) {
+        this.parte = scheda.tipo === 'alunno' ? 'alunni' : 'operatori';
+        this.segnaParte(this.parte);
+        this.el('anagrafiche-elenco').hidden = true;
+        const box = this.el('anagrafiche-scheda');
+        box.hidden = false;
+        try {
+            const url = scheda.tipo === 'alunno' ? `/api/napoli/alunni/${scheda.id}`
+                : `/api/napoli/operatori/${scheda.id}?lotto_id=${NapoliComune.lotto.id}`;
+            this.schedaDati = Object.assign(await apiCall(url), { tipo: scheda.tipo });
+        } catch (e) {
+            box.innerHTML = `<div class="card-body"><div class="alert alert-danger">${escapeHtml(e.message || 'Scheda non disponibile')}</div>
+                <a class="btn btn-secondary" href="#${this.parte}">Torna all'elenco</a></div>`;
+            return;
+        }
+        if (scheda.tipo === 'alunno' && this.schedaDati.alunno.lotto.id !== NapoliComune.lotto.id) {
+            window.location.hash = 'alunni';       // un alunno di un altro lotto: si torna all'elenco
+            return;
+        }
+        box.innerHTML = scheda.tipo === 'alunno' ? this.schedaAlunno(this.schedaDati) : this.schedaOperatore(this.schedaDati);
+        box.querySelector('h2')?.focus({ preventScroll: true });
+        window.scrollTo({ top: 0 });
+    },
+
+    testaScheda(indietro, titolo, sotto, pulsanti) {
+        return `<div class="card-header napoli-scheda-testa">
+                <div class="napoli-scheda-nome">
+                    <a class="napoli-indietro" href="#${indietro[0]}">${napoliSvg('M15 19l-7-7 7-7', 16)} ${indietro[1]}</a>
+                    <h2 class="napoli-scheda-titolo" tabindex="-1">${escapeHtml(titolo)}</h2>
+                    <div class="napoli-sotto">${sotto}</div>
+                </div>
+                <div class="napoli-scheda-pulsanti">${pulsanti}</div>
+            </div>`;
+    },
+
+    schedaAlunno(d) {
+        const a = d.alunno;
+        const sotto = `<span class="napoli-cf" title="Codice fiscale (mascherato)">${escapeHtml(a.cf)}</span>
+            ${a.esami ? napoliBadge('Esami', 'badge-info') : ''}
+            ${a.attivo ? napoliBadge('In servizio', 'badge-success') : napoliBadge(`Archiviato dal ${formatDataIT(a.archiviato_dal)}`, 'badge-secondary')}
+            ${napoliDaSistemare(a.da_sistemare)}`;
+        const pulsanti = `
+            <button type="button" class="btn btn-primary btn-sm" data-azione="modifica-alunno" data-id="${a.id}">${icona('matita')} Modifica</button>
+            <button type="button" class="btn btn-sm btn-secondary btn-solo-icona" data-azione="altro-alunno" data-id="${a.id}" title="Altre azioni" aria-label="Altre azioni sull'alunno" aria-haspopup="menu" aria-expanded="false">${icona('altro')}</button>`;
+        const pei = d.pei.length ? `<div class="table-container"><table class="table napoli-tabella-anagrafica">
+                <thead><tr><th scope="col">Figura</th><th scope="col" class="napoli-numero">Ore a settimana</th><th scope="col">Periodo</th><th scope="col">Stato</th><th scope="col" aria-label="Azioni"></th></tr></thead>
+                <tbody>${d.pei.map(g => g.righe.map((p, i) => `
+                    <tr class="${i ? 'napoli-storico' : ''}${p.periodo === 'finita' ? ' napoli-riga-archiviata' : ''}">
+                        <td>${i ? '<span class="napoli-sotto-in">prima</span>' : `<span class="napoli-figura-nome">${escapeHtml(p.nome_figura)}</span>`}</td>
+                        <td class="napoli-numero"><strong>${napoliOre(p.ore_testo)}</strong></td>
+                        <td>${escapeHtml(napoliPeriodo(p.valido_da, p.valido_a))}${p.id === g.in_vigore_id ? napoliBadge('in vigore', 'badge-success') : ''}${p.periodo === 'futura' ? napoliBadge('da cominciare', 'badge-info') : ''}</td>
+                        <td>${escapeHtml((NAPOLI_STATI_PEI.find(x => x[0] === p.stato) || ['', p.stato])[1])}${p.fonte ? `<div class="napoli-sotto">${escapeHtml(p.fonte)}</div>` : ''}</td>
+                        <td class="napoli-azioni">
+                            ${i === 0 && a.attivo ? `<button type="button" class="btn btn-sm btn-secondary" data-azione="cambia-pei" data-id="${p.id}" data-figura="${escapeHtml(p.figura)}">Cambia le ore</button>` : ''}
+                            <button type="button" class="btn btn-sm btn-secondary btn-solo-icona" data-azione="modifica-pei" data-id="${p.id}" title="Correggi questa riga" aria-label="Correggi questa riga del PEI">${icona('matita')}</button>
+                            <button type="button" class="btn btn-sm btn-icon-danger btn-solo-icona" data-azione="elimina-pei" data-id="${p.id}" title="Elimina" aria-label="Elimina questa riga del PEI">${icona('cestino')}</button>
+                        </td>
+                    </tr>`).join('')).join('')}</tbody></table></div>`
+            : '<p class="napoli-vuoto">Nessuna ora del PEI: aggiungi le ore settimanali da progetto di ogni figura.</p>';
+        const coppie = d.coppie.length ? `<div class="table-container">${this.tabella_coppie(d.coppie, ['operatore'])}</div>`
+            : '<p class="napoli-vuoto">Nessuna coppia: aggiungi l\'operatore (o gli operatori) che seguono l\'alunno.</p>';
+        const credito = `<div class="napoli-credito">
+                ${napoliSvg('M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', 20)}
+                <div><p class="napoli-credito-titolo">${escapeHtml(d.credito_debito.testo)}</p>
+                <p class="napoli-credito-testo">${escapeHtml(d.credito_debito.spiegazione)}</p>
+                ${d.credito_debito.figure.length ? `<div class="napoli-credito-figure">${d.credito_debito.figure.map(f =>
+                    `<span class="napoli-chip">${escapeHtml(f.nome_figura)}: <strong>—</strong></span>`).join('')}</div>` : ''}</div>
+            </div>`;
+        return this.testaScheda(['alunni', 'Alunni'], a.nome_completo, sotto, pulsanti) + `
+            <div class="card-body">
+                <div class="napoli-dati">
+                    ${rigaDati('Scuola', a.scuola ? escapeHtml(a.scuola.nome) : '')}
+                    ${rigaDati('Municipalità della scuola', a.municipalita ? escapeHtml(String(a.municipalita)) : '')}
+                    ${rigaDati('Grado', a.grado ? escapeHtml(napoliGradoTesto(a.grado)) + (a.grado_alunno ? '' : ' <span class="napoli-sotto-in">(della scuola)</span>')
+                        : `${napoliBadge('Da decidere')} <span class="napoli-sotto-in">sceglilo nella scuola (Scuole e plessi) o qui con Modifica</span>`)}
+                    ${rigaDati('Esami', a.esami ? 'Sì: il servizio continua fino alla fine degli esami' : 'No')}
+                    ${rigaDati('Lotto', escapeHtml(a.lotto.nome))}
+                    ${rigaDati('Da dove viene', escapeHtml(d.origine.testo))}
+                    <div class="dati-riga-larga">${rigaDati('Note', a.note ? escapeHtml(a.note) : '')}</div>
+                </div>
+                <section class="napoli-sezione" aria-labelledby="titolo-pei">
+                    <div class="napoli-sezione-testa"><h3 id="titolo-pei">Ore settimanali da progetto (PEI)</h3>
+                        ${a.attivo ? `<button type="button" class="btn btn-sm btn-primary" data-azione="nuovo-pei" data-id="${a.id}">Aggiungi le ore di una figura</button>` : ''}</div>
+                    ${pei}
+                </section>
+                <section class="napoli-sezione" aria-labelledby="titolo-coppie">
+                    <div class="napoli-sezione-testa"><h3 id="titolo-coppie">Coppie con gli operatori</h3>
+                        ${a.attivo ? `<button type="button" class="btn btn-sm btn-primary" data-azione="nuova-coppia-alunno" data-id="${a.id}">Aggiungi una coppia</button>` : ''}</div>
+                    ${coppie}
+                </section>
+                <section class="napoli-sezione" aria-labelledby="titolo-credito">
+                    <div class="napoli-sezione-testa"><h3 id="titolo-credito">Credito/debito ore</h3></div>
+                    ${credito}
+                </section>
+            </div>`;
+    },
+
+    schedaOperatore(d) {
+        const o = d.operatore;
+        const sotto = `${o.cf ? `<span class="napoli-cf" title="Codice fiscale (mascherato)">${escapeHtml(o.cf)}</span>` : ''}
+            ${o.attivo ? napoliBadge('In servizio', 'badge-success') : napoliBadge(`Archiviato dal ${formatDataIT(o.archiviato_dal)}`, 'badge-secondary')}
+            ${napoliDaSistemare(o.da_sistemare)}`;
+        const pulsanti = `
+            <button type="button" class="btn btn-primary btn-sm" data-azione="modifica-operatore" data-id="${o.id}">${icona('matita')} Modifica</button>
+            <button type="button" class="btn btn-sm btn-secondary btn-solo-icona" data-azione="altro-operatore" data-id="${o.id}" title="Altre azioni" aria-label="Altre azioni sull'operatore" aria-haspopup="menu" aria-expanded="false">${icona('altro')}</button>`;
+        const coppie = d.coppie.length ? `<div class="table-container">${this.tabella_coppie(d.coppie, ['alunno'])}</div>`
+            : '<p class="napoli-vuoto">Nessuna coppia: aggiungi gli alunni che segue.</p>';
+        const ore = o.ore_progetto_testo
+            ? `<strong>${napoliOre(o.ore_progetto_testo)}</strong> a settimana ${o.coppie_in_corso === 1 ? 'nella coppia in corso' : `nelle ${o.coppie_in_corso} coppie in corso`}${o.ore_contratto_testo ? `, su ${napoliOre(o.ore_contratto_testo)} di contratto` : ''}`
+            : '';
+        return this.testaScheda(['operatori', 'Operatori'], o.nome_completo, sotto, pulsanti) + `
+            <div class="card-body">
+                <div class="napoli-dati">
+                    ${rigaDati('Figura', escapeHtml(o.nome_figura))}
+                    ${rigaDati('Livello del contratto di lavoro', o.livello_ccnl ? escapeHtml(o.livello_ccnl) : '')}
+                    ${rigaDati('Ore di contratto a settimana', o.ore_contratto_testo ? napoliOre(o.ore_contratto_testo) : '')}
+                    ${rigaDati('Ore con gli alunni', ore)}
+                    ${rigaDati('Qualifica scritta nel file', o.qualifica_originale ? escapeHtml(o.qualifica_originale) : '')}
+                    ${rigaDati('Da dove viene', escapeHtml(d.origine.testo))}
+                    <div class="dati-riga-larga">${rigaDati('Note', o.note ? escapeHtml(o.note) : '')}</div>
+                </div>
+                <section class="napoli-sezione" aria-labelledby="titolo-coppie-op">
+                    <div class="napoli-sezione-testa"><h3 id="titolo-coppie-op">Coppie con gli alunni</h3>
+                        ${o.attivo ? `<button type="button" class="btn btn-sm btn-primary" data-azione="nuova-coppia-operatore" data-id="${o.id}">Aggiungi una coppia</button>` : ''}</div>
+                    ${coppie}
+                </section>
+            </div>`;
+    },
+
+    // ---------- azioni ----------
+
+    coppiaDa(id) {
+        const tutte = this.righe.concat((this.schedaDati && this.schedaDati.coppie) || []);
+        return tutte.find(c => c.id === id && c.alunno && c.operatore);
+    },
+
+    azione(azione, id, pulsante) {
+        const d = this.schedaDati;
+        const azioni = {
+            'nuova-scuola': () => this.nuovo('scuole'),
+            'modifica-scuola': () => this.moduloScuola(this.righe.find(s => s.id === id)),
+            'altro-scuola': () => {
+                const s = this.righe.find(x => x.id === id);
+                MenuAzioni.apri(pulsante, [
+                    s.attiva ? { testo: 'Archivia (non c\'è più)', icona: 'archivia', azione: () => this.conferma('scuola', 'archivia', s) }
+                        : { testo: 'Rimetti fra le attive', icona: 'ripristina', azione: () => this.conferma('scuola', 'ripristina', s) },
+                    { testo: 'Elimina', icona: 'cestino', pericolo: true, azione: () => this.conferma('scuola', 'elimina', s) },
+                ]);
+            },
+            'modifica-alunno': () => this.moduloAlunno(d.alunno, d),
+            'altro-alunno': () => MenuAzioni.apri(pulsante, [
+                d.alunno.attivo ? { testo: 'Archivia (esce dal servizio)', icona: 'archivia', azione: () => this.moduloArchivia('alunno', d.alunno) }
+                    : { testo: 'Rimetti in servizio', icona: 'ripristina', azione: () => this.conferma('alunno', 'ripristina', d.alunno) },
+                { testo: 'Elimina', icona: 'cestino', pericolo: true, azione: () => this.conferma('alunno', 'elimina', d.alunno, d) },
+            ]),
+            'modifica-operatore': () => this.moduloOperatore(d.operatore),
+            'altro-operatore': () => MenuAzioni.apri(pulsante, [
+                d.operatore.attivo ? { testo: 'Archivia (non lavora più)', icona: 'archivia', azione: () => this.moduloArchivia('operatore', d.operatore) }
+                    : { testo: 'Rimetti in servizio', icona: 'ripristina', azione: () => this.conferma('operatore', 'ripristina', d.operatore) },
+                { testo: 'Elimina', icona: 'cestino', pericolo: true, azione: () => this.conferma('operatore', 'elimina', d.operatore, d) },
+            ]),
+            'nuovo-pei': () => this.moduloPei({ alunno: d.alunno }),
+            'cambia-pei': () => this.moduloPei({ alunno: d.alunno, figura: pulsante.dataset.figura }),
+            'modifica-pei': () => this.moduloPei({ alunno: d.alunno, riga: this.rigaPei(id) }),
+            'elimina-pei': () => this.conferma('pei', 'elimina', this.rigaPei(id)),
+            'nuova-coppia-alunno': () => this.moduloCoppia({ alunno: d.alunno }),
+            'nuova-coppia-operatore': () => this.moduloCoppia({ operatore: d.operatore }),
+            'modifica-coppia': () => this.moduloCoppia({ coppia: this.coppiaDa(id) }),
+            'altro-coppia': () => {
+                const c = this.coppiaDa(id);
+                MenuAzioni.apri(pulsante, [
+                    { testo: 'Chiudi (ultimo giorno)', icona: 'archivia', azione: () => this.moduloChiudi(c) },
+                    { testo: 'Subentro di un altro operatore', icona: 'ripristina', azione: () => this.moduloSubentro(c) },
+                    { testo: 'Elimina', icona: 'cestino', pericolo: true, azione: () => this.conferma('coppia', 'elimina', c) },
+                ]);
+            },
+        };
+        if (azioni[azione]) azioni[azione]();
+    },
+
+    rigaPei(id) {
+        for (const g of (this.schedaDati.pei || [])) {
+            const p = g.righe.find(r => r.id === id);
+            if (p) return p;
+        }
+        return null;
+    },
+
+    nuovo(parte) {
+        if (parte === 'alunni') this.moduloAlunno(null);
+        else if (parte === 'operatori') this.moduloOperatore(null);
+        else if (parte === 'scuole') this.moduloScuola(null);
+        else this.moduloCoppia({});
+    },
+
+    /** Conferme di ripristino ed eliminazione (le eliminazioni di persone non si annullano con Ctrl+Z). */
+    conferma(tipo, cosa, riga, dati) {
+        const nome = tipo === 'scuola' ? riga.nome : (tipo === 'pei' ? `${riga.nome_figura} ${riga.ore_testo} h`
+            : (tipo === 'coppia' ? `${riga.alunno.nome} con ${riga.operatore.nome}` : riga.nome_completo));
+        const url = { scuola: `/api/napoli/scuole/${riga.id}`, alunno: `/api/napoli/alunni/${riga.id}`,
+            operatore: `/api/napoli/operatori/${riga.id}`, pei: `/api/napoli/pei/${riga.id}`, coppia: `/api/napoli/coppie/${riga.id}` }[tipo];
+        const testi = {
+            'scuola:archivia': ['Archiviare la scuola?', `«${nome}» resta per i mesi passati ma non si sceglie più per alunni e coppie. Si può archiviare solo senza alunni in servizio e coppie aperte.`, 'Archivia'],
+            'scuola:ripristina': ['Rimettere la scuola fra le attive?', `«${nome}» si potrà di nuovo scegliere per alunni e coppie.`, 'Rimetti fra le attive'],
+            'scuola:elimina': ['Eliminare la scuola?', `«${nome}» si elimina solo se non ha alunni, coppie e giorni del calendario (per esempio se è stata aggiunta per sbaglio). Ctrl+Z la rimette.`, 'Elimina'],
+            'alunno:ripristina': ['Rimettere l\'alunno in servizio?', `${nome} torna fra gli alunni in servizio. Le coppie e i PEI chiusi restano chiusi: riaprili dalla scheda se serve.`, 'Rimetti in servizio'],
+            'alunno:elimina': ['Eliminare l\'alunno?', `${nome} si elimina con le sue ${dati && dati.coppie.length ? `${dati.coppie.length} coppie e le ` : ''}ore del PEI solo se non ha ore registrate, fogli firma o orari; altrimenti va archiviato. Attenzione: l'eliminazione non si annulla con Ctrl+Z.`, 'Elimina'],
+            'operatore:ripristina': ['Rimettere l\'operatore in servizio?', `${nome} torna fra gli operatori in servizio.`, 'Rimetti in servizio'],
+            'operatore:elimina': ['Eliminare l\'operatore?', `${nome} si elimina solo se non ha coppie con gli alunni e ore del coordinatore; altrimenti va archiviato. Attenzione: l'eliminazione non si annulla con Ctrl+Z.`, 'Elimina'],
+            'pei:elimina': ['Eliminare queste ore del PEI?', `${nome} ${napoliPeriodo(riga.valido_da, riga.valido_a)}. Se ci sono già ore registrate in questo periodo non si eliminano. Ctrl+Z le rimette.`, 'Elimina'],
+            'coppia:elimina': ['Eliminare la coppia?', `${nome} (${riga.nome_figura}). Si elimina solo se non ha ore, fogli firma, orari o sostituti; altrimenti si chiude. Ctrl+Z la rimette.`, 'Elimina'],
+        }[`${tipo}:${cosa}`];
+        const metodo = cosa === 'elimina' ? 'DELETE' : 'POST';
+        const indirizzo = cosa === 'elimina' ? url : `${url}/${cosa}`;
+        showConfirmDialog(testi[0], testi[1], async () => {
+            try {
+                const r = await apiCall(indirizzo, { method: metodo, body: JSON.stringify({}) });
+                showToast(r.messaggio, 'success', 7000);
+                if (cosa === 'elimina' && (tipo === 'alunno' || tipo === 'operatore')) window.location.hash = this.parte;
+                else await this.mostra();
+            } catch (e) {
+                showToast(e.message || 'Operazione non riuscita', 'error', 10000);
+            }
+        }, { type: cosa === 'elimina' ? 'danger' : 'warning', confirmText: testi[2], cancelText: 'Lascia com\'è' });
+    },
+
+    // ---------- moduli (una finestra sola, i campi da una descrizione) ----------
+
+    /** Un campo del modulo. tipo: testo, data, numero, scelta, casella, area, sola (solo da leggere). */
+    campo(c, valori) {
+        const id = `ana-${c.nome}`;
+        const v = valori[c.nome] === null || valori[c.nome] === undefined ? '' : valori[c.nome];
+        const etichetta = `${escapeHtml(c.etichetta)}${c.obbligatorio ? ' *' : ''}`;
+        const aiuto = c.aiuto ? `<p class="form-help" id="${id}-aiuto">${c.aiuto}</p>` : '';
+        const descritto = c.aiuto ? ` aria-describedby="${id}-aiuto"` : '';
+        if (c.tipo === 'sola') {
+            return `<div class="form-group"><span class="form-label">${etichetta}</span><div class="napoli-campo-solo">${c.html || escapeHtml(String(v))}</div>${aiuto}</div>`;
+        }
+        if (c.tipo === 'casella') {
+            return `<div class="form-group napoli-gruppo-casella"><label class="napoli-scelta-riga" for="${id}">
+                <input type="checkbox" id="${id}" data-campo="${c.nome}"${v ? ' checked' : ''}${descritto}> <span>${etichetta}</span></label>${aiuto}</div>`;
+        }
+        let input;
+        if (c.tipo === 'scelta') {
+            input = `<select id="${id}" class="form-control" data-campo="${c.nome}"${descritto}>${c.opzioni.map(([valore, testo, extra]) =>
+                `<option value="${escapeHtml(String(valore))}"${String(valore) === String(v) ? ' selected' : ''}${extra || ''}>${escapeHtml(testo)}</option>`).join('')}</select>`;
+        } else if (c.tipo === 'area') {
+            input = `<textarea id="${id}" class="form-control" data-campo="${c.nome}" rows="2" maxlength="${c.max || 500}"${descritto}>${escapeHtml(String(v))}</textarea>`;
+        } else {
+            const tipo = c.tipo === 'data' ? 'date' : 'text';
+            const extra = c.tipo === 'numero' ? ' inputmode="decimal"' : '';
+            input = `<input type="${tipo}" id="${id}" class="form-control" data-campo="${c.nome}" value="${escapeHtml(String(v))}"${extra}
+                ${c.max ? ` maxlength="${c.max}"` : ''}${c.placeholder ? ` placeholder="${escapeHtml(c.placeholder)}"` : ''}${c.lista ? ` list="${id}-lista"` : ''}
+                autocomplete="off" spellcheck="false"${descritto}>${c.lista ? `<datalist id="${id}-lista">${c.lista.map(x => `<option value="${escapeHtml(x)}">`).join('')}</datalist>` : ''}`;
+        }
+        return `<div class="form-group" data-gruppo="${c.nome}"${c.nascosto ? ' hidden' : ''}><label class="form-label" for="${id}">${etichetta}</label>${input}${aiuto}</div>`;
+    },
+
+    /** Apre la finestra con i campi (righe: un campo o un elenco di campi sulla stessa riga). */
+    apriModulo({ titolo, intro, righe, valori = {}, salva = 'Salva', invia, prepara }) {
+        const form = this.el('form-anagrafica');
+        this.el('anagrafica-titolo').textContent = titolo;
+        this.el('anagrafica-salva').textContent = salva;
+        form.innerHTML = (intro ? `<p class="napoli-intro">${intro}</p>` : '') + righe.map(r => (Array.isArray(r)
+            ? `<div class="form-row">${r.map(c => this.campo(c, valori)).join('')}</div>` : this.campo(r, valori))).join('');
+        napoliPulisciErrori(form);
+        this.modulo = { invia };
+        if (typeof prepara === 'function') prepara(form);
+        openModal('napoli-modal-anagrafica');
+        setTimeout(() => form.querySelector('input:not([type=checkbox]):not([disabled]), select, textarea')?.focus(), 60);
+    },
+
+    leggiModulo() {
+        const dati = {};
+        this.el('form-anagrafica').querySelectorAll('[data-campo]').forEach(el => {
+            if (el.closest('[hidden]')) return;
+            dati[el.dataset.campo] = el.type === 'checkbox' ? el.checked : el.value.trim();
+        });
+        return dati;
+    },
+
+    async invia() {
+        if (!this.modulo) return;
+        const form = this.el('form-anagrafica');
+        const pulsante = this.el('anagrafica-salva');
+        if (pulsante.disabled) return;
+        napoliPulisciErrori(form);
+        setButtonLoading(pulsante, true);
+        try {
+            const r = await this.modulo.invia(this.leggiModulo());
+            closeModal('napoli-modal-anagrafica');
+            const avvisi = (r.avvisi || []).filter(Boolean);
+            showToast(`${r.messaggio}.${avvisi.length ? ' ' + avvisi.join(' ') : ''}`.replace('..', '.'),
+                avvisi.length ? 'warning' : 'success', avvisi.length ? 10000 : 6000);
+            const h = window.location.hash;
+            if (r.alunno_id && !h.startsWith('#alunno-')) window.location.hash = `alunno-${r.alunno_id}`;
+            else if (r.operatore_id && !h.startsWith('#operatore-')) window.location.hash = `operatore-${r.operatore_id}`;
+            else if (r.scuola_id && h !== '#scuole') window.location.hash = 'scuole';
+            else await this.mostra();
+        } catch (e) {
+            napoliMostraErrore(e, form);
+        } finally {
+            setButtonLoading(pulsante, false);
+        }
+    },
+
+    opzioniScuole(scelta) {
+        return [['', '— scegli —']].concat(this.riepilogo.scuole.filter(s => s.attiva || s.id === scelta).map(s =>
+            [s.id, `${s.nome}${s.municipalita ? ` (municipalità ${s.municipalita})` : ''}${s.attiva ? '' : ' (archiviata)'}`]));
+    },
+
+    opzioniFigure(perCoppia, vuota = '— scegli —') {
+        return [['', vuota]].concat((NapoliComune.figure || []).filter(f => !perCoppia || !f.ore_di_lotto)
+            .map(f => [f.codice, `${f.nome}${napoliDescrizioneDiversa(f) ? ` (${f.descrizione})` : ''}`]));
+    },
+
+    moduloScuola(s) {
+        const nuova = !s;
+        const municipalita = [['', '— scegli —']].concat(this.riepilogo.municipalita_possibili.map(m => [m, String(m)]));
+        this.apriModulo({
+            titolo: nuova ? 'Nuova scuola o plesso' : 'Modifica la scuola',
+            intro: 'Lo stesso codice meccanografico in due municipalità sono due plessi: se la scuola è in un\'altra municipalità, aggiungi un altro plesso.',
+            righe: [
+                { nome: 'nome', etichetta: 'Nome della scuola o del plesso', obbligatorio: true, max: 200 },
+                [{ nome: 'codice_meccanografico', etichetta: 'Codice meccanografico', max: 12, placeholder: 'per esempio NAIC8ZZ001' },
+                    { nome: 'municipalita', etichetta: 'Municipalità', tipo: 'scelta', obbligatorio: true, opzioni: municipalita }],
+                { nome: 'grado', etichetta: 'Grado', tipo: 'scelta', opzioni: [['inferiore', 'Grado inferiore (infanzia, primaria, secondaria di I grado)'],
+                    ['superiore', 'Grado superiore (secondaria di II grado)'], ['misto', 'Misto: si sceglie per ogni alunno'], ['', 'Da decidere']],
+                aiuto: 'Il grado decide in quale fattura vanno le ore. <span id="ana-grado-proposto"></span>' },
+            ],
+            valori: nuova ? { grado: '' } : s,
+            salva: nuova ? 'Aggiungi la scuola' : 'Salva la scuola',
+            invia: (dati) => apiCall(nuova ? `/api/napoli/lotti/${NapoliComune.lotto.id}/scuole` : `/api/napoli/scuole/${s.id}`,
+                { method: nuova ? 'POST' : 'PUT', body: JSON.stringify(dati) }),
+            prepara: (form) => {
+                const codice = form.querySelector('#ana-codice_meccanografico');
+                const proposta = () => {
+                    const tipo = codice.value.replace(/\s/g, '').toUpperCase().slice(2, 4);
+                    const g = ['IC', 'AA', 'EE', 'MM', 'CT', '1A', '1E', '1M'].includes(tipo) ? 'inferiore'
+                        : (['IS', 'PC', 'PS', 'PM', 'TD', 'TF', 'RH', 'RI', 'SD', 'TL'].includes(tipo) ? 'superiore' : '');
+                    form.querySelector('#ana-grado-proposto').textContent = g ? `Dal codice sembra ${NAPOLI_GRADO_SCUOLA[g].toLowerCase()}: controlla.` : '';
+                };
+                codice.addEventListener('input', proposta);
+                proposta();
+            },
+        });
+    },
+
+    moduloAlunno(a, d) {
+        const nuovo = !a;
+        const gradi = [['', 'Quello della scuola'], ['inferiore', 'Grado inferiore'], ['superiore', 'Grado superiore']];
+        this.apriModulo({
+            titolo: nuovo ? 'Nuovo alunno' : 'Modifica l\'alunno',
+            righe: [
+                [{ nome: 'cognome', etichetta: 'Cognome', obbligatorio: true, max: 80 }, { nome: 'nome', etichetta: 'Nome', obbligatorio: true, max: 80 }],
+                { nome: 'codice_fiscale', etichetta: 'Codice fiscale', obbligatorio: nuovo, max: 16,
+                    placeholder: nuovo ? '16 lettere e cifre' : `salvato: ${a.cf}`,
+                    aiuto: nuovo ? 'Serve per riconoscere l\'alunno nel file Excel del Comune. A schermo si vede solo in parte.'
+                        : 'Il codice salvato non si mostra intero: scrivilo solo se è da correggere. Il cambio non si annulla con Ctrl+Z.' },
+                { nome: 'scuola_id', etichetta: 'Scuola (plesso)', tipo: 'scelta', obbligatorio: true, opzioni: this.opzioniScuole(a && a.scuola && a.scuola.id),
+                    aiuto: 'La municipalità è quella della scuola.' },
+                [{ nome: 'grado', etichetta: 'Grado', tipo: 'scelta', opzioni: gradi, aiuto: 'Da scegliere se la scuola è mista.' },
+                    { nome: 'esami', etichetta: 'Ha gli esami (servizio fino alla fine degli esami, a luglio)', tipo: 'casella' }],
+                { nome: 'note', etichetta: 'Note', tipo: 'area', aiuto: 'Niente dati sanitari (art. 12.3 del capitolato). Le modifiche alle note non si annullano con Ctrl+Z.' },
+            ],
+            valori: nuovo ? {} : { cognome: a.cognome, nome: a.nome, scuola_id: a.scuola && a.scuola.id, grado: a.grado_alunno || '', esami: a.esami, note: a.note },
+            salva: nuovo ? 'Aggiungi l\'alunno' : 'Salva',
+            invia: (dati) => apiCall(nuovo ? `/api/napoli/lotti/${NapoliComune.lotto.id}/alunni` : `/api/napoli/alunni/${a.id}`,
+                { method: nuovo ? 'POST' : 'PUT', body: JSON.stringify(dati) }),
+        });
+    },
+
+    moduloOperatore(o) {
+        const nuovo = !o;
+        this.apriModulo({
+            titolo: nuovo ? 'Nuovo operatore' : 'Modifica l\'operatore',
+            righe: [
+                [{ nome: 'cognome', etichetta: 'Cognome', obbligatorio: true, max: 80 }, { nome: 'nome', etichetta: 'Nome', obbligatorio: true, max: 80 }],
+                { nome: 'codice_fiscale', etichetta: 'Codice fiscale', max: 16,
+                    placeholder: nuovo ? '16 lettere e cifre' : (o.cf ? `salvato: ${o.cf}` : 'non c\'è: scrivilo'),
+                    aiuto: nuovo ? 'Serve per riconoscere l\'operatore nel file Excel.'
+                        : 'Il codice salvato non si mostra intero: scrivilo solo se è da correggere. Il cambio non si annulla con Ctrl+Z.' },
+                [{ nome: 'figura', etichetta: 'Figura professionale', tipo: 'scelta', obbligatorio: true, opzioni: this.opzioniFigure(false) },
+                    { nome: 'livello_ccnl', etichetta: 'Livello', max: 10, lista: NAPOLI_LIVELLI, placeholder: 'per esempio D2' }],
+                { nome: 'ore_contratto', etichetta: 'Ore di contratto a settimana', tipo: 'numero', placeholder: 'per esempio 25 o 25,5' },
+                { nome: 'note', etichetta: 'Note', tipo: 'area', aiuto: 'Niente dati sanitari. Le modifiche alle note non si annullano con Ctrl+Z.' },
+            ],
+            valori: nuovo ? {} : { cognome: o.cognome, nome: o.nome, figura: o.figura, livello_ccnl: o.livello_ccnl,
+                ore_contratto: o.ore_contratto_testo, note: o.note },
+            salva: nuovo ? 'Aggiungi l\'operatore' : 'Salva',
+            invia: (dati) => apiCall(nuovo ? '/api/napoli/operatori' : `/api/napoli/operatori/${o.id}`,
+                { method: nuovo ? 'POST' : 'PUT', body: JSON.stringify(dati) }),
+        });
+    },
+
+    moduloPei({ alunno, figura, riga }) {
+        const modifica = !!riga;
+        const stati = NAPOLI_STATI_PEI.map(([v, t]) => [v, t]);
+        const figuraFissa = modifica ? riga.figura : figura;
+        this.apriModulo({
+            titolo: modifica ? 'Correggi le ore del PEI' : (figura ? `Cambia le ore del PEI: ${NapoliComune.nomeFigura(figura)}` : 'Ore del PEI di una figura'),
+            intro: modifica ? 'Correggi questa riga se è stata scritta male. Per un cambio da un certo giorno usa invece «Cambia le ore».'
+                : 'Le ore settimanali da progetto valgono dal giorno scelto: se la figura aveva già delle ore, quelle di prima valgono fino al giorno prima.',
+            righe: [
+                figuraFissa ? { nome: 'figura_testo', etichetta: 'Figura', tipo: 'sola', html: escapeHtml(NapoliComune.nomeFigura(figuraFissa)) }
+                    : { nome: 'figura', etichetta: 'Figura', tipo: 'scelta', obbligatorio: true, opzioni: this.opzioniFigure(true) },
+                [{ nome: 'ore_settimanali', etichetta: 'Ore a settimana', tipo: 'numero', obbligatorio: true, placeholder: 'per esempio 13 o 12,5' },
+                    { nome: 'stato', etichetta: 'Stato del PEI', tipo: 'scelta', opzioni: stati }],
+                [{ nome: 'valido_da', etichetta: 'Valgono dal', tipo: 'data', obbligatorio: true },
+                    { nome: 'valido_a', etichetta: 'fino al', tipo: 'data', aiuto: 'Vuoto = senza una data di fine.' }],
+                { nome: 'fonte', etichetta: 'Nota (da dove viene)', max: 200, placeholder: 'per esempio: verbale GLO del 10/10/2026' },
+            ],
+            valori: modifica ? { ore_settimanali: riga.ore_testo, stato: riga.stato, valido_da: riga.valido_da, valido_a: riga.valido_a, fonte: riga.fonte }
+                : { valido_da: napoliOggi(), stato: 'definitivo' },
+            salva: 'Salva le ore',
+            invia: (dati) => {
+                if (!modifica && figura) dati.figura = figura;
+                return apiCall(modifica ? `/api/napoli/pei/${riga.id}` : `/api/napoli/alunni/${alunno.id}/pei`,
+                    { method: modifica ? 'PUT' : 'POST', body: JSON.stringify(dati) });
+            },
+        });
+    },
+
+    async elenchiPerCoppia() {
+        const lotto = NapoliComune.lotto.id;
+        const [alunni, operatori, coppie] = await Promise.all([
+            apiCall(`/api/napoli/lotti/${lotto}/alunni?stato=attivi`),
+            apiCall(`/api/napoli/lotti/${lotto}/operatori?stato=attivi`),
+            apiCall(`/api/napoli/lotti/${lotto}/coppie?stato=tutte`)]);
+        return { alunni: alunni.righe, operatori: operatori.righe, coppie: coppie.righe };
+    },
+
+    async moduloCoppia({ coppia, alunno, operatore }) {
+        let elenchi;
+        try {
+            elenchi = await this.elenchiPerCoppia();
+        } catch (e) {
+            showToast(e.message || 'Dati non disponibili', 'error');
+            return;
+        }
+        const nuova = !coppia;
+        const titolari = (alunnoId, figura) => [['', '— scegli —']].concat(elenchi.coppie
+            .filter(c => c.ruolo === 'titolare' && c.alunno.id === Number(alunnoId) && c.figura === figura && (!coppia || c.id !== coppia.id))
+            .map(c => [c.id, `${c.operatore.nome} (${napoliPeriodo(c.valido_da, c.valido_a)})`]));
+        const righe = [];
+        if (nuova) {
+            righe.push(alunno ? { nome: 'alunno_testo', etichetta: 'Alunno', tipo: 'sola', html: escapeHtml(alunno.nome_completo) }
+                : { nome: 'alunno_id', etichetta: 'Alunno', tipo: 'scelta', obbligatorio: true,
+                    opzioni: [['', '— scegli —']].concat(elenchi.alunni.map(a => [a.id, `${a.nome_completo}${a.scuola ? ' · ' + a.scuola.nome : ''}`])) });
+            righe.push(operatore ? { nome: 'operatore_testo', etichetta: 'Operatore', tipo: 'sola', html: `${escapeHtml(operatore.nome_completo)} (${escapeHtml(operatore.nome_figura)})` }
+                : { nome: 'operatore_id', etichetta: 'Operatore', tipo: 'scelta', obbligatorio: true,
+                    opzioni: [['', '— scegli —']].concat(elenchi.operatori.map(o => [o.id, `${o.nome_completo} (${o.nome_figura})`])) });
+            righe.push([{ nome: 'figura', etichetta: 'Figura della coppia', tipo: 'scelta', opzioni: this.opzioniFigure(true, 'quella dell\'operatore'),
+                aiuto: 'Le ore si contano con la figura della coppia.' },
+            { nome: 'ruolo', etichetta: 'Ruolo', tipo: 'scelta', opzioni: [['titolare', 'Titolare'], ['sostituto', 'Sostituto (SI nel file)']] }]);
+        } else {
+            righe.push({ nome: 'chi', etichetta: 'Coppia', tipo: 'sola',
+                html: `${escapeHtml(coppia.alunno.nome)} con ${escapeHtml(coppia.operatore.nome)} · ${escapeHtml(coppia.nome_figura)}${coppia.ruolo === 'sostituto' ? ' · sostituto' : ''}`,
+                aiuto: 'Alunno, operatore e figura non si cambiano: per un altro operatore usa «Subentro».' });
+        }
+        righe.push({ nome: 'titolare_coppia_id', etichetta: 'Sostituisce', tipo: 'scelta', obbligatorio: true,
+            opzioni: coppia ? titolari(coppia.alunno.id, coppia.figura) : [['', '— scegli prima alunno e figura —']],
+            nascosto: !(coppia && coppia.ruolo === 'sostituto') });
+        righe.push({ nome: 'scuola_id', etichetta: 'Scuola (plesso) del foglio firma', tipo: 'scelta', obbligatorio: true,
+            opzioni: this.opzioniScuole(coppia && coppia.scuola && coppia.scuola.id) });
+        righe.push([{ nome: 'valido_da', etichetta: 'Dal', tipo: 'data', obbligatorio: true },
+            { nome: 'valido_a', etichetta: 'Al', tipo: 'data', aiuto: 'Vuoto = senza una data di fine.' }]);
+        righe.push({ nome: 'ore_settimanali', etichetta: 'Ore a settimana della coppia', tipo: 'numero', placeholder: 'vuoto = tutte le ore del PEI della figura',
+            aiuto: 'Solo se l\'alunno ha più operatori della stessa figura e le ore sono divise.' });
+        righe.push({ nome: 'note', etichetta: 'Note', tipo: 'area', aiuto: 'Niente dati sanitari.' });
+        const valori = coppia ? { titolare_coppia_id: coppia.titolare && coppia.titolare.id, scuola_id: coppia.scuola && coppia.scuola.id,
+            valido_da: coppia.valido_da, valido_a: coppia.valido_a, ore_settimanali: coppia.ore_da === 'quota' ? coppia.ore_testo : '', note: coppia.note }
+            : { valido_da: napoliOggi(), ruolo: 'titolare', figura: '', scuola_id: alunno && alunno.scuola ? alunno.scuola.id : '' };
+        this.apriModulo({
+            titolo: nuova ? 'Nuova coppia operatore-alunno' : 'Modifica la coppia',
+            intro: nuova ? 'Una coppia è un operatore che segue un alunno per una figura: corrisponde a una riga del file Excel e a un foglio firma al mese.' : '',
+            righe, valori, salva: nuova ? 'Aggiungi la coppia' : 'Salva la coppia',
+            invia: (dati) => {
+                if (alunno) dati.alunno_id = alunno.id;
+                if (operatore) dati.operatore_id = operatore.id;
+                return apiCall(nuova ? `/api/napoli/lotti/${NapoliComune.lotto.id}/coppie` : `/api/napoli/coppie/${coppia.id}`,
+                    { method: nuova ? 'POST' : 'PUT', body: JSON.stringify(dati) });
+            },
+            prepara: (form) => {
+                if (!nuova) return;
+                const q = (n) => form.querySelector(`#ana-${n}`);
+                const aggiorna = () => {
+                    const alunnoId = alunno ? alunno.id : q('alunno_id').value;
+                    const op = operatore || elenchi.operatori.find(o => String(o.id) === (q('operatore_id') || {}).value);
+                    const figura = q('figura').value || (op ? op.figura : '');
+                    const sostituto = q('ruolo').value === 'sostituto';
+                    form.querySelector('[data-gruppo="titolare_coppia_id"]').hidden = !sostituto;
+                    const sel = q('titolare_coppia_id');
+                    const prima = sel.value;
+                    sel.innerHTML = (alunnoId && figura ? titolari(alunnoId, figura) : [['', '— scegli prima alunno e figura —']])
+                        .map(([v, t]) => `<option value="${escapeHtml(String(v))}">${escapeHtml(t)}</option>`).join('');
+                    sel.value = prima;
+                };
+                const scuolaDellAlunno = () => {
+                    const a = elenchi.alunni.find(x => String(x.id) === q('alunno_id').value);
+                    if (a && a.scuola) q('scuola_id').value = String(a.scuola.id);
+                };
+                ['figura', 'ruolo', 'operatore_id'].forEach(n => q(n) && q(n).addEventListener('change', aggiorna));
+                if (q('alunno_id')) q('alunno_id').addEventListener('change', () => { scuolaDellAlunno(); aggiorna(); });
+                aggiorna();
+            },
+        });
+    },
+
+    moduloChiudi(c) {
+        this.apriModulo({
+            titolo: 'Chiudi la coppia',
+            intro: `${escapeHtml(c.alunno.nome)} con ${escapeHtml(c.operatore.nome)} (${escapeHtml(c.nome_figura)}): scegli l'ultimo giorno di servizio. La coppia resta per i mesi passati.`,
+            righe: [{ nome: 'valido_a', etichetta: 'Ultimo giorno', tipo: 'data', obbligatorio: true }],
+            valori: { valido_a: c.valido_a || napoliOggi() },
+            salva: 'Chiudi la coppia',
+            invia: (dati) => apiCall(`/api/napoli/coppie/${c.id}/chiudi`, { method: 'POST', body: JSON.stringify(dati) }),
+        });
+    },
+
+    async moduloSubentro(c) {
+        let operatori;
+        try {
+            operatori = (await apiCall(`/api/napoli/lotti/${NapoliComune.lotto.id}/operatori?stato=attivi`)).righe;
+        } catch (e) {
+            showToast(e.message || 'Dati non disponibili', 'error');
+            return;
+        }
+        const stessa = operatori.filter(o => o.id !== c.operatore.id).sort((a, b) => (a.figura !== c.figura) - (b.figura !== c.figura));
+        this.apriModulo({
+            titolo: 'Subentro di un altro operatore',
+            intro: `${escapeHtml(c.alunno.nome)} · ${escapeHtml(c.nome_figura)}: dal giorno scelto l'alunno è seguito da un altro operatore. La coppia con ${escapeHtml(c.operatore.nome)} finisce il giorno prima; la nuova ha la stessa scuola e le stesse ore.`,
+            righe: [{ nome: 'operatore_id', etichetta: 'Nuovo operatore', tipo: 'scelta', obbligatorio: true,
+                opzioni: [['', '— scegli —']].concat(stessa.map(o => [o.id, `${o.nome_completo} (${o.nome_figura})`])) },
+            { nome: 'dal', etichetta: 'Dal giorno', tipo: 'data', obbligatorio: true }],
+            valori: { dal: napoliOggi() },
+            salva: 'Fai il subentro',
+            invia: (dati) => apiCall(`/api/napoli/coppie/${c.id}/subentro`, { method: 'POST', body: JSON.stringify(dati) }),
+        });
+    },
+
+    moduloArchivia(tipo, riga) {
+        const alunno = tipo === 'alunno';
+        this.apriModulo({
+            titolo: alunno ? 'Archivia l\'alunno' : 'Archivia l\'operatore',
+            intro: alunno
+                ? `${escapeHtml(riga.nome_completo)} esce dal servizio dal giorno scelto: le sue coppie e le ore del PEI ancora aperte finiscono il giorno prima. Resta tutto per i mesi passati; Ctrl+Z rimette com'era.`
+                : `${escapeHtml(riga.nome_completo)} non lavora più dal giorno scelto. Se ha ancora coppie da quel giorno, prima chiudile o fai il subentro con un altro operatore.`,
+            righe: [{ nome: 'dal', etichetta: alunno ? 'Esce dal servizio dal' : 'Non lavora più dal', tipo: 'data', obbligatorio: true }],
+            valori: { dal: napoliOggi() },
+            salva: 'Archivia',
+            invia: (dati) => apiCall(`/api/napoli/${alunno ? 'alunni' : 'operatori'}/${riga.id}/archivia`, { method: 'POST', body: JSON.stringify(dati) }),
+        });
     },
 };
 
@@ -1309,6 +2286,7 @@ const NapoliImport = {
                 </div>
                 <div class="napoli-azioni-modulo">
                     <button type="button" class="btn btn-secondary" data-azione="altro-file">Scegli un altro file</button>
+                    ${anagrafica ? '<a class="btn btn-primary" href="/napoli/anagrafiche#alunni">Controlla le anagrafiche</a>' : ''}
                 </div>
             </section>`;
         this.inVista(this.el('import-risultato').querySelector('.napoli-esito'));
@@ -2156,5 +3134,6 @@ const NapoliImpostazioni = {
 window.NapoliComune = NapoliComune;
 window.NapoliProcedura = NapoliProcedura;
 window.NapoliMese = NapoliMese;
+window.NapoliAnagrafiche = NapoliAnagrafiche;
 window.NapoliImport = NapoliImport;
 window.NapoliImpostazioni = NapoliImpostazioni;

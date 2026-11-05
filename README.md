@@ -136,6 +136,39 @@ ambiente isolato dentro la cartella (`.venv`) da `avvia.bat` / `run.sh` al primo
 - **Export report**: Excel e PDF con opzione privacy (nomi puntati)
 - **Reportistica DD**: report dedicati per Direttore di Dipartimento
 
+## Sezione Napoli (in costruzione): come iniziare
+
+La voce **Napoli** del menu (Alt+8) è la sezione dell'assistenza specialistica del
+Comune di Napoli. Ha dati suoi, separati da quelli di Roma: le pagine di Roma non
+cambiano e non mostrano mai i dati di Napoli. È in costruzione: per ora ci sono le
+impostazioni, il caricamento dell'anagrafica e le anagrafiche; presenze, fogli firma e
+fattura arriveranno con i prossimi aggiornamenti.
+
+1. **Crea il lotto.** Apri **Napoli**: la prima volta la pagina propone **Crea il primo
+   lotto**. Il programma propone il nome, i testi della fattura e le tariffe del contratto
+   attuale (IVA esclusa): controlla, scrivi le municipalità del lotto e conferma. Poi, in
+   **Napoli > Impostazioni**, completa i dati della cooperativa (con l'IBAN), il
+   destinatario delle fatture e i contratti applicativi con la determina.
+2. **Carica l'anagrafica dal file Excel.** In **Napoli > Importa** scegli il file Excel
+   del coordinatore (il «master» con operatori e alunni) e premi **Mostra l'anteprima
+   dell'anagrafica**: niente viene salvato finché non premi **Carica l'anagrafica**.
+   Assisto prende alunni, operatori con la qualifica e le ore di contratto, scuole e plessi
+   con la municipalità, coppie operatore-alunno con la data di inizio e le ore settimanali
+   del PEI. Le ore dei mesi passati non si caricano: da ora in poi si scrivono in Assisto.
+   Se il file è aperto in Excel, chiudilo prima di sceglierlo.
+3. **Controlla le anagrafiche.** In **Napoli > Anagrafiche** ci sono alunni, operatori,
+   scuole e plessi e coppie, con la ricerca e i filtri (scuola, municipalità, figura,
+   grado). Il pulsante **«N da sistemare»** mostra cosa manca: per esempio il grado delle
+   scuole «da decidere» (serve per la fattura) o gli alunni senza ore del PEI. Da qui si
+   aggiungono e si correggono i dati a mano. Chi lascia il servizio si **archivia** (resta
+   per i mesi passati); si elimina solo ciò che è stato aggiunto per sbaglio e non ha ore.
+   I codici fiscali si vedono solo in parte (per esempio `ABC••••••••••12X`).
+
+Ctrl+Z su una pagina di Napoli annulla l'ultima modifica di Napoli (mai una di Roma),
+dopo una conferma. Le modifiche a nome, cognome, codice fiscale e note, e l'eliminazione
+di una persona, non si annullano: per la riservatezza i valori di prima non restano in
+memoria.
+
 ## Parametri di calcolo
 
 | Parametro | Valore |
@@ -177,6 +210,8 @@ Gestionale-Assisto-<versione>/
 ├── routes_export.py    # Route export/report (Excel, Word)
 ├── database.py         # Gestione database SQLite
 ├── config.py           # Configurazione
+├── napoli_*.py         # Sezione Napoli: schema, calcoli, dati, anagrafiche (con routes_napoli.py,
+│                       #   import_napoli.py, config_napoli.py)
 ├── requirements.txt    # Dipendenze Python
 ├── gestionale.db       # Database (creato al primo avvio)
 ├── static/             # CSS, JS, icone

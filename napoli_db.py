@@ -33,7 +33,16 @@ ANNULLA_VALIDITA_ORE = 24
 MAX_ANNULLAMENTI = 50
 # Tabelle che Ctrl+Z sa rimettere com'erano (senza il prefisso napoli_) e la loro chiave.
 TABELLE_ANNULLABILI = {'lotti': 'id', 'contratti': 'id', 'tariffe': 'id', 'regole': 'id',
-                       'alias_qualifiche': 'testo', 'impostazioni': 'chiave'}
+                       'alias_qualifiche': 'testo', 'impostazioni': 'chiave',
+                       'scuole': 'id', 'alunni': 'id', 'operatori': 'id', 'coppie': 'id', 'pei': 'id'}
+# Dati personali che la memoria di Ctrl+Z non salva mai (PROGETTO D11: codici fiscali e
+# nomi non stanno negli annullamenti): delle righe di queste tabelle si salvano solo le
+# altre colonne. Un'azione che li cambia o che elimina la persona non si annulla con
+# Ctrl+Z (registra_non_annullabile): i valori di prima non ci sono.
+COLONNE_PERSONALI = {'alunni': ('cognome', 'nome', 'codice_fiscale', 'note'),
+                     'operatori': ('cognome', 'nome', 'codice_fiscale', 'cf_valido', 'note')}
+MOTIVO_DATI_PERSONALI = ('per la riservatezza nome, cognome, codice fiscale e note di prima non restano in '
+                         'memoria. Se hai sbagliato, correggili di nuovo dalla scheda')
 # Tabelle con dati di un lotto che impediscono di eliminarlo (oltre a contratti, tariffe e regole).
 TABELLE_DATI_LOTTO = ('scuole', 'alunni', 'coppie', 'presenze', 'import', 'coordinamento', 'mesi_chiusi',
                       'fatture', 'calendario')
@@ -219,7 +228,13 @@ class _Modifiche:
     def prima(self, tabella, chiave):
         colonna = TABELLE_ANNULLABILI[tabella]
         riga = _riga(self.conn, f'SELECT * FROM napoli_{tabella} WHERE {colonna} = ?', (chiave,))
-        self.righe.append({'tabella': tabella, 'chiave': chiave, 'prima': riga})
+        voce = {'tabella': tabella, 'chiave': chiave, 'prima': riga}
+        personali = COLONNE_PERSONALI.get(tabella)
+        if personali and riga is not None:
+            # i dati personali non si salvano: Ctrl+Z rimette solo le altre colonne
+            voce['prima'] = {k: v for k, v in riga.items() if k not in personali}
+            voce['senza'] = list(personali)
+        self.righe.append(voce)
 
     def nuova(self, tabella, chiave):
         self.righe.append({'tabella': tabella, 'chiave': chiave, 'prima': None})
@@ -242,6 +257,14 @@ def registra_azione(conn, tipo, descrizione, dati):
                  '(SELECT id FROM napoli_annullamenti ORDER BY id DESC LIMIT ?)', (MAX_ANNULLAMENTI,))
     _svuota_scadute(conn)
     return cur.lastrowid
+
+
+def registra_non_annullabile(conn, tipo, descrizione, motivo):
+    """Un'azione che Ctrl+Z non puo' annullare (per esempio un cambio del codice fiscale o
+    l'eliminazione di un alunno: i dati personali di prima non restano in memoria). Si
+    registra lo stesso, cosi' Ctrl+Z non annulla in silenzio l'azione fatta prima di questa:
+    dice perche' questa non si annulla."""
+    return registra_azione(conn, tipo, descrizione, {'versione': 1, 'non_annullabile': motivo})
 
 
 def _svuota_scadute(conn, adesso=None):
@@ -269,8 +292,13 @@ def _ripristina(conn, voce):
         conn.execute(f'DELETE FROM napoli_{tabella} WHERE {colonna} = ?', (chiave,))
         return
     esistenti = {r[1] for r in conn.execute(f'PRAGMA table_info(napoli_{tabella})')}
-    valori = {k: v for k, v in prima.items() if k in esistenti}
-    if conn.execute(f'SELECT 1 FROM napoli_{tabella} WHERE {colonna} = ?', (chiave,)).fetchone():
+    valori = {k: v for k, v in prima.items() if k in esistenti and k not in (voce.get('senza') or ())}
+    esiste = conn.execute(f'SELECT 1 FROM napoli_{tabella} WHERE {colonna} = ?', (chiave,)).fetchone()
+    if not esiste and (voce.get('senza') or tabella in COLONNE_PERSONALI):
+        # senza i dati personali la riga non si puo' rimettere (non succede: chi elimina una
+        # persona registra un'azione non annullabile)
+        raise DatiNonValidi(f'Questa modifica non si può annullare: {MOTIVO_DATI_PERSONALI}.', codice='NON_ANNULLABILE')
+    if esiste:
         assegna = ', '.join(f'{k} = ?' for k in valori if k != colonna)
         conn.execute(f'UPDATE napoli_{tabella} SET {assegna} WHERE {colonna} = ?',
                      tuple(v for k, v in valori.items() if k != colonna) + (chiave,))
@@ -295,17 +323,58 @@ def _quando_it(timestamp):
         return ''
 
 
+def _dati_azione(testo):
+    try:
+        dati = json.loads(testo or '{}')
+    except (TypeError, ValueError):
+        return {}
+    return dati if isinstance(dati, dict) else {}
+
+
+def _nome(riga):
+    return f'{riga.get("cognome") or ""} {riga.get("nome") or ""}'.strip() if riga else ''
+
+
+def _chi(conn, voci):
+    """Di chi o di che cosa e' la modifica, letto adesso dalle anagrafiche (la memoria di
+    Ctrl+Z non ha nomi): solo per la finestra di conferma, mai salvato."""
+    ordine = ('alunni', 'operatori', 'coppie', 'pei', 'scuole')      # prima le persone
+    voci = [v for v in voci if isinstance(v, dict) and v.get('tabella') in ordine] if isinstance(voci, list) else []
+    for v in sorted(voci, key=lambda v: ordine.index(v['tabella'])):
+        tabella, chiave = v['tabella'], v.get('chiave')
+        riga = _riga(conn, f'SELECT * FROM napoli_{tabella} WHERE id = ?', (chiave,)) or v.get('prima') or {}
+        if tabella in ('alunni', 'operatori'):
+            return _nome(riga)
+        if tabella == 'scuole':
+            return riga.get('nome') or ''
+        alunno = _riga(conn, 'SELECT cognome, nome FROM napoli_alunni WHERE id = ?', (riga.get('alunno_id'),))
+        if tabella == 'pei':
+            return _nome(alunno)
+        operatore = _riga(conn, 'SELECT cognome, nome FROM napoli_operatori WHERE id = ?', (riga.get('operatore_id'),))
+        return ' con '.join(x for x in (_nome(alunno), _nome(operatore)) if x)
+    return ''
+
+
 def ultima_annullabile():
     """Cosa annullerebbe Ctrl+Z su una pagina di Napoli: {'azione': {id, descrizione,
-    quando} o None, 'scadute': azioni troppo vecchie ancora in memoria, 'ore_validita'}."""
+    quando, chi} o None, 'non_annullabile': {descrizione, quando, motivo} se l'ultima azione
+    non si puo' annullare (dati personali), 'scadute': azioni troppo vecchie ancora in
+    memoria, 'ore_validita'}. 'chi' (il nome di chi e' cambiato) si legge adesso dalle
+    anagrafiche: in memoria non c'e'."""
     with db.get_db_context() as conn:
         _svuota_scadute(conn)
-        ultima = _riga(conn, 'SELECT id, timestamp, tipo, descrizione FROM napoli_annullamenti '
+        ultima = _riga(conn, 'SELECT id, timestamp, tipo, descrizione, dati FROM napoli_annullamenti '
                              'ORDER BY id DESC LIMIT 1')
         totale = conn.execute('SELECT COUNT(*) FROM napoli_annullamenti').fetchone()[0]
+        dati = _dati_azione(ultima['dati']) if ultima else {}
+        chi = _chi(conn, dati.get('righe')) if ultima else ''
     if ultima and _annullabile(ultima['timestamp']):
+        if dati.get('non_annullabile'):
+            return {'azione': None, 'scadute': 0, 'ore_validita': ANNULLA_VALIDITA_ORE,
+                    'non_annullabile': {'descrizione': ultima['descrizione'], 'motivo': dati['non_annullabile'],
+                                        'quando': _quando_it(ultima['timestamp'])}}
         return {'azione': {'id': ultima['id'], 'descrizione': ultima['descrizione'],
-                           'quando': _quando_it(ultima['timestamp'])},
+                           'quando': _quando_it(ultima['timestamp']), 'chi': chi},
                 'scadute': 0, 'ore_validita': ANNULLA_VALIDITA_ORE}
     return {'azione': None, 'scadute': totale, 'ore_validita': ANNULLA_VALIDITA_ORE}
 
@@ -328,8 +397,12 @@ def annulla(atteso=None):
                 dati = json.loads(ultima['dati'])
                 import_id = dati.get('import_id') if dati.get('versione') == 1 else None
                 voci = dati.get('righe') if dati.get('versione') == 1 else None
+                non_annullabile = dati.get('non_annullabile') if dati.get('versione') == 1 else None
             except (TypeError, ValueError, AttributeError):
-                import_id = voci = None
+                import_id = voci = non_annullabile = None
+            if non_annullabile:
+                raise DatiNonValidi(f'«{ultima["descrizione"]}» non si può annullare con Ctrl+Z: {non_annullabile}.',
+                                    codice='NON_ANNULLABILE')
             if import_id is None:
                 if not isinstance(voci, list):
                     raise DatiNonValidi('Questa modifica non si può annullare da qui.', codice='NON_ANNULLABILE')

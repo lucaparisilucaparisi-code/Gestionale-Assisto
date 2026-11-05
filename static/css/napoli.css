@@ -297,3 +297,107 @@ details.napoli-parte-conferma[open] > summary { margin-bottom: 6px; }
 .napoli-altre-corpo .napoli-intro { font-size: 0.86rem; }
 .napoli-azioni-inizio { justify-content: flex-start; }
 .napoli-nota-stretta { margin-top: 8px; }
+
+/* ---------- scheda Anagrafiche (alunni, operatori, scuole, coppie) ---------- */
+.napoli-anagrafiche { display: flex; flex-direction: column; gap: 16px; }
+.napoli-anagrafiche .card { margin-bottom: 0; }
+.napoli-vuota-a-mano { margin-top: 16px; }
+
+/* le quattro parti: un selettore a segmenti sotto le schede di Napoli */
+.napoli-barra-parti { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.napoli-sottoschede {
+    display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px;
+    border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-card-solid);
+}
+.napoli-sottoschede a {
+    display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: var(--radius-sm);
+    color: var(--text-secondary); font-weight: 500; font-size: 0.92rem; text-decoration: none; white-space: nowrap;
+}
+.napoli-sottoschede a:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.napoli-sottoschede a.attiva { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.napoli-sottoschede a:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.napoli-conta {
+    min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary);
+    font-size: 0.76rem; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums;
+}
+.napoli-sottoschede a.attiva .napoli-conta { background: var(--bg-card-solid); color: var(--accent-text); }
+
+/* filtri su una riga anche a 1366x768: la ricerca prende lo spazio che resta, le tendine
+   restano strette (con la tendina Ruolo delle coppie si va a capo) */
+.napoli-filtri { margin-bottom: 0; padding: 12px 16px; gap: 10px 12px; flex-wrap: wrap; }
+.napoli-filtri .filter-group { min-width: 0; flex: 0 1 auto; gap: 6px; }
+.napoli-filtri .napoli-filtro-cerca { flex: 1 1 180px; min-width: 150px; max-width: 320px; }
+.napoli-filtri .filter-group select { width: auto; min-width: 104px; max-width: 200px; padding-top: 8px; padding-bottom: 8px; }
+.napoli-filtri .filter-group input { padding-top: 8px; padding-bottom: 8px; }
+.napoli-filtri .filter-group[data-filtro="scuola_id"] select { width: 180px; }
+.napoli-filtri .filter-group[data-filtro="figura"] select { width: 122px; }
+.napoli-filtri .filter-group[data-filtro="stato"] select { width: 134px; }
+.napoli-filtri .filter-group[data-filtro="municipalita"] select,
+.napoli-filtri .filter-group[data-filtro="grado"] select,
+.napoli-filtri .filter-group[data-filtro="ruolo"] select { width: 112px; }
+@media (max-width: 768px) { .napoli-filtri .filter-group select, .napoli-filtri .napoli-filtro-cerca { width: 100%; max-width: none; } }
+.napoli-trovato { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0; }
+
+.napoli-titolo-conta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* tabelle degli elenchi */
+.napoli-elenco { max-height: none; }
+.napoli-tabella-anagrafica td { vertical-align: top; padding: 10px 14px; }
+.napoli-tabella-anagrafica th { padding: 10px 14px; }
+.napoli-tabella-anagrafica .napoli-azioni { white-space: nowrap; text-align: right; width: 1%; }
+.napoli-tabella-anagrafica .napoli-azioni .btn + .btn { margin-left: 6px; }
+.napoli-tabella-anagrafica td > .badge { margin-left: 6px; vertical-align: 1px; }
+.napoli-periodo { white-space: nowrap; }
+.napoli-riga-cliccabile { cursor: pointer; }
+.napoli-riga-cliccabile:hover td { background: var(--bg-tertiary); }
+.napoli-riga-archiviata td { color: var(--text-tertiary); }
+.napoli-nome { font-weight: 600; color: var(--text-primary); text-decoration: none; }
+a.napoli-nome:hover { color: var(--accent-text); text-decoration: underline; }
+.napoli-sotto {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 3px;
+    font-size: 0.8rem; color: var(--text-tertiary);
+}
+.napoli-sotto-destra { justify-content: flex-end; }
+.napoli-sotto-in { font-size: 0.8rem; color: var(--text-tertiary); }
+.napoli-cf { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.napoli-chip {
+    display: inline-flex; align-items: baseline; gap: 4px; margin: 0 6px 4px 0; padding: 2px 9px;
+    border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.82rem; white-space: nowrap;
+}
+.napoli-chip strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.napoli-op { white-space: nowrap; }
+.napoli-op + .napoli-op { margin-top: 3px; }
+.napoli-op .napoli-sotto-in { white-space: normal; }
+.napoli-elenco-vuoto { padding: 20px; margin: 0; }
+.napoli-esito-elenco { margin: 16px; }
+
+/* scheda di un alunno o di un operatore */
+.napoli-scheda-testa { align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.napoli-scheda-nome { min-width: 0; }
+.napoli-scheda-titolo { font-size: 1.3rem; font-weight: 600; letter-spacing: -0.01em; margin: 4px 0 2px; color: var(--text-primary); }
+.napoli-scheda-titolo:focus { outline: none; }
+.napoli-scheda-pulsanti { display: flex; gap: 8px; flex-wrap: wrap; }
+.napoli-indietro {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--text-secondary); text-decoration: none;
+}
+.napoli-indietro:hover { color: var(--accent-text); }
+.napoli-indietro:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
+.napoli-sezione { margin-top: 28px; }
+.napoli-sezione-testa { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.napoli-sezione-testa h3 { font-size: 1.02rem; font-weight: 600; margin: 0; color: var(--text-primary); }
+.napoli-sezione .table-container { max-height: none; border: 1px solid var(--border-color); border-radius: var(--radius); }
+.napoli-scheda .napoli-storico td:first-child { padding-left: 28px; }
+.napoli-credito {
+    display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px;
+    border: 1px dashed var(--border-color); border-radius: var(--radius); background: var(--bg-secondary);
+}
+.napoli-credito > svg { flex-shrink: 0; color: var(--text-tertiary); margin-top: 1px; }
+.napoli-credito-titolo { margin: 0 0 4px; font-weight: 600; color: var(--text-primary); }
+.napoli-credito-testo { margin: 0 0 8px; font-size: 0.86rem; color: var(--text-secondary); max-width: 90ch; }
+.napoli-credito-figure { display: flex; flex-wrap: wrap; }
+
+/* finestra dei moduli */
+.napoli-campo-solo { padding: 8px 0; font-weight: 500; color: var(--text-primary); }
+.napoli-gruppo-casella { display: flex; flex-direction: column; justify-content: flex-end; }
+.napoli-gruppo-casella .napoli-scelta-riga { margin: 8px 0 0; cursor: pointer; }
+#napoli-modal-anagrafica .modal-body { max-height: calc(100vh - 220px); overflow-y: auto; }

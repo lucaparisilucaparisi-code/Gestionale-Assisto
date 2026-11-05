@@ -14,7 +14,10 @@ dai passi 1.4-1.5 il file Excel "master" di marzo 2026 inventato
 (tests/napoli_sintetico.py, con alunni e un operatore omonimi di quelli di Roma:
 anteprima e conferma, _seme_import): prima l'anagrafica (l'azione principale della
 pagina), poi anche le ore del mese (l'opzione secondaria), dopo le righe scritte
-direttamente, cosi' l'import ritrova un plesso gia' presente.
+direttamente, cosi' l'import ritrova un plesso gia' presente; dal passo 1.6 le
+Anagrafiche scritte a mano (_seme_anagrafiche: una scuola, un alunno e un operatore
+omonimi di Roma, PEI con il cambio da una data, coppia, sostituto, subentro, chiusura,
+modifiche, archiviazione e ripristino, ricerca per codice fiscale).
 Il resto, e tutto senza client o con versione_schema=2 (forma della v2, per provare la
 migrazione 3), si scrive direttamente nelle tabelle napoli_* con una connessione
 SQLite a parte: mai nelle tabelle di Roma. Ogni passo che aggiunge una funzione di
@@ -334,6 +337,44 @@ def _seme_import(client, lotto_id):
     assert esito['import_id'], esito
 
 
+def _seme_anagrafiche(client, lotto_id):
+    """Le Anagrafiche scritte a mano con le loro API (passo 1.6), dopo l'import: un alunno e
+    un operatore con i nomi di un utente e di un operatore di Roma."""
+    scuola = _ok(client.post(f'/api/napoli/lotti/{lotto_id}/scuole', json={
+        'nome': 'IC Fantasia - Primaria Arcobaleno', 'codice_meccanografico': 'NAIC8ZZ009', 'municipalita': 3,
+        'grado': 'inferiore'}))['scuola_id']
+    _ok(client.put(f'/api/napoli/scuole/{scuola}', json={'grado': 'misto'}))
+    alunno = _ok(client.post(f'/api/napoli/lotti/{lotto_id}/alunni', json={
+        'cognome': 'Esempio', 'nome': 'Alba', 'codice_fiscale': _cf('Esempio', 'Alba', 2016, 5, 2, 'F'),
+        'scuola_id': scuola, 'grado': 'inferiore', 'esami': False}))['alunno_id']
+    operatore = _ok(client.post('/api/napoli/operatori', json={
+        'cognome': 'Operatore', 'nome': 'Primo', 'figura': 'ASACOM', 'livello_ccnl': 'C3', 'ore_contratto': '20',
+        'codice_fiscale': _cf('Operatore', 'Primo', 1987, 6, 1, 'M')}))['operatore_id']
+    sostituta = _ok(client.post('/api/napoli/operatori', json={
+        'cognome': 'Sostituta', 'nome': 'Nona', 'figura': 'ASACOM'}))['operatore_id']
+    _ok(client.post(f'/api/napoli/alunni/{alunno}/pei', json={'figura': 'ASACOM', 'ore_settimanali': '10',
+                                                               'valido_da': '2026-09-14'}))
+    _ok(client.post(f'/api/napoli/alunni/{alunno}/pei', json={'figura': 'ASACOM', 'ore_settimanali': '12,5',
+                                                               'valido_da': '2026-10-01'}))
+    coppia = _ok(client.post(f'/api/napoli/lotti/{lotto_id}/coppie', json={
+        'alunno_id': alunno, 'operatore_id': operatore, 'valido_da': '2026-09-14'}))['coppia_id']
+    sostituto = _ok(client.post(f'/api/napoli/lotti/{lotto_id}/coppie', json={
+        'alunno_id': alunno, 'operatore_id': sostituta, 'ruolo': 'sostituto', 'titolare_coppia_id': coppia,
+        'valido_da': '2026-10-05', 'valido_a': '2026-10-09'}))['coppia_id']
+    _ok(client.put(f'/api/napoli/coppie/{sostituto}', json={'note': 'Sostituzione di prova'}))
+    nuova = _ok(client.post(f'/api/napoli/coppie/{coppia}/subentro', json={'operatore_id': sostituta,
+                                                                            'dal': '2026-11-02'}))['coppia_id']
+    _ok(client.post(f'/api/napoli/coppie/{nuova}/chiudi', json={'valido_a': '2027-06-30'}))
+    _ok(client.put(f'/api/napoli/alunni/{alunno}', json={'esami': True}))
+    _ok(client.put(f'/api/napoli/operatori/{operatore}', json={'ore_contratto': '22'}))
+    _ok(client.post(f'/api/napoli/alunni/{alunno}/archivia', json={'dal': '2027-07-01'}))
+    _ok(client.post(f'/api/napoli/alunni/{alunno}/ripristina', json={}))
+    _ok(client.post('/api/napoli/anagrafiche/codice-fiscale', json={
+        'codice_fiscale': _cf('Operatore', 'Primo', 1987, 6, 1, 'M')}))
+    for parte in ('anagrafiche', 'alunni', 'operatori', 'scuole', 'coppie'):
+        _ok(client.get(f'/api/napoli/lotti/{lotto_id}/{parte}'))
+
+
 def _conteggi_napoli(percorso):
     conn = sqlite3.connect(percorso, timeout=30)
     try:
@@ -362,6 +403,7 @@ def carica_seme_napoli(client, percorso, versione_schema=None):
         conn.close()
     if ids is not None:
         _seme_import(client, ids['lotto'])
+        _seme_anagrafiche(client, ids['lotto'])
     dopo = _conteggi_napoli(percorso)
     return {t: n - prima.get(t, 0) for t, n in dopo.items() if n != prima.get(t, 0)}
 

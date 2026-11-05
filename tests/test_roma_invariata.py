@@ -236,6 +236,7 @@ def test_scritture_di_roma_uguali_con_e_senza_napoli(database_isolato, app_modul
         assert [_conta(gemello, t) for t in ('utenti', 'rendicontazione', 'scuole')] == [0, 0, 0]
         assert _conta(gemello, 'dipendenti') == len(roma_sintetico.OPERATORI) + 2
         assert _conta(gemello, 'import_cronologia') == 1 + 3          # quello dell'archivio e i tre di qui
-    # 4 alunni scritti dal seme e 34 dall'import del master inventato (passi 1.4-1.5)
-    assert _conta(gemelli['con'], 'napoli_presenze') > 0 and _conta(gemelli['con'], 'napoli_alunni') == 4 + 34
+    # 4 alunni scritti dal seme, 34 dall'import del master inventato (passi 1.4-1.5) e 1 dalle
+    # Anagrafiche (passo 1.6)
+    assert _conta(gemelli['con'], 'napoli_presenze') > 0 and _conta(gemelli['con'], 'napoli_alunni') == 4 + 34 + 1
     assert _conta(gemelli['senza'], 'napoli_presenze') == 0

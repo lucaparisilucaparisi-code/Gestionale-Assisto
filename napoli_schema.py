@@ -16,8 +16,12 @@ che le esegue una volta sola, in ordine, e poi imposta PRAGMA user_version:
   fattura congela anche i testi (oggetto, nota, destinatario, ritenuta, scadenza)
   e le regole usate;
 - crea_v4 (fase 1, passo 1.3: Impostazioni): il contratto applicativo ha anche il
-  servizio della determina di impegno (D.D.), che va nella nota della fattura.
-  La fase 2 (banca ore, PROGETTO §4.3) diventa quindi la migrazione 5 (crea_v5).
+  servizio della determina di impegno (D.D.), che va nella nota della fattura;
+- crea_v5 (fase 1, passo 1.6: Anagrafiche): scuole, alunni, operatori, coppie e PEI
+  hanno la data dell'ultima modifica (modificato_il: annullare un caricamento
+  dell'anagrafica non deve cancellare righe cambiate a mano dopo) e gli operatori la
+  data di archiviazione (archiviato_dal).
+  La fase 2 (banca ore, PROGETTO §4.3) diventa quindi la migrazione 6 (crea_v6).
 
 Una migrazione gia' pubblicata non si cambia piu' (tests/test_napoli_schema.py ne
 controlla l'impronta): un database puo' essere gia' a quella versione, e
@@ -519,3 +523,35 @@ def crea_v4(conn):
     for nome, tipo in COLONNE_CONTRATTI_V4:
         if nome not in presenti:
             conn.execute(f'ALTER TABLE napoli_contratti ADD COLUMN {nome} {tipo}')
+
+
+# ==================== migrazione 5 ====================
+
+# Passo 1.6 (Anagrafiche): le righe delle anagrafiche si cambiano anche a mano.
+# - modificato_il: quando la riga e' stata scritta a mano l'ultima volta (nella scheda
+#   Anagrafiche: 'AAAA-MM-GGTHH:MM:SS'); vuoto = mai toccata a mano (l'import non la
+#   riempie). Annullare un caricamento dell'anagrafica toglie le righe che ha creato: se una
+#   e' stata cambiata a mano dopo, si perderebbe la modifica, quindi l'annullamento si
+#   rifiuta (Ctrl+Z della modifica rimette il valore di prima, e si puo' di nuovo).
+# - napoli_operatori.archiviato_dal: da quando l'operatore non lavora piu' (come per gli
+#   alunni; attivo = 0).
+COLONNE_V5 = (
+    ('scuole', 'modificato_il', 'TEXT'),
+    ('alunni', 'modificato_il', 'TEXT'),
+    ('operatori', 'modificato_il', 'TEXT'),
+    ('operatori', 'archiviato_dal', 'TEXT'),
+    ('coppie', 'modificato_il', 'TEXT'),
+    ('pei', 'modificato_il', 'TEXT'),
+)
+
+
+def crea_v5(conn):
+    """Migrazione 5 (fase 1, passo 1.6: Anagrafiche): le colonne di COLONNE_V5, aggiunte solo
+    se mancano. Rieseguibile e sicura su un database gia' alla v4 con dati (le righe
+    restano, con le colonne nuove vuote). Apre la transazione se non c'e'; la conferma il
+    runner di database.py insieme a user_version."""
+    if not conn.in_transaction:
+        conn.execute('BEGIN')
+    for tabella, nome, tipo in COLONNE_V5:
+        if nome not in _colonne(conn, f'napoli_{tabella}'):
+            conn.execute(f'ALTER TABLE napoli_{tabella} ADD COLUMN {nome} {tipo}')

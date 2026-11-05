@@ -13,6 +13,10 @@ tariffe e regole con data, qualifiche), con il loro Ctrl+Z (/api/napoli/annulla)
 Passi 1.4-1.5: scheda Importa (/napoli/import): dal file Excel "master" si carica
 l'anagrafica (azione principale, REGOLE 14) o, come opzione secondaria, anche le ore di
 un mese; anteprima, conferma, solo confronto, elenco e annullamento (import_napoli).
+Passo 1.6: scheda Anagrafiche (/napoli/anagrafiche): alunni, operatori, scuole e plessi,
+coppie operatore-alunno e PEI, con ricerca, filtri, creazione e modifica a mano,
+archiviazione (napoli_anagrafiche). I filtri degli elenchi arrivano nell'indirizzo (GET),
+ma mai un codice fiscale: la ricerca per codice fiscale e' una POST.
 """
 import json
 import logging
@@ -22,6 +26,7 @@ from flask import Blueprint, jsonify, render_template, request
 from werkzeug.exceptions import RequestEntityTooLarge
 
 import import_napoli
+import napoli_anagrafiche as anagrafiche
 import napoli_db
 
 napoli_bp = Blueprint('napoli', __name__)
@@ -96,6 +101,13 @@ def mese_page():
 def impostazioni_page():
     _pulisci_annullamenti()
     return render_template('napoli_impostazioni.html')
+
+
+@napoli_bp.route('/napoli/anagrafiche')
+def anagrafiche_page():
+    """Scheda Anagrafiche: alunni, operatori, scuole e plessi, coppie (una parte alla volta)."""
+    _pulisci_annullamenti()
+    return render_template('napoli_anagrafiche.html')
 
 
 @napoli_bp.route('/napoli/import')
@@ -326,6 +338,170 @@ def api_import_storico(lotto_id):
 @napoli_bp.route('/api/napoli/import/<int:import_id>/annulla', methods=['POST'])
 def api_import_annulla(import_id):
     return _ok(**import_napoli.annulla_import(import_id))
+
+
+# ==================== anagrafiche (passo 1.6) ====================
+
+def _filtri_della_richiesta():
+    return {k: request.args.get(k, '') for k in ('scuola_id', 'municipalita', 'figura', 'grado', 'stato', 'ruolo',
+                                                 'cerca')}
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/anagrafiche', methods=['GET'])
+def api_anagrafiche(lotto_id):
+    """Conteggi, cosa c'e' da sistemare, scuole e municipalita' per i filtri, anagrafica vuota."""
+    return jsonify(anagrafiche.riepilogo(lotto_id))
+
+
+@napoli_bp.route('/api/napoli/anagrafiche/codice-fiscale', methods=['POST'])
+def api_cerca_codice_fiscale():
+    """Chi ha questo codice fiscale: nel corpo della richiesta, mai nell'indirizzo."""
+    return jsonify(anagrafiche.cerca_codice_fiscale(_dati().get('codice_fiscale')))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/alunni', methods=['GET'])
+def api_alunni(lotto_id):
+    return jsonify(anagrafiche.elenco_alunni(lotto_id, _filtri_della_richiesta()))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/alunni', methods=['POST'])
+def api_crea_alunno(lotto_id):
+    return _ok(**anagrafiche.crea_alunno(lotto_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/alunni/<int:alunno_id>', methods=['GET'])
+def api_alunno(alunno_id):
+    return jsonify(anagrafiche.scheda_alunno(alunno_id))
+
+
+@napoli_bp.route('/api/napoli/alunni/<int:alunno_id>', methods=['PUT'])
+def api_aggiorna_alunno(alunno_id):
+    return _ok(**anagrafiche.aggiorna_alunno(alunno_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/alunni/<int:alunno_id>', methods=['DELETE'])
+def api_elimina_alunno(alunno_id):
+    return _ok(**anagrafiche.elimina_alunno(alunno_id))
+
+
+@napoli_bp.route('/api/napoli/alunni/<int:alunno_id>/archivia', methods=['POST'])
+def api_archivia_alunno(alunno_id):
+    return _ok(**anagrafiche.archivia_alunno(alunno_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/alunni/<int:alunno_id>/ripristina', methods=['POST'])
+def api_ripristina_alunno(alunno_id):
+    return _ok(**anagrafiche.ripristina_alunno(alunno_id))
+
+
+@napoli_bp.route('/api/napoli/alunni/<int:alunno_id>/pei', methods=['POST'])
+def api_aggiungi_pei(alunno_id):
+    return _ok(**anagrafiche.aggiungi_pei(alunno_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/pei/<int:pei_id>', methods=['PUT'])
+def api_aggiorna_pei(pei_id):
+    return _ok(**anagrafiche.aggiorna_pei(pei_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/pei/<int:pei_id>', methods=['DELETE'])
+def api_elimina_pei(pei_id):
+    return _ok(**anagrafiche.elimina_pei(pei_id))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/operatori', methods=['GET'])
+def api_operatori(lotto_id):
+    return jsonify(anagrafiche.elenco_operatori(lotto_id, _filtri_della_richiesta()))
+
+
+@napoli_bp.route('/api/napoli/operatori', methods=['POST'])
+def api_crea_operatore():
+    return _ok(**anagrafiche.crea_operatore(_dati()))
+
+
+@napoli_bp.route('/api/napoli/operatori/<int:operatore_id>', methods=['GET'])
+def api_operatore(operatore_id):
+    return jsonify(anagrafiche.scheda_operatore(operatore_id, _lotto_della_richiesta()))
+
+
+@napoli_bp.route('/api/napoli/operatori/<int:operatore_id>', methods=['PUT'])
+def api_aggiorna_operatore(operatore_id):
+    return _ok(**anagrafiche.aggiorna_operatore(operatore_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/operatori/<int:operatore_id>', methods=['DELETE'])
+def api_elimina_operatore(operatore_id):
+    return _ok(**anagrafiche.elimina_operatore(operatore_id))
+
+
+@napoli_bp.route('/api/napoli/operatori/<int:operatore_id>/archivia', methods=['POST'])
+def api_archivia_operatore(operatore_id):
+    return _ok(**anagrafiche.archivia_operatore(operatore_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/operatori/<int:operatore_id>/ripristina', methods=['POST'])
+def api_ripristina_operatore(operatore_id):
+    return _ok(**anagrafiche.ripristina_operatore(operatore_id))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/scuole', methods=['GET'])
+def api_scuole(lotto_id):
+    return jsonify(anagrafiche.elenco_scuole(lotto_id, _filtri_della_richiesta()))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/scuole', methods=['POST'])
+def api_crea_scuola(lotto_id):
+    return _ok(**anagrafiche.crea_scuola(lotto_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/scuole/<int:scuola_id>', methods=['PUT'])
+def api_aggiorna_scuola(scuola_id):
+    return _ok(**anagrafiche.aggiorna_scuola(scuola_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/scuole/<int:scuola_id>', methods=['DELETE'])
+def api_elimina_scuola(scuola_id):
+    return _ok(**anagrafiche.elimina_scuola(scuola_id))
+
+
+@napoli_bp.route('/api/napoli/scuole/<int:scuola_id>/archivia', methods=['POST'])
+def api_archivia_scuola(scuola_id):
+    return _ok(**anagrafiche.archivia_scuola(scuola_id, True))
+
+
+@napoli_bp.route('/api/napoli/scuole/<int:scuola_id>/ripristina', methods=['POST'])
+def api_ripristina_scuola(scuola_id):
+    return _ok(**anagrafiche.archivia_scuola(scuola_id, False))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/coppie', methods=['GET'])
+def api_coppie(lotto_id):
+    return jsonify(anagrafiche.elenco_coppie(lotto_id, _filtri_della_richiesta()))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/coppie', methods=['POST'])
+def api_crea_coppia(lotto_id):
+    return _ok(**anagrafiche.crea_coppia(lotto_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/coppie/<int:coppia_id>', methods=['PUT'])
+def api_aggiorna_coppia(coppia_id):
+    return _ok(**anagrafiche.aggiorna_coppia(coppia_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/coppie/<int:coppia_id>', methods=['DELETE'])
+def api_elimina_coppia(coppia_id):
+    return _ok(**anagrafiche.elimina_coppia(coppia_id))
+
+
+@napoli_bp.route('/api/napoli/coppie/<int:coppia_id>/chiudi', methods=['POST'])
+def api_chiudi_coppia(coppia_id):
+    return _ok(**anagrafiche.chiudi_coppia(coppia_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/coppie/<int:coppia_id>/subentro', methods=['POST'])
+def api_subentro(coppia_id):
+    return _ok(**anagrafiche.subentro(coppia_id, _dati()))
 
 
 # ==================== Ctrl+Z delle pagine di Napoli ====================

@@ -8,8 +8,9 @@ Nota tecnica per chi sviluppa. Per l'uso e l'installazione vedi il `README.md`.
 |------|----------------|
 | `app.py` | Applicazione Flask: route pagine e molte API, autenticazione (sessione + WebAuthn), import. Registra i blueprint sotto. |
 | `database.py` | Tutto l'accesso ai dati SQLite: schema/migrazioni, CRUD, calcoli di dominio. |
-| `napoli_schema.py` | Solo lo schema della sezione Napoli (tabelle `napoli_*`): le migrazioni 2, 3 e 4 di `database.py` (vedi "Sezione Napoli"). |
-| `napoli_db.py` | Accesso ai dati di Napoli (solo tabelle `napoli_*`): Impostazioni, controlli che guardano il database (nomi doppi, date sovrapposte), Ctrl+Z di Napoli (`napoli_annullamenti`). |
+| `napoli_schema.py` | Solo lo schema della sezione Napoli (tabelle `napoli_*`): le migrazioni 2, 3, 4 e 5 di `database.py` (vedi "Sezione Napoli"). |
+| `napoli_db.py` | Accesso ai dati di Napoli (solo tabelle `napoli_*`): Impostazioni, controlli che guardano il database (nomi doppi, date sovrapposte), Ctrl+Z di Napoli (`napoli_annullamenti`, senza dati personali). |
+| `napoli_anagrafiche.py` | Anagrafiche di Napoli (passo 1.6): elenchi con ricerca e filtri, schede, creazione e modifica a mano, archiviazione di alunni, operatori, scuole e plessi, coppie e PEI. |
 | `routes_napoli.py` | Blueprint della sezione Napoli: pagine `/napoli` e API `/api/napoli/...`. |
 | `import_napoli.py` | Import del file Excel "master" di Napoli (del coordinatore): l'anagrafica (azione principale) o anche le ore di un mese; lettura del file, anteprima senza scritture, conferma, reimport, annulla import, solo confronto (vedi "Sezione Napoli"). |
 | `napoli_calcoli.py` | Calcoli di Napoli, solo funzioni pure (niente database, Flask o `config` di Roma): letture delle ore, ore riconosciute, settimane e PEI, regole con data, fattura. |
@@ -317,7 +318,9 @@ dati inventati:
   contratti, regole e qualifiche, il resto si scrive direttamente; dai passi 1.4-1.5,
   dopo le righe scritte direttamente, il master di marzo 2026 inventato con alunni e un
   operatore omonimi di quelli di Roma, con anteprima e conferma: prima l'anagrafica, poi le
-  ore del mese; ogni passo di
+  ore del mese; dal passo 1.6 le Anagrafiche scritte a mano con le loro API, con un alunno e
+  un operatore omonimi di Roma: scuola, PEI con il cambio da una data, coppia, sostituto,
+  subentro, chiusura, modifiche, archiviazione e ripristino; ogni passo di
   Napoli sposta i suoi dati sulle sue API), poi di nuovo la fotografia, che deve
   essere uguale; tabelle di Roma (schema e righe; del registro attivita' le voci non
   `napoli%`, nel loro ordine e senza il loro `id`, che le voci di Napoli scritte prima
@@ -363,8 +366,9 @@ Il servizio di Napoli sta in tabelle `napoli_*` proprie, nello stesso database:
 nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
 
 - **Schema**: `napoli_schema.py` contiene solo il DDL (non importa `database`).
-  `database.py` lo registra nel runner delle migrazioni: `SCHEMA_VERSION = 4`,
-  `MIGRAZIONI = {2: napoli_schema.crea_v2, 3: napoli_schema.crea_v3, 4: napoli_schema.crea_v4}`;
+  `database.py` lo registra nel runner delle migrazioni: `SCHEMA_VERSION = 5`,
+  `MIGRAZIONI = {2: napoli_schema.crea_v2, 3: napoli_schema.crea_v3, 4: napoli_schema.crea_v4,
+  5: napoli_schema.crea_v5}`;
   e' l'unica modifica dello schema dal lato di Roma. `crea_v2` crea le 22 tabelle della fase 1
   (lotti, scuole, alunni, operatori, PEI, coppie operatore-alunno, contratti
   applicativi, tariffe e regole con data, calendario, orari, fogli firma, import,
@@ -377,19 +381,23 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   nota, destinatario, testo della ritenuta, scadenza e regole usate. `crea_v4`
   (passo 1.3, Impostazioni) aggiunge a `napoli_contratti` il servizio della determina
   (`dd_servizio`: "D.D. 1093 N.31 DEL ..." nella nota della fattura; vuoto = il
-  riferimento amministrativo del lotto). La banca ore della fase 2 (PROGETTO §4.3,
-  la' chiamata v3) sara' quindi la migrazione 5 (`crea_v5`).
+  riferimento amministrativo del lotto). `crea_v5` (passo 1.6, Anagrafiche) aggiunge
+  `modificato_il` a scuole, alunni, operatori, coppie e PEI (l'ultima scrittura a mano
+  nella scheda Anagrafiche; vuoto = mai toccata a mano, l'import non la riempie) e
+  `archiviato_dal` agli operatori, solo se mancano. La banca ore della fase 2 (PROGETTO
+  §4.3, la' chiamata v3) sara' quindi la migrazione 6 (`crea_v6`).
 - **Migrazioni gia' pubblicate non si cambiano**: un database puo' essere gia' a
   quella versione e rieseguirla non lo correggerebbe. `test_la_migrazione_2_pubblicata_non_cambia`,
-  `test_la_migrazione_3_pubblicata_non_cambia` e `test_la_migrazione_4_pubblicata_non_cambia`
-  fissano le impronte di `crea_v2`, `crea_v3` e `crea_v4`; ogni correzione e' una migrazione nuova, sicura anche su un database gia'
+  `test_la_migrazione_3_pubblicata_non_cambia`, `test_la_migrazione_4_pubblicata_non_cambia`
+  e `test_la_migrazione_5_pubblicata_non_cambia` fissano le impronte di `crea_v2`, `crea_v3`,
+  `crea_v4` e `crea_v5`; ogni correzione e' una migrazione nuova, sicura anche su un database gia'
   aggiornato e con dati (`crea_v4` aggiunge la colonna solo se manca): `crea_v3` ricostruisce
   `napoli_coordinamento` (nuova tabella, copia, `DROP`, `RENAME`, nella stessa
   transazione; le righe della v2, una per operatore, diventano il totale del mese)
   solo se ha ancora la forma della v2, e aggiunge le colonne di `napoli_fatture`
   solo se mancano (`PRAGMA table_info`).
 - **Aggiornamento**: all'avvio, dopo il backup "pre-aggiornamento", un database con
-  `user_version` 1 (v1.20.1 e precedenti), 2 o 3 passa a 4. Le migrazioni mancanti
+  `user_version` 1 (v1.20.1 e precedenti), 2, 3 o 4 passa a 5. Le migrazioni mancanti
   girano in un'unica transazione (se si interrompe non resta nulla a meta') e si
   possono rieseguire senza danni (`IF NOT EXISTS`, `INSERT OR IGNORE`, controlli
   sulla forma delle tabelle). Il ripristino di un backup della v1.20.1 aggiorna
@@ -459,7 +467,8 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   manca per le fatture, `GET /api/napoli/lotti/<id>/controlli`: la determina mancante con
   numero e grado del contratto, per esempio «XI (grado inferiore)»; una tariffa lasciata
   vuota apposta, senza proposta come quella dell'interprete LIS, e' un avviso solo se nel
-  lotto ci sono coppie o ore di quella figura), **Importa**
+  lotto ci sono coppie o ore di quella figura), **Anagrafiche** (`/napoli/anagrafiche`,
+  passo 1.6: vedi il punto "Anagrafiche"), **Importa**
   (`/napoli/import`, l'anagrafica dal file Excel "master") e **Impostazioni**
   (`/napoli/impostazioni`, una parte alla volta, `#lotto`, `#contratti`...): dati della
   cooperativa e destinatario (`napoli_impostazioni`), lotti, contratti applicativi per
@@ -507,7 +516,15 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   - **Ctrl+Z di Napoli** (`/api/napoli/annulla/ultima`, `POST /api/napoli/annulla`):
     `napoli_annullamenti`, separato da quello di Roma; ogni azione salva le righe
     toccate com'erano (`{"versione": 1, "righe": [{tabella, chiave, prima}]}`), si
-    annulla solo l'ultima, entro 24 ore, con l'id mostrato nella conferma. Le azioni
+    annulla solo l'ultima, entro 24 ore, con l'id mostrato nella conferma. Delle righe di
+    alunni e operatori non si salvano mai i dati personali (`napoli_db.COLONNE_PERSONALI`:
+    cognome, nome, codice fiscale, note; PROGETTO D11): Ctrl+Z rimette solo le altre
+    colonne, e un'azione che cambia quei dati o elimina una persona si registra come non
+    annullabile (`registra_non_annullabile`, `{"versione": 1, "non_annullabile": motivo}`),
+    cosi' Ctrl+Z non annulla in silenzio l'azione di prima e dice perche' (`non_annullabile`
+    in `/api/napoli/annulla/ultima`, 400 `NON_ANNULLABILE`). Le descrizioni non hanno nomi
+    ("Modifica di un alunno (scheda n. 12): grado"); il nome per la finestra di conferma si
+    legge al momento dalle anagrafiche (`chi`), mai salvato. Le azioni
     scadute restano solo con la descrizione (senza valori): le righe di prima, IBAN
     compreso, si tolgono (`dati = '{}'`) a ogni nuova azione, a Ctrl+Z e all'apertura
     delle pagine di Napoli (`napoli_db.pulisci_annullamenti`). In `app.js`
@@ -516,6 +533,60 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   - registro attivita': voci `napoli_*` senza valori (mai IBAN o codici fiscali);
   - **import del file Excel "master"** (scheda **Importa**, `/napoli/import`; passi 1.4-1.5,
     `import_napoli.py`): vedi il punto seguente.
+- **Anagrafiche** (scheda **Anagrafiche**, `/napoli/anagrafiche`; passo 1.6,
+  `napoli_anagrafiche.py`): una parte alla volta, `#alunni`, `#operatori`, `#scuole`,
+  `#coppie`, e la scheda di un alunno o di un operatore (`#alunno-12`, `#operatore-7`). I
+  dati arrivano soprattutto dal caricamento dell'anagrafica (REGOLE 14): con l'anagrafica
+  del lotto vuota la pagina invita a «Carica l'anagrafica dal file Excel» (o ad aggiungere
+  a mano, dalle scuole).
+  - elenchi (`GET /api/napoli/lotti/<id>/alunni|operatori|scuole|coppie`) con i filtri
+    nell'indirizzo: scuola, municipalita' (della scuola, REGOLE 12), figura, grado
+    (dell'alunno, altrimenti della scuola; `da_decidere`), stato (in servizio, da
+    sistemare, archiviati, tutti; per le coppie in corso, da cominciare, finite), ruolo e
+    nome; mai un codice fiscale nell'indirizzo, che finisce nei log: la ricerca per codice
+    fiscale e' `POST /api/napoli/anagrafiche/codice-fiscale` e la risposta non lo ripete.
+    `GET /api/napoli/lotti/<id>/anagrafiche`: conteggi, cosa c'e' da sistemare (scuole con
+    il grado da decidere o senza municipalita', alunni senza PEI o senza coppie in corso,
+    operatori con il codice fiscale da controllare o con piu' ore del contratto, coppie
+    con una figura diversa da quella dell'operatore...), scuole e municipalita' per i
+    filtri, `vuota`. Gli operatori non sono di un lotto: un lotto mostra quelli con coppie
+    nel lotto e quelli senza nessuna coppia. "Oggi" decide cosa e' in corso;
+  - schede (`GET /api/napoli/alunni/<id>`, `GET /api/napoli/operatori/<id>?lotto_id=`):
+    dati con il codice fiscale mascherato, da dove vengono (il caricamento che li ha
+    creati o "aggiunto in Assisto"), PEI per figura con lo storico e la riga in vigore,
+    coppie (con titolare dei sostituti, ore della coppia o del PEI, ore, fogli e orari
+    collegati); nella scheda dell'alunno lo spazio del **credito/debito** di Napoli
+    (REGOLE 15: "disponibile quando inserirai le ore", si calcola dal passo 1.7);
+  - scritture con i controlli lato server e `{error, code, campo}`: scuole (nome,
+    codice meccanografico di 10 caratteri, municipalita' 1-10, grado o da decidere; lo
+    stesso codice o, senza codice, lo stesso nome nella stessa municipalita' e' 409
+    `SCUOLA_GIA_PRESENTE`, in un'altra municipalita' e' un altro plesso; avviso se il grado
+    non e' quello del codice), alunni (codice fiscale di 16 caratteri con il carattere di
+    controllo, unico: 409 `ALUNNO_GIA_PRESENTE`; scuola attiva del lotto; il grado
+    obbligatorio se la scuola e' mista; esami; note con i codici fiscali mascherati come
+    quelle del file), operatori (figura dall'elenco chiuso, livello, ore di contratto 0-40,
+    codice fiscale facoltativo ma giusto e unico), PEI (`POST /api/napoli/alunni/<id>/pei`:
+    il valore nuovo da un giorno chiude quello di prima il giorno prima e, se il nuovo ha una
+    fine, quello di prima riprende il giorno dopo; uno che comincia lo stesso giorno o dopo
+    e' 409 `PEI_SOVRAPPOSTI`; il coordinatore non ha PEI ne' coppie), coppie (alunno,
+    operatore, figura e ruolo si scelgono quando nascono; sostituto con il titolare dello
+    stesso alunno e figura; la stessa coppia negli stessi giorni e' 409
+    `COPPIA_GIA_PRESENTE`; le date devono comprendere i giorni con ore, 409
+    `ORE_FUORI_DATE`; avvisi per figura diversa, PEI mancante, due titolari),
+    **chiusura** (`/chiudi`) e **subentro** (`/subentro`: la coppia finisce il giorno prima
+    e ne nasce una con l'altro operatore, la stessa scuola e le stesse ore, in un'azione);
+  - **archiviazione al posto della cancellazione**: si elimina solo cio' che non ha dati
+    collegati (una scuola senza alunni, coppie e giorni del calendario; un alunno senza ore,
+    fogli firma e orari, con i suoi PEI e coppie; un operatore senza coppie e ore del
+    coordinatore; una coppia senza ore, fogli, orari e sostituti; un PEI senza ore nel suo
+    periodo), altrimenti 409 `*_CON_DATI`. L'alunno si archivia da un giorno (`archiviato_dal`):
+    coppie e PEI ancora aperti finiscono il giorno prima, nella stessa azione, ma non da un
+    giorno con ore registrate (409 `ORE_DOPO_LA_DATA`); un operatore o una scuola con coppie
+    ancora aperte non si archivia (409 `OPERATORE_CON_COPPIE`, `SCUOLA_IN_USO`: prima la
+    chiusura o il subentro). Il ripristino rimette in servizio, coppie e PEI chiusi restano
+    chiusi;
+  - ogni scrittura riempie `modificato_il` e passa da Ctrl+Z di Napoli; registro
+    attivita' con il numero della scheda, mai nomi o codici fiscali.
 - **Import del file Excel "master"** (del coordinatore, PROGETTO §7.1):
   - **tre modi** (REGOLE 14: lo storico delle ore di Napoli non si carica, le ore si
     scriveranno in Assisto). `anagrafica`, l'azione principale della pagina («Carica
@@ -656,10 +727,12 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     della scuola, le date delle coppie, i PEI e i codici fiscali sbagliati corretti dal
     file, dei quali si salva solo la differenza, al piu' due caratteri e la loro posizione:
     mai un codice fiscale; il plesso di coppie e alunni spostati da un plesso senza
-    municipalita', che torna con la riga intera se era stato tolto). **Da fare al passo 1.6** (Anagrafiche): le righe create
-    dall'import (alunni, operatori, scuole, coppie, PEI) si cancellano annullando; quando
-    una pagina le potra' modificare serve lo stesso controllo "cambiato dopo l'import"
-    anche per loro (oggi c'e' solo il vincolo delle chiavi esterne per i dati collegati);
+    municipalita', che torna con la riga intera se era stato tolto). Le righe create
+    dall'import (alunni, operatori, scuole, coppie, PEI) si cancellano annullando: se una e'
+    stata cambiata a mano nelle Anagrafiche dopo (`modificato_il` pieno, migrazione 5) e'
+    409 `IMPORT_CAMBIATO_DOPO` (Ctrl+Z della modifica la rimette vuota e si puo' di nuovo);
+    una riga aggiunta a mano e collegata a una creata dall'import (per esempio una coppia
+    con un alunno del caricamento) la blocca con il vincolo delle chiavi esterne;
   - solo confronto (modo 'confronto'): differenze coppia per coppia e giorno per giorno
     con i giorni registrati, righe del file che in Assisto non ci sono e coppie solo in
     Assisto, senza scrivere;
@@ -679,7 +752,11 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   con orari equivalenti, letture ambigue, date e orari che non esistono, precedenza
   delle causali, domeniche, regole, tariffe e contratti sovrapposti, coordinatore,
   testi congelati, bloccanti; IBAN, partita IVA, codici fiscali, euro, destinatario e
-  servizio della determina); `tests/test_napoli_impostazioni.py` (procedura guidata,
+  servizio della determina); `tests/test_napoli_anagrafiche.py` (passo 1.6: elenchi uguali al
+  master inventato caricato, anagrafica vuota, filtri e ricerca per codice fiscale, controlli
+  lato server, PEI con le date, coppie, sostituti, subentro e chiusura, archiviazione al posto
+  della cancellazione, Ctrl+Z senza dati personali, annullamento del caricamento bloccato
+  dalle modifiche a mano, Roma intatta con omonimi); `tests/test_napoli_impostazioni.py` (procedura guidata,
   controlli lato server, sovrapposizioni, IBAN mascherato, Ctrl+Z separato, Roma intatta,
   voce di menu marcata); `tests/test_napoli_import.py` e `tests/test_napoli_privacy.py`
   (passi 1.4-1.5, sul master inventato di `tests/napoli_sintetico.py`, generato durante

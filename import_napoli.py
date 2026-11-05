@@ -2595,13 +2595,26 @@ def _stesso_valore(a, b):
     return a == b
 
 
+# Anagrafiche che l'import crea e che la scheda Anagrafiche (passo 1.6) puo' cambiare a
+# mano: ogni scrittura a mano ne riempie modificato_il (migrazione 5); l'import lo lascia
+# vuoto, Ctrl+Z della modifica lo rimette com'era.
+CREATE_CAMBIABILI = ('scuole', 'operatori', 'alunni', 'coppie', 'pei')
+
+
 def _cambiati_dopo(conn, registro):
     """Quanti dati scritti dall'import sono stati cambiati a mano dopo (si perderebbero
-    annullando): i campi cambiati dall'import (valori di dopo) e le grafie delle
+    annullando): i campi cambiati dall'import (valori di dopo), le righe create
+    dall'import e poi cambiate nelle Anagrafiche (modificato_il pieno) e le grafie delle
     qualifiche create (figura). Le presenze hanno il loro controllo (import_id e
-    modificato_il); le righe create dall'import non hanno ancora una pagina che le cambi
-    (passo 1.6: serve lo stesso controllo anche per quelle)."""
+    modificato_il)."""
     n = 0
+    create = registro.get('create') or {}
+    for tabella in CREATE_CAMBIABILI:
+        ids = [i for i in create.get(tabella) or [] if isinstance(i, int)]
+        for pezzo in range(0, len(ids), 500):
+            parte = ids[pezzo:pezzo + 500]
+            n += conn.execute(f'SELECT COUNT(*) FROM napoli_{tabella} WHERE id IN ({", ".join("?" * len(parte))}) '
+                              'AND modificato_il IS NOT NULL', tuple(parte)).fetchone()[0]
     for voce in registro.get('cambiate') or []:
         dopo, tabella = voce.get('dopo'), voce.get('tabella')
         if not dopo or tabella not in TABELLE_IMPORT or tabella == 'presenze':
@@ -2618,7 +2631,7 @@ def _cambiati_dopo(conn, registro):
                 'AND COALESCE(municipalita, 0) = COALESCE(?, 0)',
                 (riga['lotto_id'], riga['codice_meccanografico'], riga['municipalita'])).fetchone():
             n += 1
-    for voce in (registro.get('create') or {}).get('alias_qualifiche') or []:
+    for voce in create.get('alias_qualifiche') or []:
         if isinstance(voce, dict):
             riga = conn.execute('SELECT figura, origine FROM napoli_alias_qualifiche WHERE testo = ?',
                                 (voce['testo'],)).fetchone()
