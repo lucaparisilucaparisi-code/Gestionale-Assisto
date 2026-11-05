@@ -47,9 +47,11 @@ STATI_PERSONE = ('attivi', 'da_sistemare', 'archiviati', 'tutti')
 STATI_SCUOLE = ('attive', 'da_sistemare', 'archiviate', 'tutte')
 STATI_COPPIE = ('in_corso', 'future', 'finite', 'da_sistemare', 'tutte')
 GRADI_FILTRO = ('inferiore', 'superiore', 'misto', 'da_decidere')
-# REGOLE 15: lo spazio del credito/debito di Napoli nella scheda dell'alunno (si calcola con le
-# ore del mese, dal passo 1.7)
-CREDITO_DEBITO_TESTO = 'Disponibile quando inserirai le ore del mese nella griglia delle presenze.'
+# REGOLE 15: lo spazio del credito/debito di Napoli nella scheda dell'alunno. Dal passo 1.7 il
+# credito/debito del mese di ogni coppia e' nella griglia delle presenze (napoli_presenze); il
+# riepilogo per figura qui, nel mese e dall'inizio dell'anno, arriva con un passo successivo.
+CREDITO_DEBITO_TESTO = ('Il credito/debito del mese di ogni coppia si vede nella griglia delle presenze (colonna '
+                        '«Cred./deb.») e nel dettaglio della coppia. Il riepilogo per figura arriverà qui.')
 CREDITO_DEBITO_SPIEGAZIONE = ('Per ogni figura: ore previste (dalla programmazione settimanale o, se manca, dal PEI) '
                               'meno ore riconosciute, nel mese e dall\'inizio dell\'anno scolastico. Positivo = ore '
                               'ancora dovute all\'alunno, come nella Rendicontazione di Roma.')
@@ -1081,7 +1083,7 @@ def scheda_alunno(alunno_id):
         'alunno': dict(riga, note=attuale.get('note'), lotto={'id': an.lotto['id'], 'nome': an.lotto['nome']},
                        data_inserimento=attuale.get('data_inserimento')),
         'pei': pei, 'coppie': coppie, 'origine': origine, 'eliminabile': eliminabile, 'oggi': an.oggi,
-        # REGOLE 15: il credito/debito di Napoli si calcola con le ore (passo 1.7); qui lo spazio
+        # REGOLE 15: il credito/debito del mese e' nella griglia presenze (passo 1.7); qui lo spazio
         'credito_debito': {'disponibile': False, 'testo': CREDITO_DEBITO_TESTO, 'spiegazione': CREDITO_DEBITO_SPIEGAZIONE,
                            'figure': figure_credito},
     }

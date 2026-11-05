@@ -141,8 +141,8 @@ ambiente isolato dentro la cartella (`.venv`) da `avvia.bat` / `run.sh` al primo
 La voce **Napoli** del menu (Alt+8) è la sezione dell'assistenza specialistica del
 Comune di Napoli. Ha dati suoi, separati da quelli di Roma: le pagine di Roma non
 cambiano e non mostrano mai i dati di Napoli. È in costruzione: per ora ci sono le
-impostazioni, il caricamento dell'anagrafica, le anagrafiche e le ore del coordinatore;
-presenze, fogli firma e fattura arriveranno con i prossimi aggiornamenti.
+impostazioni, il caricamento dell'anagrafica, le anagrafiche, la griglia delle presenze e
+le ore del coordinatore; fogli firma e fattura arriveranno con i prossimi aggiornamenti.
 
 1. **Crea il lotto.** Apri **Napoli**: la prima volta la pagina propone **Crea il primo
    lotto**. Il programma propone il nome, i testi della fattura e le tariffe del contratto
@@ -170,6 +170,28 @@ presenze, fogli firma e fattura arriveranno con i prossimi aggiornamenti.
    scrivi 71.55 Assisto lo legge come 71,55 e te lo dice; 71,555 (tre decimali) o 71:33
    (ore e minuti) non si salvano e il messaggio spiega come scriverle. Un mese chiuso non
    si cambia.
+5. **Scrivi le ore nella griglia delle presenze.** In **Napoli > Presenze** c'è il mese del
+   lotto come nel file del Comune: una riga per coppia operatore-alunno, una colonna per
+   giorno (da lunedì a sabato; i giorni di chiusura e quelli fuori dalle date della coppia
+   sono a righe grigie), la **VERIFICA** di ogni settimana (gialla se supera le ore del PEI,
+   rossa se le supera di oltre il 20%), il **totale** del mese e il **credito/debito** (ore
+   previste meno ore riconosciute, come in Rendicontazione: verde = ore ancora dovute
+   all'alunno, rosso = ore in più; con «≈» è una stima dal PEI, perché manca la
+   programmazione settimanale). Nelle caselle scrivi le ore svolte come nel file del Comune:
+   **2**, **1,5**, **0,75** oppure **1:30**; **F** ferie, **M** malattia, **P** permesso
+   dell'operatore (0 ore); **A** alunno assente (vale la metà delle ore programmate: se
+   Assisto non le conosce, te le chiede); casella vuota = giorno cancellato. Per un valore
+   come **1,30** Assisto chiede se è un'ora e trenta minuti o 1,30 ore. Si salva da solo dopo
+   2 secondi; frecce, Invio e Tab passano da una casella all'altra; si può incollare un
+   blocco di celle da Excel. Con **Nota del giorno** (o Maiusc+F2) segni un'assemblea o
+   un'uscita didattica (contano le ore svolte), l'alunno entrato in ritardo o uscito prima
+   con l'orario (ore svolte più metà della parte persa) o l'assenza recuperata (niente
+   metà). Cliccando sul nome dell'alunno si apre il dettaglio della coppia nel mese, con il
+   calcolo di ogni giorno. I filtri in alto scelgono scuola, operatore, figura, grado e
+   municipalità; **«N con avvisi»** mostra solo le righe da controllare. A mese finito,
+   **Chiudi il mese** blocca le ore del lotto (anche quelle del coordinatore); si riapre con
+   **Riapri il mese**, scrivendo il motivo, che resta nel registro attività. Le ore dei mesi
+   passati non si caricano: si scrivono qui da ora in avanti.
 
 Ctrl+Z su una pagina di Napoli annulla l'ultima modifica di Napoli (mai una di Roma),
 dopo una conferma. Le modifiche a nome, cognome, codice fiscale e note (anche le note
@@ -217,8 +239,8 @@ Gestionale-Assisto-<versione>/
 ├── routes_export.py    # Route export/report (Excel, Word)
 ├── database.py         # Gestione database SQLite
 ├── config.py           # Configurazione
-├── napoli_*.py         # Sezione Napoli: schema, calcoli, dati, anagrafiche, ore del coordinatore (con routes_napoli.py,
-│                       #   import_napoli.py, config_napoli.py)
+├── napoli_*.py         # Sezione Napoli: schema, calcoli, dati, anagrafiche, presenze, ore del coordinatore
+│                       #   (con routes_napoli.py, import_napoli.py, config_napoli.py)
 ├── requirements.txt    # Dipendenze Python
 ├── gestionale.db       # Database (creato al primo avvio)
 ├── static/             # CSS, JS, icone

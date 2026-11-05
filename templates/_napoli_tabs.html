@@ -1,6 +1,6 @@
 {# Testata comune delle pagine di Napoli: titolo, lotto scelto (ricordato nel browser,
-   napoli.js) e schede. Si mostrano solo le schede che ci sono gia' (Mese, Anagrafiche,
-   Importa, Impostazioni): Presenze, Programmazione, Fattura e Calendario arrivano con i
+   napoli.js) e schede. Si mostrano solo le schede che ci sono gia' (Mese, Presenze,
+   Anagrafiche, Importa, Impostazioni): Programmazione, Fattura e Calendario arrivano con i
    passi successivi. #}
 <div class="page-header">
     <div class="page-header-row">
@@ -22,6 +22,12 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             Mese
+        </a>
+        <a href="/napoli/presenze" class="tab {% if request.path == '/napoli/presenze' %}active{% endif %}" {% if request.path == '/napoli/presenze' %}aria-current="page"{% endif %}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Presenze
         </a>
         <a href="/napoli/anagrafiche" class="tab {% if request.path == '/napoli/anagrafiche' %}active{% endif %}" {% if request.path == '/napoli/anagrafiche' %}aria-current="page"{% endif %}>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true">

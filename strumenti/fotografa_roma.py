@@ -171,6 +171,12 @@ ROTTE_NAPOLI = frozenset({
     # passo 1.8 (con le minori di 1.6): elenchi con la ricerca in POST, ore del coordinatore
     '/api/napoli/lotti/<int:lotto_id>/anagrafiche/elenco',
     '/api/napoli/lotti/<int:lotto_id>/coordinamento',
+    # passo 1.7: griglia presenze e mese del lotto
+    '/napoli/presenze',
+    '/api/napoli/lotti/<int:lotto_id>/presenze',
+    '/api/napoli/lotti/<int:lotto_id>/presenze/coppie/<int:coppia_id>',
+    '/api/napoli/lotti/<int:lotto_id>/mesi/chiudi',
+    '/api/napoli/lotti/<int:lotto_id>/mesi/riapri',
 })
 PREFISSI_NAPOLI = ('/napoli', '/api/napoli')
 

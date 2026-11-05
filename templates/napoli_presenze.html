@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% from '_macros.html' import modal_close %}
+
+{% block title %}Presenze - Napoli - Gestionale OEPAC{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static_url('css/napoli.css') }}">
+{% endblock %}
+
+{% block content %}
+{% include '_napoli_tabs.html' %}
+
+{# Griglia presenze del mese del lotto scelto (passo 1.7), come il foglio "master" del
+   Comune: una riga per coppia operatore-alunno, una colonna per giorno di servizio, la
+   VERIFICA dopo ogni settimana, il totale e il credito/debito. Le caselle si scrivono come
+   in Excel (2, 1,5, 1:30, F, M, P, A) e si salvano da sole; ogni controllo vero e' sul
+   server (napoli_presenze). Le ore si scrivono da ora in avanti (REGOLE 14). #}
+<div class="napoli-presenze" id="napoli-presenze">
+    <div id="presenze-senza-lotto" hidden></div>
+
+    <div id="presenze-contenuto" hidden>
+        {# Filtri su una riga sola anche a 1366x768 (la griglia ha bisogno di altezza): il nome
+           di ogni filtro e' la prima voce della tendina, l'etichetta e' per i lettori di schermo. #}
+        <div class="filters napoli-filtri napoli-presenze-filtri" id="presenze-filtri" role="search" aria-label="Filtra le righe">
+            <div class="filter-group napoli-filtro-cerca">
+                <label class="napoli-sr" for="pf-cerca">Cerca alunno o operatore</label>
+                <input type="search" id="pf-cerca" class="form-control" placeholder="Cerca alunno o operatore" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="filter-group" data-filtro="scuola">
+                <label class="napoli-sr" for="pf-scuola">Scuola</label>
+                <select id="pf-scuola" class="form-control" data-filtro="scuola" title="Scuola"></select>
+            </div>
+            <div class="filter-group" data-filtro="operatore">
+                <label class="napoli-sr" for="pf-operatore">Operatore</label>
+                <select id="pf-operatore" class="form-control" data-filtro="operatore" title="Operatore"></select>
+            </div>
+            <div class="filter-group" data-filtro="figura">
+                <label class="napoli-sr" for="pf-figura">Figura</label>
+                <select id="pf-figura" class="form-control" data-filtro="figura" title="Figura"></select>
+            </div>
+            <div class="filter-group" data-filtro="grado">
+                <label class="napoli-sr" for="pf-grado">Grado</label>
+                <select id="pf-grado" class="form-control" data-filtro="grado" title="Grado"></select>
+            </div>
+            <div class="filter-group" data-filtro="municipalita">
+                <label class="napoli-sr" for="pf-municipalita">Municipalità</label>
+                <select id="pf-municipalita" class="form-control" data-filtro="municipalita" title="Municipalità"></select>
+            </div>
+        </div>
+
+        <div class="alert alert-info napoli-alert napoli-mese-chiuso" id="presenze-chiuso" role="status" hidden></div>
+
+        <section class="card" aria-labelledby="presenze-titolo">
+            <div class="card-header napoli-presenze-testa">
+                <div class="napoli-presenze-mese">
+                    <button type="button" class="btn btn-ghost btn-sm napoli-freccia" id="pm-prima" title="Mese prima" aria-label="Mese prima">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <h2 class="card-title" id="presenze-titolo"><label for="pm-mese" class="napoli-sr">Mese</label>
+                        <select id="pm-mese" class="form-control napoli-scelta-mese"></select></h2>
+                    <button type="button" class="btn btn-ghost btn-sm napoli-freccia" id="pm-dopo" title="Mese dopo" aria-label="Mese dopo">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                    </button>
+                    <span class="badge badge-secondary" id="presenze-conta"></span>
+                    {# Come «N senza ore» in Rendicontazione: mostra solo le righe con avvisi (barra arancione) #}
+                    <button type="button" class="badge badge-warning badge-toggle" id="pf-avvisi" aria-pressed="false" hidden
+                            title="Mostra solo le righe con qualcosa da controllare (la barra arancione a sinistra)">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        <span id="pf-avvisi-conta">0</span> con avvisi
+                    </button>
+                    {# Stato del salvataggio automatico, come in Rendicontazione (niente pulsante "Salva") #}
+                    <span class="auto-save-indicator" id="presenze-salvataggio" role="status" aria-live="polite">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Salvataggio automatico</span>
+                    </span>
+                </div>
+                <div class="napoli-presenze-azioni">
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-nota-giorno" title="Nota del giorno della casella scelta (Maiusc+F2): assemblea, uscita, ritardo o uscita dell'alunno">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                        Nota del giorno
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-presenze-annulla" title="Annulla l'ultima modifica (Ctrl+Z): chiede conferma prima di annullare">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+                        Annulla
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-mese" hidden></button>
+                </div>
+            </div>
+            {# La casella scelta, per esteso (come la barra della formula di Excel): giorno, coppia,
+               ore riconosciute, nota, avvisi. Si aggiorna spostandosi con le frecce. #}
+            <div class="napoli-barra-casella" id="presenze-casella" aria-live="polite"></div>
+            <div class="napoli-griglia-box" id="presenze-griglia" tabindex="-1">
+                <div class="loading"><div class="spinner"></div></div>
+            </div>
+            <div class="napoli-presenze-piede">
+                <div class="napoli-presenze-riepilogo" id="presenze-riepilogo" aria-live="polite"></div>
+                <details class="napoli-presenze-aiuto">
+                    <summary>Come si scrive</summary>
+                    <div class="napoli-aiuto-corpo">
+                        <p><strong>Ore svolte</strong>: <kbd>2</kbd> <kbd>1,5</kbd> <kbd>0,75</kbd> (ore con la virgola, come nel file del Comune) oppure <kbd>1:30</kbd> (ore e minuti). Un valore come <kbd>1,30</kbd> si può leggere in due modi: il programma chiede.</p>
+                        <p><strong>Operatore assente</strong>: <kbd>F</kbd> ferie, <kbd>M</kbd> malattia, <kbd>P</kbd> permesso (F perm): 0 ore. <strong>Alunno assente</strong>: <kbd>A</kbd>, vale la metà delle ore programmate (se il programma non le conosce, le chiede). Casella vuota: il giorno si cancella.</p>
+                        <p><strong>Nota del giorno</strong> (<kbd>Maiusc</kbd>+<kbd>F2</kbd>, o il pulsante in alto): assemblea o uscita didattica (contano le ore svolte), ritardo o uscita anticipata dell'alunno con l'orario (ore svolte più metà della parte persa), assenza recuperata (niente metà).</p>
+                        <p><strong>Tastiera</strong>: frecce, <kbd>Invio</kbd> (casella sotto) e <kbd>Tab</kbd> (casella dopo) come in Rendicontazione; <kbd>Esc</kbd> rimette il valore salvato; <kbd>Ctrl</kbd>+<kbd>Z</kbd> annulla l'ultima modifica salvata. Si salva da solo dopo 2 secondi.</p>
+                        <p class="napoli-legenda">
+                            <span><i class="lg lg-assente"></i> alunno assente (metà)</span>
+                            <span><i class="lg lg-sigla"></i> operatore assente</span>
+                            <span><i class="lg lg-nota"></i> nota del giorno</span>
+                            <span><i class="lg lg-chiuso"></i> chiuso o fuori dalle date</span>
+                            <span><i class="lg lg-giallo"></i> settimana oltre il PEI</span>
+                            <span><i class="lg lg-rosso"></i> oltre il PEI + 20%</span>
+                            <span><strong>≈</strong> credito/debito stimato dal PEI (manca la programmazione)</span>
+                        </p>
+                    </div>
+                </details>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- Nota del giorno di una casella -->
+<div class="modal-overlay" id="napoli-modal-nota">
+    <div class="modal napoli-modal-media" aria-labelledby="nota-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="nota-titolo">Nota del giorno</h3>
+            {{ modal_close("closeModal('napoli-modal-nota')") }}
+        </div>
+        <form class="modal-body" id="form-nota" novalidate>
+            <p class="napoli-sottotitolo napoli-nota-chi" id="nota-chi"></p>
+            <fieldset class="napoli-scelte-nota">
+                <legend class="form-label">Che cosa è successo quel giorno?</legend>
+                <label class="napoli-scelta-riga"><input type="radio" name="nota_tipo" value=""> Niente di particolare</label>
+                <label class="napoli-scelta-riga"><input type="radio" name="nota_tipo" value="evento"> Assemblea, sciopero o evento della scuola <span class="napoli-sotto-in">contano le ore svolte</span></label>
+                <label class="napoli-scelta-riga"><input type="radio" name="nota_tipo" value="attivita_esterna"> Uscita didattica o attività fuori dalla scuola <span class="napoli-sotto-in">contano le ore svolte</span></label>
+                <label class="napoli-scelta-riga"><input type="radio" name="nota_tipo" value="ritardo"> L'alunno è entrato in ritardo <span class="napoli-sotto-in">ore svolte + metà della parte persa</span></label>
+                <label class="napoli-scelta-riga"><input type="radio" name="nota_tipo" value="uscita_anticipata"> L'alunno è uscito prima <span class="napoli-sotto-in">ore svolte + metà della parte persa</span></label>
+            </fieldset>
+            <div class="form-row napoli-riga-tre">
+                <div class="form-group" id="nota-gruppo-ora">
+                    <label class="form-label" for="nota-ora" id="nota-ora-etichetta">Alle ore</label>
+                    <input type="text" class="form-control" id="nota-ora" data-campo="nota_ora" inputmode="numeric" placeholder="9:00" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="nota-programmati">Ore programmate</label>
+                    <input type="text" class="form-control" id="nota-programmati" data-campo="programmati" inputmode="decimal" placeholder="per esempio 3" autocomplete="off">
+                </div>
+                <div class="form-group napoli-gruppo-casella">
+                    <label class="napoli-scelta-riga"><input type="checkbox" id="nota-recuperata" data-campo="recuperata"> Assenza recuperata</label>
+                </div>
+            </div>
+            <p class="napoli-aiuto" id="nota-aiuto-programmati">Le ore programmate servono per la metà (alunno assente, in ritardo o uscito prima). «Assenza recuperata»: l'operatore l'ha recuperata in un altro giorno, quindi qui non si conta la metà.</p>
+            <div class="form-group">
+                <label class="form-label" for="nota-testo">Descrizione (facoltativa)</label>
+                <input type="text" class="form-control" id="nota-testo" data-campo="nota" maxlength="100" autocomplete="off" placeholder="per esempio: lectio brevis, cineforum">
+                <p class="napoli-aiuto">Non scrivere motivi di salute o altri dati personali.</p>
+            </div>
+        </form>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('napoli-modal-nota')">Annulla</button>
+            <button type="submit" form="form-nota" class="btn btn-primary" id="nota-salva">Salva la nota</button>
+        </div>
+    </div>
+</div>
+
+<!-- Domande su una casella: "1,30" da confermare, ore programmate che mancano -->
+<div class="modal-overlay" id="napoli-modal-domanda">
+    <div class="modal napoli-modal-media" aria-labelledby="domanda-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="domanda-titolo">Controlla la casella</h3>
+            {{ modal_close("NapoliPresenze.lasciaDomanda()") }}
+        </div>
+        <form class="modal-body" id="form-domanda" novalidate></form>
+        <div class="modal-footer" id="domanda-pulsanti"></div>
+    </div>
+</div>
+
+<!-- Dettaglio di una coppia nel mese -->
+<div class="modal-overlay" id="napoli-modal-coppia">
+    <div class="modal napoli-modal-larga napoli-modal-dettaglio" aria-labelledby="coppia-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="coppia-titolo">Dettaglio del mese</h3>
+            {{ modal_close("closeModal('napoli-modal-coppia')") }}
+        </div>
+        <div class="modal-body" id="coppia-corpo"></div>
+        <div class="modal-footer">
+            <a class="btn btn-ghost" id="coppia-anagrafica" href="/napoli/anagrafiche">Apri la scheda dell'alunno</a>
+            <button type="button" class="btn btn-secondary" onclick="closeModal('napoli-modal-coppia')">Chiudi</button>
+        </div>
+    </div>
+</div>
+
+<!-- Chiusura e riapertura del mese del lotto -->
+<div class="modal-overlay" id="napoli-modal-mese">
+    <div class="modal napoli-modal-media" aria-labelledby="mese-titolo">
+        <div class="modal-header">
+            <h3 class="modal-title" id="mese-titolo">Chiudi il mese</h3>
+            {{ modal_close("closeModal('napoli-modal-mese')") }}
+        </div>
+        <form class="modal-body" id="form-mese" novalidate></form>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('napoli-modal-mese')">Annulla</button>
+            <button type="submit" form="form-mese" class="btn btn-primary" id="mese-conferma">Chiudi il mese</button>
+        </div>
+    </div>
+</div>
+
+{% include '_napoli_procedura_lotto.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static_url('js/napoli.js') }}"></script>
+<script>NapoliPresenze.avvia();</script>
+{% endblock %}

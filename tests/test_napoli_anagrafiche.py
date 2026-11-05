@@ -185,7 +185,7 @@ def test_dopo_il_caricamento_gli_elenchi_sono_quelli_del_file(caricata):
     assert scheda['origine']['tipo'] == 'import' and 'marzo 2026' in scheda['origine']['testo']
     assert {c['operatore']['id'] for c in scheda['coppie']} >= {o['id'] for o in alunno['operatori']}
     assert scheda['credito_debito']['disponibile'] is False
-    assert 'quando inserirai le ore' in scheda['credito_debito']['testo']
+    assert 'griglia delle presenze' in scheda['credito_debito']['testo']
     operatore = _ok(caricata.get(f'/api/napoli/operatori/{operatori[0]["id"]}',
                                  query_string={'lotto_id': caricata.lotto_id}))
     assert operatore['coppie'] and operatore['origine']['tipo'] == 'import'

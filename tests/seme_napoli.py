@@ -19,7 +19,10 @@ Anagrafiche scritte a mano (_seme_anagrafiche: una scuola, un alunno e un operat
 omonimi di Roma, PEI con il cambio da una data, coppia, sostituto, subentro, chiusura,
 modifiche, archiviazione e ripristino, ricerca per codice fiscale); dal passo 1.8 le ore
 del coordinatore di ottobre 2025 (_seme_coordinamento: scritte, cambiate, Ctrl+Z, "3.75" con
-il punto), prima che il mese si chiuda.
+il punto), prima che il mese si chiuda; dal passo 1.7 la griglia presenze di novembre 2025
+(_seme_presenze: ore, sigle, alunno assente con la meta' dalla programmazione, "1,30" da
+confermare, ritardo con l'orario, uscita didattica, assenza recuperata, Ctrl+Z) e la
+chiusura del mese del lotto con le API (chiuso, rifiuta, riaperto con il motivo, richiuso).
 Il resto, e tutto senza client o con versione_schema=2 (forma della v2, per provare la
 migrazione 3), si scrive direttamente nelle tabelle napoli_* con una connessione
 SQLite a parte: mai nelle tabelle di Roma. Ogni passo che aggiunge una funzione di
@@ -336,6 +339,43 @@ def _scrivi_seme(ins, versione_schema, ids=None):
     ins('napoli_annullamenti', timestamp='2025-11-04T09:30:00', tipo='griglia',
         descrizione='Griglia: 1 cella, ottobre 2025',
         dati=json.dumps({'presenze': [{'id': p_psico, 'minuti_riconosciuti': 120}]}))
+    return {'alba_asacom': c_alba_asacom, 'alba_educ': c_alba_educ, 'gaia_educ': c_gaia_educ,
+            'gaia_psico': c_gaia_psico}
+
+
+def _seme_presenze(client, lotto_id, coppie):
+    """La griglia presenze di novembre 2025 con le sue API (passo 1.7), sulle coppie scritte
+    direttamente (con la programmazione settimanale: Alba ASACOM lunedi' 8-10 e 12-14,
+    mercoledi' 10-13), poi la chiusura del mese del lotto (chiuso, rifiuta, riaperto con il
+    motivo, richiuso). Le ore non arrivano dallo storico (REGOLE 14): si scrivono qui."""
+    url = f'/api/napoli/lotti/{lotto_id}'
+    alba, educ, gaia, psico = coppie['alba_asacom'], coppie['alba_educ'], coppie['gaia_educ'], coppie['gaia_psico']
+
+    def salva(*celle):
+        return client.post(f'{url}/presenze', json={'anno': 2025, 'mese': 11, 'celle': [
+            dict(coppia_id=c, data=d, **campi) for c, d, campi in celle]})
+
+    esito = _ok(salva((alba, '2025-11-03', {'testo': '4'}), (alba, '2025-11-05', {'testo': 'A'}),
+                      (educ, '2025-11-04', {'testo': 'F'}), (alba, '2025-11-10', {'testo': '1,30'}),
+                      (gaia, '2025-11-06', {'testo': '3', 'nota_tipo': 'attivita_esterna',
+                                            'nota': 'Uscita di prova'})))
+    assert [(e['esito'], e.get('minuti')) for e in esito['celle']] == [
+        ('salvata', 240), ('salvata', 90), ('salvata', 0), ('da_confermare', None), ('salvata', 180)], esito
+    esito = _ok(salva((alba, '2025-11-10', {'testo': '1,30', 'conferma': 'ore_e_minuti'}),
+                      (alba, '2025-11-12', {'testo': '2', 'nota_tipo': 'ritardo', 'nota_ora': '10:30'}),
+                      (psico, '2025-11-07', {'testo': 'P'}), (educ, '2025-11-11', {'testo': 'A', 'recuperata': True})))
+    assert [e.get('minuti') for e in esito['celle']] == [90, 150, 0, 0], esito
+    _ok(salva((alba, '2025-11-17', {'testo': '2'})))
+    _ok(client.post('/api/napoli/annulla', json={}))                       # Ctrl+Z della casella del 17
+    riga = next(r for r in _ok(client.get(f'{url}/presenze?anno=2025&mese=11'))['righe'] if r['id'] == alba)
+    assert (riga['totale'], riga['fonte']) == (240 + 90 + 90 + 150, 'programmazione'), riga
+    _ok(client.post(f'{url}/mesi/chiudi', json={'anno': 2025, 'mese': 11, 'nota': 'Chiusura di prova'}))
+    chiuso = salva((gaia, '2025-11-13', {'testo': '3'}))
+    assert chiuso.status_code == 409 and chiuso.get_json()['code'] == 'MESE_CHIUSO_LOTTO', chiuso.get_data()
+    _ok(client.post(f'{url}/mesi/riapri', json={'anno': 2025, 'mese': 11, 'motivo': 'Correzione di prova'}))
+    _ok(salva((gaia, '2025-11-13', {'testo': '3'})))
+    _ok(client.get(f'{url}/presenze/coppie/{alba}?anno=2025&mese=11'))
+    _ok(client.post(f'{url}/mesi/chiudi', json={'anno': 2025, 'mese': 11}))
 
 
 def _seme_import(client, lotto_id):
@@ -425,12 +465,13 @@ def carica_seme_napoli(client, percorso, versione_schema=None):
         conn.execute('PRAGMA foreign_keys = ON')
         ins = _Seme(conn)
         with conn:
-            _scrivi_seme(ins, versione_schema, ids)
+            coppie = _scrivi_seme(ins, versione_schema, ids)
     finally:
         conn.close()
     if ids is not None:
         _seme_import(client, ids['lotto'])
         _seme_anagrafiche(client, ids['lotto'])
+        _seme_presenze(client, ids['lotto'], coppie)
     dopo = _conteggi_napoli(percorso)
     return {t: n - prima.get(t, 0) for t, n in dopo.items() if n != prima.get(t, 0)}
 

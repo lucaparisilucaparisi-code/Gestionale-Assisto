@@ -10,7 +10,8 @@
  *   cosi' Ctrl+Z su una pagina di Napoli non annulla mai un'azione di Roma (e viceversa);
  * - NapoliProcedura: "Crea il primo lotto" (anche "Nuovo lotto") in tre passi;
  * - NapoliMese (con NapoliCoordinatore: le ore del coordinatore del mese, passo 1.8),
- *   NapoliAnagrafiche, NapoliImport e NapoliImpostazioni: le schede
+ *   NapoliPresenze (la griglia del mese, passo 1.7), NapoliAnagrafiche, NapoliImport e
+ *   NapoliImpostazioni: le schede
  *   (Anagrafiche: alunni, operatori, scuole e plessi, coppie, con filtri, schede e moduli;
  *   Importa: dal file Excel "master" l'anagrafica, l'azione principale, o in una parte
  *   secondaria le ore di un mese; anteprima, scelte da confermare, caricamento e
@@ -504,7 +505,7 @@ const NapoliMese = {
                     </details>` : ''}
                 </div>
             </div>
-            <p class="napoli-nota">L'anagrafica (alunni, operatori, scuole, coppie e PEI) si carica dal file Excel del coordinatore nella scheda <a href="/napoli/import">Importa</a> e si controlla o si corregge nella scheda <a href="/napoli/anagrafiche">Anagrafiche</a>. Le ore del coordinatore si scrivono qui sotto. Presenze, fogli firma e fattura del mese arriveranno nella sezione Napoli con i prossimi aggiornamenti di Assisto.</p>`;
+            <p class="napoli-nota">L'anagrafica (alunni, operatori, scuole, coppie e PEI) si carica dal file Excel del coordinatore nella scheda <a href="/napoli/import">Importa</a> e si controlla o si corregge nella scheda <a href="/napoli/anagrafiche">Anagrafiche</a>. Le ore degli operatori si scrivono nella scheda <a href="/napoli/presenze">Presenze</a>, quelle del coordinatore qui sotto. Fogli firma e fattura del mese arriveranno nella sezione Napoli con i prossimi aggiornamenti di Assisto.</p>`;
     },
 };
 
@@ -3466,6 +3467,1114 @@ const NapoliImpostazioni = {
     },
 };
 
+// ==================== scheda Presenze (griglia del mese, passo 1.7) ====================
+
+const NAPOLI_PRESENZE_ATTESA = 2000;          // come il salvataggio automatico della Rendicontazione
+const NAPOLI_CHIAVE_MESE = 'napoli.mese';
+const NAPOLI_TESTI_GRADO = { inferiore: 'Inferiore', superiore: 'Superiore', da_decidere: 'Da decidere' };
+const NAPOLI_SIGLE_OPERATORE = { F: 'Ferie dell\'operatore', M: 'Malattia dell\'operatore', P: 'Permesso dell\'operatore (F perm)' };
+const NAPOLI_NOTE_GIORNO = {
+    evento: 'Assemblea o evento della scuola', attivita_esterna: 'Uscita didattica',
+    ritardo: 'Alunno entrato alle', uscita_anticipata: 'Alunno uscito alle',
+};
+
+/** Ore e minuti: 90 -> '1:30' (come napoli_calcoli.hhmm). */
+function napoliHhmm(min) {
+    const segno = min < 0 ? '-' : '';
+    const a = Math.abs(Math.round(min));
+    return `${segno}${Math.floor(a / 60)}:${String(a % 60).padStart(2, '0')}`;
+}
+
+/** Minuti in ore decimali al centesimo (arrotondamento commerciale), senza zeri inutili:
+ *  750 -> '12,5', 80 -> '1,33' (come napoli_calcoli.ore_brevi). */
+function napoliOreBrevi(min) {
+    const segno = min < 0 ? '-' : '';
+    const cent = Math.floor((Math.abs(Math.round(min)) * 100 + 30) / 60);
+    let testo = `${Math.floor(cent / 100)},${String(cent % 100).padStart(2, '0')}`;
+    testo = testo.replace(/0+$/, '').replace(/,$/, '');
+    return segno + testo.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+/** Le due forme: '1:30 (1,50)' (come napoli_calcoli.ore_due_forme). */
+function napoliOreDueForme(min) {
+    const cent = Math.floor((Math.abs(Math.round(min)) * 100 + 30) / 60);
+    return `${napoliHhmm(min)} (${min < 0 ? '-' : ''}${Math.floor(cent / 100)},${String(cent % 100).padStart(2, '0')})`;
+}
+
+/** Una casella scritta come nel master (come napoli_calcoli.testo_ore_cella): 90 -> '1,5', 80 -> '1:20'. */
+function napoliTestoCella(min) {
+    return min % 15 ? napoliHhmm(min) : napoliOreBrevi(min);
+}
+
+/** Il giorno della settimana di una data 'AAAA-MM-GG' ('giovedì'), senza passare dal fuso orario. */
+function napoliGiornoLungo(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
+    return m ? NAPOLI_GIORNI[(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getDay() + 6) % 7] : '';
+}
+
+function napoliNormalizza(testo) {
+    return String(testo || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/**
+ * La griglia presenze del mese del lotto (REGOLE 1-3, 12, 14, 15): una riga per coppia, una
+ * casella per giorno di servizio, VERIFICA per settimana, totale e credito/debito. Ogni
+ * numero mostrato (ore riconosciute, VERIFICA, totali, credito/debito) arriva dal server
+ * (napoli_presenze, con napoli_calcoli): la pagina somma solo minuti interi per il
+ * riepilogo delle righe mostrate. Salvataggio automatico a gruppi 2 secondi dopo l'ultimo
+ * tasto (e uscendo dalla pagina, con fetch keepalive); le caselle da chiarire ("1,30", le ore
+ * programmate di un giorno con l'alunno assente) si chiedono una alla volta.
+ */
+const NapoliPresenze = {
+    dati: null,
+    righe: new Map(),          // id coppia -> riga del server
+    attese: new Map(),         // 'coppia|indice' -> casella da salvare {coppia_id, data, testo, ...}
+    errori: new Map(),         // 'coppia|indice' -> messaggio
+    domande: [],               // caselle da chiarire, una alla volta
+    domanda: null,
+    letturaScelta: null,       // "Leggi cosi' anche le prossime caselle" per i valori come 1,30
+    timer: null,
+    inVolo: null,
+    ancora: false,
+    ultimoSalvataggio: null,
+    attiva: null,              // la casella scelta {id, i}
+    filtri: { cerca: '', scuola: '', operatore: '', figura: '', grado: '', municipalita: '', avvisi: false },
+    seqCaricamento: 0,
+
+    el(id) { return document.getElementById(id); },
+
+    async avvia() {
+        NapoliComune.alCambioLotto = async () => { await this.salvaInSospeso(); await this.carica(); };
+        NapoliComune.dopoAnnulla = async () => { await this.carica(true); };
+        NapoliComune.primaDiAnnullare = () => this.salvaInSospeso();
+        this.collega();
+        try {
+            await NapoliComune.caricaLotti();
+        } catch (e) {
+            this.el('presenze-senza-lotto').hidden = false;
+            this.el('presenze-senza-lotto').innerHTML = `<div class="alert alert-danger">${escapeHtml(e.message || 'Dati non disponibili')}</div>`;
+            return;
+        }
+        this.preparaMesi();
+        await this.carica();
+    },
+
+    // ---------- mese scelto (ricordato nel browser) ----------
+
+    meseRicordato() {
+        try {
+            const v = localStorage.getItem(NAPOLI_CHIAVE_MESE);
+            return /^\d{4}-\d{2}$/.test(v || '') ? v : null;
+        } catch (e) { return null; }
+    },
+
+    ricordaMese(v) {
+        try { localStorage.setItem(NAPOLI_CHIAVE_MESE, v); } catch (e) { /* il browser non ricorda: pazienza */ }
+    },
+
+    preparaMesi(scelto) {
+        const oggi = new Date();
+        const corrente = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}`;
+        const valore = scelto || this.meseRicordato() || corrente;
+        const mesi = [];
+        for (let k = -12; k <= 1; k++) {
+            const d = new Date(oggi.getFullYear(), oggi.getMonth() + k, 1);
+            mesi.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+        }
+        if (!mesi.includes(valore)) mesi.push(valore);
+        mesi.sort();
+        const scelta = this.el('pm-mese');
+        scelta.innerHTML = mesi.map(v => `<option value="${v}">${escapeHtml(napoliMaiuscola(formatMeseIT(v)))}</option>`).join('');
+        scelta.value = valore;
+    },
+
+    meseScelto() {
+        const [anno, mese] = this.el('pm-mese').value.split('-').map(Number);
+        return { anno, mese };
+    },
+
+    async cambiaMese(passo) {
+        const scelta = this.el('pm-mese');
+        const { anno, mese } = this.meseScelto();
+        const d = new Date(anno, mese - 1 + passo, 1);
+        const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (![...scelta.options].some(o => o.value === v)) this.preparaMesi(v);
+        scelta.value = v;
+        await this.salvaInSospeso();
+        this.ricordaMese(v);
+        await this.carica();
+    },
+
+    // ---------- eventi ----------
+
+    collega() {
+        const griglia = this.el('presenze-griglia');
+        griglia.addEventListener('input', (e) => { if (e.target.matches('.g-in')) this.modificata(e.target); });
+        griglia.addEventListener('keydown', (e) => { if (e.target.matches('.g-in')) this.tasti(e); });
+        griglia.addEventListener('focusin', (e) => { if (e.target.matches('.g-in')) this.scelta(e.target); });
+        // come in Excel: un clic su una casella la sceglie tutta (scrivendo si sostituisce)
+        griglia.addEventListener('mousedown', (e) => { this.appenaScelta = e.target.matches('.g-in') && document.activeElement !== e.target ? e.target : null; });
+        griglia.addEventListener('mouseup', (e) => {
+            if (this.appenaScelta && e.target === this.appenaScelta) { e.preventDefault(); this.appenaScelta.select(); }
+            this.appenaScelta = null;
+        });
+        griglia.addEventListener('paste', (e) => { if (e.target.matches('.g-in')) this.incolla(e); });
+        griglia.addEventListener('click', (e) => {
+            if (e.target.closest('.g-in')) return;
+            const tr = e.target.closest('tr[data-id]');
+            if (tr && e.target.closest('.g-fissa, .g-ver, .g-tot, .g-cd')) this.apriDettaglio(Number(tr.dataset.id));
+        });
+        this.el('pm-mese').addEventListener('change', async () => {
+            await this.salvaInSospeso();
+            this.ricordaMese(this.el('pm-mese').value);
+            await this.carica();
+        });
+        this.el('pm-prima').addEventListener('click', () => this.cambiaMese(-1));
+        this.el('pm-dopo').addEventListener('click', () => this.cambiaMese(1));
+        this.el('presenze-filtri').addEventListener('input', (e) => this.leggiFiltro(e.target));
+        this.el('presenze-filtri').addEventListener('change', (e) => this.leggiFiltro(e.target));
+        this.el('pf-avvisi').addEventListener('click', () => {
+            this.filtri.avvisi = !this.filtri.avvisi;
+            this.el('pf-avvisi').setAttribute('aria-pressed', String(this.filtri.avvisi));
+            this.filtra();
+        });
+        this.el('btn-nota-giorno').addEventListener('click', () => {
+            if (this.attiva) this.apriNota(this.attiva.id, this.attiva.i);
+            else showToast('Scegli prima una casella della griglia, poi la sua nota del giorno.', 'info');
+        });
+        this.el('btn-presenze-annulla').addEventListener('click', () => NapoliComune.annulla());
+        this.el('btn-mese').addEventListener('click', () => this.apriMese());
+        this.el('presenze-chiuso').addEventListener('click', (e) => {
+            if (e.target.closest('[data-azione="riapri"]')) this.apriMese();
+        });
+        this.el('form-nota').addEventListener('submit', (e) => { e.preventDefault(); this.salvaNota(); });
+        this.el('form-nota').addEventListener('change', () => this.aggiornaNota());
+        this.el('form-mese').addEventListener('submit', (e) => { e.preventDefault(); this.confermaMese(); });
+        const domanda = this.el('napoli-modal-domanda');
+        domanda.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); this.lasciaDomanda(); } });
+        domanda.addEventListener('click', (e) => { if (e.target === domanda) { e.stopPropagation(); this.lasciaDomanda(); } }, true);
+        this.el('form-domanda').addEventListener('submit', (e) => { e.preventDefault(); this.rispondi(); });
+        this.el('domanda-pulsanti').addEventListener('click', (e) => {
+            const b = e.target.closest('button[data-risposta]');
+            if (b) this.rispondi(b.dataset.risposta);
+        });
+        this.el('coppia-corpo').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-nota-giorno]');
+            if (!b) return;
+            const r = this.righe.get(Number(b.dataset.coppia));
+            const i = this.dati.giorni.indexOf(b.dataset.notaGiorno);
+            if (r && i >= 0) { closeModal('napoli-modal-coppia'); this.apriNota(r.id, i); }
+        });
+        // uscita dalla pagina entro i 2 secondi: le caselle cambiate partono subito
+        window.addEventListener('pagehide', () => this.inviaInUscita());
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') this.inviaInUscita(); });
+        window.addEventListener('resize', () => this.misura());
+        document.querySelector('.napoli-presenze-aiuto')?.addEventListener('toggle', () => this.misura());
+    },
+
+    // ---------- caricamento e disegno ----------
+
+    async carica(tieniPosto = false) {
+        const lotto = NapoliComune.lotto;
+        const vuoto = this.el('presenze-senza-lotto');
+        const contenuto = this.el('presenze-contenuto');
+        if (!lotto) {
+            contenuto.hidden = true;
+            vuoto.hidden = false;
+            vuoto.innerHTML = `<div class="card">${napoliBenvenuto()}</div>`;
+            vuoto.querySelector('[data-azione="crea-lotto"]')?.addEventListener('click', () =>
+                NapoliProcedura.apri(async (l) => { await NapoliComune.caricaLotti(l.id); await this.carica(); }));
+            return;
+        }
+        vuoto.hidden = true;
+        contenuto.hidden = false;
+        const box = this.el('presenze-griglia');
+        const posto = tieniPosto ? { x: box.scrollLeft, y: box.scrollTop, attiva: this.attiva } : null;
+        const { anno, mese } = this.meseScelto();
+        const seq = ++this.seqCaricamento;
+        if (!tieniPosto) box.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+        let dati;
+        try {
+            dati = await apiCall(`/api/napoli/lotti/${lotto.id}/presenze?anno=${anno}&mese=${mese}`);
+        } catch (e) {
+            if (seq !== this.seqCaricamento) return;
+            box.innerHTML = `<div class="alert alert-danger napoli-esito-elenco">${escapeHtml(e.message || 'Presenze non disponibili')}</div>`;
+            return;
+        }
+        if (seq !== this.seqCaricamento) return;          // risposta superata (altro mese o lotto)
+        this.dati = dati;
+        this.righe = new Map(dati.righe.map(r => [r.id, r]));
+        this.attese = new Map();
+        this.errori = new Map();
+        this.domande = [];
+        this.attiva = null;
+        this.disegnaFiltri();
+        this.disegnaTesta();
+        this.disegnaGriglia();
+        this.filtra();
+        this.mostraStato();
+        this.mostraCasella();
+        this.misura();
+        if (posto) {
+            box.scrollLeft = posto.x;
+            box.scrollTop = posto.y;
+            if (posto.attiva) this.input(posto.attiva.id, posto.attiva.i)?.focus({ preventScroll: true });
+        }
+    },
+
+    /** La griglia occupa lo spazio che resta sotto (scorre solo lei, non la pagina): se sotto la
+     *  scheda il margine della pagina la fa ancora scorrere di qualche pixel, la griglia cala di
+     *  quei pixel (mai sotto le 260 di altezza). */
+    misura() {
+        const box = this.el('presenze-griglia');
+        if (!box || box.offsetParent === null) return;
+        const piede = document.querySelector('.napoli-presenze-piede');
+        const alto = box.getBoundingClientRect().top + window.scrollY;
+        const resta = Math.max(260, Math.floor(window.innerHeight - alto - (piede ? piede.offsetHeight : 0) - 28));
+        box.style.maxHeight = `${resta}px`;
+        const troppo = document.documentElement.scrollHeight - window.innerHeight;
+        if (troppo > 0 && box.offsetHeight >= resta) box.style.maxHeight = `${Math.max(260, resta - troppo)}px`;
+    },
+
+    disegnaTesta() {
+        const d = this.dati;
+        const n = d.righe.length;
+        this.el('presenze-conta').textContent = n === 1 ? '1 coppia' : `${n} coppie`;
+        const chiuso = this.el('presenze-chiuso');
+        chiuso.hidden = !d.chiuso;
+        if (d.chiuso) {
+            chiuso.innerHTML = `${napoliSvg('M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', 20)}
+                <div><strong>${escapeHtml(d.testo)} è chiuso</strong> dal ${escapeHtml(formatDataIT(d.chiusura.data))}: le ore non si cambiano più.${d.chiusura.nota ? ` Nota: ${escapeHtml(d.chiusura.nota)}.` : ''}
+                Per correggere, riapri il mese scrivendo il motivo.</div>
+                <button type="button" class="btn btn-sm btn-secondary" data-azione="riapri">Riapri il mese</button>`;
+        }
+        const b = this.el('btn-mese');
+        b.hidden = false;
+        b.disabled = !d.chiuso && !d.finito;
+        b.textContent = d.chiuso ? 'Riapri il mese' : 'Chiudi il mese';
+        b.title = d.chiuso ? 'Riapre il mese scrivendo il motivo, che resta nel registro attività'
+            : (d.finito ? 'Blocca le ore del mese del lotto' : 'Il mese si chiude dall\'ultimo giorno, quando tutte le ore sono scritte');
+        this.el('btn-nota-giorno').disabled = d.chiuso;
+    },
+
+    disegnaFiltri() {
+        const f = this.dati.filtri;
+        const opzioni = (id, voci, tutte) => {
+            const sel = this.el(id);
+            const prima = sel.value;
+            sel.innerHTML = `<option value="">${tutte}</option>` + voci.map(([v, t]) =>
+                `<option value="${escapeHtml(String(v))}">${escapeHtml(t)}</option>`).join('');
+            sel.value = voci.some(([v]) => String(v) === prima) ? prima : '';
+            this.filtri[sel.dataset.filtro] = sel.value;
+        };
+        const nomi = {};
+        f.scuole.forEach(s => { nomi[s.nome] = (nomi[s.nome] || 0) + 1; });
+        opzioni('pf-scuola', f.scuole.map(s => [s.id, nomi[s.nome] > 1 && s.municipalita ? `${s.nome} (Mun. ${s.municipalita})` : s.nome]), 'Tutte le scuole');
+        opzioni('pf-operatore', f.operatori.map(o => [o.id, o.nome]), 'Tutti gli operatori');
+        opzioni('pf-figura', f.figure.map(x => [x.codice, x.nome]), 'Tutte le figure');
+        opzioni('pf-grado', f.gradi.map(g => [g, `Grado ${(NAPOLI_TESTI_GRADO[g] || g).toLowerCase()}`]), 'Tutti i gradi');
+        opzioni('pf-municipalita', f.municipalita.map(m => [m, `Municipalità ${m}`]), 'Tutte le municipalità');
+    },
+
+    leggiFiltro(el) {
+        if (el.id === 'pf-cerca') this.filtri.cerca = el.value;
+        else if (el.dataset.filtro) this.filtri[el.dataset.filtro] = el.value;
+        else return;
+        this.filtra();
+    },
+
+    passaFiltri(r, conAvvisi = true) {
+        const f = this.filtri;
+        if (f.scuola && String(r.scuola_id) !== f.scuola) return false;
+        if (f.operatore && String(r.operatore_id) !== f.operatore) return false;
+        if (f.figura && r.figura !== f.figura) return false;
+        if (f.grado && (r.grado || 'da_decidere') !== f.grado) return false;
+        if (f.municipalita && String(r.municipalita) !== f.municipalita) return false;
+        if (conAvvisi && f.avvisi && !r.avvisi.length) return false;
+        if (f.cerca) {
+            const parole = napoliNormalizza(f.cerca).split(/\s+/).filter(Boolean);
+            const testo = napoliNormalizza(`${r.alunno} ${r.operatore}`);
+            if (!parole.every(p => testo.includes(p))) return false;
+        }
+        return true;
+    },
+
+    filtra() {
+        const tbody = this.el('presenze-griglia').querySelector('tbody');
+        if (!tbody) return;
+        let visibili = 0;
+        tbody.querySelectorAll('tr[data-id]').forEach(tr => {
+            const ok = this.passaFiltri(this.righe.get(Number(tr.dataset.id)));
+            tr.hidden = !ok;
+            if (ok) visibili++;
+        });
+        const vuoto = this.el('presenze-griglia').querySelector('.napoli-griglia-vuota');
+        if (vuoto) vuoto.hidden = visibili > 0 || !this.dati.righe.length;
+        const conAvvisi = [...this.righe.values()].filter(r => r.avvisi.length && this.passaFiltri(r, false)).length;
+        this.el('pf-avvisi-conta').textContent = String(conAvvisi);
+        this.el('pf-avvisi').hidden = !conAvvisi && !this.filtri.avvisi;
+        this.riepilogo();
+    },
+
+    riepilogo() {
+        const righe = [...this.righe.values()].filter(r => this.passaFiltri(r));
+        const box = this.el('presenze-riepilogo');
+        if (!this.dati.righe.length) { box.textContent = ''; return; }
+        const ore = righe.reduce((s, r) => s + r.totale, 0);
+        const conPreviste = righe.filter(r => r.previste !== null);
+        const previste = conPreviste.reduce((s, r) => s + r.previste, 0);
+        const cd = conPreviste.reduce((s, r) => s + r.credito_debito, 0);
+        const stima = conPreviste.some(r => r.stima);
+        const cdClasse = cd >= 0 ? 'text-success' : 'text-danger';      // come in Rendicontazione
+        const n = righe.length === this.dati.righe.length ? `${righe.length} ${righe.length === 1 ? 'coppia' : 'coppie'}`
+            : `${righe.length} di ${this.dati.righe.length} coppie`;
+        box.innerHTML = `<span>${escapeHtml(n)}</span>
+            <span>Ore del mese <strong>${napoliOreBrevi(ore)}</strong></span>
+            ${conPreviste.length ? `<span>Previste <strong>${stima ? '≈ ' : ''}${napoliOreBrevi(previste)}</strong></span>
+            <span>Credito/debito <strong class="${cdClasse}">${stima ? '≈ ' : ''}${napoliOreBrevi(cd)}</strong></span>` : ''}`;
+    },
+
+    disegnaGriglia() {
+        const d = this.dati;
+        const box = this.el('presenze-griglia');
+        if (!d.righe.length) {
+            box.innerHTML = `<div class="napoli-coord-vuoto napoli-griglia-niente">
+                ${napoliSvg(NAPOLI_ICONE_STATO.avviso, 20)}
+                <span>Nessuna coppia operatore-alunno in servizio a ${escapeHtml(formatMeseIT(`${d.anno}-${String(d.mese).padStart(2, '0')}`))} in questo lotto. Le coppie arrivano dall'anagrafica:</span>
+                <a class="btn btn-sm btn-secondary" href="/napoli/import">Carica l'anagrafica</a>
+                <a class="btn btn-sm btn-ghost" href="/napoli/anagrafiche#coppie">Vai alle coppie</a></div>`;
+            return;
+        }
+        const testa = d.colonne.map(c => {
+            if (c.tipo === 'verifica') {
+                return `<th scope="col" class="g-ver" title="VERIFICA della settimana ${c.settimana}: dal ${formatDataIT(c.dal)} al ${formatDataIT(c.al)}">Sett.<br>${c.settimana}</th>`;
+            }
+            const classi = ['g-g', c.nome === 'sab' ? 'g-sab' : '', c.chiuso ? 'g-chiuso' : '', c.futuro ? 'g-futuro' : ''].filter(Boolean).join(' ');
+            const titolo = `${napoliMaiuscola(napoliGiornoLungo(c.data))} ${formatDataIT(c.data)}${c.chiuso ? ` · chiuso: ${c.chiuso}` : ''}${c.evento ? ` · ${c.evento}` : ''}`;
+            return `<th scope="col" class="${classi}" data-i="${c.i}" title="${escapeHtml(titolo)}"><span>${c.nome}</span>${c.numero}${c.evento ? '<i class="g-evento" aria-hidden="true"></i>' : ''}</th>`;
+        }).join('');
+        box.innerHTML = `
+            <table class="napoli-griglia${d.chiuso ? ' g-mese-chiuso' : ''}" aria-label="Presenze di ${escapeHtml(d.testo)}">
+                <thead><tr>
+                    <th scope="col" class="g-fissa g-alunno">Alunno</th>
+                    <th scope="col" class="g-fissa g-operatore">Operatore</th>
+                    <th scope="col" class="g-fissa g-figura">Figura</th>
+                    <th scope="col" class="g-fissa g-pei" title="Ore settimanali da PEI (o la quota della coppia)">PEI</th>
+                    <th scope="col" class="g-fissa g-sost" title="Sostituzione operatore (SI/NO)">Sost.</th>
+                    ${testa}
+                    <th scope="col" class="g-tot" title="Totale del mese: ore riconosciute">Totale</th>
+                    <th scope="col" class="g-cd" title="Credito/debito: ore previste meno ore riconosciute (positivo = ore ancora dovute all'alunno)">Cred./<br>deb.</th>
+                </tr></thead>
+                <tbody>${d.righe.map(r => this.htmlRiga(r)).join('')}</tbody>
+            </table>
+            <p class="napoli-griglia-vuota" hidden>Nessuna riga con questi filtri.</p>`;
+    },
+
+    fuori(r) {
+        if (!r._fuori) r._fuori = new Set(r.fuori);
+        return r._fuori;
+    },
+
+    classeCella(r, col, c) {
+        const i = col.i;
+        const classi = ['g-c'];
+        if (col.chiuso || r.chiusi[i]) classi.push('g-chiuso');
+        if (this.fuori(r).has(i)) classi.push('g-fuori');
+        if (col.futuro) classi.push('g-futuro');
+        if (col.nome === 'sab') classi.push('g-sab');
+        if (c) {
+            if (c.k === 'A') classi.push('g-assente');
+            else if (NAPOLI_SIGLE_OPERATORE[c.k]) classi.push('g-sigla');
+            else if (c.k === 'prog') classi.push('g-prog');
+            if (c.nt || c.nx) classi.push('g-nota');
+            if (c.a) classi.push('g-avviso');
+            if (c.bl) classi.push('g-bloccata');
+            if (c.c) classi.push('g-con-angolo');
+        }
+        const chiave = `${r.id}|${i}`;
+        if (this.errori.has(chiave)) classi.push('g-errore');
+        else if (this.attese.has(chiave)) classi.push('g-cambiata');
+        return classi.join(' ');
+    },
+
+    bloccata(r, col, c) {
+        return this.fuori(r).has(col.i) || col.futuro || !!(c && c.bl);
+    },
+
+    htmlRiga(r) {
+        const celle = this.dati.colonne.map(col => {
+            if (col.tipo === 'verifica') return this.htmlSettimana(r, col.settimana);
+            const c = r.celle[col.i];
+            const segnaposto = c && c.k === 'prog' && c.p ? ` placeholder="${napoliTestoCella(c.p)}"` : '';
+            return `<td class="${this.classeCella(r, col, c)}" data-i="${col.i}"><input class="g-in" value="${c ? escapeHtml(c.t) : ''}"${segnaposto}${this.bloccata(r, col, c) ? ' disabled' : ''}${this.dati.chiuso ? ' readonly' : ''} maxlength="12" autocomplete="off" spellcheck="false">${c && c.c ? `<span class="g-ang">${escapeHtml(c.c)}</span>` : ''}</td>`;
+        }).join('');
+        return `<tr data-id="${r.id}" class="${this.classeRiga(r)}">
+            <th scope="row" class="g-fissa g-alunno"><button type="button" class="g-nome" title="${escapeHtml(r.alunno)}: apri il dettaglio del mese">${escapeHtml(r.alunno)}</button></th>
+            <td class="g-fissa g-operatore" title="${escapeHtml(r.operatore)}">${escapeHtml(r.operatore)}</td>
+            <td class="g-fissa g-figura">${escapeHtml(r.figura_nome)}</td>
+            <td class="g-fissa g-pei"${r.quota ? ' title="Quota della coppia"' : ''}>${escapeHtml(r.pei || '—')}</td>
+            <td class="g-fissa g-sost">${r.sostituto ? '<strong>SI</strong>' : 'NO'}</td>
+            ${celle}
+            <td class="g-tot">${escapeHtml(r.totale_testo)}</td>
+            ${this.htmlCredito(r)}
+        </tr>`;
+    },
+
+    classeRiga(r) {
+        return [r.sostituto ? 'g-riga-sost' : '', r.avvisi.length ? 'g-riga-avvisi' : ''].filter(Boolean).join(' ');
+    },
+
+    htmlSettimana(r, n) {
+        const s = (r.settimane || []).find(x => x.n === n);
+        if (!s) return '<td class="g-ver"></td>';
+        const dove = s.colore === 'rosso' ? ' g-rosso' : (s.colore === 'giallo' ? ' g-giallo' : '');
+        return `<td class="g-ver${dove}" data-s="${n}">${s.minuti ? escapeHtml(s.testo) : ''}</td>`;
+    },
+
+    htmlCredito(r) {
+        if (r.cd_nel_titolare) return '<td class="g-cd g-cd-titolare" title="Le ore del sostituto contano nel credito/debito della riga del titolare">↑</td>';
+        if (r.credito_debito === null) return '<td class="g-cd" title="Manca il PEI: il credito/debito non si calcola">—</td>';
+        const classe = r.credito_debito >= 0 ? 'text-success' : 'text-danger';
+        const titolo = r.stima ? 'Stima dal PEI (manca la programmazione settimanale)' : 'Dalla programmazione settimanale';
+        return `<td class="g-cd ${classe}" title="${titolo}">${r.stima ? '≈ ' : ''}${escapeHtml(r.cd_testo)}</td>`;
+    },
+
+    tr(id) { return this.el('presenze-griglia').querySelector(`tr[data-id="${id}"]`); },
+
+    input(id, i) { return this.tr(id)?.querySelector(`td[data-i="${i}"] .g-in`) || null; },
+
+    colonna(i) {
+        if (!this.dati._perIndice) this.dati._perIndice = new Map(this.dati.colonne.filter(c => c.tipo === 'giorno').map(c => [c.i, c]));
+        return this.dati._perIndice.get(i);
+    },
+
+    /** Una riga ricalcolata dal server: caselle, VERIFICA, totale e credito/debito, senza
+     *  ridisegnare la tabella (la casella attiva e quelle in sospeso restano come sono). */
+    aggiornaRiga(r) {
+        this.righe.set(r.id, r);
+        const k = this.dati.righe.findIndex(x => x.id === r.id);
+        if (k >= 0) this.dati.righe[k] = r;
+        const tr = this.tr(r.id);
+        if (!tr) return;
+        tr.className = this.classeRiga(r);
+        tr.querySelectorAll('td.g-c').forEach(td => this.aggiornaCella(r, td));
+        tr.querySelectorAll('td.g-ver[data-s]').forEach(td => {
+            const nuovo = document.createElement('tbody');
+            nuovo.innerHTML = `<tr>${this.htmlSettimana(r, Number(td.dataset.s))}</tr>`;
+            td.replaceWith(nuovo.querySelector('td'));
+        });
+        tr.querySelector('.g-tot').textContent = r.totale_testo;
+        const cd = document.createElement('tbody');
+        cd.innerHTML = `<tr>${this.htmlCredito(r)}</tr>`;
+        tr.querySelector('.g-cd').replaceWith(cd.querySelector('td'));
+    },
+
+    aggiornaCella(r, td) {
+        const i = Number(td.dataset.i);
+        const col = this.colonna(i);
+        const c = r.celle[i];
+        const chiave = `${r.id}|${i}`;
+        td.className = this.classeCella(r, col, c);
+        const input = td.querySelector('.g-in');
+        if (!this.attese.has(chiave) && !this.errori.has(chiave)) {
+            const testo = c ? c.t : '';
+            if (input.value !== testo) input.value = testo;
+        }
+        input.placeholder = c && c.k === 'prog' && c.p ? napoliTestoCella(c.p) : '';
+        input.disabled = this.bloccata(r, col, c);
+        let angolo = td.querySelector('.g-ang');
+        if (c && c.c) {
+            if (!angolo) { angolo = document.createElement('span'); angolo.className = 'g-ang'; td.appendChild(angolo); }
+            angolo.textContent = c.c;
+        } else if (angolo) {
+            angolo.remove();
+        }
+    },
+
+    // ---------- la casella scelta ----------
+
+    posizione(input) {
+        const td = input.closest('td');
+        return { id: Number(td.parentElement.dataset.id), i: Number(td.dataset.i) };
+    },
+
+    scelta(input) {
+        const { id, i } = this.posizione(input);
+        this.attiva = { id, i };
+        const r = this.righe.get(id);
+        const col = this.colonna(i);
+        input.setAttribute('aria-label', `${napoliGiornoLungo(col.data)} ${formatDataIT(col.data)}, ${r.alunno} con ${r.operatore}`);
+        input.setAttribute('aria-describedby', 'presenze-casella');
+        setTimeout(() => { if (document.activeElement === input) input.select(); }, 0);
+        this.mostraCasella();
+    },
+
+    /** La barra sopra la griglia: la casella scelta per esteso. */
+    mostraCasella() {
+        const barra = this.el('presenze-casella');
+        if (!this.attiva) {
+            barra.innerHTML = '<span class="napoli-barra-invito">Scegli una casella per vederla qui per esteso. Scrivi le ore svolte (2, 1,5 o 1:30) oppure F, M, P, A; si salva da solo.</span>';
+            return;
+        }
+        const { id, i } = this.attiva;
+        const r = this.righe.get(id);
+        const col = this.colonna(i);
+        if (!r || !col) { barra.textContent = ''; return; }
+        const c = r.celle[i];
+        const chiave = `${id}|${i}`;
+        const giorno = `${napoliMaiuscola(napoliGiornoLungo(col.data))} ${formatDataIT(col.data)}`;
+        const parti = [];
+        if (this.errori.has(chiave)) parti.push(`<span class="g-barra-errore">${escapeHtml(this.errori.get(chiave))}</span>`);
+        else if (this.attese.has(chiave)) parti.push('Da salvare…');
+        else if (this.fuori(r).has(i)) parti.push(`Fuori dalle date della coppia (${escapeHtml(napoliPeriodo(r.dal, r.al))})`);
+        else if (col.futuro) parti.push('Giorno non ancora arrivato');
+        else if (!c) parti.push('Nessuna ora scritta');
+        else if (c.k === 'prog') parti.push(`Preparato, non registrato: vale 0${c.p ? ` (programmate ${napoliOreDueForme(c.p)})` : ''}`);
+        else if (c.k === 'A') {
+            parti.push(c.rec ? 'Alunno assente, assenza recuperata: niente metà'
+                : `Alunno assente: metà${c.p ? ` delle ${napoliHhmm(c.p)} programmate` : ''} = <strong>${napoliOreDueForme(c.r)}</strong>`);
+        } else if (NAPOLI_SIGLE_OPERATORE[c.k]) parti.push(`${NAPOLI_SIGLE_OPERATORE[c.k]}: 0 ore`);
+        else {
+            parti.push(`Ore riconosciute <strong>${napoliOreDueForme(c.r)}</strong>`);
+            if (c.o === 'import') parti.push('dal file Excel');
+        }
+        if (c && c.bl) parti.push('registrato dal foglio firma: si cambia dal foglio della coppia');
+        if (c && c.nt) parti.push(`Nota: ${escapeHtml(NAPOLI_NOTE_GIORNO[c.nt])}${c.no ? ` ${escapeHtml(c.no)}` : ''}${c.rec && c.nt !== 'evento' ? ', recuperata' : ''}`);
+        if (c && c.nx) parti.push(`«${escapeHtml(c.nx)}»`);
+        const chiuso = col.chiuso || r.chiusi[i];
+        if (chiuso) parti.push(`Chiuso: ${escapeHtml(chiuso)}`);
+        if (col.evento) parti.push(escapeHtml(col.evento));
+        if (c && c.a) parti.push(...c.a.map(a => `<span class="g-barra-avviso">${napoliSvg(NAPOLI_ICONE_STATO.avviso, 14)} ${escapeHtml(this.dati.spiegazioni[a] || a)}</span>`));
+        barra.innerHTML = `<strong>${escapeHtml(giorno)}</strong> · ${escapeHtml(r.alunno)} con ${escapeHtml(r.operatore)} (${escapeHtml(r.figura_nome)}) · ${parti.join(' · ')}`;
+    },
+
+    // ---------- tastiera ----------
+
+    tasti(e) {
+        const input = e.target;
+        const { id, i } = this.posizione(input);
+        const chiave = `${id}|${i}`;
+        if (e.key === 'F2' && e.shiftKey) {
+            e.preventDefault();
+            this.apriNota(id, i);
+            return;
+        }
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+            // mentre si scrive, Ctrl+Z toglie le lettere; a casella salvata annulla l'ultima modifica di Napoli
+            if (!this.attese.has(chiave)) { e.preventDefault(); NapoliComune.annulla(); }
+            return;
+        }
+        if (e.key === 'Escape' && (this.attese.has(chiave) || this.errori.has(chiave))) {
+            e.preventDefault();
+            this.attese.delete(chiave);
+            this.errori.delete(chiave);
+            this.aggiornaCella(this.righe.get(id), input.closest('td'));
+            input.select();
+            this.mostraCasella();
+            this.mostraStato();
+            return;
+        }
+        let dx = 0, dy = 0;
+        if (e.key === 'Enter') dy = e.shiftKey ? -1 : 1;
+        else if (e.key === 'ArrowDown') dy = 1;
+        else if (e.key === 'ArrowUp') dy = -1;
+        else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+            const tutto = input.selectionStart === 0 && input.selectionEnd === input.value.length;
+            const inFondo = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+            const inCima = input.selectionStart === 0 && input.selectionEnd === 0;
+            if (e.key === 'ArrowRight' && (tutto || inFondo)) dx = 1;
+            else if (e.key === 'ArrowLeft' && (tutto || inCima)) dx = -1;
+            else return;
+        } else return;
+        e.preventDefault();
+        const prossima = this.vicina(input, dx, dy);
+        if (prossima) { prossima.focus(); prossima.select(); }
+        else if (e.key === 'Enter') input.blur();          // ultima riga: si chiude la casella (si salva dopo 2 s)
+    },
+
+    vicina(input, dx, dy) {
+        const td = input.closest('td');
+        if (dx) {
+            let altra = td;
+            do {
+                altra = dx > 0 ? altra.nextElementSibling : altra.previousElementSibling;
+            } while (altra && !(altra.matches('td.g-c') && !altra.querySelector('.g-in').disabled));
+            return altra ? altra.querySelector('.g-in') : null;
+        }
+        const i = td.dataset.i;
+        let tr = td.parentElement;
+        do {
+            tr = dy > 0 ? tr.nextElementSibling : tr.previousElementSibling;
+            const altra = tr && !tr.hidden ? tr.querySelector(`td[data-i="${i}"] .g-in`) : null;
+            if (altra && !altra.disabled) return altra;
+        } while (tr);
+        return null;
+    },
+
+    /** Incolla da Excel: righe e colonne a partire dalla casella (le caselle bloccate si saltano). */
+    incolla(e) {
+        const testo = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+        const righe = testo.replace(/\r/g, '').split('\n').map(r => r.split('\t'));
+        while (righe.length && righe[righe.length - 1].every(v => v.trim() === '')) righe.pop();
+        if (!righe.length || (righe.length === 1 && righe[0].length === 1)) return;   // un solo valore: incolla normale
+        e.preventDefault();
+        if (this.dati.chiuso) { showToast('Il mese è chiuso: non si incolla.', 'warning'); return; }
+        const inizio = e.target.closest('td');
+        let tr = inizio.parentElement;
+        const colonne = [...tr.querySelectorAll('td.g-c')];
+        const primo = colonne.indexOf(inizio);
+        let n = 0, saltati = 0;
+        for (const valori of righe) {
+            while (tr && tr.hidden) tr = tr.nextElementSibling;
+            if (!tr) break;
+            const caselle = [...tr.querySelectorAll('td.g-c')];
+            valori.forEach((v, k) => {
+                const td = caselle[primo + k];
+                if (!td) return;
+                const input = td.querySelector('.g-in');
+                if (input.disabled) { saltati++; return; }
+                input.value = v.trim();
+                this.modificata(input);
+                n++;
+            });
+            tr = tr.nextElementSibling;
+        }
+        showToast(`${n === 1 ? 'Incollato 1 valore' : `Incollati ${n} valori`}${saltati ? `; ${saltati} nei giorni bloccati non incollati` : ''}`, 'info');
+    },
+
+    // ---------- salvataggio automatico ----------
+
+    modificata(input) {
+        if (this.dati.chiuso) return;
+        const { id, i } = this.posizione(input);
+        const chiave = `${id}|${i}`;
+        this.attese.set(chiave, { coppia_id: id, data: this.dati.giorni[i], testo: input.value.trim() });
+        this.errori.delete(chiave);
+        const td = input.closest('td');
+        td.classList.add('g-cambiata');
+        td.classList.remove('g-errore');
+        clearTimeout(this.timer);
+        this.timer = setTimeout(() => this.salva(), NAPOLI_PRESENZE_ATTESA);
+        this.mostraStato('in_sospeso');
+        if (this.attiva && this.attiva.id === id && this.attiva.i === i) this.mostraCasella();
+    },
+
+    async salva() {
+        clearTimeout(this.timer);
+        this.timer = null;
+        if (this.inVolo) { this.ancora = true; return this.inVolo; }
+        if (!this.attese.size || !this.dati) { this.mostraStato(); return; }
+        const inviate = this.attese;
+        this.attese = new Map();
+        this.ancora = false;
+        const d = this.dati;
+        const lotto = d.lotto.id;
+        this.mostraStato('salvo');
+        this.inVolo = (async () => {
+            try {
+                const r = await apiCall(`/api/napoli/lotti/${lotto}/presenze`, {
+                    method: 'POST', body: JSON.stringify({ anno: d.anno, mese: d.mese, celle: [...inviate.values()] }),
+                });
+                if (this.dati === d) this.applica(r, inviate);
+            } catch (e) {
+                // non salvate: tornano in sospeso (se nel frattempo non sono state riscritte)
+                inviate.forEach((v, k) => { if (!this.attese.has(k)) this.attese.set(k, v); });
+                if (e.code === 'MESE_CHIUSO_LOTTO') {
+                    showToast(e.message, 'warning', 10000);
+                    this.attese = new Map();
+                    await this.carica(true);
+                } else {
+                    this.erroreSalvataggio = e.message || 'Salvataggio non riuscito: riprova.';
+                    showToast(this.erroreSalvataggio, 'error', 9000);
+                }
+            } finally {
+                this.inVolo = null;
+            }
+            if (this.ancora && this.attese.size) await this.salva();
+            this.mostraStato();
+        })();
+        return this.inVolo;
+    },
+
+    applica(r, inviate) {
+        this.erroreSalvataggio = null;
+        let toltaNota = false;
+        for (const e of r.celle) {
+            const i = this.dati.giorni.indexOf(e.data);
+            const chiave = `${e.coppia_id}|${i}`;
+            const mandata = inviate.get(chiave);
+            if (this.attese.has(chiave)) continue;         // riscritta mentre si salvava: riparte
+            if (e.esito === 'errore') {
+                this.errori.set(chiave, e.messaggio);
+            } else if (e.esito === 'da_confermare') {
+                if (this.letturaScelta && e.alternative.some(a => a.lettura === this.letturaScelta)) {
+                    this.attese.set(chiave, { ...mandata, conferma: this.letturaScelta });
+                } else {
+                    this.errori.set(chiave, `«${e.testo}» si può leggere in due modi: da confermare`);
+                    this.domande.push({ tipo: 'lettura', chiave, cella: mandata, esito: e });
+                }
+            } else if (e.esito === 'servono_programmati') {
+                this.errori.set(chiave, 'Mancano le ore programmate di quel giorno');
+                this.domande.push({ tipo: 'programmati', chiave, cella: mandata, esito: e });
+            } else {
+                this.errori.delete(chiave);
+                if (e.tolta_nota) toltaNota = true;
+            }
+        }
+        r.righe.forEach(riga => this.aggiornaRiga(riga));
+        // le caselle non toccate dal ricalcolo (errori, domande) prendono la classe giusta
+        inviate.forEach((v, chiave) => {
+            const [id, i] = chiave.split('|').map(Number);
+            const td = this.input(id, i)?.closest('td');
+            if (td) this.aggiornaCella(this.righe.get(id), td);
+        });
+        if (r.salvate) this.ultimoSalvataggio = new Date();
+        if (toltaNota) showToast('Cancellato un giorno con la nota: con Ctrl+Z torna il giorno, ma non la descrizione scritta.', 'info', 8000);
+        if (this.attese.size) { clearTimeout(this.timer); this.timer = setTimeout(() => this.salva(), 300); }
+        this.mostraCasella();
+        this.riepilogo();
+        this.prossimaDomanda();
+    },
+
+    /** Le caselle cambiate e non ancora salvate partono adesso (Ctrl+Z, cambio di mese o lotto). */
+    async salvaInSospeso() {
+        if (this.inVolo) await this.inVolo;
+        if (this.attese.size) await this.salva();
+    },
+
+    /** Pagina chiusa entro i 2 secondi: fetch keepalive, che il browser porta a termine lo stesso. */
+    inviaInUscita() {
+        if (!this.dati || !this.attese.size) return;
+        clearTimeout(this.timer);
+        this.timer = null;
+        const d = this.dati;
+        const inviate = this.attese;
+        this.attese = new Map();
+        fetch(`/api/napoli/lotti/${d.lotto.id}/presenze`, {
+            method: 'POST', keepalive: true, credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ anno: d.anno, mese: d.mese, celle: [...inviate.values()] }),
+        }).then(r => (r.ok ? r.json() : null)).then((r) => {
+            // scheda solo nascosta (la pagina e' ancora aperta): le righe tornano aggiornate
+            if (r && this.dati === d) { this.applica(r, inviate); this.mostraStato(); }
+            else if (!r) inviate.forEach((v, k) => { if (!this.attese.has(k)) this.attese.set(k, v); });
+        }).catch(() => { inviate.forEach((v, k) => { if (!this.attese.has(k)) this.attese.set(k, v); }); });
+    },
+
+    mostraStato(tipo) {
+        const box = this.el('presenze-salvataggio');
+        const testo = (stato, icona, scritta) => {
+            box.className = ['auto-save-indicator', stato].filter(Boolean).join(' ');
+            box.innerHTML = `${icona ? napoliSvg(icona, 14) : ''}<span>${escapeHtml(scritta)}</span>`;
+        };
+        if (tipo === 'in_sospeso') return testo('pending', '', 'Modifiche in sospeso…');
+        if (tipo === 'salvo') return testo('saving', '', 'Salvataggio…');
+        if (this.timer || this.inVolo || this.attese.size) return testo('pending', '', 'Modifiche in sospeso…');
+        const ora = this.ultimoSalvataggio
+            ? this.ultimoSalvataggio.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : null;
+        if (this.erroreSalvataggio) return testo('errore', NAPOLI_COORD_ICONA_ERRORE, 'Modifiche non salvate: riprova');
+        const errori = this.errori.size;
+        if (errori) {
+            const caselle = errori === 1 ? '1 casella da correggere' : `${errori} caselle da correggere`;
+            return testo('errore', NAPOLI_COORD_ICONA_ERRORE, ora ? `Salvato alle ${ora}, tranne ${caselle}` : caselle);
+        }
+        if (this.dati && this.dati.chiuso) return testo('', NAPOLI_ICONE_STATO.ok, 'Mese chiuso: solo lettura');
+        if (ora) return testo('saved', NAPOLI_COORD_ICONA_OK, `Salvato alle ${ora}`);
+        return testo('', NAPOLI_COORD_ICONA_OK, 'Salvataggio automatico');
+    },
+
+    // ---------- domande sulle caselle: "1,30" e ore programmate ----------
+
+    chiDove(cella) {
+        const r = this.righe.get(cella.coppia_id);
+        return `${napoliGiornoLungo(cella.data)} ${formatDataIT(cella.data)}, ${r ? `${r.alunno} con ${r.operatore}` : ''}`;
+    },
+
+    prossimaDomanda() {
+        const overlay = this.el('napoli-modal-domanda');
+        if (this.domanda && !overlay.classList.contains('active')) this.domanda = null;   // chiusa da fuori
+        if (this.domanda || !this.domande.length) return;
+        if (document.querySelector('.modal-overlay.active')) return;     // un'altra finestra aperta: dopo
+        const q = this.domande.shift();
+        if (!this.errori.has(q.chiave) || this.attese.has(q.chiave)) { this.prossimaDomanda(); return; }
+        this.domanda = q;
+        const form = this.el('form-domanda');
+        const pulsanti = this.el('domanda-pulsanti');
+        if (q.tipo === 'lettura') {
+            this.el('domanda-titolo').textContent = 'Come va letto?';
+            form.innerHTML = `<p>Hai scritto <strong>«${escapeHtml(q.esito.testo)}»</strong> per ${escapeHtml(this.chiDove(q.cella))}.</p>
+                <p class="napoli-intro">Nel file del Comune le ore si scrivono con la virgola (1,5 = un'ora e mezza), ma sui fogli firma «1,30» vuol dire spesso un'ora e trenta minuti. Scegli tu:</p>
+                <label class="napoli-scelta-riga"><input type="checkbox" id="domanda-sempre"> Leggi così anche le prossime caselle scritte in questo modo (fino a quando ricarichi la pagina)</label>`;
+            pulsanti.innerHTML = `<button type="button" class="btn btn-secondary" data-risposta="lascia">Correggi la casella</button>
+                ${q.esito.alternative.map(a => `<button type="button" class="btn btn-primary" data-risposta="${escapeHtml(a.lettura)}">${escapeHtml(a.testo)}</button>`).join('')}`;
+        } else {
+            this.el('domanda-titolo').textContent = 'Ore programmate del giorno';
+            const r = this.righe.get(q.cella.coppia_id);
+            form.innerHTML = `<p>Per ${escapeHtml(this.chiDove(q.cella))} si conta la metà delle ore programmate, ma il programma non le conosce (manca la programmazione settimanale).</p>
+                <div class="form-group napoli-campo-medio">
+                    <label class="form-label" for="domanda-programmati">Quante ore erano programmate quel giorno?</label>
+                    <input type="text" class="form-control" id="domanda-programmati" data-campo="programmati" inputmode="decimal" autocomplete="off" placeholder="per esempio 3 oppure 2,5">
+                    <p class="napoli-aiuto">${r && r.pei ? `Ore PEI della settimana: ${escapeHtml(r.pei)}.` : ''} Si scrivono come nelle caselle: 3, 2,5 oppure 1:30.</p>
+                </div>`;
+            pulsanti.innerHTML = `<button type="button" class="btn btn-secondary" data-risposta="lascia">Lascia la casella da sistemare</button>
+                <button type="submit" form="form-domanda" class="btn btn-primary">Salva</button>`;
+        }
+        openModal('napoli-modal-domanda');
+    },
+
+    rispondi(risposta) {
+        const q = this.domanda;
+        if (!q) return;
+        if (risposta === 'lascia') { this.lasciaDomanda(); return; }
+        let cella;
+        if (q.tipo === 'lettura') {
+            if (!risposta) return;
+            if (this.el('domanda-sempre')?.checked) this.letturaScelta = risposta;
+            cella = { ...q.cella, conferma: risposta };
+        } else {
+            const campo = this.el('domanda-programmati');
+            if (!napoliCampoObbligatorio(campo, 'Scrivi le ore programmate (per esempio 3).')) return;
+            cella = { ...q.cella, programmati: campo.value.trim() };
+        }
+        this.domanda = null;
+        closeModal('napoli-modal-domanda');
+        this.errori.delete(q.chiave);
+        this.attese.set(q.chiave, cella);
+        const [id, i] = q.chiave.split('|').map(Number);
+        const td = this.input(id, i)?.closest('td');
+        if (td) this.aggiornaCella(this.righe.get(id), td);
+        this.salva();
+    },
+
+    lasciaDomanda() {
+        const q = this.domanda;
+        this.domanda = null;
+        closeModal('napoli-modal-domanda');
+        if (q) {
+            const [id, i] = q.chiave.split('|').map(Number);
+            const input = this.input(id, i);
+            if (input) { input.focus(); input.select(); }
+        }
+        this.mostraStato();
+        setTimeout(() => this.prossimaDomanda(), 50);
+    },
+
+    // ---------- nota del giorno ----------
+
+    async apriNota(id, i) {
+        const r = this.righe.get(id);
+        const col = this.colonna(i);
+        if (!r || !col) return;
+        if (this.dati.chiuso) { showToast('Il mese è chiuso: le note non si cambiano più.', 'warning'); return; }
+        if (this.bloccata(r, col, r.celle[i])) { showToast('In questo giorno non si scrivono ore per questa coppia.', 'info'); return; }
+        const chiave = `${id}|${i}`;
+        const c = r.celle[i] || {};
+        const input = this.input(id, i);
+        this.nota = { id, i, chiave, testo: this.attese.has(chiave) ? this.attese.get(chiave).testo : null,
+            assente: ((this.attese.get(chiave)?.testo ?? input?.value ?? c.t ?? '').trim().toUpperCase() === 'A') };
+        const form = this.el('form-nota');
+        napoliPulisciErrori(form);
+        this.el('nota-chi').textContent = `${napoliMaiuscola(napoliGiornoLungo(col.data))} ${formatDataIT(col.data)} · ${r.alunno} con ${r.operatore} (${r.figura_nome})`;
+        form.querySelectorAll('input[name="nota_tipo"]').forEach(x => { x.checked = x.value === (c.nt || ''); });
+        this.el('nota-ora').value = c.no || '';
+        this.el('nota-programmati').value = c.p ? napoliTestoCella(c.p) : '';
+        this.el('nota-recuperata').checked = !!c.rec;
+        this.el('nota-testo').value = c.nx || '';
+        this.aggiornaNota();
+        openModal('napoli-modal-nota');
+    },
+
+    aggiornaNota() {
+        const tipo = this.el('form-nota').querySelector('input[name="nota_tipo"]:checked')?.value || '';
+        const conOra = tipo === 'ritardo' || tipo === 'uscita_anticipata';
+        this.el('nota-gruppo-ora').hidden = !conOra;
+        this.el('nota-ora-etichetta').textContent = tipo === 'uscita_anticipata' ? 'Uscito alle' : 'Entrato alle';
+        const recuperabile = conOra || (this.nota && this.nota.assente);
+        const rec = this.el('nota-recuperata');
+        rec.disabled = !recuperabile;
+        if (!recuperabile) rec.checked = false;
+    },
+
+    async salvaNota() {
+        const n = this.nota;
+        if (!n) return;
+        const form = this.el('form-nota');
+        napoliPulisciErrori(form);
+        const tipo = form.querySelector('input[name="nota_tipo"]:checked')?.value || '';
+        const conOra = tipo === 'ritardo' || tipo === 'uscita_anticipata';
+        if (conOra && !napoliCampoObbligatorio(this.el('nota-ora'), 'Scrivi a che ora (per esempio 9:00).')) return;
+        const cella = { coppia_id: n.id, data: this.dati.giorni[n.i], nota_tipo: tipo, nota_ora: conOra ? this.el('nota-ora').value.trim() : '',
+            nota: this.el('nota-testo').value.trim(), recuperata: this.el('nota-recuperata').checked };
+        const programmati = this.el('nota-programmati').value.trim();
+        if (programmati) cella.programmati = programmati;
+        if (n.testo !== null) cella.testo = n.testo;          // la casella cambiata e non ancora salvata va con la nota
+        if (this.inVolo) await this.inVolo;
+        const d = this.dati;
+        const pulsante = this.el('nota-salva');
+        const inSospeso = this.attese.get(n.chiave);
+        this.attese.delete(n.chiave);                      // parte con la nota, non due volte
+        setButtonLoading(pulsante, true);
+        try {
+            const r = await apiCall(`/api/napoli/lotti/${d.lotto.id}/presenze`, {
+                method: 'POST', body: JSON.stringify({ anno: d.anno, mese: d.mese, celle: [cella] }),
+            });
+            const e = r.celle[0];
+            if (e.esito === 'errore' || e.esito === 'servono_programmati') {
+                const err = new Error(e.esito === 'errore' ? e.messaggio : 'Scrivi le ore programmate di quel giorno: servono per la metà.');
+                err.data = { campo: e.esito === 'servono_programmati' ? 'programmati' : (e.campo || null) };
+                r.righe.forEach(riga => this.aggiornaRiga(riga));
+                if (inSospeso && !this.attese.has(n.chiave)) this.attese.set(n.chiave, inSospeso);
+                napoliMostraErrore(err, form);
+                return;
+            }
+            const inviate = new Map([[n.chiave, cella]]);
+            closeModal('napoli-modal-nota');
+            this.applica(r, inviate);
+            if (e.esito === 'salvata') showToast(r.descrizione ? 'Nota del giorno salvata' : 'Nessun cambiamento da salvare', 'success');
+            this.mostraStato();
+        } catch (err) {
+            if (inSospeso && !this.attese.has(n.chiave)) this.attese.set(n.chiave, inSospeso);
+            napoliMostraErrore(err, form);
+            if (err.code === 'MESE_CHIUSO_LOTTO') { closeModal('napoli-modal-nota'); await this.carica(true); }
+        } finally {
+            setButtonLoading(pulsante, false);
+        }
+    },
+
+    // ---------- dettaglio della coppia nel mese ----------
+
+    async apriDettaglio(id) {
+        const d = this.dati;
+        const corpo = this.el('coppia-corpo');
+        const r = this.righe.get(id);
+        this.el('coppia-titolo').textContent = r ? `${r.alunno} con ${r.operatore}` : 'Dettaglio del mese';
+        this.el('coppia-anagrafica').href = r ? `/napoli/anagrafiche#alunno-${r.alunno_id}` : '/napoli/anagrafiche';
+        corpo.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+        openModal('napoli-modal-coppia');
+        await this.salvaInSospeso();
+        let x;
+        try {
+            x = await apiCall(`/api/napoli/lotti/${d.lotto.id}/presenze/coppie/${id}?anno=${d.anno}&mese=${d.mese}`);
+        } catch (e) {
+            corpo.innerHTML = `<div class="alert alert-danger">${escapeHtml(e.message || 'Dettaglio non disponibile')}</div>`;
+            return;
+        }
+        const c = x.coppia;
+        const cr = x.credito;
+        const chip = (etichetta, valore) => valore ? `<span class="napoli-chip">${escapeHtml(etichetta)} <strong>${escapeHtml(String(valore))}</strong></span>` : '';
+        let credito;
+        if (cr.nel_titolare) {
+            credito = `<p>Le ore di questa sostituzione contano nel credito/debito della riga del titolare (${escapeHtml(cr.nel_titolare.operatore)}).</p>`;
+        } else if (cr.previste === null) {
+            credito = '<p>Manca il PEI di questa figura (e la programmazione settimanale): il credito/debito non si calcola. Aggiungi il PEI nella scheda dell\'alunno.</p>';
+        } else {
+            const fonte = cr.stima
+                ? `<strong>stima dal PEI</strong>: le ore PEI della settimana ripartite sui ${cr.giorni_servizio} giorni di servizio del mese (lunedì-sabato, senza le chiusure), perché manca la programmazione settimanale`
+                : 'dalla programmazione settimanale, nei giorni di servizio del mese';
+            const cdClasse = cr.credito_debito >= 0 ? 'text-success' : 'text-danger';
+            credito = `<div class="napoli-numeri napoli-numeri-tre">
+                    <div class="napoli-numero-box"><span class="napoli-numero-valore">${cr.stima ? '≈ ' : ''}${escapeHtml(cr.previste_testo)}</span><span class="napoli-numero-etichetta">Ore previste</span></div>
+                    <div class="napoli-numero-box"><span class="napoli-numero-valore">${escapeHtml(cr.erogate_testo)}</span><span class="napoli-numero-etichetta">Ore riconosciute${x.sostituti.length ? ' (con i sostituti)' : ''}</span></div>
+                    <div class="napoli-numero-box"><span class="napoli-numero-valore ${cdClasse}">${cr.stima ? '≈ ' : ''}${escapeHtml(napoliOreDueForme(cr.credito_debito))}</span><span class="napoli-numero-etichetta">Credito/debito</span></div>
+                </div>
+                <p class="napoli-aiuto">Previste ${fonte}. Credito/debito = previste meno riconosciute, come in Rendicontazione: positivo (verde) = ore ancora dovute all'alunno, negativo (rosso) = ore in più.</p>`;
+        }
+        const settimane = x.settimane.map(s => `<tr>
+                <td>Settimana ${s.n}</td><td class="napoli-periodo">${escapeHtml(formatDataIT(s.dal).slice(0, 5))} - ${escapeHtml(formatDataIT(s.al).slice(0, 5))}</td>
+                <td class="napoli-numero">${escapeHtml(s.minuti_testo)}</td>
+                ${x.altre_coppie.length ? `<td class="napoli-numero">${escapeHtml(s.gruppo_testo)}</td>` : ''}
+                <td class="napoli-numero">${escapeHtml(s.pei_testo || '—')}</td><td class="napoli-numero">${escapeHtml(s.tetto_testo || '—')}</td>
+                <td>${s.colore === 'rosso' ? '<span class="badge badge-danger">Oltre il PEI + 20%</span>' : (s.colore === 'giallo' ? '<span class="badge badge-warning">Oltre il PEI</span>' : (s.pei ? '<span class="badge badge-success">Entro il PEI</span>' : ''))}</td>
+            </tr>`).join('');
+        const giorni = x.giorni.length ? x.giorni.map(g => `<tr>
+                <td class="napoli-periodo">${escapeHtml(g.giorno)}</td>
+                <td class="napoli-numero"><strong>${escapeHtml(g.scritto)}</strong></td>
+                <td class="napoli-numero">${escapeHtml(g.riconosciute_testo)}</td>
+                <td>${escapeHtml(g.spiegazione)}${g.nota ? `<div class="napoli-sotto-in">«${escapeHtml(g.nota)}»</div>` : ''}${g.avvisi.map(a => `<div class="napoli-sotto-in napoli-da-decidere">${escapeHtml(x.spiegazioni[a] || a)}</div>`).join('')}</td>
+                <td class="napoli-azioni">${!g.fuori_servizio && !x.mese.chiuso ? `<button type="button" class="btn btn-ghost btn-sm" data-nota-giorno="${escapeHtml(g.data)}" data-coppia="${c.id}">Nota</button>` : ''}</td>
+            </tr>`).join('') : '<tr><td colspan="5" class="napoli-vuoto">Nessun giorno scritto in questo mese.</td></tr>';
+        corpo.innerHTML = `
+            <div class="napoli-trovato">
+                ${chip('Figura', c.figura_nome)}${chip('Scuola', c.scuola)}${chip('Municipalità', c.municipalita)}
+                ${chip('Grado', NAPOLI_TESTI_GRADO[c.grado || 'da_decidere'])}${chip(c.quota ? 'Ore della coppia' : 'PEI', c.pei ? `${c.pei} h a settimana` : 'manca')}
+                ${chip('Ruolo', c.ruolo === 'sostituto' ? 'sostituto' : 'titolare')}${chip('Dal', formatDataIT(c.dal))}${c.al ? chip('Al', formatDataIT(c.al)) : ''}
+            </div>
+            <section class="napoli-sezione"><div class="napoli-sezione-testa"><h3>${escapeHtml(x.mese.testo)}: ${escapeHtml(x.totale_testo)} riconosciute</h3></div>${credito}</section>
+            <section class="napoli-sezione"><div class="napoli-sezione-testa"><h3>Settimane (VERIFICA)</h3></div>
+                <div class="table-container"><table class="table napoli-tabella-compatta"><thead><tr><th>Settimana</th><th>Giorni</th><th class="napoli-numero">Ore</th>${x.altre_coppie.length ? '<th class="napoli-numero">Con le altre coppie</th>' : ''}<th class="napoli-numero">PEI</th><th class="napoli-numero">Tetto</th><th></th></tr></thead><tbody>${settimane}</tbody></table></div>
+                ${x.altre_coppie.length ? `<p class="napoli-aiuto">La VERIFICA guarda l'alunno per la figura: insieme a ${x.altre_coppie.map(a => `${escapeHtml(a.operatore)} (${a.ruolo === 'sostituto' ? 'sostituto' : 'titolare'}, ${escapeHtml(a.totale_testo)})`).join(', ')}.</p>` : ''}
+            </section>
+            <section class="napoli-sezione"><div class="napoli-sezione-testa"><h3>Giorni</h3></div>
+                <div class="table-container"><table class="table napoli-tabella-compatta"><thead><tr><th>Giorno</th><th class="napoli-numero">Scritto</th><th class="napoli-numero">Riconosciute</th><th>Come si calcola</th><th></th></tr></thead><tbody>${giorni}</tbody></table></div>
+            </section>
+            ${x.foglio && x.foglio.note ? `<section class="napoli-sezione"><div class="napoli-sezione-testa"><h3>Note del foglio</h3></div><p>${escapeHtml(x.foglio.note)}</p></section>` : ''}
+            ${c.avvisi.length ? `<section class="napoli-sezione"><div class="napoli-sezione-testa"><h3>Avvisi</h3></div><ul class="napoli-elenco">${c.avvisi.map(a => `<li>${escapeHtml(x.spiegazioni[a] || a)}</li>`).join('')}</ul></section>` : ''}`;
+    },
+
+    // ---------- chiusura e riapertura del mese del lotto ----------
+
+    async apriMese() {
+        await this.salvaInSospeso();
+        const d = this.dati;
+        const form = this.el('form-mese');
+        napoliPulisciErrori(form);
+        const conferma = this.el('mese-conferma');
+        if (d.chiuso) {
+            this.el('mese-titolo').textContent = `Riapri ${formatMeseIT(`${d.anno}-${String(d.mese).padStart(2, '0')}`)}`;
+            form.innerHTML = `<p>Riaprendo il mese le ore di ${escapeHtml(d.lotto.nome)} si possono di nuovo cambiare. Il motivo resta nel registro attività.</p>
+                <div class="form-group"><label class="form-label" for="mese-motivo">Motivo della riapertura</label>
+                <input type="text" class="form-control" id="mese-motivo" data-campo="motivo" maxlength="200" autocomplete="off" placeholder="per esempio: correzione delle ore di una coppia"></div>
+                <p class="napoli-aiuto">Non scrivere dati personali o motivi di salute.</p>`;
+            conferma.textContent = 'Riapri il mese';
+        } else {
+            const righe = d.righe;
+            const senzaOre = righe.filter(r => !r.totale && !Object.keys(r.celle).length).length;
+            const conAvvisi = righe.filter(r => r.avvisi.length).length;
+            const nonRegistrati = righe.filter(r => r.avvisi.includes('giorno_non_registrato')).length;
+            const ore = righe.reduce((s, r) => s + r.totale, 0);
+            const voci = [
+                `${righe.length === 1 ? '1 coppia' : `${righe.length} coppie`}, ${napoliOreBrevi(ore)} ore riconosciute`,
+                senzaOre ? `${senzaOre === 1 ? '1 coppia' : `${senzaOre} coppie`} senza ore` : '',
+                nonRegistrati ? `${nonRegistrati === 1 ? '1 coppia' : `${nonRegistrati} coppie`} con giorni non registrati (valgono 0)` : '',
+                conAvvisi ? `${conAvvisi === 1 ? '1 riga' : `${conAvvisi} righe`} con avvisi (filtro «Solo con avvisi»)` : '',
+            ].filter(Boolean);
+            this.el('mese-titolo').textContent = `Chiudi ${formatMeseIT(`${d.anno}-${String(d.mese).padStart(2, '0')}`)}`;
+            form.innerHTML = `<p>Chiudendo il mese le ore, le note e le ore del coordinatore di ${escapeHtml(d.testo.toLowerCase())} di ${escapeHtml(d.lotto.nome)} non si cambiano più, nemmeno con Ctrl+Z. Si può riaprire scrivendo il motivo.</p>
+                <ul class="napoli-elenco">${voci.map(v => `<li>${escapeHtml(v)}</li>`).join('')}</ul>
+                <div class="form-group"><label class="form-label" for="mese-nota">Nota (facoltativa)</label>
+                <input type="text" class="form-control" id="mese-nota" data-campo="nota" maxlength="200" autocomplete="off"></div>`;
+            conferma.textContent = 'Chiudi il mese';
+        }
+        openModal('napoli-modal-mese');
+    },
+
+    async confermaMese() {
+        const d = this.dati;
+        const form = this.el('form-mese');
+        const riapri = d.chiuso;
+        const corpo = { anno: d.anno, mese: d.mese };
+        if (riapri) {
+            const motivo = this.el('mese-motivo');
+            if (!napoliCampoObbligatorio(motivo, 'Scrivi perché riapri il mese.')) return;
+            corpo.motivo = motivo.value.trim();
+        } else {
+            corpo.nota = this.el('mese-nota').value.trim();
+        }
+        const pulsante = this.el('mese-conferma');
+        setButtonLoading(pulsante, true);
+        try {
+            const r = await apiCall(`/api/napoli/lotti/${d.lotto.id}/mesi/${riapri ? 'riapri' : 'chiudi'}`, { method: 'POST', body: JSON.stringify(corpo) });
+            closeModal('napoli-modal-mese');
+            showToast(r.messaggio, 'success');
+            await this.carica(true);
+        } catch (e) {
+            napoliMostraErrore(e, form);
+        } finally {
+            setButtonLoading(pulsante, false);
+        }
+    },
+};
+
 window.NapoliComune = NapoliComune;
 window.NapoliProcedura = NapoliProcedura;
 window.NapoliMese = NapoliMese;
@@ -3473,3 +4582,4 @@ window.NapoliCoordinatore = NapoliCoordinatore;
 window.NapoliAnagrafiche = NapoliAnagrafiche;
 window.NapoliImport = NapoliImport;
 window.NapoliImpostazioni = NapoliImpostazioni;
+window.NapoliPresenze = NapoliPresenze;

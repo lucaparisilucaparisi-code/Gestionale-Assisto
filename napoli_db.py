@@ -35,10 +35,10 @@ MAX_ANNULLAMENTI = 50
 TABELLE_ANNULLABILI = {'lotti': 'id', 'contratti': 'id', 'tariffe': 'id', 'regole': 'id',
                        'alias_qualifiche': 'testo', 'impostazioni': 'chiave',
                        'scuole': 'id', 'alunni': 'id', 'operatori': 'id', 'coppie': 'id', 'pei': 'id',
-                       'coordinamento': 'id'}
-# Tabelle con righe di un mese del lotto: Ctrl+Z non le cambia se nel frattempo il mese e'
-# stato chiuso (come le scritture: 409 MESE_CHIUSO_LOTTO).
-TABELLE_DEL_MESE = ('coordinamento',)
+                       'coordinamento': 'id', 'presenze': 'id'}
+# Tabelle con righe di un mese del lotto (con anno e mese, o con la data): Ctrl+Z non le
+# cambia se nel frattempo il mese e' stato chiuso (come le scritture: 409 MESE_CHIUSO_LOTTO).
+TABELLE_DEL_MESE = ('coordinamento', 'presenze')
 # Dati personali che la memoria di Ctrl+Z non salva mai (PROGETTO D11: codici fiscali e
 # nomi non stanno negli annullamenti): delle righe di queste tabelle si salvano solo le
 # altre colonne. Un'azione che li cambia o che elimina la persona non si annulla con
@@ -50,8 +50,9 @@ MOTIVO_DATI_PERSONALI = ('per la riservatezza nome, cognome, codice fiscale e no
 # Testo libero di coppie e PEI (le note, la nota "da dove viene" del PEI): potrebbe avere un
 # nome o un dato sanitario scritto per sbaglio, quindi come i dati personali non resta nella
 # memoria di Ctrl+Z. Una modifica che lo cambia non si annulla; una riga eliminata torna con
-# Ctrl+Z senza questo testo.
-COLONNE_TESTO_LIBERO = {'coppie': ('note',), 'pei': ('fonte',)}
+# Ctrl+Z senza questo testo. Lo stesso per la descrizione libera della nota di un giorno
+# della griglia presenze (dove si potrebbe scrivere per sbaglio un motivo di salute).
+COLONNE_TESTO_LIBERO = {'coppie': ('note',), 'pei': ('fonte',), 'presenze': ('nota',)}
 MOTIVO_TESTO_LIBERO = ('per la riservatezza le note di prima non restano in memoria. Se hai sbagliato, correggile '
                        'di nuovo dalla scheda')
 # Tabelle con dati di un lotto che impediscono di eliminarlo (oltre a contratti, tariffe e regole).
@@ -319,16 +320,28 @@ def _ripristina(conn, voce):
         conn.execute(f'INSERT INTO napoli_{tabella} ({nomi}) VALUES ({segnaposto})', tuple(valori.values()))
 
 
+def _mese_della_riga(riga):
+    """(lotto, anno, mese) di una riga di TABELLE_DEL_MESE: con anno e mese (ore del
+    coordinatore) o con la data (presenze)."""
+    if riga.get('anno') is not None and riga.get('mese') is not None:
+        return riga['lotto_id'], int(riga['anno']), int(riga['mese'])
+    giorno = calc.data(riga['data'])
+    return riga['lotto_id'], giorno.year, giorno.month
+
+
 def _controlla_mesi_chiusi(conn, voci):
     """Ctrl+Z non cambia le righe di un mese chiuso del lotto (TABELLE_DEL_MESE)."""
     for voce in voci:
         if not isinstance(voce, dict) or voce.get('tabella') not in TABELLE_DEL_MESE:
             continue
-        riga = voce.get('prima') or _riga(conn, f'SELECT lotto_id, anno, mese FROM napoli_{voce["tabella"]} '
-                                                f'WHERE id = ?', (voce.get('chiave'),))
-        if riga and conn.execute('SELECT 1 FROM napoli_mesi_chiusi WHERE lotto_id = ? AND anno = ? AND mese = ?',
-                                 (riga['lotto_id'], riga['anno'], riga['mese'])).fetchone():
-            raise Conflitto(f'Non si può annullare: {calc.MESI[riga["mese"] - 1].lower()} {riga["anno"]} è stato '
+        riga = voce.get('prima') or _riga(conn, f'SELECT * FROM napoli_{voce["tabella"]} WHERE id = ?',
+                                          (voce.get('chiave'),))
+        if not riga:
+            continue
+        lotto_id, anno, mese = _mese_della_riga(riga)
+        if conn.execute('SELECT 1 FROM napoli_mesi_chiusi WHERE lotto_id = ? AND anno = ? AND mese = ?',
+                        (lotto_id, anno, mese)).fetchone():
+            raise Conflitto(f'Non si può annullare: {calc.MESI[mese - 1].lower()} {anno} è stato '
                             'chiuso nel frattempo. Per correggere bisogna prima riaprire il mese.',
                             codice='MESE_CHIUSO_LOTTO')
 
@@ -365,7 +378,16 @@ def _chi(conn, voci):
     Ctrl+Z non ha nomi): solo per la finestra di conferma, mai salvato."""
     # prima le persone; le scuole no: il nome della scuola e' gia' nella descrizione
     ordine = ('alunni', 'operatori', 'coppie', 'pei')
-    voci = [v for v in voci if isinstance(v, dict) and v.get('tabella') in ordine] if isinstance(voci, list) else []
+    voci = [v for v in voci if isinstance(v, dict)] if isinstance(voci, list) else []
+    giorni = [v for v in voci if v.get('tabella') == 'presenze']
+    if giorni and len(giorni) == len(voci):
+        # giorni della griglia presenze: il nome della coppia, solo se sono tutti della stessa
+        coppie = {(_riga(conn, 'SELECT coppia_id FROM napoli_presenze WHERE id = ?', (v.get('chiave'),))
+                   or v.get('prima') or {}).get('coppia_id') for v in giorni}
+        if len(coppie) != 1 or None in coppie:
+            return ''
+        voci = [{'tabella': 'coppie', 'chiave': coppie.pop()}]
+    voci = [v for v in voci if v.get('tabella') in ordine]
     for v in sorted(voci, key=lambda v: ordine.index(v['tabella'])):
         tabella, chiave = v['tabella'], v.get('chiave')
         riga = _riga(conn, f'SELECT * FROM napoli_{tabella} WHERE id = ?', (chiave,)) or v.get('prima') or {}

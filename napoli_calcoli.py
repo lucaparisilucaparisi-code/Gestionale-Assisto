@@ -1028,6 +1028,177 @@ def confronta_programmazione(minuti_settimana, ore_attese):
             'differenza': int(minuti_settimana) - attesi}
 
 
+# ==================== griglia presenze (passo 1.7, §5.1-§5.3, REGOLE 1, 2, 12, 15) ====================
+
+# Nota del giorno della griglia: che cosa e' successo e la causale che ne viene.
+# Assemblee, eventi e uscite: contano le ore svolte (REGOLE 2). Ritardo o uscita anticipata
+# dell'alunno (con l'orario): ore svolte + meta' della parte persa (REGOLE 12, Q2).
+TIPI_NOTA_GIORNO = {
+    'evento': 'evento',
+    'attivita_esterna': 'attivita_esterna',
+    'ritardo': 'alunno_parziale',
+    'uscita_anticipata': 'alunno_parziale',
+}
+# Tipi che hanno bisogno dell'orario ("entrato alle 9:00", "uscito alle 12:00").
+TIPI_NOTA_CON_ORA = ('ritardo', 'uscita_anticipata')
+# Come si vede la sigla nella casella (stretta): il permesso "F perm" del master e' "P".
+SIGLE_CELLA = {'F': 'F', 'M': 'M', 'F perm': 'P', 'A': 'A'}
+
+
+def testo_ore_cella(min_):
+    """I minuti di una casella della griglia scritti come nel master, in ore decimali, se
+    sono quarti d'ora (90 -> '1,5', 45 -> '0,75', 120 -> '2'); altrimenti in ore e minuti
+    (80 -> '1:20'), che si rileggono uguali (un '1,33' sarebbe da confermare)."""
+    min_ = int(min_)
+    if min_ % 15:
+        return hhmm(min_)
+    testo = numero_it(Decimal(min_) / SESSANTA)
+    return testo.rstrip('0').rstrip(',') if ',' in testo else testo
+
+
+def ore_brevi(min_):
+    """Minuti in ore decimali al centesimo senza zeri inutili, per i totali della griglia
+    (VERIFICA, totale del mese, credito/debito): 750 -> '12,5', 80 -> '1,33', -90 -> '-1,5'."""
+    segno = '-' if int(min_) < 0 else ''
+    testo = numero_it(ore_decimali(abs(int(min_))))
+    return segno + (testo.rstrip('0').rstrip(',') if ',' in testo else testo)
+
+
+def tipo_nota_da_causale(causale):
+    """Il tipo di nota di un giorno scritto senza la nota della griglia (dal foglio firma,
+    per esempio): evento, attivita_esterna, ritardo (ingresso posticipato o uscita
+    anticipata) o None."""
+    if causale in ('evento', 'attivita_esterna'):
+        return causale
+    return 'ritardo' if causale == 'alunno_parziale' else None
+
+
+def giorno_da_griglia(testo, conferma=None, minuti_programmati=None, nota_tipo=None, recuperata=False,
+                      regole=None):
+    """Una casella della griglia presenze, con la nota del giorno, diventa i campi della
+    presenza (napoli_presenze) con le sue ore riconosciute (esito_giorno).
+
+    testo: come in leggi_ore_griglia (ore svolte '2', '1,5', '1:30'; sigle F, M, P/F perm
+    dell'operatore; A = alunno assente); conferma: la lettura scelta per un valore ambiguo
+    ('1,30'); minuti_programmati: il programmato P del giorno (None se non si conosce);
+    nota_tipo: una chiave di TIPI_NOTA_GIORNO o None; recuperata: l'assenza (intera o
+    parziale) dell'alunno e' stata recuperata, quindi niente meta' (REGOLE 1).
+    Una nota senza ore scritte vale un giorno registrato con 0 ore svolte.
+
+    Ritorna {'esito', 'codice', 'campi', 'esito_giorno', 'lettura'}; esito:
+    - 'vuoto': casella vuota e nessuna nota (la presenza si cancella);
+    - 'da_confermare': valore ambiguo, con 'lettura' (domanda e alternative);
+    - 'servono_programmati': per la meta' (alunno assente, in ritardo o uscito prima)
+      serve P, che non si conosce;
+    - 'errore': codice sigla_sconosciuta, ore_giorno_oltre_12, nota_sconosciuta,
+      assente_e_parziale, operatore_e_parziale, recupero_senza_assenza,
+      programmati_non_validi, svolte_oltre_il_programmato;
+    - 'ore': 'campi' = stato, calcolo, minuti_programmati, minuti_svolti, causale,
+      trattamento, sigla, minuti_riconosciuti (con i limiti delle regole)."""
+    def errore(codice, lettura=None):
+        return {'esito': 'errore', 'codice': codice, 'campi': None, 'esito_giorno': None, 'lettura': lettura}
+
+    if nota_tipo is not None and nota_tipo not in TIPI_NOTA_GIORNO:
+        return errore('nota_sconosciuta')
+    if minuti_programmati is not None and not 0 <= int(minuti_programmati) <= _r(regole, 'max_minuti_giorno_blocco'):
+        return errore('programmati_non_validi')
+    p = None if minuti_programmati is None else int(minuti_programmati)
+    lettura = leggi_ore_griglia(testo, conferma, p, regole)
+    if lettura['esito'] == 'errore':
+        return errore(lettura['codice'], lettura)
+    if lettura['esito'] == 'da_confermare':
+        return {'esito': 'da_confermare', 'codice': lettura['codice'], 'campi': None, 'esito_giorno': None,
+                'lettura': lettura}
+    if lettura['esito'] == 'vuoto' and nota_tipo is None:
+        return {'esito': 'vuoto', 'codice': None, 'campi': None, 'esito_giorno': None, 'lettura': lettura}
+    causale_cella = lettura['causale']                  # operatore_*, alunno_assente o None
+    causale_nota = TIPI_NOTA_GIORNO.get(nota_tipo)
+    if causale_nota == 'alunno_parziale' and causale_cella == 'alunno_assente':
+        return errore('assente_e_parziale', lettura)
+    if causale_nota == 'alunno_parziale' and causale_cella and causale_cella.startswith('operatore_'):
+        return errore('operatore_e_parziale', lettura)
+    causale = causale_prevalente([causale_cella, causale_nota])
+    if recuperata and not (causale or '').startswith('alunno_'):
+        return errore('recupero_senza_assenza', lettura)
+    svolti = lettura['minuti'] if lettura['esito'] == 'ore' else 0
+    if svolti > _r(regole, 'max_minuti_giorno_blocco'):
+        return errore('ore_giorno_oltre_12', lettura)
+    trattamento = None
+    if (causale or '').startswith('alunno_'):
+        quota = _r(regole, 'quota_assenza_alunno')
+        trattamento = 'recupero' if recuperata else trattamento_predefinito(
+            quota, _r(regole, 'trattamento_alunno_predefinito'))
+        if trattamento == 'meta' and p is None:
+            return {'esito': 'servono_programmati', 'codice': 'servono_minuti_programmati', 'campi': None,
+                    'esito_giorno': None, 'lettura': lettura}
+        if causale == 'alunno_parziale' and trattamento == 'meta' and svolti > p:
+            return errore('svolte_oltre_il_programmato', lettura)
+    esito = esito_giorno(minuti_programmati=p or 0, minuti_svolti=svolti, causale=causale, trattamento=trattamento,
+                         regole=regole)
+    campi = {'stato': 'registrato', 'calcolo': 'auto', 'minuti_programmati': p or 0, 'minuti_svolti': svolti,
+             'causale': causale, 'trattamento': esito['trattamento'],
+             'sigla': lettura['sigla'], 'minuti_riconosciuti': esito['minuti']}
+    return {'esito': 'ore', 'codice': None, 'campi': campi, 'esito_giorno': esito, 'lettura': lettura}
+
+
+def pei_alla_data(pei, giorno):
+    """Ore PEI settimanali valide in un giorno: un numero (vale sempre) oppure periodi
+    {'ore_settimanali', 'valido_da', 'valido_a'} (il piu' recente che vale). None se manca."""
+    if pei is None or isinstance(pei, (int, float, Decimal, str)):
+        return None if pei in (None, '') else decimale(pei)
+    giorno = data(giorno)
+    validi = [x for x in pei if _valida_nella_data(x, giorno)]
+    if not validi:
+        return None
+    return decimale(max(validi, key=lambda x: data(x['valido_da']))['ore_settimanali'])
+
+
+def minuti_previsti(giorni, orari=(), pei=None, giorni_servizio=None):
+    """Ore PREVISTE di una coppia in un mese, per il credito/debito di Napoli (REGOLE 15).
+
+    giorni: i giorni di servizio della coppia nel mese, gia' senza le chiusure del
+    calendario e senza i giorni fuori dalle date della coppia.
+    - Con la programmazione settimanale (orari: righe con 'giorno' 0-5, ora_inizio,
+      ora_fine e validita'; basta una fascia valida in un giorno del mese): la somma delle
+      fasce del giorno della settimana valide in ciascun giorno. fonte 'programmazione'.
+    - Altrimenti, con il PEI (numero o periodi, vedi pei_alla_data): il PEI settimanale
+      ripartito sui giorni di servizio della settimana (lun-sab: 6), cioe' PEI / 6 per ogni
+      giorno, sommato e arrotondato al minuto. fonte 'pei', stima True: la pagina lo dice
+      ("stima dal PEI").
+    - Senza tutte e due: minuti None, fonte None.
+    Ritorna {'minuti', 'fonte', 'stima'}."""
+    giorni = [data(d) for d in giorni]
+    validi = [o for o in (orari or ()) if any(_valida_nella_data(o, d) for d in giorni)]
+    if validi:
+        tot = 0
+        for d in giorni:
+            fasce = [o for o in validi if int(o['giorno']) == d.weekday() and _valida_nella_data(o, d)]
+            tot += durata(fasce) if fasce else 0
+        return {'minuti': tot, 'fonte': 'programmazione', 'stima': False}
+    if pei in (None, '') or (not isinstance(pei, (int, float, Decimal, str)) and not list(pei)):
+        return {'minuti': None, 'fonte': None, 'stima': False}
+    servizio = _r(None, 'giorni_servizio') if giorni_servizio is None else giorni_servizio
+    n = len(set(servizio)) or 1
+    tot, trovato = Decimal(0), not giorni         # senza giorni (tutti chiusi): 0 previste
+    for d in giorni:
+        ore = pei_alla_data(pei, d)
+        if ore is not None:
+            trovato = True
+            tot += Decimal(minuti_pei(ore)) / n
+    if not trovato:
+        return {'minuti': None, 'fonte': None, 'stima': False}
+    return {'minuti': int(tot.quantize(UNO, rounding=ROUND_HALF_UP)), 'fonte': 'pei', 'stima': True}
+
+
+def credito_debito(previste, erogate):
+    """Credito/debito ore di Napoli (REGOLE 15), con la convenzione della Rendicontazione di
+    Roma: previste - erogate (ore riconosciute). Positivo = ore ancora dovute all'alunno,
+    negativo = ore in piu'. None se le previste non si conoscono."""
+    if previste is None:
+        return None
+    return int(previste) - int(erogate or 0)
+
+
 # ==================== fattura (§5.4) ====================
 
 def periodo_fattura(anno, mese, valido_da, valido_a):

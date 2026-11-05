@@ -20,6 +20,9 @@ codice fiscale finirebbe nei log): la pagina chiede gli elenchi con una POST
 (/api/napoli/lotti/<id>/anagrafiche/elenco); la GET degli elenchi ha solo i filtri.
 Passo 1.8: ore del coordinatore nella scheda Mese (napoli_coordinamento): un totale
 mensile per lotto, grado e contratto applicativo.
+Passo 1.7: scheda Presenze (/napoli/presenze): la griglia del mese del lotto come il master
+del Comune, con il salvataggio a gruppi delle caselle, la nota del giorno, il dettaglio di
+una coppia e la chiusura e la riapertura del mese del lotto (napoli_presenze).
 """
 import json
 import logging
@@ -32,6 +35,7 @@ import import_napoli
 import napoli_anagrafiche as anagrafiche
 import napoli_coordinamento as coordinamento
 import napoli_db
+import napoli_presenze as presenze
 
 napoli_bp = Blueprint('napoli', __name__)
 logger = logging.getLogger('oepac.napoli')   # nel file di log del programma
@@ -99,6 +103,13 @@ def mese_page():
     """Scheda Mese: con un lotto i controlli per la fattura; senza, "Crea il primo lotto"."""
     _pulisci_annullamenti()
     return render_template('napoli_mese.html')
+
+
+@napoli_bp.route('/napoli/presenze')
+def presenze_page():
+    """Scheda Presenze: la griglia del mese del lotto (una riga per coppia, un giorno per colonna)."""
+    _pulisci_annullamenti()
+    return render_template('napoli_presenze.html')
 
 
 @napoli_bp.route('/napoli/impostazioni')
@@ -198,6 +209,36 @@ def api_coordinamento(lotto_id):
 def api_salva_coordinamento(lotto_id):
     """Ore (e nota) del coordinatore di un mese, contratto e grado; ore vuote = tolte."""
     return _ok(**coordinamento.salva(lotto_id, _dati()))
+
+
+# ==================== griglia presenze e mese del lotto (passo 1.7) ====================
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/presenze', methods=['GET'])
+def api_presenze(lotto_id):
+    """La griglia del mese (?anno=&mese=): colonne, una riga per coppia, filtri."""
+    return jsonify(presenze.griglia(lotto_id, request.args.get('anno'), request.args.get('mese')))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/presenze', methods=['POST'])
+def api_salva_presenze(lotto_id):
+    """Un gruppo di caselle (salvataggio automatico, nota del giorno, incolla)."""
+    return _ok(**presenze.salva_celle(lotto_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/presenze/coppie/<int:coppia_id>', methods=['GET'])
+def api_dettaglio_presenze(lotto_id, coppia_id):
+    """Il dettaglio di una coppia nel mese: giorni spiegati, settimane, credito/debito."""
+    return jsonify(presenze.dettaglio(lotto_id, coppia_id, request.args.get('anno'), request.args.get('mese')))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/mesi/chiudi', methods=['POST'])
+def api_chiudi_mese(lotto_id):
+    return _ok(**presenze.chiudi_mese(lotto_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/mesi/riapri', methods=['POST'])
+def api_riapri_mese(lotto_id):
+    return _ok(**presenze.riapri_mese(lotto_id, _dati()))
 
 
 # ==================== contratti applicativi ====================

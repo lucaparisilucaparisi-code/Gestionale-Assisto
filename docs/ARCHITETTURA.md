@@ -337,7 +337,10 @@ dati inventati:
   un operatore omonimi di Roma: scuola, PEI con il cambio da una data, coppia, sostituto,
   subentro, chiusura, modifiche, archiviazione e ripristino; dal passo 1.8 le ore del
   coordinatore di ottobre 2025, scritte, cambiate e annullate con le loro API prima che il
-  mese si chiuda; ogni passo di
+  mese si chiuda; dal passo 1.7 la griglia presenze di novembre 2025 (ore, sigle, alunno
+  assente con la meta' dalla programmazione, "1,30" da confermare, ritardo con l'orario,
+  uscita didattica, assenza recuperata, Ctrl+Z) e la chiusura del mese del lotto (chiuso,
+  scrittura rifiutata, riaperto con il motivo, richiuso); ogni passo di
   Napoli sposta i suoi dati sulle sue API), poi di nuovo la fotografia, che deve
   essere uguale; tabelle di Roma (schema e righe; del registro attivita' le voci non
   `napoli%`, nel loro ordine e senza il loro `id`, che le voci di Napoli scritte prima
@@ -383,9 +386,9 @@ Il servizio di Napoli sta in tabelle `napoli_*` proprie, nello stesso database:
 nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
 
 - **Schema**: `napoli_schema.py` contiene solo il DDL (non importa `database`).
-  `database.py` lo registra nel runner delle migrazioni: `SCHEMA_VERSION = 5`,
+  `database.py` lo registra nel runner delle migrazioni: `SCHEMA_VERSION = 6`,
   `MIGRAZIONI = {2: napoli_schema.crea_v2, 3: napoli_schema.crea_v3, 4: napoli_schema.crea_v4,
-  5: napoli_schema.crea_v5}`;
+  5: napoli_schema.crea_v5, 6: napoli_schema.crea_v6}`;
   e' l'unica modifica dello schema dal lato di Roma. `crea_v2` crea le 22 tabelle della fase 1
   (lotti, scuole, alunni, operatori, PEI, coppie operatore-alunno, contratti
   applicativi, tariffe e regole con data, calendario, orari, fogli firma, import,
@@ -401,20 +404,24 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   riferimento amministrativo del lotto). `crea_v5` (passo 1.6, Anagrafiche) aggiunge
   `modificato_il` a scuole, alunni, operatori, coppie e PEI (l'ultima scrittura a mano
   nella scheda Anagrafiche; vuoto = mai toccata a mano, l'import non la riempie) e
-  `archiviato_dal` agli operatori, solo se mancano. La banca ore della fase 2 (PROGETTO
-  §4.3, la' chiamata v3) sara' quindi la migrazione 6 (`crea_v6`).
+  `archiviato_dal` agli operatori, solo se mancano. `crea_v6` (passo 1.7, griglia presenze)
+  aggiunge a `napoli_presenze` il tipo della nota del giorno (`nota_tipo`: `evento`,
+  `attivita_esterna`, `ritardo`, `uscita_anticipata`, controllato in Python come le causali,
+  `napoli_calcoli.TIPI_NOTA_GIORNO`) e l'orario del ritardo o dell'uscita (`nota_ora`), solo se
+  mancano; la descrizione libera resta in `nota`. La banca ore della fase 2 (PROGETTO §4.3,
+  la' chiamata v3) sara' quindi la migrazione 7 (`crea_v7`).
 - **Migrazioni gia' pubblicate non si cambiano**: un database puo' essere gia' a
   quella versione e rieseguirla non lo correggerebbe. `test_la_migrazione_2_pubblicata_non_cambia`,
-  `test_la_migrazione_3_pubblicata_non_cambia`, `test_la_migrazione_4_pubblicata_non_cambia`
-  e `test_la_migrazione_5_pubblicata_non_cambia` fissano le impronte di `crea_v2`, `crea_v3`,
-  `crea_v4` e `crea_v5`; ogni correzione e' una migrazione nuova, sicura anche su un database gia'
+  `test_la_migrazione_3_pubblicata_non_cambia`, `test_la_migrazione_4_pubblicata_non_cambia`,
+  `test_la_migrazione_5_pubblicata_non_cambia` e `test_la_migrazione_6_pubblicata_non_cambia`
+  fissano le impronte di `crea_v2`, `crea_v3`, `crea_v4`, `crea_v5` e `crea_v6`; ogni correzione e' una migrazione nuova, sicura anche su un database gia'
   aggiornato e con dati (`crea_v4` aggiunge la colonna solo se manca): `crea_v3` ricostruisce
   `napoli_coordinamento` (nuova tabella, copia, `DROP`, `RENAME`, nella stessa
   transazione; le righe della v2, una per operatore, diventano il totale del mese)
   solo se ha ancora la forma della v2, e aggiunge le colonne di `napoli_fatture`
   solo se mancano (`PRAGMA table_info`).
 - **Aggiornamento**: all'avvio, dopo il backup "pre-aggiornamento", un database con
-  `user_version` 1 (v1.20.1 e precedenti), 2, 3 o 4 passa a 5. Le migrazioni mancanti
+  `user_version` 1 (v1.20.1 e precedenti), 2, 3, 4 o 5 passa a 6. Le migrazioni mancanti
   girano in un'unica transazione (se si interrompe non resta nulla a meta') e si
   possono rieseguire senza danni (`IF NOT EXISTS`, `INSERT OR IGNORE`, controlli
   sulla forma delle tabelle). Il ripristino di un backup della v1.20.1 aggiorna
@@ -485,7 +492,8 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   numero e grado del contratto, per esempio «XI (grado inferiore)»; una tariffa lasciata
   vuota apposta, senza proposta come quella dell'interprete LIS, e' un avviso solo se nel
   lotto ci sono coppie o ore di quella figura; sotto, le **ore del coordinatore**, passo
-  1.8: vedi il punto "Ore del coordinatore"), **Anagrafiche** (`/napoli/anagrafiche`,
+  1.8: vedi il punto "Ore del coordinatore"), **Presenze** (`/napoli/presenze`, passo 1.7:
+  vedi il punto "Griglia presenze"), **Anagrafiche** (`/napoli/anagrafiche`,
   passo 1.6: vedi il punto "Anagrafiche"), **Importa**
   (`/napoli/import`, l'anagrafica dal file Excel "master") e **Impostazioni**
   (`/napoli/impostazioni`, una parte alla volta, `#lotto`, `#contratti`...): dati della
@@ -544,12 +552,14 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     libero di coppie e PEI (`COLONNE_TESTO_LIBERO`: le note della coppia, la nota "da dove
     viene" del PEI, dove potrebbe finire per sbaglio un nome o un dato sanitario): non si
     salva, cambiarlo non si annulla (`MOTIVO_TESTO_LIBERO`) e una coppia o un PEI eliminati
-    tornano con Ctrl+Z senza (la risposta lo dice). Ctrl+Z non cambia le righe di un mese
-    chiuso del lotto (`TABELLE_DEL_MESE`, oggi le ore del coordinatore: 409
-    `MESE_CHIUSO_LOTTO`). Le descrizioni non hanno nomi
+    tornano con Ctrl+Z senza (la risposta lo dice); lo stesso per la descrizione libera della
+    nota del giorno delle presenze. Ctrl+Z non cambia le righe di un mese chiuso del lotto
+    (`TABELLE_DEL_MESE`: le ore del coordinatore, con anno e mese, e le presenze, con la data:
+    409 `MESE_CHIUSO_LOTTO`). Le descrizioni non hanno nomi
     ("Modifica di un alunno (scheda n. 12): grado"); il nome per la finestra di conferma si
-    legge al momento dalle anagrafiche (`chi`, solo di persone, coppie e PEI: il nome di una
-    scuola e' gia' nella descrizione), mai salvato. Prima di chiedere conferma la pagina
+    legge al momento dalle anagrafiche (`chi`, solo di persone, coppie e PEI, e dei giorni della
+    griglia se sono tutti della stessa coppia: il nome di una scuola e' gia' nella
+    descrizione), mai salvato. Prima di chiedere conferma la pagina
     salva le caselle ancora in sospeso (`NapoliComune.primaDiAnnullare`). Le azioni
     scadute restano solo con la descrizione (senza valori): le righe di prima, IBAN
     compreso, si tolgono (`dati = '{}'`) a ogni nuova azione, a Ctrl+Z e all'apertura
@@ -587,7 +597,9 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     creati o "aggiunto in Assisto"), PEI per figura con lo storico e la riga in vigore,
     coppie (con titolare dei sostituti, ore della coppia o del PEI, ore, fogli e orari
     collegati); nella scheda dell'alunno lo spazio del **credito/debito** di Napoli
-    (REGOLE 15: "disponibile quando inserirai le ore", si calcola dal passo 1.7);
+    (REGOLE 15): dal passo 1.7 il credito/debito del mese di ogni coppia e' nella griglia
+    presenze e nel dettaglio della coppia, e lo spazio lo dice; il riepilogo per figura, nel
+    mese e dall'inizio dell'anno, arriva con un passo successivo;
   - scritture con i controlli lato server e `{error, code, campo}`: scuole (nome,
     codice meccanografico di 10 caratteri, municipalita' 1-10, grado o da decidere; lo
     stesso codice o, senza codice, lo stesso nome nella stessa municipalita' e' 409
@@ -651,6 +663,90 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     e frecce come in Rendicontazione, il messaggio del server sotto la riga, le caselle di
     un mese chiuso bloccate. Le ore entrano nella riga «Coordinatore» della fattura
     (`righe_fattura`, con la tariffa COORDINATORE del periodo), che arriva al passo 1.9.
+- **Griglia presenze** (scheda **Presenze**, `/napoli/presenze`; passo 1.7, `napoli_presenze.py`,
+  PROGETTO §5-§6, REGOLE 1-3, 12, 14, 15): il mese del lotto come il foglio "master" del
+  Comune. Le ore si scrivono qui da ora in avanti (REGOLE 14: nessuno storico); ogni casella e'
+  un giorno di `napoli_presenze` (l'unica fonte delle ore), con le ore riconosciute calcolate
+  e salvate (`minuti_riconosciuti`: la fattura legge quelle).
+  - `GET /api/napoli/lotti/<id>/presenze?anno=&mese=`: intestazione (mese chiuso con data e
+    nota, `finito` dall'ultimo giorno, oggi), colonne (`napoli_calcoli.colonne_mese`: i giorni
+    di servizio lun-sab, senza domeniche, con le chiusure del calendario del lotto, gli eventi
+    e i giorni futuri, e la VERIFICA dopo ogni settimana), una riga per coppia valida nel mese
+    o con ore nel mese (alunno, operatore, figura, ore PEI o quota della coppia, SI/NO del
+    sostituto, scuola e municipalita' della scuola, grado), le caselle in forma corta (`t`
+    testo come nel master, `k` tipo, `r` minuti riconosciuti, `c` riconosciute nell'angolo se
+    diverse dal testo, `p` programmati, nota, avvisi, `bl` registrato dal foglio firma con gli
+    orari), i giorni fuori dalle date della coppia e le chiusure della scuola, le settimane, il
+    totale, il credito/debito, gli avvisi spiegati e i filtri. Con 330 coppie per 27 giorni la
+    risposta e' di circa 0,3 s e la pagina e' pronta in meno di un secondo e mezzo
+    (`test_330_coppie_si_caricano_in_meno_di_2_secondi`);
+  - caselle (`napoli_calcoli.giorno_da_griglia`, funzione pura): come `leggi_ore_griglia`
+    (ore decimali, ore e minuti, sigle F, M, P/F perm dell'operatore a 0 ore, A alunno
+    assente; "1,30" e gli altri decimali che non sono quarti d'ora tornano `da_confermare` con
+    le due letture, e si salvano con `conferma`); A vale `quota_assenza_alunno` x il
+    programmato del giorno (dalla presenza o dalla programmazione settimanale della coppia;
+    se non si conosce torna `servono_programmati` e la pagina chiede le ore programmate); vuoto
+    = la presenza si cancella (un giorno preparato dalla programmazione torna "programmato").
+    La **nota del giorno** (`TIPI_NOTA_GIORNO`): assemblea o evento ed uscita didattica
+    contano le ore svolte (REGOLE 2, causali `evento` e `attivita_esterna`, che vincono
+    sull'assenza dell'alunno), ritardo e uscita anticipata con l'orario contano le ore svolte
+    piu' `quota_assenza_parziale` della parte persa (REGOLE 12, causale `alunno_parziale`; le
+    svolte non possono superare il programmato), "assenza recuperata" toglie la meta'
+    (REGOLE 1, trattamento `recupero`); una descrizione libera facoltativa (100 caratteri,
+    codici fiscali mascherati). Una nota senza ore vale un giorno registrato con 0 ore svolte.
+    La casella si mostra come nel master (`testo_ore_cella`: 90 -> "1,5", 80 -> "1:20", che si
+    rilegge uguale); i totali in ore decimali (`ore_brevi`);
+  - `POST /api/napoli/lotti/<id>/presenze` (anno, mese, `celle`: coppia, data e i campi che
+    cambiano: `testo`, `conferma`, `programmati`, `nota_tipo`, `nota_ora`, `nota`,
+    `recuperata`; un campo che non arriva resta com'e'; al massimo 2.000 caselle): il
+    salvataggio a gruppi. Le caselle che non si salvano tornano con il loro esito e il
+    messaggio da mostrare (`errore` con il codice, `da_confermare`, `servono_programmati`) e
+    le altre si salvano lo stesso; si rifiutano i giorni non di servizio, futuri
+    (`GIORNO_FUTURO`), fuori dalle date della coppia (`FUORI_DALLE_DATE`), registrati dal
+    foglio firma con gli orari (`DAL_FOGLIO`), oltre 12 ore, le sigle sconosciute; il mese
+    chiuso del lotto rifiuta tutto (409 `MESE_CHIUSO_LOTTO`). Ogni salvataggio con cambiamenti
+    e' un'azione di Ctrl+Z di Napoli («Griglia presenze di ottobre 2026: 2 caselle (1 scritta,
+    1 cambiata)», `presenze` in `TABELLE_ANNULLABILI`; la descrizione libera non resta in
+    memoria: cambiarne una che c'era non si annulla, una casella cancellata torna senza) e una
+    voce del registro attivita' senza nomi. La risposta ha le righe ricalcolate dello stesso
+    alunno (la VERIFICA e il credito/debito cambiano anche nelle righe del titolare e dei
+    sostituti);
+  - **VERIFICA** per alunno e figura (titolari piu' sostituti, `verifica_settimane`): gialla
+    oltre il PEI, rossa oltre il tetto (PEI x 1,2); ogni riga mostra le sue ore della
+    settimana, il colore e' quello del gruppo;
+  - **credito/debito** (REGOLE 15, `napoli_calcoli.minuti_previsti` e `credito_debito`):
+    previste = la programmazione settimanale della coppia nei giorni di servizio validi (senza
+    chiusure e giorni fuori dalle date) oppure, se manca, il PEI (o la quota della coppia)
+    diviso per i 6 giorni di servizio della settimana per ogni giorno, con l'avviso "stima dal
+    PEI" (≈); erogate = ore riconosciute della coppia e dei suoi sostituti (le righe dei
+    sostituti rimandano a quella del titolare); credito_debito = previste - erogate, con la
+    convenzione e i colori della Rendicontazione di Roma (positivo verde = ore ancora dovute
+    all'alunno, negativo rosso). Senza PEI e senza programmazione non si calcola (avviso
+    `pei_mancante`);
+  - `GET /api/napoli/lotti/<id>/presenze/coppie/<coppia>?anno=&mese=`: il dettaglio della
+    coppia nel mese (giorni con la spiegazione del calcolo, «Alunno assente: meta' delle 3:00
+    programmate = 1:30 (1,50)», settimane con PEI e tetto, previste ed erogate, sostituti);
+  - **chiusura del mese del lotto** (`POST /api/napoli/lotti/<id>/mesi/chiudi`, nota
+    facoltativa): dall'ultimo giorno del mese (prima 400 `MESE_NON_FINITO`), una volta sola
+    (409 `MESE_GIA_CHIUSO`); da li' ore, note e ore del coordinatore del mese non cambiano, ne'
+    con le API ne' con Ctrl+Z. **Riapertura** (`/mesi/riapri`) con il motivo obbligatorio, che
+    resta nel registro attivita'; la chiusura e la riapertura non si annullano con Ctrl+Z. Il
+    mese chiuso di Roma (`mesi_chiusi`) e quello di un lotto di Napoli sono indipendenti;
+  - la pagina (`NapoliPresenze` in `napoli.js`): colonne fisse a sinistra (alunno, operatore,
+    figura, PEI, sostituzione) e a destra (totale, credito/debito), intestazione fissa, la
+    griglia che prende l'altezza che resta e scorre da sola (REGOLE 13: a 1366x768 e 1536x864
+    la pagina non scorre); la barra sopra la griglia descrive per esteso la casella scelta;
+    caselle come in Excel (un clic sceglie tutto il valore), frecce, Invio e Tab come in
+    Rendicontazione, Esc rimette il valore salvato, Ctrl+Z (mentre si scrive toglie le
+    lettere, a casella salvata annulla l'ultima azione di Napoli), Maiusc+F2 la nota del
+    giorno, incolla di un blocco da Excel; salvataggio automatico a gruppi 2 secondi dopo
+    l'ultimo tasto con lo stato accanto al mese ("Modifiche in sospeso…", "Salvato alle ...",
+    "tranne 1 casella da correggere"), `fetch keepalive` se si lascia la pagina; le domande
+    una alla volta ("1,30": un'ora e trenta minuti o 1,30 ore, anche per le caselle dopo; le
+    ore programmate che mancano per la meta'); filtri per scuola, operatore, figura, grado,
+    municipalita' della scuola, ricerca per nome e «N con avvisi»; riepilogo delle righe
+    mostrate; clic sul nome per il dettaglio della coppia; il mese scelto ricordato nel
+    browser.
 - **Import del file Excel "master"** (del coordinatore, PROGETTO §7.1):
   - **tre modi** (REGOLE 14: lo storico delle ore di Napoli non si carica, le ore si
     scriveranno in Assisto). `anagrafica`, l'azione principale della pagina («Carica
@@ -808,9 +904,9 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     `napoli_annullamenti` o nel log.
 - **Test**: `tests/test_napoli_schema.py` (migrazione su un database v1.20.1 con
   l'archivio Roma inventato confrontato con il gemello riaperto dalla versione
-  vecchia; da un database gia' alla v2 con dati alla v3 e alla v4, da uno alla v3
-  alla v4; rieseguibilita', interruzione, ripristino, impronte delle migrazioni 2, 3 e 4,
-  vincoli);
+  vecchia; da un database gia' alla v2 con dati alla v3 e alle successive, da uno alla v3
+  alla v4, da uno alla v4 alla v5, da uno alla v5 alla v6; rieseguibilita', interruzione,
+  ripristino, impronte delle migrazioni 2-6, vincoli);
   `tests/test_napoli_calcoli.py` (con soli dati inventati: le quantita' e le tariffe
   della fattura reale di giugno ricalcolate al centesimo, i due fogli firma ricostruiti
   con orari equivalenti, letture ambigue, date e orari che non esistono, precedenza
@@ -825,7 +921,13 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   dalle modifiche a mano, Roma intatta con omonimi); `tests/test_napoli_coordinamento.py`
   (passo 1.8: lettura delle ore scritte, mesi e contratti fino a oggi, scrivere, cambiare,
   togliere e Ctrl+Z, mese chiuso anche per Ctrl+Z, contratto con le ore, registro senza
-  nomi, riga «Coordinatore» della fattura); `tests/test_napoli_impostazioni.py` (procedura guidata,
+  nomi, riga «Coordinatore» della fattura); `tests/test_napoli_presenze_api.py` (passo 1.7:
+  caselle, sigle, A, note e "1,30" confrontati con le funzioni pure, compresi i casi della
+  tabella §5.2; totali, VERIFICA con i colori e credito/debito della griglia uguali a
+  `napoli_calcoli` ricaricando la pagina; giorni futuri, fuori dalle date e non di servizio;
+  mese chiuso anche per Ctrl+Z, chiusura e riapertura con il motivo, indipendente da quello di
+  Roma; Ctrl+Z solo di Napoli e senza le descrizioni libere; dettaglio della coppia; codici
+  fiscali mascherati; 330 coppie in meno di 2 secondi); `tests/test_napoli_impostazioni.py` (procedura guidata,
   controlli lato server, sovrapposizioni, IBAN mascherato, Ctrl+Z separato, Roma intatta,
   voce di menu marcata); `tests/test_napoli_import.py` e `tests/test_napoli_privacy.py`
   (passi 1.4-1.5, sul master inventato di `tests/napoli_sintetico.py`, generato durante
