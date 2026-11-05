@@ -340,7 +340,11 @@ dati inventati:
   mese si chiuda; dal passo 1.7 la griglia presenze di novembre 2025 (ore, sigle, alunno
   assente con la meta' dalla programmazione, "1,30" da confermare, ritardo con l'orario,
   uscita didattica, assenza recuperata, Ctrl+Z) e la chiusura del mese del lotto (chiuso,
-  scrittura rifiutata, riaperto con il motivo, richiuso); ogni passo di
+  scrittura rifiutata, riaperto con il motivo, richiuso); dal passo 1.9, prima di quella
+  chiusura, il prospetto fattura di novembre 2025 (ore del coordinatore scritte, fattura del
+  grado inferiore definitiva, casella del periodo rifiutata, riapertura con il motivo, di nuovo
+  definitiva, Excel, stampa, ritenute) e la chiusura che, senza la fattura del grado superiore,
+  va confermata (`senza_fattura`); ogni passo di
   Napoli sposta i suoi dati sulle sue API), poi di nuovo la fotografia, che deve
   essere uguale; tabelle di Roma (schema e righe; del registro attivita' le voci non
   `napoli%`, nel loro ordine e senza il loro `id`, che le voci di Napoli scritte prima
@@ -386,9 +390,9 @@ Il servizio di Napoli sta in tabelle `napoli_*` proprie, nello stesso database:
 nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
 
 - **Schema**: `napoli_schema.py` contiene solo il DDL (non importa `database`).
-  `database.py` lo registra nel runner delle migrazioni: `SCHEMA_VERSION = 6`,
+  `database.py` lo registra nel runner delle migrazioni: `SCHEMA_VERSION = 7`,
   `MIGRAZIONI = {2: napoli_schema.crea_v2, 3: napoli_schema.crea_v3, 4: napoli_schema.crea_v4,
-  5: napoli_schema.crea_v5, 6: napoli_schema.crea_v6}`;
+  5: napoli_schema.crea_v5, 6: napoli_schema.crea_v6, 7: napoli_schema.crea_v7}`;
   e' l'unica modifica dello schema dal lato di Roma. `crea_v2` crea le 22 tabelle della fase 1
   (lotti, scuole, alunni, operatori, PEI, coppie operatore-alunno, contratti
   applicativi, tariffe e regole con data, calendario, orari, fogli firma, import,
@@ -408,20 +412,26 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   aggiunge a `napoli_presenze` il tipo della nota del giorno (`nota_tipo`: `evento`,
   `attivita_esterna`, `ritardo`, `uscita_anticipata`, controllato in Python come le causali,
   `napoli_calcoli.TIPI_NOTA_GIORNO`) e l'orario del ritardo o dell'uscita (`nota_ora`), solo se
-  mancano; la descrizione libera resta in `nota`. La banca ore della fase 2 (PROGETTO §4.3,
-  la' chiamata v3) sara' quindi la migrazione 7 (`crea_v7`).
+  mancano; la descrizione libera resta in `nota`. `crea_v7` (passo 1.9, prospetto fattura)
+  aggiunge a `napoli_fatture` la testata congelata della fattura definitiva (`testata_json`:
+  nome e numero del lotto, CIG, CUP, codice univoco ufficio, numero e accordo quadro del
+  contratto applicativo, ragione sociale, partita IVA e codice fiscale della cooperativa, IBAN
+  solo mascherato), quando e' stata resa definitiva (`definitiva_il`) e l'ultima riapertura
+  (`riaperta_il`), solo se mancano. La banca ore della fase 2 (PROGETTO §4.3, la' chiamata
+  v3) sara' quindi la migrazione 8 (`crea_v8`).
 - **Migrazioni gia' pubblicate non si cambiano**: un database puo' essere gia' a
   quella versione e rieseguirla non lo correggerebbe. `test_la_migrazione_2_pubblicata_non_cambia`,
   `test_la_migrazione_3_pubblicata_non_cambia`, `test_la_migrazione_4_pubblicata_non_cambia`,
-  `test_la_migrazione_5_pubblicata_non_cambia` e `test_la_migrazione_6_pubblicata_non_cambia`
-  fissano le impronte di `crea_v2`, `crea_v3`, `crea_v4`, `crea_v5` e `crea_v6`; ogni correzione e' una migrazione nuova, sicura anche su un database gia'
+  `test_la_migrazione_5_pubblicata_non_cambia`, `test_la_migrazione_6_pubblicata_non_cambia` e
+  `test_la_migrazione_7_pubblicata_non_cambia` fissano le impronte di `crea_v2`, `crea_v3`,
+  `crea_v4`, `crea_v5`, `crea_v6` e `crea_v7`; ogni correzione e' una migrazione nuova, sicura anche su un database gia'
   aggiornato e con dati (`crea_v4` aggiunge la colonna solo se manca): `crea_v3` ricostruisce
   `napoli_coordinamento` (nuova tabella, copia, `DROP`, `RENAME`, nella stessa
   transazione; le righe della v2, una per operatore, diventano il totale del mese)
   solo se ha ancora la forma della v2, e aggiunge le colonne di `napoli_fatture`
   solo se mancano (`PRAGMA table_info`).
 - **Aggiornamento**: all'avvio, dopo il backup "pre-aggiornamento", un database con
-  `user_version` 1 (v1.20.1 e precedenti), 2, 3, 4 o 5 passa a 6. Le migrazioni mancanti
+  `user_version` 1 (v1.20.1 e precedenti), 2, 3, 4, 5 o 6 passa a 7. Le migrazioni mancanti
   girano in un'unica transazione (se si interrompe non resta nulla a meta') e si
   possono rieseguire senza danni (`IF NOT EXISTS`, `INSERT OR IGNORE`, controlli
   sulla forma delle tabelle). Il ripristino di un backup della v1.20.1 aggiorna
@@ -494,7 +504,8 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
   lotto ci sono coppie o ore di quella figura; sotto, le **ore del coordinatore**, passo
   1.8: vedi il punto "Ore del coordinatore"), **Presenze** (`/napoli/presenze`, passo 1.7:
   vedi il punto "Griglia presenze"), **Anagrafiche** (`/napoli/anagrafiche`,
-  passo 1.6: vedi il punto "Anagrafiche"), **Importa**
+  passo 1.6: vedi il punto "Anagrafiche"), **Fattura** (`/napoli/fattura`, passo 1.9: vedi il
+  punto "Prospetto fattura"), **Importa**
   (`/napoli/import`, l'anagrafica dal file Excel "master") e **Impostazioni**
   (`/napoli/impostazioni`, una parte alla volta, `#lotto`, `#contratti`...): dati della
   cooperativa e destinatario (`napoli_impostazioni`), lotti, contratti applicativi per
@@ -662,7 +673,9 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     "Salvato alle ..." accanto al titolo, `fetch keepalive` se si lascia la pagina), Invio
     e frecce come in Rendicontazione, il messaggio del server sotto la riga, le caselle di
     un mese chiuso bloccate. Le ore entrano nella riga «Coordinatore» della fattura
-    (`righe_fattura`, con la tariffa COORDINATORE del periodo), che arriva al passo 1.9.
+    (`righe_fattura`, con la tariffa COORDINATORE del periodo) della scheda Fattura, che le
+    mostra e le fa scrivere anche li'; con la fattura definitiva di quel mese, contratto e grado
+    la riga e' bloccata (badge «Fattura definitiva», 409 `FATTURA_DEFINITIVA`).
 - **Griglia presenze** (scheda **Presenze**, `/napoli/presenze`; passo 1.7, `napoli_presenze.py`,
   PROGETTO §5-§6, REGOLE 1-3, 12, 14, 15): il mese del lotto come il foglio "master" del
   Comune. Le ore si scrivono qui da ora in avanti (REGOLE 14: nessuno storico); ogni casella e'
@@ -763,7 +776,10 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     programmate = 1:30 (1,50)», settimane con PEI e tetto, previste ed erogate, sostituti);
   - **chiusura del mese del lotto** (`POST /api/napoli/lotti/<id>/mesi/chiudi`, nota
     facoltativa): dall'ultimo giorno del mese (prima 400 `MESE_NON_FINITO`), una volta sola
-    (409 `MESE_GIA_CHIUSO`); da li' ore, note e ore del coordinatore del mese non cambiano, ne'
+    (409 `MESE_GIA_CHIUSO`), con le fatture del mese definitive (PROGETTO §9): se una fattura
+    del mese con ore non lo e', 409 `FATTURE_NON_DEFINITIVE` con l'elenco (`fatture`), e la
+    finestra chiede «Chiudi lo stesso: per questa la fattura non si fa adesso» (`senza_fattura`);
+    da li' ore, note e ore del coordinatore del mese non cambiano, ne'
     con le API ne' con Ctrl+Z. **Riapertura** (`/mesi/riapri`) con il motivo obbligatorio, che
     resta nel registro attivita'; la chiusura e la riapertura non si annullano con Ctrl+Z. Il
     mese chiuso di Roma (`mesi_chiusi`) e quello di un lotto di Napoli sono indipendenti;
@@ -807,6 +823,79 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
     municipalita' della scuola, ricerca per nome e «N con avvisi»; riepilogo delle righe
     mostrate; clic sul nome per il dettaglio della coppia; il mese scelto ricordato nel
     browser.
+- **Prospetto fattura** (scheda **Fattura**, `/napoli/fattura`; passo 1.9, `napoli_fattura.py`,
+  `export_napoli.py`, PROGETTO §5.4, §5.5 e §9, REGOLE 9, 10 e 12): una fattura per lotto, grado
+  (inferiore o superiore), contratto applicativo e periodo, cioe' il mese tagliato alle date del
+  contratto (il contratto XI dall'08/06 da' «dal 08/06/2026 al 30/06/2026»). I numeri sono quelli
+  di `napoli_calcoli.prospetto_fattura` (righe per figura e tariffa valida, sotto-periodo se la
+  tariffa cambia, riga «Coordinatore» dal totale mensile del passo 1.8, ritenuta 0,50% con il
+  testo della fattura reale, imponibile, IVA 5%, totale, da pagare = imponibile con lo split
+  payment; oggetto, nota con la D.D., destinatario, scadenza a 30 giorni dalla data della
+  fattura): la fattura reale di giugno (71,55 h coordinatore x 29,66; 292,75 h educatore x 24,28;
+  6 h psicologo x 29,66; 654,25 h asacom x 23,44) da' 24.743,72 / -123,72 / 24.620,00 / 1.231,00 /
+  25.851,00, da pagare 24.620,00 (`test_giugno_come_la_fattura_reale`).
+  - `GET /api/napoli/lotti/<id>/fatture?anno=&mese=`: un prospetto per contratto che tocca il
+    mese e per grado (senza grado = tutti e due), con righe e totali (centesimi e testo
+    «24.743,72»), testi, testata (CIG, codice univoco, contratto, cooperativa, IBAN mascherato),
+    ore del coordinatore (con `modificabile`), dettaglio per scuola e per operatore (mai alunni),
+    stato (`da_fare`, `definitiva`, `riaperta`), `impronta` e i **controlli** spiegati con titolo,
+    testo semplice e dove sistemarli (`link`): bloccanti (§5.5) grado da decidere, figura con ore e
+    senza tariffa, tariffa del coordinatore che cambia nel periodo, ore fuori da ogni contratto
+    applicativo o in due contratti (del grado, nel mese intero), giorni preparati e non
+    registrati, dati mancanti (CIG, destinatario, oggetto, numero e data della D.D. — insieme se
+    mancano tutti e due —, IBAN), periodo non ancora finito; avvisi: ore del coordinatore non
+    scritte, ore con la figura Coordinatore nella griglia (non contate), nessuna ora, dati
+    cambiati dopo la definitiva (`cambiata_dopo`, con l'imponibile che darebbe oggi). Le ore che
+    nessun contratto copre sono anche in testa alla pagina (`ore_senza_contratto`);
+  - **Rendi definitiva** (`POST /api/napoli/lotti/<id>/fatture/definitiva`: anno, mese,
+    contratto, grado, numero e data della fattura emessa dal programma di fatturazione, D9, e
+    `impronta` del prospetto mostrato): senza bloccanti (400 `FATTURA_BLOCCATA` con l'elenco),
+    con ore (400 `NESSUNA_RIGA`), periodo finito, data fra l'inizio del periodo e oggi, numero
+    non gia' usato nello stesso anno (409 `NUMERO_GIA_USATO`), prospetto non cambiato nel
+    frattempo (409 `PROSPETTO_CAMBIATO`). In una transazione (`BEGIN IMMEDIATE`) congela in
+    `napoli_fatture` (stato `definitiva`) righe senza nomi, totali, testi (`testi_da_congelare`,
+    con la scadenza) e testata (`testata_json`, migrazione 7): da li' pagina, Excel e stampa
+    mostrano la fattura congelata, anche se poi cambiano tariffe, regole, modelli dei testi,
+    CIG o cooperativa. Azione «non annullabile» di Ctrl+Z (come la chiusura del mese) e voce
+    del registro attivita' con numeri e mai nomi o IBAN;
+  - **ore bloccate**: finche' la fattura e' definitiva, le ore del suo periodo e del suo grado
+    non cambiano (409 `FATTURA_DEFINITIVA`, con il messaggio che dice quale fattura e di
+    riaprirla): caselle della griglia (esito `errore` per casella, giorni in `definitiva` della
+    riga e in grigio-verde nella pagina; con il grado da decidere vale una fattura di un grado
+    qualsiasi), ore del coordinatore di quel mese, contratto e grado, import delle ore di quel
+    mese e il suo annullamento, Ctrl+Z (`napoli_db._controlla_fatture_definitive`), e i dati che
+    sposterebbero quelle ore in un'altra fattura: grado della scuola (delle coppie con il grado
+    della scuola) e dell'alunno, scuola della coppia, date o grado del contratto che
+    cambierebbero il periodo congelato (`napoli_db.controlla_ore_in_fatture_definitive`);
+  - **Riapri** (`POST /api/napoli/fatture/<id>/riapri`, motivo obbligatorio che resta nel
+    registro attivita', codici fiscali mascherati): stato di nuovo `bozza` (`riaperta_il`), numero
+    e data restano e la pagina li propone; il prospetto si ricalcola dai dati e le ore si
+    cambiano. Si riapre anche a mese chiuso (le ore restano bloccate dal mese);
+  - **ritenute cumulate** (`GET /api/napoli/lotti/<id>/fatture/ritenute`): per contratto
+    applicativo le fatture definitive, la somma delle righe e delle ritenute dello 0,50% (si
+    svincolano alla fine del contratto), il totale del lotto;
+  - **Excel** (`GET /api/napoli/fatture/excel?lotto_id=&anno=&mese=&contratto_id=&grado=`,
+    `export_napoli.prospetto_excel`, xlsxwriter con `routes_export.get_excel_brand_styles`):
+    fogli «Prospetto» (dati della fattura, righe, ritenuta, totali, da pagare; nessun nominativo),
+    «Per scuola», «Per operatore», «Controlli», «Ritenute»; numeri veri con il formato di Excel,
+    A4 su una pagina di larghezza; il nome del file dice lotto, contratto, grado e mese;
+  - **stampa** (`/napoli/fattura/stampa?...`, `napoli_fattura_stampa.html`, pagina a se' con il
+    CSS di stampa): A4 verticale con margini di 14 mm, una pagina sola (provata con il PDF di
+    Chromium), cooperativa e destinatario, stato (definitiva con numero e data, o «Non ancora
+    definitiva»), dati, oggetto, righe, totali, nota, pagamento con l'IBAN mascherato; con
+    `stampa=1` (pulsante Stampa della pagina, in una scheda nuova) chiede subito di stampare o
+    salvare in PDF;
+  - la pagina (`NapoliFattura` in `napoli.js`): il mese (lo stesso della scheda Presenze, ricordato
+    nel browser) con le frecce, un riquadro per prospetto (righe e totali a sinistra; ore del
+    coordinatore e controlli a destra; sotto i testi con «Copia» per oggetto e nota, Excel,
+    Stampa, «Rendi definitiva» o «Riapri la fattura», il dettaglio per scuola e operatore), i
+    prospetti senza ore in fondo, piu' piccoli; le ore del coordinatore si salvano da sole (2
+    secondi dopo l'ultimo tasto, uscendo dalla casella, con Invio; frecce ↑ ↓ e Invio come in
+    Rendicontazione, Esc rimette il valore salvato; `fetch keepalive` uscendo dalla pagina) e i
+    prospetti si ricalcolano; le finestre di definitiva (numero, data, scadenza calcolata) e di
+    riapertura (motivo) si confermano con Invio; Ctrl+Z annulla l'ultima azione di Napoli. In
+    Presenze, «Chiudi il mese» con una fattura non definitiva mostra l'elenco e la casella
+    «Chiudi lo stesso». Provata a 1366x768 e 1536x864, chiaro e scuro.
 - **Import del file Excel "master"** (del coordinatore, PROGETTO §7.1):
   - **tre modi** (REGOLE 14: lo storico delle ore di Napoli non si carica, le ore si
     scriveranno in Assisto). `anagrafica`, l'azione principale della pagina («Carica
@@ -965,8 +1054,15 @@ nessuna tabella di Roma cambia schema e nessuna chiave esterna punta a Roma.
 - **Test**: `tests/test_napoli_schema.py` (migrazione su un database v1.20.1 con
   l'archivio Roma inventato confrontato con il gemello riaperto dalla versione
   vecchia; da un database gia' alla v2 con dati alla v3 e alle successive, da uno alla v3
-  alla v4, da uno alla v4 alla v5, da uno alla v5 alla v6; rieseguibilita', interruzione,
-  ripristino, impronte delle migrazioni 2-6, vincoli);
+  alla v4, da uno alla v4 alla v5, da uno alla v5 alla v6, da uno alla v6 alla v7;
+  rieseguibilita', interruzione, ripristino, impronte delle migrazioni 2-7, vincoli);
+  `tests/test_napoli_fattura.py` (passo 1.9: la fattura reale di giugno riprodotta da ore
+  scritte nella griglia e dal totale del coordinatore, uguale alle funzioni pure; Excel riletto
+  con openpyxl con gli stessi numeri; stampa A4; definitiva congelata, che non cambia con
+  tariffe, CIG e modelli cambiati, e ore del periodo bloccate anche per Ctrl+Z, coordinatore,
+  import, grado di scuola e alunno, scuola della coppia, date del contratto; riapertura con il
+  motivo; numero gia' usato; prospetto cambiato nel frattempo; bloccanti spiegati; ritenute
+  cumulate; chiusura del mese con le fatture definitive o la conferma);
   `tests/test_napoli_calcoli.py` (con soli dati inventati: le quantita' e le tariffe
   della fattura reale di giugno ricalcolate al centesimo, i due fogli firma ricostruiti
   con orari equivalenti, letture ambigue, date e orari che non esistono, precedenza

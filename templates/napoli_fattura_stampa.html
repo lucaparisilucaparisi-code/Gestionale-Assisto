@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="it" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {# Il foglio e' sempre bianco (si stampa); intorno, a schermo, il tema scelto nel programma #}
+    <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}}catch(e){}</script>
+    <title>{% if p %}Prospetto fattura - {{ p.testata.lotto }} - {{ p.grado_testo }} - contratto {{ p.numero }} - {{ p.mese_info.testo }}{% else %}Prospetto fattura{% endif %}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ static_url('icons/icon.svg') }}">
+    {# Prospetto fattura su un foglio A4 verticale (passo 1.9, REGOLE 13): si stampa da Edge o
+       Chrome, anche in PDF ("Salva come PDF"). Margini sicuri di 14 mm, una pagina sola,
+       nessuna libreria esterna. Nessun nominativo: solo i dati della fattura. #}
+    <style>
+        @page { size: A4 portrait; margin: 14mm 14mm 14mm 14mm; }
+        * { box-sizing: border-box; }
+        :root { --carta: #fff; --testo: #111827; --tenue: #4b5563; --bordo: #cbd5e1; --chiaro: #f1f5f9; --accento: #3730a3; }
+        html, body { margin: 0; padding: 0; }
+        body { background: #e5e7eb; color: var(--testo); font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 10pt; line-height: 1.35; }
+        :root[data-theme="dark"] body { background: #1e293b; }
+        .barra { display: flex; gap: 10px; align-items: center; justify-content: center; padding: 12px; font-size: 14px; }
+        .barra button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid #94a3b8; background: #fff; color: #111827; cursor: pointer; }
+        .barra button.primario { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+        .barra button:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+        .barra span { color: #334155; }
+        :root[data-theme="dark"] .barra span { color: #cbd5e1; }
+        .foglio { width: 210mm; min-height: 297mm; margin: 0 auto 24px; padding: 14mm; background: var(--carta); box-shadow: 0 2px 12px rgba(0, 0, 0, .25); }
+        .testata { display: flex; justify-content: space-between; gap: 12mm; }
+        .testata .blocco { flex: 1; }
+        .testata .destinatario { text-align: left; border-left: 2px solid var(--accento); padding-left: 4mm; }
+        .etichetta { font-size: 8pt; text-transform: uppercase; letter-spacing: .04em; color: var(--tenue); margin: 0 0 1mm; }
+        .nome { font-weight: 700; font-size: 11pt; margin: 0; }
+        .piccolo { font-size: 9pt; color: var(--tenue); margin: 1mm 0 0; }
+        h1 { font-size: 15pt; margin: 6mm 0 1mm; color: var(--accento); }
+        .stato { display: inline-block; font-size: 9pt; font-weight: 600; padding: 1mm 3mm; border-radius: 3mm; }
+        .stato.definitiva { background: #dcfce7; color: #166534; }
+        .stato.bozza { background: #fef3c7; color: #92400e; }
+        .dati { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5mm 6mm; margin: 4mm 0 3mm; padding: 2.5mm 4mm; background: var(--chiaro); border-radius: 2mm; }
+        .dati div { min-width: 0; }
+        .dati p { margin: 0; }
+        .dati .valore { font-weight: 600; overflow-wrap: anywhere; }
+        .oggetto { border: 1px solid var(--bordo); border-radius: 2mm; padding: 2.5mm 4mm; margin: 0 0 4mm; }
+        .oggetto p { margin: 0; font-weight: 600; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 1.6mm 3mm; border-bottom: 1px solid var(--bordo); text-align: left; vertical-align: top; }
+        thead th { background: var(--accento); color: #fff; font-size: 9pt; font-weight: 600; border-bottom: 0; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        tr.ritenuta td { font-style: italic; color: var(--tenue); }
+        .totali { width: 92mm; margin: 3mm 0 0 auto; }
+        .totali th { font-weight: 500; }
+        .totali tr.forte th, .totali tr.forte td { font-weight: 700; }
+        .totali tr.da-pagare th, .totali tr.da-pagare td { background: var(--accento); color: #fff; font-weight: 700; font-size: 11pt; border-bottom: 0; }
+        .note { margin: 5mm 0 0; }
+        .note p { margin: 0 0 2mm; }
+        .piede { margin-top: 5mm; padding-top: 2mm; border-top: 1px solid var(--bordo); font-size: 8pt; color: var(--tenue); }
+        .errore { max-width: 640px; margin: 48px auto; padding: 24px; background: #fff; border-radius: 12px; border-left: 4px solid #b91c1c; font-size: 15px; }
+        @media print {
+            body { background: #fff; }
+            .barra { display: none !important; }
+            .foglio { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+            thead th, .totali tr.da-pagare th, .totali tr.da-pagare td, .dati, .stato { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            html, body { height: auto; }
+        }
+    </style>
+</head>
+<body>
+{% if not p %}
+    <div class="errore" role="alert">
+        <p><strong>Il prospetto non si può stampare.</strong></p>
+        <p>{{ errore }}</p>
+        <p><a href="/napoli/fattura">Torna alla scheda Fattura</a></p>
+    </div>
+{% else %}
+    {% set t = p.testata %}
+    {% set tot = p.totali %}
+    <div class="barra" role="toolbar" aria-label="Stampa">
+        <button type="button" class="primario" onclick="window.print()" autofocus>Stampa o salva in PDF</button>
+        <button type="button" onclick="window.close()">Chiudi</button>
+        <span>Foglio A4 verticale. In Edge o Chrome: «Salva come PDF» per avere il file.</span>
+    </div>
+    <main class="foglio">
+        <div class="testata">
+            <div class="blocco">
+                <p class="etichetta">Cooperativa</p>
+                <p class="nome">{{ t.cooperativa or '—' }}</p>
+                {% if t.partita_iva or t.codice_fiscale %}<p class="piccolo">{% if t.partita_iva %}P.IVA {{ t.partita_iva }}{% endif %}{% if t.partita_iva and t.codice_fiscale %} · {% endif %}{% if t.codice_fiscale %}CF {{ t.codice_fiscale }}{% endif %}</p>{% endif %}
+            </div>
+            <div class="blocco destinatario">
+                <p class="etichetta">Spett.le</p>
+                <p class="nome">{{ p.destinatario or '—' }}</p>
+            </div>
+        </div>
+
+        <h1>Prospetto fattura</h1>
+        {% if p.stato == 'definitiva' and p.fattura %}
+            <span class="stato definitiva">Definitiva · fattura n. {{ p.fattura.numero }} del {{ p.fattura.data_testo }}</span>
+        {% else %}
+            <span class="stato bozza">Non ancora definitiva: i numeri possono ancora cambiare</span>
+        {% endif %}
+
+        <div class="dati">
+            <div><p class="etichetta">Lotto</p><p class="valore">{{ t.lotto }}</p></div>
+            <div><p class="etichetta">Grado di scuola</p><p class="valore">{{ p.scuole_grado }}</p></div>
+            <div><p class="etichetta">Contratto applicativo</p><p class="valore">{{ t.contratto }}{% if t.accordo_quadro %} · {{ t.accordo_quadro }}{% endif %}</p></div>
+            <div><p class="etichetta">Periodo di competenza</p><p class="valore">{{ p.periodo_testo }}</p></div>
+            <div><p class="etichetta">CIG</p><p class="valore">{{ t.cig or '—' }}</p></div>
+            <div><p class="etichetta">Codice univoco ufficio</p><p class="valore">{{ t.codice_univoco_ufficio or '—' }}</p></div>
+        </div>
+
+        <div class="oggetto">
+            <p class="etichetta">Oggetto</p>
+            <p>{{ p.oggetto }}</p>
+        </div>
+
+        <table aria-label="Righe della fattura">
+            <thead>
+                <tr><th scope="col">Descrizione</th><th scope="col" class="num">Quantità (ore)</th><th scope="col" class="num">Prezzo unitario (€)</th><th scope="col" class="num">Importo (€)</th></tr>
+            </thead>
+            <tbody>
+                {% for r in p.righe %}
+                <tr><td>{{ r.descrizione }}</td><td class="num">{{ r.ore }}</td><td class="num">{{ r.tariffa }}</td><td class="num">{{ r.importo }}</td></tr>
+                {% else %}
+                <tr><td colspan="4">Nessuna ora da fatturare nel periodo.</td></tr>
+                {% endfor %}
+                <tr class="ritenuta"><td colspan="3">{{ p.ritenuta_testo }}</td><td class="num">-{{ tot.ritenuta }}</td></tr>
+            </tbody>
+        </table>
+
+        <table class="totali" aria-label="Totali">
+            <tr><th scope="row">Totale delle righe</th><td class="num">{{ tot.somma }}</td></tr>
+            <tr><th scope="row">Ritenuta {{ p.ritenuta_percento }}%</th><td class="num">-{{ tot.ritenuta }}</td></tr>
+            <tr class="forte"><th scope="row">Imponibile</th><td class="num">{{ tot.imponibile }}</td></tr>
+            <tr><th scope="row">IVA {{ p.iva_percento }}%</th><td class="num">{{ tot.iva }}</td></tr>
+            <tr class="forte"><th scope="row">Totale documento</th><td class="num">{{ tot.totale }}</td></tr>
+            <tr class="da-pagare"><th scope="row">Da pagare{% if p.split_payment %} (split payment){% endif %}</th><td class="num">{{ tot.da_pagare }} €</td></tr>
+        </table>
+
+        <div class="note">
+            <p><span class="etichetta">Nota</span><br>{{ p.nota }}</p>
+            <p><span class="etichetta">Pagamento</span><br>Bonifico bancario{% if t.iban %} sull'IBAN della cooperativa {{ t.iban }}{% endif %}{% if p.scadenza_testo %}, scadenza {{ p.scadenza_testo }}{% endif %}.</p>
+        </div>
+
+        <div class="piede">
+            Prospetto preparato con Assisto il {{ p.mese_info.oggi[8:10] }}/{{ p.mese_info.oggi[5:7] }}/{{ p.mese_info.oggi[0:4] }}: non è la fattura elettronica. Righe, testi e totali si ricopiano nel programma di fatturazione.{% if p.split_payment %} Scissione dei pagamenti (art. 17-ter del D.P.R. 633/1972): l'IVA la versa l'ente, alla cooperativa si paga l'imponibile.{% endif %}
+        </div>
+    </main>
+    {% if stampa_subito %}
+    <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });</script>
+    {% endif %}
+{% endif %}
+</body>
+</html>

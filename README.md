@@ -141,8 +141,9 @@ ambiente isolato dentro la cartella (`.venv`) da `avvia.bat` / `run.sh` al primo
 La voce **Napoli** del menu (Alt+8) è la sezione dell'assistenza specialistica del
 Comune di Napoli. Ha dati suoi, separati da quelli di Roma: le pagine di Roma non
 cambiano e non mostrano mai i dati di Napoli. È in costruzione: per ora ci sono le
-impostazioni, il caricamento dell'anagrafica, le anagrafiche, la griglia delle presenze e
-le ore del coordinatore; fogli firma e fattura arriveranno con i prossimi aggiornamenti.
+impostazioni, il caricamento dell'anagrafica, le anagrafiche, la griglia delle presenze, le
+ore del coordinatore e il prospetto della fattura; i fogli firma arriveranno con i prossimi
+aggiornamenti.
 
 1. **Crea il lotto.** Apri **Napoli**: la prima volta la pagina propone **Crea il primo
    lotto**. Il programma propone il nome, i testi della fattura e le tariffe del contratto
@@ -210,7 +211,26 @@ le ore del coordinatore; fogli firma e fattura arriveranno con i prossimi aggior
    solo le righe da controllare. Dall'ultimo giorno del mese, **Chiudi il mese** blocca le
    ore del lotto (anche quelle del coordinatore); si riapre con **Riapri il mese**, scrivendo
    il motivo, che resta nel registro attività. Le ore dei mesi passati non si caricano: si
-   scrivono qui da ora in avanti.
+   scrivono qui da ora in avanti. Il mese si chiude dopo aver reso definitive le fatture del
+   mese (punto 6): se una non lo è, Assisto lo dice e chiede se chiudere lo stesso.
+6. **Prepara la fattura.** In **Napoli > Fattura** c'è un prospetto per ogni contratto
+   applicativo e grado di scuola del mese (per esempio «Contratto XI · Grado inferiore»,
+   dal 08/06 al 30/06 se il contratto comincia l'8 giugno), con le stesse righe della
+   fattura: una per figura (ore × tariffa del lotto, IVA esclusa), il **Coordinatore** con le
+   ore scritte nella sua casella (anche qui; si salva da solo), la **ritenuta dello 0,50%**,
+   l'imponibile, l'IVA al 5%, il totale e quanto si paga alla cooperativa (con lo split
+   payment, l'imponibile). Sotto ci sono l'oggetto e la nota da copiare (pulsante
+   **Copia**), il destinatario, la scadenza e il CIG. A destra, in rosso, quello che va
+   sistemato prima (per esempio una scuola con il grado da decidere, una figura con ore e
+   senza tariffa, la determina che manca nel contratto, l'IBAN della cooperativa), ognuno con
+   il collegamento alla pagina dove si sistema. **Excel** scarica il prospetto (con le ore per
+   scuola e per operatore), **Stampa** apre il foglio A4 da stampare o salvare in PDF. Quando
+   hai emesso la fattura con il programma di fatturazione, premi **Rendi definitiva** e
+   scrivi il suo numero e la sua data: da quel momento il prospetto non cambia più e le ore
+   di quei giorni (di quel grado) sono bloccate, anche nella griglia. Se va corretta,
+   **Riapri la fattura** scrivendo il motivo (resta nel registro attività). In fondo alla
+   pagina, **Ritenute dello 0,50%**: la somma delle ritenute delle fatture definitive per
+   contratto, per la fattura di svincolo.
 
 Ctrl+Z su una pagina di Napoli annulla l'ultima modifica di Napoli (mai una di Roma),
 dopo una conferma. Le modifiche a nome, cognome, codice fiscale e note (anche le note
@@ -258,8 +278,8 @@ Gestionale-Assisto-<versione>/
 ├── routes_export.py    # Route export/report (Excel, Word)
 ├── database.py         # Gestione database SQLite
 ├── config.py           # Configurazione
-├── napoli_*.py         # Sezione Napoli: schema, calcoli, dati, anagrafiche, presenze, ore del coordinatore
-│                       #   (con routes_napoli.py, import_napoli.py, config_napoli.py)
+├── napoli_*.py         # Sezione Napoli: schema, calcoli, dati, anagrafiche, presenze, ore del coordinatore, fattura
+│                       #   (con routes_napoli.py, import_napoli.py, export_napoli.py, config_napoli.py)
 ├── requirements.txt    # Dipendenze Python
 ├── gestionale.db       # Database (creato al primo avvio)
 ├── static/             # CSS, JS, icone

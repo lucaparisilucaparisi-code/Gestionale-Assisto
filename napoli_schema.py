@@ -23,8 +23,12 @@ che le esegue una volta sola, in ordine, e poi imposta PRAGMA user_version:
   data di archiviazione (archiviato_dal);
 - crea_v6 (fase 1, passo 1.7: griglia presenze): la nota del giorno di una presenza ha
   il suo tipo (assemblea o evento, uscita didattica, ritardo o uscita anticipata
-  dell'alunno) e l'orario del ritardo o dell'uscita (nota_tipo, nota_ora).
-  La fase 2 (banca ore, PROGETTO §4.3) diventa quindi la migrazione 7 (crea_v7).
+  dell'alunno) e l'orario del ritardo o dell'uscita (nota_tipo, nota_ora);
+- crea_v7 (fase 1, passo 1.9: prospetto fattura): la fattura definitiva congela anche la
+  testata (lotto, CIG, codice univoco, contratto applicativo, cooperativa, IBAN mascherato:
+  testata_json) e ricorda quando e' stata resa definitiva e quando riaperta
+  (definitiva_il, riaperta_il).
+  La fase 2 (banca ore, PROGETTO §4.3) diventa quindi la migrazione 8 (crea_v8).
 
 Una migrazione gia' pubblicata non si cambia piu' (tests/test_napoli_schema.py ne
 controlla l'impronta): un database puo' essere gia' a quella versione, e
@@ -583,5 +587,36 @@ def crea_v6(conn):
     if not conn.in_transaction:
         conn.execute('BEGIN')
     for tabella, nome, tipo in COLONNE_V6:
+        if nome not in _colonne(conn, f'napoli_{tabella}'):
+            conn.execute(f'ALTER TABLE napoli_{tabella} ADD COLUMN {nome} {tipo}')
+
+
+# ==================== migrazione 7 ====================
+
+# Passo 1.9 (prospetto fattura): la fattura resa definitiva si ristampa uguale anche se poi
+# cambiano il lotto, il contratto applicativo o i dati della cooperativa.
+# - testata_json: i dati della testata del prospetto al momento della definitiva (nome e
+#   numero del lotto, CIG, CUP, codice univoco ufficio, numero e accordo quadro del contratto
+#   applicativo, ragione sociale, partita IVA e codice fiscale della cooperativa, IBAN solo
+#   mascherato: mai intero). Vuoto = fattura di prima di questa migrazione (si mostra con i
+#   dati di oggi).
+# - definitiva_il: data e ora in cui il prospetto e' stato reso definitivo.
+# - riaperta_il: data e ora dell'ultima riapertura (stato di nuovo 'bozza': numero e data della
+#   fattura restano per la prossima definitiva; il motivo sta nel registro attivita').
+COLONNE_V7 = (
+    ('fatture', 'testata_json', 'TEXT'),
+    ('fatture', 'definitiva_il', 'TEXT'),
+    ('fatture', 'riaperta_il', 'TEXT'),
+)
+
+
+def crea_v7(conn):
+    """Migrazione 7 (fase 1, passo 1.9: prospetto fattura): le colonne di COLONNE_V7, aggiunte
+    solo se mancano. Rieseguibile e sicura su un database gia' alla v6 con dati (le righe
+    restano, con le colonne nuove vuote). Apre la transazione se non c'e'; la conferma il
+    runner di database.py insieme a user_version."""
+    if not conn.in_transaction:
+        conn.execute('BEGIN')
+    for tabella, nome, tipo in COLONNE_V7:
         if nome not in _colonne(conn, f'napoli_{tabella}'):
             conn.execute(f'ALTER TABLE napoli_{tabella} ADD COLUMN {nome} {tipo}')

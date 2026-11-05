@@ -10,8 +10,8 @@
  *   cosi' Ctrl+Z su una pagina di Napoli non annulla mai un'azione di Roma (e viceversa);
  * - NapoliProcedura: "Crea il primo lotto" (anche "Nuovo lotto") in tre passi;
  * - NapoliMese (con NapoliCoordinatore: le ore del coordinatore del mese, passo 1.8),
- *   NapoliPresenze (la griglia del mese, passo 1.7), NapoliAnagrafiche, NapoliImport e
- *   NapoliImpostazioni: le schede
+ *   NapoliPresenze (la griglia del mese, passo 1.7), NapoliFattura (i prospetti fattura del
+ *   mese, passo 1.9), NapoliAnagrafiche, NapoliImport e NapoliImpostazioni: le schede
  *   (Anagrafiche: alunni, operatori, scuole e plessi, coppie, con filtri, schede e moduli;
  *   Importa: dal file Excel "master" l'anagrafica, l'azione principale, o in una parte
  *   secondaria le ore di un mese; anteprima, scelte da confermare, caricamento e
@@ -515,7 +515,7 @@ const NapoliMese = {
                     </details>` : ''}
                 </div>
             </div>
-            <p class="napoli-nota">L'anagrafica (alunni, operatori, scuole, coppie e PEI) si carica dal file Excel del coordinatore nella scheda <a href="/napoli/import">Importa</a> e si controlla o si corregge nella scheda <a href="/napoli/anagrafiche">Anagrafiche</a>. Le ore degli operatori si scrivono nella scheda <a href="/napoli/presenze">Presenze</a>, quelle del coordinatore qui sotto. Fogli firma e fattura del mese arriveranno nella sezione Napoli con i prossimi aggiornamenti di Assisto.</p>`;
+            <p class="napoli-nota">L'anagrafica (alunni, operatori, scuole, coppie e PEI) si carica dal file Excel del coordinatore nella scheda <a href="/napoli/import">Importa</a> e si controlla o si corregge nella scheda <a href="/napoli/anagrafiche">Anagrafiche</a>. Le ore degli operatori si scrivono nella scheda <a href="/napoli/presenze">Presenze</a>, quelle del coordinatore qui sotto (o nella scheda Fattura). Il prospetto della fattura del mese, da ricopiare nel programma di fatturazione, è nella scheda <a href="/napoli/fattura">Fattura</a>. I fogli firma arriveranno con i prossimi aggiornamenti di Assisto.</p>`;
     },
 };
 
@@ -649,11 +649,12 @@ const NapoliCoordinatore = {
         const st = this.righe.get(r.chiave);
         const v = st.corrente || st.salvato;
         const dove = `${m.testo}, contratto ${r.numero}, ${r.grado_testo}`;
-        const bloccata = m.chiuso ? ' disabled' : '';
+        const bloccata = m.chiuso || r.definitiva ? ' disabled' : '';
         return `<tr data-chiave="${escapeHtml(r.chiave)}" class="napoli-coord-riga">
                 <td><span class="napoli-figura-nome">Contratto ${escapeHtml(r.numero)}</span>
                     <div class="napoli-sotto-in">${escapeHtml(napoliMaiuscola(r.grado_testo))}</div></td>
-                <td>${escapeHtml(r.periodo_testo)}${r.mese_intero || r.fuori_contratto ? '' : '<div class="napoli-sotto-in">parte del mese</div>'}</td>
+                <td>${escapeHtml(r.periodo_testo)}${r.mese_intero || r.fuori_contratto ? '' : '<div class="napoli-sotto-in">parte del mese</div>'}${r.definitiva
+                    ? ` <span class="badge badge-success badge-sm" title="La fattura ${escapeHtml(r.definitiva)} è definitiva: le ore non si cambiano (si riapre nella scheda Fattura)">Fattura definitiva</span>` : ''}</td>
                 <td class="napoli-numero"><input type="text" class="table-input napoli-coord-ore" data-coord="ore"
                     inputmode="decimal" autocomplete="off" value="${escapeHtml(v.ore)}" placeholder="${m.chiuso ? '' : 'da scrivere'}"
                     aria-label="Ore del coordinatore, ${escapeHtml(dove)}" aria-describedby="coord-msg-${escapeHtml(r.chiave)}"${bloccata}></td>
@@ -683,7 +684,7 @@ const NapoliCoordinatore = {
         // "cambiata, da salvare" (azzurra) solo senza errore: una casella sbagliata resta rossa
         ore.classList.toggle('changed', !st.errore && !!st.corrente && st.corrente.ore !== (st.salvato.ore || ''));
         nota.classList.toggle('changed', !st.errore && !!st.corrente && st.corrente.nota !== (st.salvato.nota || ''));
-        ore.disabled = nota.disabled = !!st.mese.chiuso;
+        ore.disabled = nota.disabled = !!st.mese.chiuso || !!st.riga.definitiva;
         const riga = tr.nextElementSibling;
         const box = riga.querySelector('div');
         const testo = st.errore ? st.errore.messaggio : (st.lettura || '');
@@ -756,6 +757,7 @@ const NapoliCoordinatore = {
                 this.ultimoSalvataggio = new Date();          // la lettura ("71.55" = 71,55) si vede sotto la riga
             } catch (e) {
                 st.errore = { messaggio: e.message || 'Salvataggio non riuscito: riprova.', campo: (e.data && e.data.campo) || 'ore' };
+                if (e.code === 'FATTURA_DEFINITIVA') st.riga.definitiva = st.riga.definitiva || 'definitiva';
                 if (e.code === 'MESE_CHIUSO_LOTTO') {
                     st.mese.chiuso = true;          // chiuso nel frattempo: le caselle del mese si bloccano
                     this.righe.forEach((altra, k) => { if (altra.mese === st.mese) this.aggiornaRiga(k); });
@@ -3944,11 +3946,18 @@ const NapoliPresenze = {
         return r._fuori;
     },
 
+    /** I giorni della riga in una fattura definitiva (passo 1.9): bloccati finche' non si riapre. */
+    definitiva(r) {
+        if (!r._definitiva) r._definitiva = new Set(r.definitiva || []);
+        return r._definitiva;
+    },
+
     classeCella(r, col, c) {
         const i = col.i;
         const classi = ['g-c'];
         if (col.chiuso || r.chiusi[i]) classi.push('g-chiuso');
         if (this.fuori(r).has(i)) classi.push('g-fuori');
+        if (this.definitiva(r).has(i)) classi.push('g-definitiva');
         if (col.futuro) classi.push('g-futuro');
         if (col.nome === 'sab') classi.push('g-sab');
         if (c) {
@@ -3967,7 +3976,7 @@ const NapoliPresenze = {
     },
 
     bloccata(r, col, c) {
-        return this.fuori(r).has(col.i) || col.futuro || !!(c && c.bl);
+        return this.fuori(r).has(col.i) || col.futuro || !!(c && c.bl) || this.definitiva(r).has(col.i);
     },
 
     htmlRiga(r) {
@@ -4124,6 +4133,7 @@ const NapoliPresenze = {
             if (c.o === 'import') parti.push('dal file Excel');
         }
         if (c && c.bl) parti.push('registrato dal foglio firma: si cambia dal foglio della coppia');
+        if (this.definitiva(r).has(i)) parti.push('nella fattura definitiva: per cambiare le ore riapri la fattura nella scheda Fattura');
         if (c && c.nt) parti.push(`Nota: ${escapeHtml(NAPOLI_NOTE_GIORNO[c.nt])}${c.no ? ` ${escapeHtml(c.no)}` : ''}${c.rec && c.nt !== 'evento' ? ', recuperata' : ''}`);
         if (c && c.nx) parti.push(`«${escapeHtml(c.nx)}»`);
         const chiuso = col.chiuso || r.chiusi[i];
@@ -4302,6 +4312,7 @@ const NapoliPresenze = {
                     }
                 }
             } catch (e) {
+                if (e.code === 'FATTURA_DEFINITIVA') st.riga.definitiva = st.riga.definitiva || 'definitiva';
                 if (e.code === 'MESE_CHIUSO_LOTTO') {
                     showToast(e.message, 'warning', 10000);
                     this.attese = new Map();
@@ -4868,6 +4879,8 @@ const NapoliPresenze = {
             corpo.motivo = motivo.value.trim();
         } else {
             corpo.nota = this.el('mese-nota').value.trim();
+            // fatture del mese non definitive (PROGETTO §9): si chiude solo confermando
+            if (this.el('mese-senza-fattura')?.checked) corpo.senza_fattura = true;
         }
         const pulsante = this.el('mese-conferma');
         setButtonLoading(pulsante, true);
@@ -4876,6 +4889,719 @@ const NapoliPresenze = {
             closeModal('napoli-modal-mese');
             showToast(r.messaggio, 'success');
             await this.carica(true);
+        } catch (e) {
+            if (e.code === 'FATTURE_NON_DEFINITIVE' && !this.el('mese-senza-fattura')) {
+                const box = document.createElement('div');
+                box.className = 'alert alert-warning napoli-alert';
+                box.setAttribute('role', 'alert');
+                const fatture = (e.data && e.data.fatture) || [];
+                box.innerHTML = `${napoliSvg(NAPOLI_ICONE_STATO.avviso, 18)}<div>
+                    <strong>${fatture.length === 1 ? 'Una fattura del mese non è ancora definitiva' : `${fatture.length} fatture del mese non sono ancora definitive`}</strong>
+                    <ul class="napoli-elenco">${fatture.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
+                    <p>Di solito prima si rende definitiva la fattura nella scheda <a href="/napoli/fattura">Fattura</a>, poi si chiude il mese.</p>
+                    <label class="napoli-scelta-riga"><input type="checkbox" id="mese-senza-fattura"> Chiudi lo stesso: per ${fatture.length === 1 ? 'questa' : 'queste'} la fattura non si fa adesso</label>
+                </div>`;
+                form.prepend(box);
+                this.el('mese-senza-fattura').focus();
+            } else {
+                napoliMostraErrore(e, form);
+            }
+        } finally {
+            setButtonLoading(pulsante, false);
+        }
+    },
+};
+
+// ==================== scheda Fattura (prospetto fattura, passo 1.9) ====================
+
+const NAPOLI_FATTURA_ATTESA = 2000;          // ore del coordinatore: come il salvataggio automatico della Rendicontazione
+const NAPOLI_ICONA_EXCEL = 'M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z';
+const NAPOLI_ICONA_STAMPA = 'M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z';
+const NAPOLI_ICONA_LUCCHETTO = 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z';
+const NAPOLI_ICONA_COPIA = 'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z';
+
+/** Data e ora 'AAAA-MM-GGTHH:MM:SS' -> '31/07/2026 alle 10:30' (senza fuso orario). */
+function napoliQuando(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || '');
+    return m ? `${m[3]}/${m[2]}/${m[1]} alle ${m[4]}:${m[5]}` : '';
+}
+
+/**
+ * I prospetti fattura del mese del lotto (REGOLE 9): uno per contratto applicativo e grado, con
+ * le righe come la fattura reale, la ritenuta, l'imponibile, l'IVA e "da pagare" (split
+ * payment); i controlli spiegati (in rosso quelli da sistemare prima della definitiva); le ore
+ * del coordinatore, che si salvano da sole 2 secondi dopo l'ultimo tasto, uscendo dalla casella
+ * o con Invio (frecce ↑ ↓ come in Rendicontazione: la casella sopra o sotto); Excel, Stampa,
+ * «Rendi definitiva» (numero e data della fattura emessa) e «Riapri la fattura» (con il
+ * motivo). Ogni numero arriva dal server (napoli_fattura): la pagina non calcola niente.
+ */
+const NapoliFattura = {
+    dati: null,
+    ritenute: null,
+    coord: new Map(),        // chiave del prospetto -> { salvato, corrente, timer, inVolo, ancora, errore, lettura }
+    ultimoSalvataggio: null,
+    daRicaricare: false,     // ore del coordinatore salvate: i prospetti si ricaricano
+    seq: 0,
+    scelto: null,            // il prospetto della finestra aperta
+
+    el(id) { return document.getElementById(id); },
+
+    async avvia() {
+        NapoliComune.alCambioLotto = async () => { await this.salvaInSospeso(); await this.carica(); };
+        NapoliComune.dopoAnnulla = async () => { await this.carica(); };
+        NapoliComune.primaDiAnnullare = () => this.salvaInSospeso();
+        this.collega();
+        try {
+            await NapoliComune.caricaLotti();
+        } catch (e) {
+            const box = this.el('fattura-senza-lotto');
+            box.hidden = false;
+            box.innerHTML = `<div class="alert alert-danger">${escapeHtml(napoliTestoErrore(e, 'Dati non disponibili'))}</div>`;
+            return;
+        }
+        this.preparaMesi();
+        await this.carica();
+    },
+
+    // ---------- mese scelto (lo stesso della scheda Presenze, ricordato nel browser) ----------
+
+    preparaMesi(scelto) {
+        const oggi = new Date();
+        const corrente = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}`;
+        let ricordato = null;
+        try {
+            const v = localStorage.getItem(NAPOLI_CHIAVE_MESE);
+            ricordato = /^\d{4}-\d{2}$/.test(v || '') ? v : null;
+        } catch (e) { /* il browser non ricorda: il mese di oggi */ }
+        const valore = scelto || ricordato || corrente;
+        const mesi = [];
+        for (let k = -12; k <= 1; k++) {
+            const d = new Date(oggi.getFullYear(), oggi.getMonth() + k, 1);
+            mesi.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+        }
+        if (!mesi.includes(valore)) mesi.push(valore);
+        mesi.sort();
+        const scelta = this.el('fm-mese');
+        scelta.innerHTML = mesi.map(v => `<option value="${v}">${escapeHtml(napoliMaiuscola(formatMeseIT(v)))}</option>`).join('');
+        scelta.value = valore;
+    },
+
+    meseScelto() {
+        const [anno, mese] = this.el('fm-mese').value.split('-').map(Number);
+        return { anno, mese };
+    },
+
+    ricordaMese(v) {
+        try { localStorage.setItem(NAPOLI_CHIAVE_MESE, v); } catch (e) { /* il browser non ricorda: pazienza */ }
+    },
+
+    async cambiaMese(passo) {
+        await this.salvaInSospeso();
+        const { anno, mese } = this.meseScelto();
+        const d = new Date(anno, mese - 1 + passo, 1);
+        const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const scelta = this.el('fm-mese');
+        if (![...scelta.options].some(o => o.value === v)) this.preparaMesi(v);
+        scelta.value = v;
+        this.ricordaMese(v);
+        await this.carica();
+    },
+
+    // ---------- eventi ----------
+
+    collega() {
+        this.el('fm-mese').addEventListener('change', async () => {
+            await this.salvaInSospeso();
+            this.ricordaMese(this.el('fm-mese').value);
+            await this.carica();
+        });
+        this.el('fm-prima').addEventListener('click', () => this.cambiaMese(-1));
+        this.el('fm-dopo').addEventListener('click', () => this.cambiaMese(1));
+        this.el('btn-fattura-annulla').addEventListener('click', () => NapoliComune.annulla());
+        const box = this.el('fattura-contenuto');
+        box.addEventListener('input', (e) => { if (e.target.matches('input.nf-coord')) this.modificata(e.target); });
+        box.addEventListener('change', (e) => { if (e.target.matches('input.nf-coord')) this.salvaCoord(e.target.dataset.chiave); });
+        box.addEventListener('keydown', (e) => { if (e.target.matches('input.nf-coord')) this.tasti(e); });
+        box.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-azione]');
+            if (!b) return;
+            const chiave = b.closest('[data-chiave]')?.dataset.chiave;
+            if (b.dataset.azione === 'definitiva') this.apriDefinitiva(chiave);
+            else if (b.dataset.azione === 'riapri') this.apriRiapri(chiave);
+            else if (b.dataset.azione === 'copia') this.copia(b);
+        });
+        this.el('form-definitiva').addEventListener('submit', (e) => { e.preventDefault(); this.confermaDefinitiva(); });
+        this.el('definitiva-data').addEventListener('input', () => this.aggiornaScadenza());
+        this.el('form-riapri').addEventListener('submit', (e) => { e.preventDefault(); this.confermaRiapri(); });
+        // uscita dalla pagina entro i 2 secondi: le ore del coordinatore cambiate partono subito
+        window.addEventListener('pagehide', () => this.inviaInUscita());
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') this.inviaInUscita(); });
+    },
+
+    // ---------- caricamento ----------
+
+    async carica() {
+        const lotto = NapoliComune.lotto;
+        const senza = this.el('fattura-senza-lotto');
+        if (!lotto) {
+            senza.hidden = false;
+            this.el('fattura-pagina').hidden = true;
+            senza.innerHTML = `<div class="card">${napoliBenvenuto()}</div>`;
+            senza.querySelector('[data-azione="crea-lotto"]')?.addEventListener('click', () =>
+                NapoliProcedura.apri(async (l) => { await NapoliComune.caricaLotti(l.id); await this.carica(); }));
+            return;
+        }
+        senza.hidden = true;
+        this.el('fattura-pagina').hidden = false;
+        const { anno, mese } = this.meseScelto();
+        const seq = ++this.seq;
+        let d, rit;
+        try {
+            [d, rit] = await Promise.all([
+                apiCall(`/api/napoli/lotti/${lotto.id}/fatture?anno=${anno}&mese=${mese}`),
+                apiCall(`/api/napoli/lotti/${lotto.id}/fatture/ritenute`),
+            ]);
+        } catch (e) {
+            if (seq !== this.seq) return;
+            this.el('fattura-contenuto').innerHTML = `<div class="alert alert-danger">${escapeHtml(napoliTestoErrore(e, 'Prospetti non disponibili'))}</div>`;
+            return;
+        }
+        if (seq !== this.seq) return;           // lotto o mese cambiati nel frattempo
+        this.dati = d;
+        this.ritenute = rit;
+        // le ore del coordinatore: si tiene quello che si sta scrivendo (se il prospetto c'e' ancora)
+        const prima = this.coord;
+        this.coord = new Map();
+        d.prospetti.forEach((p) => {
+            const vecchio = prima.get(p.chiave);
+            const st = { salvato: p.coordinatore.ore, corrente: null, timer: null, inVolo: null, ancora: false, errore: null, lettura: null };
+            if (vecchio && vecchio.lotto === d.lotto.id && vecchio.mese === `${d.anno}-${d.mese}`) {
+                Object.assign(st, { corrente: vecchio.corrente, timer: vecchio.timer, inVolo: vecchio.inVolo, ancora: vecchio.ancora,
+                    errore: vecchio.errore, lettura: vecchio.lettura });
+            }
+            st.lotto = d.lotto.id;
+            st.mese = `${d.anno}-${d.mese}`;
+            this.coord.set(p.chiave, st);
+        });
+        this.disegna();
+        this.disegnaRitenute();
+        this.mostraStato();
+    },
+
+    // ---------- disegno ----------
+
+    disegna() {
+        const d = this.dati;
+        const attiva = document.activeElement && document.activeElement.matches && document.activeElement.matches('input.nf-coord')
+            ? { chiave: document.activeElement.dataset.chiave, inizio: document.activeElement.selectionStart, fine: document.activeElement.selectionEnd } : null;
+        const conOre = d.prospetti.filter(p => !p.vuoto);
+        this.el('fattura-conta').textContent = d.prospetti.length === 1 ? '1 fattura' : `${d.prospetti.length} fatture`;
+        this.el('fattura-conta').hidden = !d.prospetti.length;
+        const avvisi = [];
+        if (d.chiuso) avvisi.push(`<div class="napoli-mese-chiuso">${napoliSvg(NAPOLI_ICONA_LUCCHETTO, 16)}<span><strong>${escapeHtml(d.testo)} è chiuso</strong>: le ore non si cambiano. Le fatture si possono comunque rendere definitive o riaprire.</span></div>`);
+        if (d.ore_senza_contratto) {
+            const una = d.ore_senza_contratto === '1';
+            avvisi.push(`<div class="alert alert-warning napoli-alert">${napoliSvg(NAPOLI_ICONE_STATO.avviso, 18)}<div><strong>${una ? '1 ora' : `${escapeHtml(d.ore_senza_contratto)} ore`} di ${escapeHtml(d.testo.toLowerCase())} ${una ? 'è' : 'sono'} in giorni che nessun contratto applicativo copre</strong>: non ${una ? 'va' : 'vanno'} in nessuna fattura. Aggiungi il contratto (o correggi le sue date) nelle <a href="/napoli/impostazioni#contratti">Impostazioni, Contratti</a>.</div></div>`);
+        }
+        this.el('fattura-avvisi-mese').innerHTML = avvisi.join('');
+        const box = this.el('fattura-contenuto');
+        if (!d.prospetti.length) {
+            box.innerHTML = `<div class="card"><div class="card-body napoli-fattura-vuota">
+                ${napoliSvg('M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z', 40)}
+                <h2>Nessun contratto applicativo copre ${escapeHtml(d.testo.toLowerCase())}</h2>
+                <p>Le fatture si fanno per contratto applicativo (per esempio «XI») e grado: aggiungi il contratto con le sue date${d.contratti ? ', oppure scegli un altro mese' : ''}.</p>
+                <a class="btn btn-primary" href="/napoli/impostazioni#contratti">Vai ai contratti applicativi</a>
+            </div></div>`;
+            return;
+        }
+        // prima quelle con ore: quelle vuote (un grado senza ore) restano in fondo, piu' piccole
+        const vuoti = d.prospetti.filter(p => p.vuoto);
+        box.innerHTML = conOre.map(p => this.htmlProspetto(p)).join('') + vuoti.map(p => this.htmlVuoto(p)).join('');
+        if (attiva) {
+            const input = box.querySelector(`input.nf-coord[data-chiave="${CSS.escape(attiva.chiave)}"]`);
+            if (input && !input.disabled) {
+                input.focus();
+                try { input.setSelectionRange(attiva.inizio, attiva.fine); } catch (e) { /* casella senza selezione */ }
+            }
+        }
+        this.coord.forEach((st, chiave) => this.aggiornaCoord(chiave));
+    },
+
+    titolo(p) {
+        return `Contratto ${escapeHtml(p.numero)} · ${escapeHtml(p.grado_testo)}`;
+    },
+
+    badgeStato(p) {
+        const f = p.fattura;
+        if (p.stato === 'definitiva') return `<span class="badge badge-success napoli-badge-stato">${napoliSvg(NAPOLI_ICONA_LUCCHETTO, 13)} Definitiva · n. ${escapeHtml(f.numero)} del ${escapeHtml(f.data_testo)}</span>`;
+        if (p.vuoto) return '<span class="badge badge-secondary napoli-badge-stato">Nessuna ora</span>';
+        const n = p.bloccanti.length;
+        const riaperta = p.stato === 'riaperta' ? '<span class="badge badge-info napoli-badge-stato">Riaperta</span> ' : '';
+        if (n) return `${riaperta}<span class="badge badge-danger napoli-badge-stato">${n === 1 ? '1 cosa da sistemare' : `${n} cose da sistemare`}</span>`;
+        return `${riaperta}<span class="badge badge-warning napoli-badge-stato">Da rendere definitiva</span>`;
+    },
+
+    htmlRighe(p) {
+        const t = p.totali;
+        const righe = p.righe.map(r => `<tr>
+                <td>${escapeHtml(r.descrizione)}</td>
+                <td class="napoli-numero">${escapeHtml(r.ore)}</td>
+                <td class="napoli-numero">${escapeHtml(r.tariffa)}</td>
+                <td class="napoli-numero">${escapeHtml(r.importo)}</td>
+            </tr>`).join('');
+        return `<div class="table-container napoli-fattura-tabella-box"><table class="table napoli-tabella-fattura">
+            <caption class="napoli-sr">Righe della fattura: ${this.titolo(p)}, ${escapeHtml(p.periodo_testo)}</caption>
+            <thead><tr><th scope="col">Descrizione</th><th scope="col" class="napoli-numero">Ore</th>
+                <th scope="col" class="napoli-numero">Prezzo unitario</th><th scope="col" class="napoli-numero">Importo (€)</th></tr></thead>
+            <tbody>${righe}
+                <tr class="nf-somma"><td colspan="3">Somma delle righe</td><td class="napoli-numero">${escapeHtml(t.somma)}</td></tr>
+                <tr class="nf-ritenuta"><td colspan="3">${escapeHtml(p.ritenuta_testo)}</td><td class="napoli-numero">-${escapeHtml(t.ritenuta)}</td></tr>
+            </tbody>
+            <tfoot>
+                <tr><th scope="row" colspan="3">Imponibile</th><td class="napoli-numero">${escapeHtml(t.imponibile)}</td></tr>
+                <tr><th scope="row" colspan="3">IVA ${escapeHtml(p.iva_percento)}%</th><td class="napoli-numero">${escapeHtml(t.iva)}</td></tr>
+                <tr><th scope="row" colspan="3">Totale documento</th><td class="napoli-numero">${escapeHtml(t.totale)}</td></tr>
+                <tr class="nf-da-pagare"><th scope="row" colspan="3">Da pagare${p.split_payment ? ' <span class="napoli-sotto-in">split payment: l\'IVA la versa l\'ente</span>' : ''}</th>
+                    <td class="napoli-numero">${escapeHtml(t.da_pagare)}</td></tr>
+            </tfoot>
+        </table></div>`;
+    },
+
+    htmlCoord(p) {
+        const c = p.coordinatore;
+        const chiave = p.chiave;
+        let motivo = '';
+        if (!c.modificabile) {
+            if (p.stato === 'definitiva') motivo = 'Fattura definitiva: le ore non si cambiano.';
+            else if (this.dati.chiuso) motivo = 'Mese chiuso: le ore non si cambiano.';
+            else motivo = 'Il mese non è ancora cominciato.';
+        }
+        return `<div class="napoli-prospetto-coord">
+            <label class="form-label" for="nfc-${escapeHtml(chiave)}">Ore del coordinatore</label>
+            <div class="nf-coord-riga">
+                <input type="text" class="table-input nf-coord" id="nfc-${escapeHtml(chiave)}" data-chiave="${escapeHtml(chiave)}"
+                    inputmode="decimal" autocomplete="off" maxlength="12" value="${escapeHtml(c.ore)}" placeholder="${c.modificabile ? 'da scrivere' : ''}"
+                    aria-describedby="nfcm-${escapeHtml(chiave)}"${c.modificabile ? '' : ' disabled'}>
+                <span class="napoli-sotto-in">${c.modificabile ? 'totale del periodo, in ore con la virgola (71,55); si salva da solo' : escapeHtml(motivo)}</span>
+            </div>
+            <div class="nf-coord-messaggio" id="nfcm-${escapeHtml(chiave)}" hidden></div>
+        </div>`;
+    },
+
+    htmlControllo(c, livello) {
+        const icona = livello === 'bloccante' ? NAPOLI_ICONE_STATO.manca : NAPOLI_ICONE_STATO.avviso;
+        return `<li class="nf-controllo livello-${livello}">
+            ${napoliSvg(icona, 18, 'napoli-icona-livello')}
+            <div><strong>${escapeHtml(c.titolo)}</strong>
+                ${c.testo ? `<p>${escapeHtml(c.testo)}</p>` : ''}
+                ${c.link ? `<a href="${escapeHtml(c.link)}" class="nf-sistema">Sistema in ${escapeHtml(c.link_testo || 'Impostazioni')} →</a>` : ''}</div>
+        </li>`;
+    },
+
+    htmlControlli(p) {
+        const parti = [];
+        if (p.stato === 'definitiva') {
+            parti.push(`<p class="nf-pronta nf-definitiva">${napoliSvg(NAPOLI_ICONA_LUCCHETTO, 18)}<span>Resa definitiva il ${escapeHtml(napoliQuando(p.fattura.definitiva_il))}: righe, totali e testi non cambiano più e le ore del periodo (${escapeHtml(p.grado_testo.toLowerCase())}) sono bloccate.</span></p>`);
+        } else if (p.bloccanti.length) {
+            parti.push(`<h3 class="nf-titolo-controlli nf-danger">Da sistemare prima della definitiva</h3>
+                <ul class="nf-controlli">${p.bloccanti.map(b => this.htmlControllo(b, 'bloccante')).join('')}</ul>`);
+        } else {
+            parti.push(`<p class="nf-pronta">${napoliSvg(NAPOLI_ICONE_STATO.ok, 18)}<span>Tutto a posto: controlla i numeri e rendi definitiva la fattura quando l'hai emessa.</span></p>`);
+        }
+        if (p.avvisi.length) {
+            parti.push(`<h3 class="nf-titolo-controlli nf-warning">Da controllare</h3>
+                <ul class="nf-controlli">${p.avvisi.map(a => this.htmlControllo(a, 'avviso')).join('')}</ul>`);
+        }
+        return parti.join('');
+    },
+
+    htmlTesti(p) {
+        const t = p.testata;
+        const pagamento = ['Bonifico bancario', t.iban ? `IBAN della cooperativa ${t.iban}` : '',
+            p.scadenza_testo ? `scadenza ${p.scadenza_testo}` : ''].filter(Boolean).join(' · ');
+        const voce = (etichetta, valore, copia = false) => `<div class="nf-testo">
+            <dt>${escapeHtml(etichetta)}${copia && valore ? ` <button type="button" class="btn btn-ghost btn-sm nf-copia" data-azione="copia" data-testo="${escapeHtml(valore)}" title="Copia il testo, da incollare nel programma di fatturazione">${napoliSvg(NAPOLI_ICONA_COPIA, 14)} Copia</button>` : ''}</dt>
+            <dd>${valore ? escapeHtml(valore) : '<span class="napoli-vuoto">manca</span>'}</dd></div>`;
+        return `<dl class="napoli-prospetto-testi">
+            ${voce('Oggetto', p.oggetto, true)}
+            ${voce('Nota', p.nota, true)}
+            ${voce('Destinatario', p.destinatario)}
+            ${voce('Pagamento', pagamento)}
+            ${voce('CIG e codice univoco ufficio', [t.cig ? `CIG ${t.cig}` : '', t.codice_univoco_ufficio ? `codice univoco ${t.codice_univoco_ufficio}` : ''].filter(Boolean).join(' · '))}
+            ${voce('Cooperativa', [t.cooperativa, t.partita_iva ? `P.IVA ${t.partita_iva}` : ''].filter(Boolean).join(' · '))}
+        </dl>`;
+    },
+
+    indirizzo(p, base) {
+        const d = this.dati;
+        return `${base}?lotto_id=${d.lotto.id}&anno=${d.anno}&mese=${d.mese}&contratto_id=${p.contratto_id}&grado=${encodeURIComponent(p.grado)}`;
+    },
+
+    htmlAzioni(p) {
+        const definitiva = p.stato === 'definitiva';
+        const titoloNo = p.bloccanti.length ? 'Prima sistema le cose in rosso' : (p.vuoto ? 'Nessuna ora da fatturare' : '');
+        return `<div class="napoli-prospetto-azioni">
+            <a class="btn btn-secondary btn-sm" href="${this.indirizzo(p, '/api/napoli/fatture/excel')}" download title="Il prospetto in Excel, con le ore per scuola e per operatore">${napoliSvg(NAPOLI_ICONA_EXCEL, 16)} Excel</a>
+            <a class="btn btn-secondary btn-sm" href="${this.indirizzo(p, '/napoli/fattura/stampa')}&stampa=1" target="_blank" rel="noopener" title="Il prospetto su un foglio A4, da stampare o salvare in PDF">${napoliSvg(NAPOLI_ICONA_STAMPA, 16)} Stampa</a>
+            <span class="nf-spazio"></span>
+            ${definitiva
+                ? `<button type="button" class="btn btn-secondary btn-sm" data-azione="riapri" title="Riapre la fattura scrivendo il motivo: le ore del periodo si possono di nuovo cambiare">Riapri la fattura</button>`
+                : `<button type="button" class="btn btn-primary btn-sm" data-azione="definitiva"${p.puo_rendere_definitiva ? '' : ` disabled title="${escapeHtml(titoloNo)}"`}>${napoliSvg(NAPOLI_ICONA_LUCCHETTO, 16)} Rendi definitiva</button>`}
+        </div>`;
+    },
+
+    htmlDettaglio(p) {
+        const s = p.dettaglio.scuole;
+        const o = p.dettaglio.operatori;
+        if (!s.length) return '';
+        return `<details class="napoli-prospetto-dettaglio">
+            <summary>Dettaglio delle ore per scuola e per operatore</summary>
+            <div class="nf-dettaglio-corpo">
+                <div class="table-container"><table class="table napoli-tabella-compatta">
+                    <thead><tr><th>Scuola</th><th>Mun.</th><th>Figura</th><th class="napoli-numero">Ore</th></tr></thead>
+                    <tbody>${s.map(x => `<tr><td>${escapeHtml(x.scuola)}</td><td>${x.municipalita ?? ''}</td><td>${escapeHtml(x.figura)}</td><td class="napoli-numero">${escapeHtml(x.ore)}</td></tr>`).join('')}</tbody>
+                </table></div>
+                <div class="table-container"><table class="table napoli-tabella-compatta">
+                    <thead><tr><th>Operatore</th><th>Figura</th><th class="napoli-numero">Ore</th></tr></thead>
+                    <tbody>${o.map(x => `<tr><td>${escapeHtml(x.operatore)}</td><td>${escapeHtml(x.figura)}</td><td class="napoli-numero">${escapeHtml(x.ore)}</td></tr>`).join('')}</tbody>
+                </table></div>
+            </div>
+            <p class="napoli-aiuto">Le ore della griglia presenze di questo periodo e grado, al centesimo (senza il coordinatore).</p>
+        </details>`;
+    },
+
+    htmlProspetto(p) {
+        return `<section class="card napoli-prospetto nf-${escapeHtml(p.stato)}" data-chiave="${escapeHtml(p.chiave)}" aria-labelledby="pt-${escapeHtml(p.chiave)}">
+            <div class="card-header napoli-prospetto-testa">
+                <div>
+                    <h2 class="card-title" id="pt-${escapeHtml(p.chiave)}">${this.titolo(p)}</h2>
+                    <p class="napoli-sottotitolo">Competenze ${escapeHtml(p.periodo_testo)}${p.mese_intero ? '' : ' (parte del mese, dalle date del contratto)'}</p>
+                </div>
+                <div class="nf-stato">${this.badgeStato(p)}</div>
+            </div>
+            <div class="card-body">
+                <div class="napoli-prospetto-corpo">
+                    <div class="napoli-prospetto-righe">${this.htmlRighe(p)}</div>
+                    <div class="napoli-prospetto-lato">${this.htmlCoord(p)}${this.htmlControlli(p)}</div>
+                </div>
+                ${this.htmlTesti(p)}
+                ${this.htmlAzioni(p)}
+                ${this.htmlDettaglio(p)}
+            </div>
+        </section>`;
+    },
+
+    htmlVuoto(p) {
+        const avviso = p.bloccanti.find(b => b.codice !== 'periodo_non_finito');
+        return `<section class="card napoli-prospetto napoli-prospetto-vuoto" data-chiave="${escapeHtml(p.chiave)}" aria-labelledby="pt-${escapeHtml(p.chiave)}">
+            <div class="card-header napoli-prospetto-testa">
+                <div>
+                    <h2 class="card-title" id="pt-${escapeHtml(p.chiave)}">${this.titolo(p)}</h2>
+                    <p class="napoli-sottotitolo">Competenze ${escapeHtml(p.periodo_testo)}: nessuna ora registrata di questo grado, niente da fatturare.</p>
+                </div>
+                <div class="nf-stato">${this.badgeStato(p)}</div>
+            </div>
+            <div class="card-body napoli-prospetto-vuoto-corpo">
+                ${this.htmlCoord(p)}
+                ${avviso ? `<ul class="nf-controlli">${this.htmlControllo(avviso, 'bloccante')}</ul>` : ''}
+            </div>
+        </section>`;
+    },
+
+    disegnaRitenute() {
+        const r = this.ritenute;
+        const box = this.el('ritenute-contenuto');
+        if (!r || !r.contratti.length) {
+            box.innerHTML = '<p class="napoli-vuoto">Ancora nessuna fattura definitiva in questo lotto.</p>';
+            return;
+        }
+        const righe = r.contratti.map(c => `
+            <tbody>
+                <tr class="nf-ritenute-contratto"><th colspan="4" scope="rowgroup">Contratto ${escapeHtml(c.numero)} · ${escapeHtml(napoliMaiuscola(c.grado_testo))} · ${escapeHtml(c.periodo_testo)}${c.accordo_quadro ? ` · accordo ${escapeHtml(c.accordo_quadro)}` : ''}${c.finito ? ' <span class="badge badge-secondary badge-sm">finito: da svincolare</span>' : ''}</th></tr>
+                ${c.fatture.map(f => `<tr><td>n. ${escapeHtml(f.numero)} del ${escapeHtml(f.data_testo)}</td><td>${escapeHtml(f.grado_testo)}, ${escapeHtml(f.periodo_testo)}</td>
+                    <td class="napoli-numero">${escapeHtml(f.somma)}</td><td class="napoli-numero">${escapeHtml(f.ritenuta)}</td></tr>`).join('')}
+                <tr class="nf-ritenute-totale"><th scope="row" colspan="2">Totale del contratto ${escapeHtml(c.numero)} (${c.n === 1 ? '1 fattura' : `${c.n} fatture`})</th>
+                    <td class="napoli-numero">${escapeHtml(c.somma)}</td><td class="napoli-numero">${escapeHtml(c.ritenuta)}</td></tr>
+            </tbody>`).join('');
+        box.innerHTML = `<div class="table-container"><table class="table napoli-tabella-ritenute">
+            <thead><tr><th scope="col">Fattura</th><th scope="col">Grado e periodo</th><th scope="col" class="napoli-numero">Somma delle righe (€)</th><th scope="col" class="napoli-numero">Ritenuta 0,50% (€)</th></tr></thead>
+            ${righe}
+            <tfoot><tr><th scope="row" colspan="3">Ritenute di tutti i contratti del lotto</th><td class="napoli-numero">${escapeHtml(r.totale)}</td></tr></tfoot>
+        </table></div>`;
+    },
+
+    // ---------- ore del coordinatore (si salvano da sole) ----------
+
+    prospettoDi(chiave) {
+        return (this.dati && this.dati.prospetti.find(p => p.chiave === chiave)) || null;
+    },
+
+    input(chiave) {
+        return this.el('fattura-contenuto').querySelector(`input.nf-coord[data-chiave="${CSS.escape(chiave)}"]`);
+    },
+
+    aggiornaCoord(chiave) {
+        const st = this.coord.get(chiave);
+        const input = this.input(chiave);
+        if (!st || !input) return;
+        if (st.corrente !== null && document.activeElement !== input) input.value = st.corrente;
+        else if (st.corrente === null && document.activeElement !== input) input.value = st.salvato;
+        input.classList.toggle('input-error', !!st.errore);
+        input.classList.toggle('changed', !st.errore && st.corrente !== null && st.corrente !== st.salvato);
+        const box = this.el(`nfcm-${chiave}`);
+        const testo = st.errore || st.lettura || '';
+        box.className = st.errore ? 'nf-coord-messaggio napoli-coord-errore' : 'nf-coord-messaggio napoli-coord-lettura';
+        box.setAttribute('role', st.errore ? 'alert' : 'status');
+        box.textContent = testo;
+        box.hidden = !testo;
+    },
+
+    modificata(input) {
+        const chiave = input.dataset.chiave;
+        const st = this.coord.get(chiave);
+        if (!st) return;
+        st.corrente = input.value.trim();
+        st.ancora = true;
+        clearTimeout(st.timer);
+        st.timer = setTimeout(() => this.salvaCoord(chiave), NAPOLI_FATTURA_ATTESA);
+        this.aggiornaCoord(chiave);
+        this.mostraStato('in_sospeso');
+    },
+
+    corpoCoord(chiave) {
+        const st = this.coord.get(chiave);
+        const p = this.prospettoDi(chiave);
+        if (!st || !p || st.corrente === null || st.corrente === st.salvato) return null;
+        const c = p.coordinatore;
+        return { anno: c.anno, mese: c.mese, contratto_id: c.contratto_id, grado: c.grado, ore: st.corrente };
+    },
+
+    async salvaCoord(chiave) {
+        const st = this.coord.get(chiave);
+        if (!st) return;
+        clearTimeout(st.timer);
+        st.timer = null;
+        if (st.inVolo) { st.ancora = true; return st.inVolo; }
+        st.ancora = false;
+        const corpo = this.corpoCoord(chiave);
+        if (!corpo) {
+            if (st.corrente !== null || st.errore) { st.corrente = null; st.errore = null; this.aggiornaCoord(chiave); }
+            this.mostraStato();
+            return;
+        }
+        const lotto = this.dati.lotto.id;
+        this.mostraStato('salvo');
+        st.inVolo = (async () => {
+            try {
+                const r = await apiCall(`/api/napoli/lotti/${lotto}/coordinamento`, { method: 'PUT', body: JSON.stringify(corpo) });
+                st.salvato = r.riga.ore;
+                st.errore = null;
+                st.lettura = r.lettura || null;
+                const input = this.input(chiave);
+                const ora = input ? input.value.trim() : corpo.ore;
+                st.corrente = ora === corpo.ore ? null : ora;
+                this.ultimoSalvataggio = new Date();
+                this.daRicaricare = true;
+            } catch (e) {
+                st.errore = napoliTestoErrore(e, 'Salvataggio non riuscito: riprova.');
+            }
+            st.inVolo = null;
+            this.aggiornaCoord(chiave);
+            if (st.ancora) await this.salvaCoord(chiave);
+            // righe e totali con le ore nuove, quando non resta niente da salvare
+            if (this.daRicaricare && ![...this.coord.values()].some(x => x.timer || x.inVolo)) {
+                this.daRicaricare = false;
+                await this.carica();
+            }
+            this.mostraStato();
+        })();
+        return st.inVolo;
+    },
+
+    async salvaInSospeso() {
+        const attese = [];
+        this.coord.forEach((st, chiave) => {
+            if (st.timer || st.inVolo || (st.corrente !== null && st.corrente !== st.salvato && !st.errore)) attese.push(this.salvaCoord(chiave));
+        });
+        await Promise.all(attese);
+    },
+
+    inviaInUscita() {
+        if (!this.dati) return;
+        this.coord.forEach((st, chiave) => {
+            if (!st.timer) return;
+            clearTimeout(st.timer);
+            st.timer = null;
+            const corpo = this.corpoCoord(chiave);
+            if (!corpo) return;
+            fetch(`/api/napoli/lotti/${this.dati.lotto.id}/coordinamento`, {
+                method: 'PUT', keepalive: true, credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo),
+            }).then(r => (r.ok ? r.json() : null)).then((r) => {
+                if (!r || !r.riga) return;
+                st.salvato = r.riga.ore;
+                st.corrente = null;
+                this.ultimoSalvataggio = new Date();
+                this.mostraStato();
+            }).catch(() => { /* la pagina si sta chiudendo */ });
+        });
+    },
+
+    /** Invio e frecce come in Rendicontazione: la casella delle ore del coordinatore sopra o sotto; Esc rimette il valore salvato. */
+    tasti(e) {
+        const input = e.target;
+        if (e.key === 'Escape') {
+            const st = this.coord.get(input.dataset.chiave);
+            if (st && st.corrente !== null) {
+                e.preventDefault();
+                e.stopPropagation();
+                clearTimeout(st.timer);
+                st.timer = null;
+                st.corrente = null;
+                st.errore = null;
+                input.value = st.salvato;
+                this.aggiornaCoord(input.dataset.chiave);
+                this.mostraStato();
+            }
+            return;
+        }
+        let passo = 0;
+        if (e.key === 'Enter' || e.key === 'ArrowDown') passo = 1;
+        else if (e.key === 'ArrowUp') passo = -1;
+        else return;
+        e.preventDefault();
+        const caselle = [...this.el('fattura-contenuto').querySelectorAll('input.nf-coord')].filter(i => !i.disabled);
+        const prossima = caselle[caselle.indexOf(input) + passo];
+        this.salvaCoord(input.dataset.chiave);
+        if (prossima) { prossima.focus(); prossima.select(); }
+        else if (e.key === 'Enter') input.blur();
+    },
+
+    mostraStato(tipo) {
+        const box = this.el('fattura-salvataggio');
+        const testo = (stato, icona, scritta) => {
+            box.className = ['auto-save-indicator', stato].filter(Boolean).join(' ');
+            box.innerHTML = `${icona ? napoliSvg(icona, 14) : ''}<span>${escapeHtml(scritta)}</span>`;
+        };
+        if (tipo === 'in_sospeso') return testo('pending', '', 'Modifiche in sospeso…');
+        if (tipo === 'salvo') return testo('saving', '', 'Salvataggio…');
+        const st = [...this.coord.values()];
+        if (st.some(x => x.timer || x.inVolo)) return testo('pending', '', 'Modifiche in sospeso…');
+        const errori = st.filter(x => x.errore).length;
+        const ora = this.ultimoSalvataggio
+            ? this.ultimoSalvataggio.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : null;
+        if (errori) return testo('errore', NAPOLI_COORD_ICONA_ERRORE, errori === 1 ? '1 casella da correggere' : `${errori} caselle da correggere`);
+        if (ora) return testo('saved', NAPOLI_COORD_ICONA_OK, `Salvato alle ${ora}`);
+        return testo('', NAPOLI_COORD_ICONA_OK, 'Salvataggio automatico');
+    },
+
+    // ---------- copia dei testi ----------
+
+    async copia(pulsante) {
+        const testo = pulsante.dataset.testo || '';
+        try {
+            await navigator.clipboard.writeText(testo);
+            showToast('Testo copiato: incollalo nel programma di fatturazione (Ctrl+V)', 'success');
+        } catch (e) {
+            // senza appunti (browser che non li permette): il testo si seleziona, Ctrl+C lo copia
+            const dd = pulsante.closest('.nf-testo')?.querySelector('dd');
+            if (dd) {
+                const r = document.createRange();
+                r.selectNodeContents(dd);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(r);
+            }
+            showToast('Il testo è selezionato: premi Ctrl+C per copiarlo', 'info');
+        }
+    },
+
+    // ---------- rendi definitiva e riapri ----------
+
+    async apriDefinitiva(chiave) {
+        await this.salvaInSospeso();
+        const p = this.prospettoDi(chiave);
+        if (!p) return;
+        if (!p.puo_rendere_definitiva) { showToast('Prima sistema le cose in rosso del prospetto.', 'warning'); return; }
+        this.scelto = p;
+        const form = this.el('form-definitiva');
+        napoliPulisciErrori(form);
+        this.el('definitiva-chi').textContent = `${p.numero ? `Contratto ${p.numero}` : ''} · ${p.grado_testo} · competenze ${p.periodo_testo} · da pagare ${p.totali.da_pagare} €`;
+        const oggi = this.dati.oggi;
+        this.el('definitiva-numero').value = (p.fattura && p.fattura.numero) || '';
+        this.el('definitiva-data').value = (p.fattura && p.fattura.data) || oggi;
+        this.el('definitiva-data').max = oggi;
+        this.aggiornaScadenza();
+        openModal('napoli-modal-definitiva');
+        // dopo il fuoco che openModal mette sulla X (che riprova fino a 120 ms): il numero della fattura
+        setTimeout(() => focusInFinestra(this.el('definitiva-numero')), 160);
+    },
+
+    aggiornaScadenza() {
+        const p = this.scelto;
+        const v = this.el('definitiva-data').value;
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || '');
+        if (!p || !m) { this.el('definitiva-scadenza').textContent = ''; return; }
+        const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + p.giorni_pagamento);
+        const testo = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+        this.el('definitiva-scadenza').textContent = `Scadenza del pagamento: ${testo} (${p.giorni_pagamento} giorni dalla data della fattura).`;
+    },
+
+    async confermaDefinitiva() {
+        const p = this.scelto;
+        const form = this.el('form-definitiva');
+        const numero = this.el('definitiva-numero');
+        const data = this.el('definitiva-data');
+        if (!napoliCampoObbligatorio(numero, 'Scrivi il numero della fattura emessa.')) return;
+        if (!napoliCampoObbligatorio(data, 'Scrivi la data della fattura emessa.')) return;
+        const pulsante = this.el('definitiva-conferma');
+        setButtonLoading(pulsante, true);
+        try {
+            const r = await apiCall(`/api/napoli/lotti/${this.dati.lotto.id}/fatture/definitiva`, { method: 'POST', body: JSON.stringify({
+                anno: this.dati.anno, mese: this.dati.mese, contratto_id: p.contratto_id, grado: p.grado,
+                numero: numero.value.trim(), data: data.value, impronta: p.impronta,
+            }) });
+            closeModal('napoli-modal-definitiva');
+            showToast(r.messaggio, 'success', 8000);
+            await this.carica();
+        } catch (e) {
+            if (e.code === 'PROSPETTO_CAMBIATO' || e.code === 'FATTURA_BLOCCATA' || e.code === 'GIA_DEFINITIVA') {
+                closeModal('napoli-modal-definitiva');
+                showToast(e.message, 'warning', 10000);
+                await this.carica();
+            } else {
+                napoliMostraErrore(e, form);
+            }
+        } finally {
+            setButtonLoading(pulsante, false);
+        }
+    },
+
+    apriRiapri(chiave) {
+        const p = this.prospettoDi(chiave);
+        if (!p || !p.fattura) return;
+        this.scelto = p;
+        const form = this.el('form-riapri');
+        napoliPulisciErrori(form);
+        this.el('riapri-titolo').textContent = `Riapri la fattura n. ${p.fattura.numero}`;
+        this.el('riapri-chi').textContent = `Contratto ${p.numero} · ${p.grado_testo} · competenze ${p.periodo_testo}`;
+        this.el('riapri-motivo').value = '';
+        openModal('napoli-modal-riapri');
+        setTimeout(() => focusInFinestra(this.el('riapri-motivo')), 160);
+    },
+
+    async confermaRiapri() {
+        const p = this.scelto;
+        const form = this.el('form-riapri');
+        const motivo = this.el('riapri-motivo');
+        if (!napoliCampoObbligatorio(motivo, 'Scrivi perché riapri la fattura.')) return;
+        const pulsante = this.el('riapri-conferma');
+        setButtonLoading(pulsante, true);
+        try {
+            const r = await apiCall(`/api/napoli/fatture/${p.fattura.id}/riapri`, { method: 'POST', body: JSON.stringify({ motivo: motivo.value.trim() }) });
+            closeModal('napoli-modal-riapri');
+            showToast(r.messaggio, 'success', 8000);
+            await this.carica();
         } catch (e) {
             napoliMostraErrore(e, form);
         } finally {
@@ -4892,3 +5618,4 @@ window.NapoliAnagrafiche = NapoliAnagrafiche;
 window.NapoliImport = NapoliImport;
 window.NapoliImpostazioni = NapoliImpostazioni;
 window.NapoliPresenze = NapoliPresenze;
+window.NapoliFattura = NapoliFattura;

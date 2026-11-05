@@ -453,6 +453,7 @@ def annulla(atteso=None):
                 if not isinstance(voci, list):
                     raise DatiNonValidi('Questa modifica non si può annullare da qui.', codice='NON_ANNULLABILE')
                 _controlla_mesi_chiusi(conn, voci)
+                _controlla_fatture_definitive(conn, voci)
                 for voce in reversed(voci):
                     _ripristina(conn, voce)
                 conn.execute('DELETE FROM napoli_annullamenti WHERE id = ?', (ultima['id'],))
@@ -904,6 +905,16 @@ def aggiorna_contratto(contratto_id, dati):
                             f'{" e altri mesi" if len(fuori) > 3 else ""}: con queste date o questo grado resterebbero '
                             'fuori dal contratto. Togli prima quelle ore nella scheda Mese.', 'valido_da',
                             codice='CONTRATTO_USATO')
+        for f in _righe(conn, "SELECT f.*, ? AS contratto_numero FROM napoli_fatture f WHERE f.contratto_id = ? "
+                              "AND f.stato = 'definitiva' ORDER BY f.periodo_dal", (attuale['numero'], contratto_id)):
+            # una fattura definitiva resta com'e': le date e il grado nuovi devono dare lo stesso periodo
+            dal = calc.data(f['periodo_dal'])
+            periodo = calc.periodo_fattura(dal.year, dal.month, valori['valido_da'], valori['valido_a'])
+            if periodo != (dal, calc.data(f['periodo_al'])) or (valori['grado'] and valori['grado'] != f['grado']):
+                raise Conflitto(f'Il contratto {attuale["numero"]} ha la fattura definitiva di {descrivi_fattura(f)}, '
+                                f'dal {calc.data_it(f["periodo_dal"])} al {calc.data_it(f["periodo_al"])}: con queste '
+                                'date o questo grado il suo periodo cambierebbe. Se va corretta, riaprila prima nella '
+                                'scheda Fattura.', 'valido_da', codice='FATTURA_DEFINITIVA')
         modifiche = _Modifiche(conn)
         modifiche.prima('contratti', contratto_id)
         assegna = ', '.join(f'{k} = ?' for k in valori)
@@ -1488,3 +1499,104 @@ def _nome_contratto(c):
     """'XI (grado inferiore)': il numero con il grado (numero e grado non si ripetono nel
     lotto), per sapere a quale contratto manca qualcosa."""
     return c['numero'] + (f' ({NOMI_GRADO[c["grado"]]})' if c.get('grado') else '')
+
+
+# ==================== fatture definitive: le ore del periodo non cambiano ====================
+# Passo 1.9 (PROGETTO §9): «Rendi definitiva» congela il prospetto (napoli_fatture, stato
+# 'definitiva'); finche' non si riapre, le ore del suo periodo (del suo grado) non cambiano:
+# caselle della griglia, ore del coordinatore, import delle ore e il suo annullamento, Ctrl+Z, e
+# nemmeno i dati che sposterebbero quelle ore in un'altra fattura (grado della scuola o
+# dell'alunno, scuola della coppia, date o grado del contratto applicativo). Altrimenti le stesse
+# ore potrebbero finire in due fatture, o la fattura emessa non sarebbe piu' quella del programma.
+
+def grado_della_coppia(conn, coppia_id):
+    """Grado per la fattura dei giorni di una coppia: quello dell'alunno, altrimenti quello della
+    scuola della coppia; None = da decidere (vuoto o scuola mista)."""
+    r = _riga(conn, 'SELECT a.grado AS a_grado, s.grado AS s_grado FROM napoli_coppie c '
+                    'JOIN napoli_alunni a ON a.id = c.alunno_id JOIN napoli_scuole s ON s.id = c.scuola_id '
+                    'WHERE c.id = ?', (coppia_id,))
+    return calc.grado_fattura((r['a_grado'] or r['s_grado']) if r else None)
+
+
+def fatture_definitive(conn, lotto_id, dal, al, grado=None):
+    """Le fatture definitive del lotto con il periodo che tocca i giorni dal-al (del grado, se
+    indicato), con il numero del contratto applicativo."""
+    sql = ('SELECT f.*, c.numero AS contratto_numero FROM napoli_fatture f '
+           'JOIN napoli_contratti c ON c.id = f.contratto_id '
+           "WHERE f.lotto_id = ? AND f.stato = 'definitiva' AND f.periodo_dal <= ? AND f.periodo_al >= ?")
+    parametri = [lotto_id, str(al), str(dal)]
+    if grado is not None:
+        sql += ' AND f.grado = ?'
+        parametri.append(grado)
+    return _righe(conn, sql + ' ORDER BY f.periodo_dal, f.grado', parametri)
+
+
+def fattura_definitiva_del_giorno(conn, lotto_id, giorno, grado):
+    """La fattura definitiva che contiene il giorno per quel grado (None = grado da decidere: vale
+    quella di un grado qualsiasi), oppure None."""
+    giorno = calc.data(giorno).isoformat()
+    trovate = fatture_definitive(conn, lotto_id, giorno, giorno, grado)
+    return trovate[0] if trovate else None
+
+
+def fattura_del_mese(conn, lotto_id, grado, contratto_id, anno, mese, definitiva=False):
+    """La riga di napoli_fatture di un lotto, grado, contratto applicativo e mese (il periodo
+    comincia in quel mese), con il numero del contratto; solo se definitiva, se richiesto."""
+    r = _riga(conn, "SELECT f.*, c.numero AS contratto_numero FROM napoli_fatture f "
+                    "JOIN napoli_contratti c ON c.id = f.contratto_id WHERE f.lotto_id = ? AND f.grado = ? "
+                    "AND f.contratto_id = ? AND substr(f.periodo_dal, 1, 7) = ? ORDER BY f.id DESC LIMIT 1",
+              (lotto_id, grado, contratto_id, f'{int(anno):04d}-{int(mese):02d}'))
+    if r and definitiva and r['stato'] != 'definitiva':
+        return None
+    return r
+
+
+def descrivi_fattura(f):
+    """'giugno 2026, contratto XI (grado inferiore), n. 37A2/2026': senza nomi."""
+    dal = calc.data(f['periodo_dal'])
+    numero = f' n. {f["numero"]}' if f.get('numero') else ''
+    contratto = f.get('contratto_numero') or ''
+    return (f'{calc.MESI[dal.month - 1].lower()} {dal.year}, contratto {contratto} '
+            f'({NOMI_GRADO[f["grado"]]}){"," if numero else ""}{numero}')
+
+
+def errore_fattura_definitiva(f, cosa='le ore di questi giorni non si cambiano'):
+    """Il Conflitto (409 FATTURA_DEFINITIVA) per un dato che toccherebbe una fattura definitiva."""
+    return Conflitto(f'C\'è la fattura definitiva di {descrivi_fattura(f)} (dal {calc.data_it(f["periodo_dal"])} al '
+                     f'{calc.data_it(f["periodo_al"])}): {cosa}. Se va corretta, riaprila prima nella scheda '
+                     'Fattura.', codice='FATTURA_DEFINITIVA')
+
+
+def controlla_ore_in_fatture_definitive(conn, coppie, cosa):
+    """Le coppie hanno ore (giorni registrati con ore riconosciute) nel periodo di una fattura
+    definitiva del loro lotto (di qualunque grado: un cambio di grado le sposterebbe): Conflitto."""
+    for coppia_id in coppie:
+        r = _riga(conn, '''
+            SELECT f.*, k.numero AS contratto_numero FROM napoli_presenze p
+            JOIN napoli_fatture f ON f.lotto_id = p.lotto_id AND f.stato = 'definitiva'
+                 AND p.data BETWEEN f.periodo_dal AND f.periodo_al
+            JOIN napoli_contratti k ON k.id = f.contratto_id
+            WHERE p.coppia_id = ? AND p.stato = 'registrato' AND p.minuti_riconosciuti > 0
+            ORDER BY f.periodo_dal LIMIT 1''', (coppia_id,))
+        if r:
+            raise errore_fattura_definitiva(r, cosa)
+
+
+def _controlla_fatture_definitive(conn, voci):
+    """Ctrl+Z non cambia le ore (presenze, ore del coordinatore) che stanno in una fattura
+    definitiva: come le scritture, 409 FATTURA_DEFINITIVA."""
+    for voce in voci:
+        if not isinstance(voce, dict) or voce.get('tabella') not in TABELLE_DEL_MESE:
+            continue
+        riga = voce.get('prima') or _riga(conn, f'SELECT * FROM napoli_{voce["tabella"]} WHERE id = ?',
+                                          (voce.get('chiave'),))
+        if not riga:
+            continue
+        if voce['tabella'] == 'presenze':
+            f = fattura_definitiva_del_giorno(conn, riga['lotto_id'], riga['data'],
+                                              grado_della_coppia(conn, riga['coppia_id']))
+        else:
+            f = fattura_del_mese(conn, riga['lotto_id'], riga['grado'], riga['contratto_id'], riga['anno'],
+                                 riga['mese'], definitiva=True)
+        if f:
+            raise errore_fattura_definitiva(f, 'questa modifica non si può annullare')

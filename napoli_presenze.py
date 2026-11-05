@@ -44,6 +44,7 @@ import database as db
 import import_napoli
 import napoli_calcoli as calc
 import napoli_db as ndb
+import napoli_fattura
 from napoli_db import Conflitto, DatiNonValidi, NonTrovato
 
 MAX_CELLE = 2000          # caselle in un salvataggio (un incolla grande, a gruppi)
@@ -219,6 +220,18 @@ class _Mese:
         for giorno, nome in self.festivi.items():
             self.chiusure_lotto.setdefault(giorno, nome)
         self.finito = self.al <= self.oggi       # dall'ultimo giorno il mese si chiude
+        # fatture definitive del mese (passo 1.9): i loro giorni, del loro grado, non cambiano
+        self.definitive = ndb.fatture_definitive(conn, lotto_id, dal, al)
+
+    def definitiva_del_giorno(self, c, giorno):
+        """La fattura definitiva che contiene il giorno della coppia (per il suo grado; con il
+        grado da decidere vale quella di un grado qualsiasi), oppure None."""
+        grado = calc.grado_fattura(c['a_grado'] or c['s_grado'])
+        g = giorno.isoformat()
+        for f in self.definitive:
+            if f['periodo_dal'] <= g <= f['periodo_al'] and grado in (None, f['grado']):
+                return f
+        return None
 
     def chiusura_del_giorno(self, scuola_id, giorno):
         return self.chiusure_scuola.get(scuola_id, {}).get(giorno) or self.chiusure_lotto.get(giorno)
@@ -339,11 +352,13 @@ def _righe(m, alunni=None):
     for c in coppie:
         presenze = m.presenze.get(c['id'], {})
         celle, fuori, chiusi, avvisi = {}, [], {}, set()
-        fuori_servizio = []
+        fuori_servizio, definitiva = [], []
         for giorno in m.giorni:
             i = m.indice[giorno]
             if not _valida_in(c, giorno):
                 fuori.append(i)
+            if m.definitive and m.definitiva_del_giorno(c, giorno):
+                definitiva.append(i)
             chiusa = m.chiusure_scuola.get(c['scuola_id'], {}).get(giorno)
             if chiusa and not m.chiusure_lotto.get(giorno):
                 chiusi[str(i)] = chiusa
@@ -369,6 +384,7 @@ def _righe(m, alunni=None):
             'pei': _testo_pei(m, c), 'quota': c['ore_settimanali'] is not None,
             'dal': c['valido_da'], 'al': c['valido_a'],
             'celle': celle, 'fuori': fuori, 'chiusi': chiusi, 'fuori_servizio': fuori_servizio,
+            'definitiva': definitiva,
             'totale': totale, 'totale_testo': calc.ore_brevi(totale),
             'avvisi': avvisi,
         })
@@ -474,6 +490,9 @@ def _intestazione(m):
         'finito': m.finito,
         'quota_assenza': calc.numero_it(m.regole_mese['quota_assenza_alunno']),
         'avviso_vacanze': _avviso_vacanze(m),
+        # fatture definitive del mese: i loro giorni sono bloccati (righe: 'definitiva')
+        'definitive': [{'testo': ndb.descrivi_fattura(f), 'grado': f['grado'], 'dal': f['periodo_dal'],
+                        'al': f['periodo_al']} for f in m.definitive],
     }
 
 
@@ -649,6 +668,11 @@ def _salva_una(conn, m, c, giorno, p, voce, modifiche, ora):
     if p and m.fasce.get(p['id'], {}).get('E'):
         return no('Questo giorno è registrato dal foglio firma con gli orari: si cambia dal foglio della coppia.',
                   codice='DAL_FOGLIO')
+    fattura = m.definitiva_del_giorno(c, giorno)
+    if fattura:
+        return no(f'Il {calc.data_it(giorno)} è nella fattura definitiva di {ndb.descrivi_fattura(fattura)}: le ore '
+                  'non si cambiano. Se va corretta, riapri prima la fattura nella scheda Fattura.',
+                  codice='FATTURA_DEFINITIVA')
     # i campi che non arrivano restano come sono
     testo = voce['testo'] if 'testo' in voce else _testo_attuale(p)
     if testo is not None and not isinstance(testo, (str, int, float)):
@@ -914,8 +938,12 @@ def dettaglio(lotto_id, coppia_id, anno, mese):
 def chiudi_mese(lotto_id, dati):
     """Chiude il mese del lotto (napoli_mesi_chiusi): da quel momento ore, note e ore del
     coordinatore del mese non si cambiano piu' (409 MESE_CHIUSO_LOTTO), nemmeno con Ctrl+Z.
-    Si chiude a mese finito (dall'ultimo giorno). Nota facoltativa (codici fiscali mascherati)."""
+    Si chiude a mese finito (dall'ultimo giorno), con le fatture del mese definitive (PROGETTO
+    §9): se una fattura con ore non lo e', 409 FATTURE_NON_DEFINITIVE con l'elenco, salvo la
+    conferma 'senza_fattura' ("per questi gradi la fattura non si fa adesso"). Nota facoltativa
+    (codici fiscali mascherati)."""
     anno, mese = _valida_mese(dati.get('anno'), dati.get('mese'))
+    senza_fattura = ndb._booleano(dati.get('senza_fattura'), False, 'senza_fattura')
     nota = ndb._testo(dati, 'nota', 'La nota', massimo=MOTIVO_MAX)
     nota = import_napoli.nascondi_codici_fiscali(nota) if nota else None
     oggi = ndb._oggi()
@@ -927,6 +955,13 @@ def chiudi_mese(lotto_id, dati):
         if oggi < calc.fine_mese(anno, mese):
             raise DatiNonValidi(f'{testo.capitalize()} non è ancora finito: il mese si chiude dall\'ultimo giorno, '
                                 'quando tutte le ore sono scritte.', 'mese', codice='MESE_NON_FINITO')
+        mancano = napoli_fattura.da_rendere_definitive(conn, lotto_id, anno, mese)
+        if mancano and not senza_fattura:
+            quante = 'una fattura con ore non è ancora definitiva' if len(mancano) == 1 else \
+                f'{len(mancano)} fatture con ore non sono ancora definitive'
+            raise Conflitto(f'Di {testo} {quante}: {"; ".join(mancano)}. Rendile definitive nella scheda Fattura, '
+                            'oppure conferma che per ora la fattura non si fa.', codice='FATTURE_NON_DEFINITIVE',
+                            fatture=mancano)
         conn.execute('INSERT INTO napoli_mesi_chiusi (lotto_id, anno, mese, data_chiusura, nota) VALUES (?, ?, ?, ?, ?)',
                      (lotto_id, anno, mese, ndb._ora(), nota))
         descrizione = f'Chiusura del mese di {testo}'

@@ -1,7 +1,7 @@
-"""Schema della sezione Napoli (napoli_schema: migrazioni 2, 3, 4, 5 e 6 di database.py).
+"""Schema della sezione Napoli (napoli_schema: migrazioni 2, 3, 4, 5, 6 e 7 di database.py).
 
 - Un database della v1.20.1 con l'archivio Roma inventato si aggiorna all'avvio:
-  user_version 6, le 22 tabelle napoli_* con i valori iniziali; tabelle, indici e
+  user_version 7, le 22 tabelle napoli_* con i valori iniziali; tabelle, indici e
   righe di Roma uguali a quelle del gemello riaperto dalla v1.20.1 (a ogni avvio
   anche _init_schema di Roma sistema qualche riga, uguale nelle due versioni).
 - Un database gia' alla v2 con dati di Napoli passa alla 3 (e alla 4): le ore del
@@ -14,20 +14,22 @@
   archiviazione (vuota); tutte le righe restano uguali.
 - Un database gia' alla v5 con dati passa alla 6: le presenze hanno il tipo e l'orario
   della nota del giorno della griglia (vuoti); tutte le righe restano uguali.
+- Un database gia' alla v6 con dati passa alla 7: le fatture hanno la testata congelata e le
+  date della definitiva e della riapertura (vuote); tutte le righe restano uguali.
 - Le migrazioni si rieseguono senza danni; se si interrompono non lasciano nulla a
-  meta'. Le migrazioni pubblicate (2, 3, 4, 5 e 6) non cambiano piu' (impronte fissate).
+  meta'. Le migrazioni pubblicate (2, 3, 4, 5, 6 e 7) non cambiano piu' (impronte fissate).
 - Il ripristino di un backup della v1.20.1 funziona e aggiorna subito lo schema;
   Roma risulta come dopo lo stesso ripristino fatto dalla v1.20.1 e il backup di
   sicurezza fatto prima conserva i dati di Napoli.
-- Una versione vecchia (v1.20.1 o con lo schema v2, v3, v4 o v5) apre un database v6 senza toccarlo.
+- Una versione vecchia (v1.20.1 o con lo schema v2, v3, v4, v5 o v6) apre un database v7 senza toccarlo.
 - Vincoli (CHECK, UNIQUE, chiavi esterne) e nessuna chiave esterna verso Roma.
 - Il seme Napoli dei test di invarianza riempie tutte le tabelle napoli_*.
 
 "Versione vecchia" = questo programma con il runner delle migrazioni fermo a una
 versione precedente: alla 1 e' la v1.20.1, perche' lo schema di Roma (_init_schema)
-non e' cambiato e le versioni 2-6 aggiungono solo le migrazioni; alla 2 e' il codice del
+non e' cambiato e le versioni 2-7 aggiungono solo le migrazioni; alla 2 e' il codice del
 passo 1.1, alla 3 quello del passo 1.2, alla 4 quello dei passi 1.3-1.5, alla 5 quello dei
-passi 1.6 e 1.8 (docs/ARCHITETTURA.md, "Sezione Napoli").
+passi 1.6 e 1.8, alla 6 quello del passo 1.7 (docs/ARCHITETTURA.md, "Sezione Napoli").
 
 Solo dati inventati.
 """
@@ -66,12 +68,16 @@ IMPRONTA_V4_PUBBLICATA = '61cc59026940c1fa4b6d422748ee306540ab8bef8956ea6a94ee8f
 # Impronta della migrazione 5 com'e' stata pubblicata (commit c65a6b8, passo 1.6): le
 # correzioni vanno in una migrazione nuova (crea_v6, del passo 1.7).
 IMPRONTA_V5_PUBBLICATA = '9c5bd66aa639b573146a7b7bf0e1a488a62ff98abbb2b18f7c1212d9ce0df121'
-# Impronta della migrazione 6 (passo 1.7, griglia presenze) come va pubblicata: dopo il
-# rilascio le correzioni vanno in una migrazione nuova (crea_v7, la fase 2).
+# Impronta della migrazione 6 com'e' stata pubblicata (commit 4bef723, passo 1.7, griglia
+# presenze): le correzioni vanno in una migrazione nuova (crea_v7, del passo 1.9).
 IMPRONTA_V6_PUBBLICATA = '708eaa63714cf2f501f57579b6cc63390c06ae561b98b8bdd0f2009fe8a83507'
-# Tabelle con le colonne della migrazione 5 e della 6 (le loro righe hanno colonne in piu', vuote).
+# Impronta della migrazione 7 (passo 1.9, prospetto fattura) come va pubblicata: dopo il
+# rilascio le correzioni vanno in una migrazione nuova (crea_v8, la fase 2).
+IMPRONTA_V7_PUBBLICATA = 'fd3c058523e83f8f549159f023cc41fef65f3ce64bc84b438f2c8e44d41fcfb2'
+# Tabelle con le colonne della migrazione 5, della 6 e della 7 (le loro righe hanno colonne in piu', vuote).
 TABELLE_V5 = {f'napoli_{t}' for t, _c, _tipo in napoli_schema.COLONNE_V5}
 TABELLE_V6 = {f'napoli_{t}' for t, _c, _tipo in napoli_schema.COLONNE_V6}
+TABELLE_V7 = {f'napoli_{t}' for t, _c, _tipo in napoli_schema.COLONNE_V7}
 VALORI_INIZIALI = {'napoli_figure': len(napoli_schema.FIGURE),
                    'napoli_alias_qualifiche': len(napoli_schema.ALIAS_QUALIFICHE)}
 ORA_RIPRISTINO = datetime.datetime(2026, 11, 4, 10, 0)
@@ -167,7 +173,7 @@ def test_migrazione_da_un_database_v1_20_1(database_v1_20_1, db_mod, monkeypatch
 
     db_mod.init_db()                                    # avvio della versione nuova
 
-    assert _user_version(percorso) == db_mod.SCHEMA_VERSION == 6 and _user_version(gemello) == 1
+    assert _user_version(percorso) == db_mod.SCHEMA_VERSION == 7 and _user_version(gemello) == 1
     assert _tabelle_napoli(percorso) == TABELLE_V2
     assert _oggetti(percorso, di_napoli=False) == _oggetti(gemello, di_napoli=False), \
         'la migrazione ha cambiato tabelle, indici o trigger di Roma'
@@ -182,9 +188,15 @@ def test_migrazione_da_un_database_v1_20_1(database_v1_20_1, db_mod, monkeypatch
                                    "WHERE origine = 'sistema'").fetchall()) == sorted(napoli_schema.ALIAS_QUALIFICHE)
         assert conn.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
         assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
-        assert _forma_v3(conn) and _forma_v4(conn) and _forma_v5(conn) and _forma_v6(conn)
+        assert _forma_v3(conn) and _forma_v4(conn) and _forma_v5(conn) and _forma_v6(conn) and _forma_v7(conn)
     finally:
         conn.close()
+
+
+def _forma_v7(conn):
+    """Le colonne della migrazione 7 (testata congelata, definitiva e riapertura delle fatture)."""
+    return all(c in {r[1] for r in conn.execute(f'PRAGMA table_info(napoli_{t})')}
+               for t, c, _tipo in napoli_schema.COLONNE_V7)
 
 
 def _forma_v6(conn):
@@ -257,6 +269,14 @@ def test_la_migrazione_6_pubblicata_non_cambia():
         'crea_v6 e\' gia\' pubblicata: le correzioni dello schema vanno in una migrazione nuova'
 
 
+def test_la_migrazione_7_pubblicata_non_cambia():
+    impronta = hashlib.sha256(repr((
+        napoli_schema.COLONNE_V7, inspect.getsource(napoli_schema.crea_v7),
+        inspect.getsource(napoli_schema._colonne))).encode('utf-8')).hexdigest()
+    assert impronta == IMPRONTA_V7_PUBBLICATA, \
+        'crea_v7 e\' gia\' pubblicata: le correzioni dello schema vanno in una migrazione nuova'
+
+
 def test_migrazione_rieseguibile(database_v1_20_1, db_mod):
     percorso, _ = database_v1_20_1
     db_mod.init_db()
@@ -273,11 +293,12 @@ def test_migrazione_rieseguibile(database_v1_20_1, db_mod):
             napoli_schema.crea_v4(conn)
             napoli_schema.crea_v5(conn)
             napoli_schema.crea_v6(conn)
+            napoli_schema.crea_v7(conn)
         conn.commit()
     finally:
         conn.close()
 
-    assert _user_version(percorso) == 6
+    assert _user_version(percorso) == 7
     assert _oggetti(percorso, di_napoli=True) == oggetti
     assert seme_napoli.impronta_napoli(percorso) == righe, 'rieseguire la migrazione ha cambiato i dati di Napoli'
     assert seme_napoli.impronta_roma(percorso) == roma
@@ -293,17 +314,17 @@ def test_migrazione_interrotta_non_lascia_nulla_a_meta(database_v1_20_1, db_mod,
     assert _oggetti(percorso, di_napoli=True) == [], 'la migrazione interrotta ha lasciato tabelle a meta\''
 
     db_mod.init_db()                                    # all'avvio successivo riesce
-    assert _user_version(percorso) == 6
+    assert _user_version(percorso) == 7
     assert _tabelle_napoli(percorso) == TABELLE_V2
 
 
-@pytest.mark.parametrize('schema', [1, 2, 3, 4, 5])
-def test_versione_vecchia_apre_un_database_v6_senza_toccarlo(database_isolato, db_mod, monkeypatch, schema):
+@pytest.mark.parametrize('schema', [1, 2, 3, 4, 5, 6])
+def test_versione_vecchia_apre_un_database_v7_senza_toccarlo(database_isolato, db_mod, monkeypatch, schema):
     seme_napoli.carica_seme_napoli(None, database_isolato)
     napoli, roma = seme_napoli.impronta_napoli(database_isolato), seme_napoli.impronta_roma(database_isolato)
     with _versione_vecchia(db_mod, monkeypatch, database_isolato, schema):
         db_mod.init_db()
-    assert _user_version(database_isolato) == 6
+    assert _user_version(database_isolato) == 7
     assert seme_napoli.impronta_napoli(database_isolato) == napoli
     assert seme_napoli.impronta_roma(database_isolato) == roma
 
@@ -354,10 +375,10 @@ def test_migrazione_3_da_un_database_v2_con_dati(database_v2, db_mod):
 
     db_mod.init_db()                                    # avvio della versione nuova
 
-    assert _user_version(percorso) == 6
+    assert _user_version(percorso) == 7
     conn = _connetti(percorso)
     try:
-        assert _forma_v3(conn) and _forma_v4(conn) and _forma_v5(conn) and _forma_v6(conn)
+        assert _forma_v3(conn) and _forma_v4(conn) and _forma_v5(conn) and _forma_v6(conn) and _forma_v7(conn)
         assert conn.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
         assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
     finally:
@@ -376,7 +397,7 @@ def test_migrazione_3_da_un_database_v2_con_dati(database_v2, db_mod):
         (None,) * len(napoli_schema.COLONNE_FATTURE_V3)]
     dopo = seme_napoli.impronta_napoli(percorso)
     # contratti: la colonna della v4; anagrafiche: le colonne della v5; presenze: quelle della v6
-    cambiate = {'napoli_coordinamento', 'napoli_fatture', 'napoli_contratti'} | TABELLE_V5 | TABELLE_V6
+    cambiate = {'napoli_coordinamento', 'napoli_fatture', 'napoli_contratti'} | TABELLE_V5 | TABELLE_V6 | TABELLE_V7
     assert {t: h for t, h in dopo.items() if t not in cambiate} == {t: h for t, h in prima.items() if t not in cambiate}
     assert seme_napoli.impronta_roma(percorso) == roma
     assert _oggetti(percorso, di_napoli=False) == oggetti_roma
@@ -429,7 +450,7 @@ def test_migrazione_3_interrotta_lascia_la_v2(database_v2, db_mod, monkeypatch):
     assert _oggetti(percorso, di_napoli=True) == oggetti, 'la migrazione interrotta ha lasciato lo schema a meta\''
     assert seme_napoli.impronta_napoli(percorso) == righe
     db_mod.init_db()
-    assert _user_version(percorso) == 6
+    assert _user_version(percorso) == 7
 
 
 # ==================== da un database gia' alla v3 ====================
@@ -460,10 +481,10 @@ def test_migrazione_4_da_un_database_v3_con_dati(database_v3, db_mod):
 
     db_mod.init_db()                                    # avvio della versione nuova
 
-    assert _user_version(percorso) == 6
+    assert _user_version(percorso) == 7
     conn = _connetti(percorso)
     try:
-        assert _forma_v3(conn) and _forma_v4(conn) and _forma_v5(conn) and _forma_v6(conn)
+        assert _forma_v3(conn) and _forma_v4(conn) and _forma_v5(conn) and _forma_v6(conn) and _forma_v7(conn)
         assert conn.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
         assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
     finally:
@@ -471,7 +492,7 @@ def test_migrazione_4_da_un_database_v3_con_dati(database_v3, db_mod):
     assert _righe(percorso, 'napoli_contratti', ', '.join(colonne_v3)) == contratti
     assert _righe(percorso, 'napoli_contratti', 'dd_servizio') == [(None,)] * len(contratti)
     dopo = seme_napoli.impronta_napoli(percorso)
-    cambiate = {'napoli_contratti'} | TABELLE_V5 | TABELLE_V6     # le colonne della v4, della v5 e della v6
+    cambiate = {'napoli_contratti'} | TABELLE_V5 | TABELLE_V6 | TABELLE_V7    # le colonne della v4-v7
     assert {t: h for t, h in dopo.items() if t not in cambiate} == {
         t: h for t, h in prima.items() if t not in cambiate}
     assert seme_napoli.impronta_roma(percorso) == roma and _oggetti(percorso, di_napoli=False) == oggetti_roma
@@ -488,7 +509,7 @@ def test_migrazione_4_rieseguibile_e_interrotta_lascia_la_v3(database_v3, db_mod
     assert _user_version(percorso) == 3
     assert _oggetti(percorso, di_napoli=True) == oggetti and seme_napoli.impronta_napoli(percorso) == righe
     db_mod.init_db()
-    assert _user_version(percorso) == 6
+    assert _user_version(percorso) == 7
     righe, oggetti = seme_napoli.impronta_napoli(percorso), _oggetti(percorso, di_napoli=True)
     conn = _connetti(percorso)
     try:
@@ -527,10 +548,10 @@ def test_migrazione_5_da_un_database_v4_con_dati(database_v4, db_mod):
 
     db_mod.init_db()                                    # avvio della versione nuova
 
-    assert _user_version(percorso) == 6
+    assert _user_version(percorso) == 7
     conn = _connetti(percorso)
     try:
-        assert _forma_v5(conn) and _forma_v6(conn)
+        assert _forma_v5(conn) and _forma_v6(conn) and _forma_v7(conn)
         assert conn.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
         assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
     finally:
@@ -542,7 +563,7 @@ def test_migrazione_5_da_un_database_v4_con_dati(database_v4, db_mod):
         assert _righe(percorso, tabella, ', '.join(colonne)) == righe, tabella
         assert set(_righe(percorso, tabella, nuove[tabella])) <= {(None,)}, tabella
     dopo = seme_napoli.impronta_napoli(percorso)
-    cambiate = TABELLE_V5 | TABELLE_V6
+    cambiate = TABELLE_V5 | TABELLE_V6 | TABELLE_V7
     assert {t: h for t, h in dopo.items() if t not in cambiate} == {
         t: h for t, h in prima.items() if t not in cambiate}
     assert seme_napoli.impronta_roma(percorso) == roma and _oggetti(percorso, di_napoli=False) == oggetti_roma
@@ -566,7 +587,7 @@ def test_migrazione_5_rieseguibile_e_interrotta_lascia_la_v4(database_v4, db_mod
     assert _user_version(percorso) == 4
     assert _oggetti(percorso, di_napoli=True) == oggetti and seme_napoli.impronta_napoli(percorso) == righe
     db_mod.init_db()
-    assert _user_version(percorso) == 6
+    assert _user_version(percorso) == 7
     righe, oggetti = seme_napoli.impronta_napoli(percorso), _oggetti(percorso, di_napoli=True)
     conn = _connetti(percorso)
     try:
@@ -606,10 +627,10 @@ def test_migrazione_6_da_un_database_v5_con_dati(database_v5, db_mod):
 
     db_mod.init_db()                                    # avvio della versione nuova
 
-    assert _user_version(percorso) == 6
+    assert _user_version(percorso) == 7
     conn = _connetti(percorso)
     try:
-        assert _forma_v6(conn)
+        assert _forma_v6(conn) and _forma_v7(conn)
         assert conn.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
         assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
     finally:
@@ -622,8 +643,8 @@ def test_migrazione_6_da_un_database_v5_con_dati(database_v5, db_mod):
             if t == tabella:
                 assert set(_righe(percorso, tabella, c)) <= {(None,)}, (tabella, c)
     dopo = seme_napoli.impronta_napoli(percorso)
-    assert {t: h for t, h in dopo.items() if t not in TABELLE_V6} == {
-        t: h for t, h in prima.items() if t not in TABELLE_V6}
+    assert {t: h for t, h in dopo.items() if t not in TABELLE_V6 | TABELLE_V7} == {
+        t: h for t, h in prima.items() if t not in TABELLE_V6 | TABELLE_V7}
     assert seme_napoli.impronta_roma(percorso) == roma and _oggetti(percorso, di_napoli=False) == oggetti_roma
 
 
@@ -638,12 +659,84 @@ def test_migrazione_6_rieseguibile_e_interrotta_lascia_la_v5(database_v5, db_mod
     assert _user_version(percorso) == 5
     assert _oggetti(percorso, di_napoli=True) == oggetti and seme_napoli.impronta_napoli(percorso) == righe
     db_mod.init_db()
-    assert _user_version(percorso) == 6
+    assert _user_version(percorso) == 7
     righe, oggetti = seme_napoli.impronta_napoli(percorso), _oggetti(percorso, di_napoli=True)
     conn = _connetti(percorso)
     try:
         napoli_schema.crea_v6(conn)
         napoli_schema.crea_v6(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    assert seme_napoli.impronta_napoli(percorso) == righe and _oggetti(percorso, di_napoli=True) == oggetti
+
+
+# ==================== da un database gia' alla v6 ====================
+
+@pytest.fixture
+def database_v6(database_v1_20_1, db_mod, monkeypatch):
+    """Il database v1.20.1 aggiornato dal codice del passo 1.7 (schema v6) e riempito con il
+    seme scritto direttamente (con una fattura definitiva di ottobre 2025)."""
+    percorso, _ = database_v1_20_1
+    with _versione_vecchia(db_mod, monkeypatch, percorso, schema=6):
+        db_mod.init_db()
+    assert _user_version(percorso) == 6
+    conn = _connetti(percorso)
+    try:
+        assert _forma_v6(conn) and not _forma_v7(conn)
+    finally:
+        conn.close()
+    seme_napoli.carica_seme_napoli(None, percorso)
+    return percorso
+
+
+def test_migrazione_7_da_un_database_v6_con_dati(database_v6, db_mod):
+    percorso = database_v6
+    prima, roma = seme_napoli.impronta_napoli(percorso), seme_napoli.impronta_roma(percorso)
+    oggetti_roma = _oggetti(percorso, di_napoli=False)
+    righe_v6 = {t: _righe(percorso, t) for t in sorted(TABELLE_V7)}
+    assert righe_v6['napoli_fatture'], 'il seme ha una fattura definitiva'
+
+    db_mod.init_db()                                    # avvio della versione nuova
+
+    assert _user_version(percorso) == 7
+    conn = _connetti(percorso)
+    try:
+        assert _forma_v7(conn)
+        assert conn.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
+        assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
+    finally:
+        conn.close()
+    nuove = {(f'napoli_{t}', c) for t, c, _tipo in napoli_schema.COLONNE_V7}
+    for tabella, righe in righe_v6.items():
+        colonne = [c for c in _colonne_attuali(percorso, tabella) if (tabella, c) not in nuove]
+        assert _righe(percorso, tabella, ', '.join(colonne)) == righe, tabella
+        for t, c in nuove:
+            if t == tabella:
+                assert set(_righe(percorso, tabella, c)) <= {(None,)}, (tabella, c)
+    dopo = seme_napoli.impronta_napoli(percorso)
+    assert {t: h for t, h in dopo.items() if t not in TABELLE_V7} == {
+        t: h for t, h in prima.items() if t not in TABELLE_V7}
+    assert seme_napoli.impronta_roma(percorso) == roma and _oggetti(percorso, di_napoli=False) == oggetti_roma
+
+
+def test_migrazione_7_rieseguibile_e_interrotta_lascia_la_v6(database_v6, db_mod, monkeypatch):
+    percorso = database_v6
+    oggetti, righe = _oggetti(percorso, di_napoli=True), seme_napoli.impronta_napoli(percorso)
+    with monkeypatch.context() as m:                    # si ferma dopo aver aggiunto le prime colonne
+        m.setattr(napoli_schema, 'COLONNE_V7',
+                  napoli_schema.COLONNE_V7 + (('fatture', 'rotta', 'TEXT NOT NULL'),))
+        with pytest.raises(sqlite3.OperationalError):
+            db_mod.init_db()
+    assert _user_version(percorso) == 6
+    assert _oggetti(percorso, di_napoli=True) == oggetti and seme_napoli.impronta_napoli(percorso) == righe
+    db_mod.init_db()
+    assert _user_version(percorso) == 7
+    righe, oggetti = seme_napoli.impronta_napoli(percorso), _oggetti(percorso, di_napoli=True)
+    conn = _connetti(percorso)
+    try:
+        napoli_schema.crea_v7(conn)
+        napoli_schema.crea_v7(conn)
         conn.commit()
     finally:
         conn.close()
@@ -673,7 +766,7 @@ def test_ripristino_di_un_backup_v1_20_1(database_isolato, app_module, db_mod, m
 
     _ripristina(client, nome)
 
-    assert _user_version(database_isolato) == 6, 'lo schema non e\' stato aggiornato dopo il ripristino'
+    assert _user_version(database_isolato) == 7, 'lo schema non e\' stato aggiornato dopo il ripristino'
     assert _tabelle_napoli(database_isolato) == TABELLE_V2
     assert {t: n for t, n in _conteggi(database_isolato).items() if n} == VALORI_INIZIALI
     assert _hash(backup) == impronta_file, 'il backup scelto e\' stato modificato'
@@ -704,6 +797,7 @@ def napoli_db(tmp_path):
     napoli_schema.crea_v4(conn)
     napoli_schema.crea_v5(conn)
     napoli_schema.crea_v6(conn)
+    napoli_schema.crea_v7(conn)
     conn.commit()
     conn.executescript('''
         INSERT INTO napoli_lotti (id, nome, numero_lotto, municipalita, data_creazione)

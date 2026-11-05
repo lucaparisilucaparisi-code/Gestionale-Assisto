@@ -54,7 +54,7 @@ MODULI_CONTROLLATI = {'config': ('vietati', CONFIG_VIETATI), 'database': ('ammes
 # templates/base.html, static/js/app.js, routes_migrazione.py, templates/commesse.html)
 # con il loro numero esatto.
 OCCORRENZE_AMMESSE = {
-    'database.py': 13,           # import napoli_schema e le migrazioni 2, 3, 4, 5 e 6 in MIGRAZIONI (con i commenti)
+    'database.py': 15,           # import napoli_schema e le migrazioni 2-7 in MIGRAZIONI (con i commenti)
     'app.py': 6,                 # import e registrazione del blueprint routes_napoli (con il commento)
     'templates/base.html': 20,   # voce "Napoli" del menu e della ricerca rapida (Alt+8), ogni elemento con
                                  # data-sezione="napoli", e il commento

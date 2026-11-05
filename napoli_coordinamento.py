@@ -91,6 +91,11 @@ def elenco(lotto_id):
             conn, 'SELECT * FROM napoli_coordinamento WHERE lotto_id = ?', (lotto_id,))}
         chiusi = {(r['anno'], r['mese']) for r in ndb._righe(
             conn, 'SELECT anno, mese FROM napoli_mesi_chiusi WHERE lotto_id = ?', (lotto_id,))}
+        # fatture definitive (passo 1.9): le loro ore del coordinatore non si cambiano
+        definitive = {(int(r['periodo_dal'][:4]), int(r['periodo_dal'][5:7]), r['contratto_id'], r['grado']): r
+                      for r in ndb._righe(conn, "SELECT f.*, c.numero AS contratto_numero FROM napoli_fatture f "
+                                                "JOIN napoli_contratti c ON c.id = f.contratto_id "
+                                                "WHERE f.lotto_id = ? AND f.stato = 'definitiva'", (lotto_id,))}
     per_id = {c['id']: c for c in contratti}
     mesi = {}
     for c in contratti:
@@ -100,13 +105,19 @@ def elenco(lotto_id):
             periodo = calc.periodo_fattura(anno, mese, c['valido_da'], c['valido_a'])
             for grado in ([c['grado']] if c['grado'] else calc.GRADI):
                 salvata = salvate.pop((anno, mese, c['id'], grado), None)
-                mesi.setdefault((anno, mese), []).append(_riga(anno, mese, c, grado, salvata, periodo))
+                riga = _riga(anno, mese, c, grado, salvata, periodo)
+                f = definitive.get((anno, mese, c['id'], grado))
+                riga['definitiva'] = ndb.descrivi_fattura(f) if f else None
+                mesi.setdefault((anno, mese), []).append(riga)
     # ore salvate che non stanno piu' in un mese del contratto (non dovrebbe succedere: le
     # Impostazioni non cambiano le date di un contratto che le lascerebbe fuori)
     for (anno, mese, contratto_id, grado), salvata in salvate.items():
         c = per_id.get(contratto_id) or {'id': contratto_id, 'numero': '?'}
         periodo = calc.periodo_fattura(anno, mese, c['valido_da'], c['valido_a']) if 'valido_da' in c else None
-        mesi.setdefault((anno, mese), []).append(_riga(anno, mese, c, grado, salvata, periodo))
+        riga = _riga(anno, mese, c, grado, salvata, periodo)
+        f = definitive.get((anno, mese, contratto_id, grado))
+        riga['definitiva'] = ndb.descrivi_fattura(f) if f else None
+        mesi.setdefault((anno, mese), []).append(riga)
     fine_di_questo_mese = calc.fine_mese(*limite)
     futuri = [{'numero': c['numero'], 'grado_testo': ndb.NOMI_GRADO[c['grado']], 'dal': c['valido_da'],
                'dal_testo': calc.data_it(c['valido_da'])}
@@ -167,6 +178,11 @@ def salva(lotto_id, dati):
             raise Conflitto(f'{calc.MESI[mese - 1]} {anno} di {lotto["nome"]} è chiuso: le ore del coordinatore non si '
                             'cambiano più. Per correggerle bisogna prima riaprire il mese.', 'ore',
                             codice='MESE_CHIUSO_LOTTO')
+        definitiva = ndb.fattura_del_mese(conn, lotto_id, grado, contratto_id, anno, mese, definitiva=True)
+        if definitiva:
+            e = ndb.errore_fattura_definitiva(definitiva, 'le ore del coordinatore non si cambiano')
+            e.campo = 'ore'
+            raise e
         lettura = None
         if 'ore' in dati:
             try:

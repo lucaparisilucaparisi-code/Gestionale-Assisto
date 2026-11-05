@@ -2963,6 +2963,8 @@ def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=
         azione = 'caricare l\'anagrafica da questo file' if anagrafica else 'importare'
         raise Conflitto(f'Il mese di {testo_mese} del lotto è chiuso: riaprilo prima di {azione}.',
                         codice='MESE_CHIUSO_LOTTO')
+    if not anagrafica:
+        _controlla_fatture_definitive(lotto_id, piano.anno, piano.mese, 'le ore di quel mese non si importano')
     # come la pagina: "caricare l'anagrafica" (l'azione principale) o "importare" (le ore)
     prima_di = 'Prima di caricare l\'anagrafica' if anagrafica else 'Prima di importare'
     if _versione(ctx, modo) != versione_dati:
@@ -3030,6 +3032,19 @@ def conferma(lotto_id, dati, nome_file, sha256_anteprima, versione_dati, scelte=
         messaggio = f'Importato {testo_mese}: {esito["righe_importate"]} righe, {ore} ore'
     return {'import_id': import_id, 'nessun_cambiamento': False, 'esito': esito, 'copia': copia, 'modo': modo,
             'messaggio': messaggio}
+
+
+def _estremi_mese(anno, mese):
+    return datetime.date(anno, mese, 1).isoformat(), calc.fine_mese(anno, mese).isoformat()
+
+
+def _controlla_fatture_definitive(lotto_id, anno, mese, cosa):
+    """Le ore di un mese con una fattura definitiva (passo 1.9) non si importano: 409
+    FATTURA_DEFINITIVA, finche' la fattura non si riapre."""
+    with db.get_db_context() as conn:
+        definitive = napoli_db.fatture_definitive(conn, lotto_id, *_estremi_mese(anno, mese))
+    if definitive:
+        raise napoli_db.errore_fattura_definitiva(definitive[0], cosa)
 
 
 def _ultimo_import(imports):
@@ -3105,6 +3120,10 @@ def annulla_import(import_id):
                         (imp['lotto_id'], imp['anno'], imp['mese'])).fetchone():
             raise Conflitto(f'Il mese di {testo_mese} del lotto è chiuso: riaprilo prima di annullare {il}.',
                             codice='MESE_CHIUSO_LOTTO')
+        if not anagrafica:
+            definitive = napoli_db.fatture_definitive(conn, imp['lotto_id'], *_estremi_mese(imp['anno'], imp['mese']))
+            if definitive:
+                raise napoli_db.errore_fattura_definitiva(definitive[0], 'l\'import di quel mese non si annulla')
         cambiate_dopo = conn.execute('SELECT COUNT(*) FROM napoli_presenze WHERE import_id = ? AND '
                                      "(origine <> 'import_excel' OR modificato_il <> ?)",
                                      (import_id, imp['data'])).fetchone()[0]

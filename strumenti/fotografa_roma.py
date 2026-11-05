@@ -177,6 +177,14 @@ ROTTE_NAPOLI = frozenset({
     '/api/napoli/lotti/<int:lotto_id>/presenze/coppie/<int:coppia_id>',
     '/api/napoli/lotti/<int:lotto_id>/mesi/chiudi',
     '/api/napoli/lotti/<int:lotto_id>/mesi/riapri',
+    # passo 1.9: scheda Fattura (prospetti, definitiva, riapertura, ritenute, Excel, stampa)
+    '/napoli/fattura',
+    '/napoli/fattura/stampa',
+    '/api/napoli/lotti/<int:lotto_id>/fatture',
+    '/api/napoli/lotti/<int:lotto_id>/fatture/definitiva',
+    '/api/napoli/fatture/<int:fattura_id>/riapri',
+    '/api/napoli/lotti/<int:lotto_id>/fatture/ritenute',
+    '/api/napoli/fatture/excel',
 })
 PREFISSI_NAPOLI = ('/napoli', '/api/napoli')
 

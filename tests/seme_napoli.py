@@ -22,7 +22,10 @@ del coordinatore di ottobre 2025 (_seme_coordinamento: scritte, cambiate, Ctrl+Z
 il punto), prima che il mese si chiuda; dal passo 1.7 la griglia presenze di novembre 2025
 (_seme_presenze: ore, sigle, alunno assente con la meta' dalla programmazione, "1,30" da
 confermare, ritardo con l'orario, uscita didattica, assenza recuperata, Ctrl+Z) e la
-chiusura del mese del lotto con le API (chiuso, rifiuta, riaperto con il motivo, richiuso).
+chiusura del mese del lotto con le API (chiuso, rifiuta, riaperto con il motivo, richiuso);
+dal passo 1.9 il prospetto fattura di novembre 2025 (_seme_fatture: ore del coordinatore,
+fattura del grado inferiore definitiva, riaperta e di nuovo definitiva, Excel, stampa e
+ritenute) prima della chiusura, che senza la fattura del grado superiore va confermata.
 Il resto, e tutto senza client o con versione_schema=2 (forma della v2, per provare la
 migrazione 3), si scrive direttamente nelle tabelle napoli_* con una connessione
 SQLite a parte: mai nelle tabelle di Roma. Ogni passo che aggiunge una funzione di
@@ -369,13 +372,50 @@ def _seme_presenze(client, lotto_id, coppie):
     _ok(client.post('/api/napoli/annulla', json={}))                       # Ctrl+Z della casella del 17
     riga = next(r for r in _ok(client.get(f'{url}/presenze?anno=2025&mese=11'))['righe'] if r['id'] == alba)
     assert (riga['totale'], riga['fonte']) == (240 + 90 + 90 + 150, 'programmazione'), riga
-    _ok(client.post(f'{url}/mesi/chiudi', json={'anno': 2025, 'mese': 11, 'nota': 'Chiusura di prova'}))
+    _seme_fatture(client, lotto_id, alba)
+    # il grado superiore (contratto X senza la determina) resta senza fattura definitiva: il
+    # mese si chiude solo confermando (PROGETTO §9)
+    senza = client.post(f'{url}/mesi/chiudi', json={'anno': 2025, 'mese': 11, 'nota': 'Chiusura di prova'})
+    assert senza.status_code == 409 and senza.get_json()['code'] == 'FATTURE_NON_DEFINITIVE', senza.get_data()
+    _ok(client.post(f'{url}/mesi/chiudi', json={'anno': 2025, 'mese': 11, 'nota': 'Chiusura di prova',
+                                                'senza_fattura': True}))
     chiuso = salva((gaia, '2025-11-13', {'testo': '3'}))
     assert chiuso.status_code == 409 and chiuso.get_json()['code'] == 'MESE_CHIUSO_LOTTO', chiuso.get_data()
     _ok(client.post(f'{url}/mesi/riapri', json={'anno': 2025, 'mese': 11, 'motivo': 'Correzione di prova'}))
     _ok(salva((gaia, '2025-11-13', {'testo': '3'})))
     _ok(client.get(f'{url}/presenze/coppie/{alba}?anno=2025&mese=11'))
-    _ok(client.post(f'{url}/mesi/chiudi', json={'anno': 2025, 'mese': 11}))
+    _ok(client.post(f'{url}/mesi/chiudi', json={'anno': 2025, 'mese': 11, 'senza_fattura': True}))
+
+
+def _seme_fatture(client, lotto_id, alba):
+    """Il prospetto fattura di novembre 2025 con le sue API (passo 1.9): le ore del coordinatore
+    del grado inferiore scritte dal prospetto, la fattura resa definitiva, riaperta con il motivo
+    e di nuovo definitiva, Excel, stampa e ritenute; una casella di quei giorni e' rifiutata."""
+    url = f'/api/napoli/lotti/{lotto_id}'
+    elenco = _ok(client.get(f'{url}/fatture?anno=2025&mese=11'))
+    inf = next(p for p in elenco['prospetti'] if p['grado'] == 'inferiore')
+    _ok(client.put(f'{url}/coordinamento', json={'anno': 2025, 'mese': 11, 'contratto_id': inf['contratto_id'],
+                                                 'grado': 'inferiore', 'ore': '2,25'}))
+    inf = next(p for p in _ok(client.get(f'{url}/fatture?anno=2025&mese=11'))['prospetti'] if p['grado'] == 'inferiore')
+    assert inf['puo_rendere_definitiva'] and [r['figura'] for r in inf['righe']] == ['COORDINATORE', 'ASACOM'], inf
+
+    def definitiva(p):
+        return _ok(client.post(f'{url}/fatture/definitiva', json={
+            'anno': 2025, 'mese': 11, 'contratto_id': p['contratto_id'], 'grado': 'inferiore', 'numero': '2/PROVA',
+            'data': '2025-12-05', 'impronta': p['impronta']}))
+
+    fattura_id = definitiva(inf)['fattura_id']
+    rifiutata = client.post(f'{url}/presenze', json={'anno': 2025, 'mese': 11, 'celle': [
+        {'coppia_id': alba, 'data': '2025-11-17', 'testo': '2'}]}).get_json()
+    assert rifiutata['celle'][0].get('codice') == 'FATTURA_DEFINITIVA', rifiutata
+    _ok(client.post(f'/api/napoli/fatture/{fattura_id}/riapri', json={'motivo': 'Correzione di prova'}))
+    definitiva(next(p for p in _ok(client.get(f'{url}/fatture?anno=2025&mese=11'))['prospetti']
+                    if p['grado'] == 'inferiore'))
+    scelta = f'lotto_id={lotto_id}&anno=2025&mese=11&contratto_id={inf["contratto_id"]}&grado=inferiore'
+    for indirizzo in (f'/api/napoli/fatture/excel?{scelta}', f'/napoli/fattura/stampa?{scelta}',
+                      f'{url}/fatture/ritenute', '/napoli/fattura'):
+        r = client.get(indirizzo)
+        assert r.status_code == 200, (indirizzo, r.status_code)
 
 
 def _seme_import(client, lotto_id):

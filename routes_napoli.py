@@ -23,18 +23,23 @@ mensile per lotto, grado e contratto applicativo.
 Passo 1.7: scheda Presenze (/napoli/presenze): la griglia del mese del lotto come il master
 del Comune, con il salvataggio a gruppi delle caselle, la nota del giorno, il dettaglio di
 una coppia e la chiusura e la riapertura del mese del lotto (napoli_presenze).
+Passo 1.9: scheda Fattura (/napoli/fattura): i prospetti del mese per contratto applicativo e
+grado, con i controlli, «Rendi definitiva», la riapertura, le ritenute cumulate, l'Excel
+(export_napoli) e la stampa A4 (/napoli/fattura/stampa) (napoli_fattura).
 """
 import json
 import logging
 import sqlite3
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request, send_file
 from werkzeug.exceptions import RequestEntityTooLarge
 
+import export_napoli
 import import_napoli
 import napoli_anagrafiche as anagrafiche
 import napoli_coordinamento as coordinamento
 import napoli_db
+import napoli_fattura as fattura
 import napoli_presenze as presenze
 
 napoli_bp = Blueprint('napoli', __name__)
@@ -110,6 +115,34 @@ def presenze_page():
     """Scheda Presenze: la griglia del mese del lotto (una riga per coppia, un giorno per colonna)."""
     _pulisci_annullamenti()
     return render_template('napoli_presenze.html')
+
+
+@napoli_bp.route('/napoli/fattura')
+def fattura_page():
+    """Scheda Fattura: i prospetti del mese per contratto applicativo e grado."""
+    _pulisci_annullamenti()
+    return render_template('napoli_fattura.html')
+
+
+def _scelta_prospetto():
+    """lotto, anno, mese, contratto e grado di un prospetto dall'indirizzo (Excel e stampa)."""
+    a = request.args
+    try:
+        lotto_id = int(a.get('lotto_id', ''))
+    except ValueError:
+        raise napoli_db.DatiNonValidi('Il lotto non è valido: torna alla scheda Fattura e riprova.') from None
+    return fattura.prospetto(lotto_id, a.get('anno'), a.get('mese'), a.get('contratto_id'), a.get('grado'))
+
+
+@napoli_bp.route('/napoli/fattura/stampa')
+def fattura_stampa_page():
+    """Il prospetto fattura da stampare in A4 da Edge o Chrome (anche in PDF), su una pagina."""
+    try:
+        p = _scelta_prospetto()
+    except napoli_db.ErroreNapoli as e:
+        return render_template('napoli_fattura_stampa.html', p=None, errore=e.messaggio), e.stato
+    return render_template('napoli_fattura_stampa.html', p=p, errore=None,
+                           stampa_subito=request.args.get('stampa') == '1')
 
 
 @napoli_bp.route('/napoli/impostazioni')
@@ -239,6 +272,42 @@ def api_chiudi_mese(lotto_id):
 @napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/mesi/riapri', methods=['POST'])
 def api_riapri_mese(lotto_id):
     return _ok(**presenze.riapri_mese(lotto_id, _dati()))
+
+
+# ==================== fattura (passo 1.9) ====================
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/fatture', methods=['GET'])
+def api_fatture(lotto_id):
+    """I prospetti del mese (?anno=&mese=), uno per contratto applicativo e grado."""
+    return jsonify(fattura.elenco(lotto_id, request.args.get('anno'), request.args.get('mese')))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/fatture/definitiva', methods=['POST'])
+def api_fattura_definitiva(lotto_id):
+    """Rende definitivo il prospetto di un mese, contratto e grado (numero e data della fattura)."""
+    return _ok(**fattura.rendi_definitiva(lotto_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/fatture/<int:fattura_id>/riapri', methods=['POST'])
+def api_fattura_riapri(fattura_id):
+    """Riapre una fattura definitiva, con il motivo."""
+    return _ok(**fattura.riapri(fattura_id, _dati()))
+
+
+@napoli_bp.route('/api/napoli/lotti/<int:lotto_id>/fatture/ritenute', methods=['GET'])
+def api_fatture_ritenute(lotto_id):
+    """Le ritenute dello 0,50% delle fatture definitive, per contratto applicativo."""
+    return jsonify(fattura.ritenute(lotto_id))
+
+
+@napoli_bp.route('/api/napoli/fatture/excel', methods=['GET'])
+def api_fattura_excel():
+    """Il prospetto in Excel (?lotto_id=&anno=&mese=&contratto_id=&grado=)."""
+    p = _scelta_prospetto()
+    rit = fattura.ritenute(p['mese_info']['lotto']['id'])
+    contenuto, nome = export_napoli.prospetto_excel(p, rit)
+    return send_file(contenuto, as_attachment=True, download_name=nome,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 # ==================== contratti applicativi ====================

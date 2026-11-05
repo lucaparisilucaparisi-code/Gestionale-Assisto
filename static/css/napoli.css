@@ -703,3 +703,119 @@ a.napoli-nome:hover { color: var(--accent-text); text-decoration: underline; }
 @media (max-width: 1100px) {
     .napoli-presenze { --g-w-alunno: 120px; --g-w-operatore: 100px; --g-w-figura: 66px; }
 }
+
+/* ---------- scheda Fattura: i prospetti del mese (passo 1.9) ----------
+   Un riquadro per contratto applicativo e grado: a sinistra le righe come la fattura reale
+   (descrizione, ore, prezzo, importo, ritenuta, totali, da pagare), a destra le ore del
+   coordinatore e i controlli; sotto i testi da ricopiare, i pulsanti e il dettaglio. A 1366x768
+   le due colonne stanno affiancate; sotto i 1180 px vanno una sotto l'altra. */
+.napoli-fattura { display: flex; flex-direction: column; gap: 16px; }
+.napoli-fattura .card { margin-bottom: 0; }
+.napoli-fattura-barra .card-header { border-bottom: 0; }
+.napoli-fattura-avvisi-mese:empty { display: none; }
+.napoli-fattura-avvisi-mese .napoli-alert { margin: 0; border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; }
+.napoli-fattura-avvisi-mese .napoli-mese-chiuso > span { white-space: normal; }
+#fattura-contenuto { display: flex; flex-direction: column; gap: 16px; }
+#fattura-contenuto > .loading { padding: 40px; }
+.napoli-fattura-vuota { text-align: center; padding: 32px 24px; }
+.napoli-fattura-vuota > svg { color: var(--accent-text); }
+.napoli-fattura-vuota h2 { font-size: 1.15rem; margin: 10px 0 6px; }
+.napoli-fattura-vuota p { color: var(--text-secondary); max-width: 64ch; margin: 0 auto 16px; }
+
+.napoli-prospetto-testa { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.napoli-prospetto-testa .card-title { margin: 0; }
+.napoli-prospetto-testa .napoli-sottotitolo { margin-top: 2px; }
+.nf-stato { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.napoli-badge-stato { display: inline-flex; align-items: center; gap: 5px; font-size: 0.8rem; padding: 4px 10px; }
+.napoli-prospetto.nf-definitiva { border-color: color-mix(in srgb, var(--success) 45%, var(--border-color)); }
+
+.napoli-prospetto-corpo { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 1180px) { .napoli-prospetto-corpo { grid-template-columns: minmax(0, 1fr); } }
+.napoli-prospetto-righe { min-width: 0; }
+.napoli-fattura-tabella-box { max-height: none; border: 1px solid var(--border-color); border-radius: var(--radius); }
+.napoli-tabella-fattura { margin: 0; font-variant-numeric: tabular-nums; }
+.napoli-tabella-fattura td, .napoli-tabella-fattura th { padding: 7px 12px; }
+.napoli-tabella-fattura thead th:nth-child(2) { width: 90px; }
+.napoli-tabella-fattura thead th:nth-child(3) { width: 120px; }
+.napoli-tabella-fattura thead th:nth-child(4) { width: 120px; }
+.napoli-tabella-fattura tbody td:first-child { font-weight: 500; color: var(--text-primary); }
+.napoli-tabella-fattura tr.nf-ritenuta td { font-style: italic; font-weight: 400; color: var(--text-secondary); font-size: 0.86rem; }
+/* i totali si leggono come testo normale (refine.css fa le intestazioni piccole e maiuscole) */
+.napoli-tabella-fattura tfoot th { text-align: right; background: var(--bg-secondary); text-transform: none; letter-spacing: 0;
+    font-size: 0.88rem !important; font-weight: 500 !important; color: var(--text-secondary) !important; }
+.napoli-tabella-fattura tr.nf-somma td { border-top: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 500; }
+.napoli-tabella-fattura tfoot td { background: var(--bg-secondary); font-weight: 600; color: var(--text-primary); }
+.napoli-tabella-fattura tfoot tr:first-child th, .napoli-tabella-fattura tfoot tr:first-child td { border-top: 2px solid var(--border-color); }
+.napoli-tabella-fattura tfoot tr.nf-da-pagare th, .napoli-tabella-fattura tfoot tr.nf-da-pagare td {
+    background: var(--accent-soft); color: var(--accent-text) !important; font-weight: 700 !important; font-size: 0.98rem !important;
+}
+.napoli-tabella-fattura tfoot tr.nf-da-pagare .napoli-sotto-in { display: block; font-weight: 400; font-size: 0.76rem; }
+
+.napoli-prospetto-lato { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.napoli-prospetto-coord { border: 1px solid var(--border-color); border-radius: var(--radius); padding: 10px 12px; background: var(--bg-secondary); }
+.napoli-prospetto-coord .form-label { margin-bottom: 4px; font-weight: 600; }
+.nf-coord-riga { display: flex; align-items: center; gap: 10px; }
+.nf-coord-riga .napoli-sotto-in { font-size: 0.8rem; color: var(--text-tertiary); line-height: 1.3; }
+input.nf-coord { width: 96px; flex: none; text-align: right; padding: 6px 10px; font-weight: 600; font-variant-numeric: tabular-nums;
+    background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+input.nf-coord:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent); }
+/* fattura definitiva o mese chiuso: le ore si leggono come testo, non come una casella da compilare */
+input.nf-coord:disabled { cursor: not-allowed; background: transparent; border-color: transparent; color: var(--text-primary); }
+input.nf-coord.input-error { border-color: var(--danger); box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 25%, transparent); }
+.nf-coord-messaggio { margin-top: 6px; }
+
+.nf-titolo-controlli { font-size: 0.9rem; font-weight: 600; margin: 0; }
+.nf-titolo-controlli.nf-danger { color: var(--danger); }
+.nf-titolo-controlli.nf-warning { color: var(--warning); }
+.nf-controlli { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.nf-controllo { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border-color);
+    border-left-width: 3px; border-radius: var(--radius-sm); background: var(--bg-card-solid); }
+.nf-controllo.livello-bloccante { border-left-color: var(--danger); }
+.nf-controllo.livello-avviso { border-left-color: var(--warning); }
+.nf-controllo .napoli-icona-livello { margin-top: 1px; }
+.nf-controllo strong { color: var(--text-primary); font-weight: 600; font-size: 0.88rem; }
+.nf-controllo p { margin: 2px 0 0; font-size: 0.83rem; color: var(--text-secondary); }
+.nf-sistema { display: inline-block; margin-top: 4px; font-size: 0.83rem; font-weight: 600; }
+.nf-pronta { display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 10px 12px; border-radius: var(--radius);
+    background: color-mix(in srgb, var(--success) 10%, var(--bg-card-solid)); color: var(--text-primary); font-size: 0.88rem; }
+.nf-pronta svg { flex: none; color: var(--success); margin-top: 1px; }
+
+.napoli-prospetto-testi { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; margin: 18px 0 0;
+    padding: 12px 14px; border: 1px solid var(--border-color); border-radius: var(--radius); }
+.nf-testo { min-width: 0; }
+.nf-testo:first-child, .nf-testo:nth-child(2) { grid-column: 1 / -1; }
+.nf-testo dt { display: flex; align-items: center; gap: 8px; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.03em;
+    color: var(--text-tertiary); font-weight: 600; }
+.nf-testo dd { margin: 2px 0 0; font-size: 0.88rem; color: var(--text-primary); overflow-wrap: anywhere; }
+.nf-copia { padding: 1px 8px; font-size: 0.75rem; text-transform: none; letter-spacing: 0; }
+
+.napoli-prospetto-azioni { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.napoli-prospetto-azioni .nf-spazio { flex: 1; }
+.napoli-prospetto-azioni .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+.napoli-prospetto-dettaglio { margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 8px; }
+.napoli-prospetto-dettaglio > summary { cursor: pointer; color: var(--text-secondary); font-size: 0.88rem; padding: 4px 0; }
+.napoli-prospetto-dettaglio > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.nf-dettaglio-corpo { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; margin-top: 8px; }
+.nf-dettaglio-corpo .table-container { max-height: 320px; overflow-y: auto; }
+@media (max-width: 1180px) { .nf-dettaglio-corpo { grid-template-columns: minmax(0, 1fr); } }
+
+.napoli-prospetto-vuoto .card-header { border-bottom: 0; }
+.napoli-prospetto-vuoto-corpo { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; padding-top: 0; }
+.napoli-prospetto-vuoto-corpo .napoli-prospetto-coord { flex: 0 1 460px; }
+.napoli-prospetto-vuoto-corpo .nf-controlli { flex: 1 1 320px; }
+
+.napoli-tabella-ritenute { margin: 0; font-variant-numeric: tabular-nums; }
+.napoli-tabella-ritenute td, .napoli-tabella-ritenute th { padding: 7px 12px; }
+.napoli-tabella-ritenute .nf-ritenute-contratto th { background: var(--bg-secondary); font-weight: 600; color: var(--text-primary); }
+.napoli-tabella-ritenute .nf-ritenute-totale th, .napoli-tabella-ritenute .nf-ritenute-totale td { font-weight: 600; }
+.napoli-tabella-ritenute tfoot th, .napoli-tabella-ritenute tfoot td { font-weight: 700; border-top: 2px solid var(--border-color); }
+.napoli-ritenute { scroll-margin-top: 72px; }
+.napoli-tabella-ritenute tbody th, .napoli-tabella-ritenute tfoot th { text-transform: none; letter-spacing: 0;
+    font-size: 0.88rem !important; color: var(--text-primary) !important; }
+.napoli-tabella-ritenute tfoot td { background: transparent; }
+#form-definitiva .napoli-sottotitolo, #form-riapri .napoli-sottotitolo { margin: 0 0 10px; font-weight: 600; }
+.napoli-modal-testo { margin: 0 0 14px; }
+
+/* griglia presenze: i giorni di una fattura definitiva sono bloccati (passo 1.9) */
+.napoli-griglia td.g-definitiva { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--success) 10%, var(--bg-card-solid)) 0 4px, var(--bg-card-solid) 4px 8px); }
+.napoli-griglia td.g-definitiva input:disabled { cursor: not-allowed; }

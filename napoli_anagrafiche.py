@@ -810,6 +810,13 @@ def aggiorna_scuola(scuola_id, dati):
         cambiati = _cambiati(attuale, valori)
         if not cambiati:
             return {'scuola_id': scuola_id, 'avvisi': [], 'messaggio': 'Nessun cambiamento da salvare'}
+        if 'grado' in cambiati:
+            # le ore delle coppie della scuola (con il grado della scuola) passerebbero in un'altra fattura
+            coppie = [r['id'] for r in _righe(conn, 'SELECT c.id FROM napoli_coppie c JOIN napoli_alunni a ON '
+                                                    'a.id = c.alunno_id WHERE c.scuola_id = ? AND a.grado IS NULL',
+                                              (scuola_id,))]
+            ndb.controlla_ore_in_fatture_definitive(conn, coppie, 'il grado della scuola non si cambia, perché le ore '
+                                                                  'dei suoi alunni passerebbero in un\'altra fattura')
         modifiche = ndb._Modifiche(conn)
         modifiche.prima('scuole', scuola_id)
         _aggiorna_riga(conn, 'scuole', scuola_id, dict({k: valori[k] for k in cambiati}, modificato_il=_ora()))
@@ -942,6 +949,10 @@ def aggiorna_alunno(alunno_id, dati):
         cambiati = _cambiati(attuale, valori)
         if not cambiati:
             return {'alunno_id': alunno_id, 'messaggio': 'Nessun cambiamento da salvare'}
+        if 'grado' in cambiati:
+            coppie = [r['id'] for r in _righe(conn, 'SELECT id FROM napoli_coppie WHERE alunno_id = ?', (alunno_id,))]
+            ndb.controlla_ore_in_fatture_definitive(conn, coppie, 'il grado dell\'alunno non si cambia, perché le sue '
+                                                                  'ore passerebbero in un\'altra fattura')
         cosa = _elenco([NOMI_CAMPI[k] for k in cambiati])
         descrizione = f'Modifica di un alunno ({_scheda_n(alunno_id)}): {cosa}'
         personali = [k for k in cambiati if k in ndb.COLONNE_PERSONALI['alunni']]
@@ -1564,6 +1575,10 @@ def aggiorna_coppia(coppia_id, dati):
         cambiati = _cambiati(attuale, valori)
         if not cambiati:
             return {'coppia_id': coppia_id, 'avvisi': [], 'messaggio': 'Nessun cambiamento da salvare'}
+        if 'scuola_id' in cambiati:
+            ndb.controlla_ore_in_fatture_definitive(conn, [coppia_id], 'la scuola della coppia non si cambia, perché '
+                                                                       'le sue ore potrebbero passare in un\'altra '
+                                                                       'fattura')
         modifiche = ndb._Modifiche(conn)
         testo_libero = [k for k in cambiati if k in ndb.COLONNE_TESTO_LIBERO['coppie']]
         if not testo_libero:
