@@ -49,9 +49,24 @@ reimplementarla inline (a schermo, in SQL o negli export).
   Le colonne "Monte Ore" di tutti gli export mostrano `monte_ore_effettivo` del mese
   (l'annuale: la media dei mesi attivi), mai la base di oggi. Lo stesso nelle pagine:
   tabella e storico dell'utente in Rendicontazione (con la base tra parentesi se e'
-  diversa), elenco "senza ore" di Chiusura mese, anteprima dei Report e Dashboard
-  (lo "Stato del mese" e la somma "monte ore a settimana", che usa il mese di oggi),
-  tutte da `monte_ore_effettivo` di `/api/rendicontazione/<anno>/<mese>`.
+  diversa), elenco "senza ore" di Chiusura mese, anteprima dei Report, "Stato del
+  mese" della Dashboard, tutte da `monte_ore_effettivo` di
+  `/api/rendicontazione/<anno>/<mese>`. Le due somme "di oggi", "monte ore a
+  settimana" della Dashboard e "Monte ore settimanale oggi" delle Statistiche, hanno
+  una sola funzione, `monteOreSettimanaleOggi` di `static/js/app.js` (utenti attivi,
+  ognuno col monte ore del mese di oggi; chi non e' nella vista del mese resta con la
+  base): prima la Dashboard dava 59 h e le Statistiche 57 con una variazione in corso.
+  `monte_ore_totale` di `/api/stats/advanced` resta la somma delle basi (e' nella
+  fotografia) e le Statistiche lo mostrano solo se la vista del mese non risponde.
+- **Confronto annuale** → Statistiche (`/api/stats/confronto-annuale-dettaglio`) e
+  Report (`variazioniConfrontoAnnuale` nella pagina) seguono la stessa regola: anni dal
+  piu' recente, variazione nella riga dell'anno piu' recente rispetto all'anno prima,
+  sulle ore erogate; nessuna variazione con "dati non ancora inseriti" se nel mese
+  nessun utente ha la riga (ore o pasti, anche a zero) o con "mese non ancora
+  concluso"; un mese con le righe ma 0 ore da' -100% in tutte e due. I conteggi sono
+  diversi e lo dicono le etichette: "Utenti con dati" (righe del mese) in Statistiche,
+  "Utenti in servizio" (tutti quelli del mese) nel Report, "utenti con ore" (ore > 0)
+  nel Confronto mese, che confronta le ore per giorno di scuola.
 - **Variazioni del wizard (monte ore nuovo anno)** → quando il passo Utenti cambia il
   monte ore BASE di chi ha ore nei mesi passati, `_conserva_monte_ore_passato` registra
   prima una variazione CHIUSA ad agosto con il valore vecchio: inizio = il piu' vecchio tra
@@ -288,7 +303,13 @@ dati inventati:
   finora (stessi numeri della v1.20.1): **passo roma-visualizzazione**, testi al
   singolare con 1 (titoli di `/api/alerts`, messaggi di `/api/stats/validazione`,
   tre frasi della Relazione Word), impronte della cornice di otto pagine (script:
-  monte ore del mese, plurali, etichette dei confronti) e di `dashboard.js`.
+  monte ore del mese, plurali, etichette dei confronti) e di `dashboard.js`; con la
+  revisione del passo, le impronte della cornice di Import, Report, Statistiche e
+  Utenti (plurali, monte ore di oggi, "Utenti con dati", regola del Confronto annuale),
+  del contenuto di Import (l'anteprima scrive "1 riga valida trovata su 1 riga
+  totale") e di nuovo di `dashboard.js`. `app.js` non ha impronta (`STATICI_MODIFICABILI`): le
+  sue funzioni di Roma nuove (`quanti`, `monteOreSettimanaleOggi`) e quelle del Report
+  le esegue con node `tests/test_roma_visualizzazione.py`, sulle risposte del server.
 - **Invarianza** (`tests/test_roma_invariata.py`): fotografia, poi i dati di Napoli
   (`tests/seme_napoli.py`, `carica_seme_napoli`: riempie tutte le tabelle `napoli_*`;
   con un client i dati che hanno gia' le loro API passano da li', dal passo 1.3

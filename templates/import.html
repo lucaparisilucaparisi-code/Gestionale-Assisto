@@ -109,7 +109,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                 </svg>
                 <div>
-                    <strong>Anteprima:</strong> <span id="preview-count"></span> righe valide trovate su <span id="preview-total"></span> righe totali.
+                    <strong>Anteprima:</strong> <span id="preview-count"></span> su <span id="preview-total"></span>.
                     Controlla i dati e premi <strong>Conferma Importazione</strong> per procedere.
                 </div>
             </div>
@@ -530,8 +530,8 @@ async function previewDipendenti() {
         const pv = document.getElementById('dip-preview');
         pv.innerHTML = `
             <div class="alert alert-info">
-                <div><strong>${d.totale}</strong> operatori nel file:
-                    <span class="text-success">${d.nuovi} nuovi</span>,
+                <div><strong>${d.totale}</strong> ${d.totale === 1 ? 'operatore' : 'operatori'} nel file:
+                    <span class="text-success">${quanti(d.nuovi, 'nuovo', 'nuovi')}</span>,
                     <span class="text-warning">${d.aggiornati} da aggiornare</span> (abbinati per Codice Fiscale).
                     ${d.colonne_extra.length ? `<br><span class="text-muted text-sm">Dati extra conservati: ${d.colonne_extra.map(escapeHtml).join(', ')}</span>` : ''}
                 </div>
@@ -542,7 +542,7 @@ async function previewDipendenti() {
                         <td><span class="badge badge-${e.stato === 'nuovo' ? 'success' : 'warning'}">${e.stato}</span></td>
                         <td>${escapeHtml(e.nome)}</td><td class="font-mono text-sm">${escapeHtml(e.cf)}</td>
                         <td>${escapeHtml(e.qualifica)}</td><td class="text-right font-mono">${e.ore ?? '—'}</td></tr>`).join('')}
-                    ${d.totale > d.esempi.length ? `<tr><td colspan="5" class="text-center text-muted">… e altri ${d.totale - d.esempi.length}</td></tr>` : ''}
+                    ${d.totale > d.esempi.length ? `<tr><td colspan="5" class="text-center text-muted">… e ${d.totale - d.esempi.length === 1 ? 'un altro' : `altri ${d.totale - d.esempi.length}`}</td></tr>` : ''}
                 </tbody></table>
             </div>`;
         pv.classList.remove('hidden');
@@ -570,12 +570,12 @@ async function importDipendenti() {
         document.getElementById('dip-result').innerHTML = `
             <div class="alert alert-success">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                <div><strong>Import completato:</strong> ${d.creati} creati, ${d.aggiornati} aggiornati.
+                <div><strong>Import completato:</strong> ${quanti(d.creati, 'creato', 'creati')}, ${quanti(d.aggiornati, 'aggiornato', 'aggiornati')}.
                     ${d.errori_count ? `<br>${d.errori_count === 1 ? '1 riga con errori' : `${d.errori_count} righe con errori`}.` : ''}
                     <br><a href="/dipendenti">Vai all'anagrafica dipendenti →</a></div>
             </div>`;
         document.getElementById('dip-result').classList.remove('hidden');
-        showToast(`${d.creati} creati, ${d.aggiornati} aggiornati`, 'success');
+        showToast(`${quanti(d.creati, 'creato', 'creati')}, ${quanti(d.aggiornati, 'aggiornato', 'aggiornati')}`, 'success');
         loadCronologiaImport();
     } catch (e) {
         showToast('Errore: ' + e.message, 'error');
@@ -709,15 +709,15 @@ async function previewFile() {
         previewData = data;
 
         // Mostra anteprima
-        document.getElementById('preview-count').textContent = data.righe_valide;
-        document.getElementById('preview-total').textContent = data.totale_righe;
+        document.getElementById('preview-count').textContent = quanti(data.righe_valide, 'riga valida trovata', 'righe valide trovate');
+        document.getElementById('preview-total').textContent = quanti(data.totale_righe, 'riga totale', 'righe totali');
 
         // Conta nuovi, aggiornamenti, skip
         const nuovi = data.preview.filter(r => r.stato === 'nuovo').length;
         const aggiorna = data.preview.filter(r => r.stato === 'esistente').length;
         const salta = data.preview.filter(r => r.stato === 'skip').length;
 
-        document.getElementById('preview-new-count').textContent = `${nuovi} nuovi`;
+        document.getElementById('preview-new-count').textContent = quanti(nuovi, 'nuovo', 'nuovi');
         document.getElementById('preview-update-count').textContent = `${aggiorna} da aggiornare`;
         document.getElementById('preview-skip-count').textContent = `${salta} da saltare`;
 
@@ -767,7 +767,7 @@ async function previewFile() {
         document.getElementById('btn-upload').disabled = false;
         previewDone = true;
 
-        showToast(`Anteprima: ${data.righe_valide === 1 ? '1 riga valida' : `${data.righe_valide} righe valide`} (${nuovi} nuovi, ${aggiorna} da aggiornare)`, 'info');
+        showToast(`Anteprima: ${data.righe_valide === 1 ? '1 riga valida' : `${data.righe_valide} righe valide`} (${quanti(nuovi, 'nuovo', 'nuovi')}, ${aggiorna} da aggiornare)`, 'info');
 
     } catch (error) {
         showToast('Errore durante l\'anteprima: ' + error.message, 'error');
@@ -829,9 +829,9 @@ async function uploadFile() {
                 </svg>
                 <div>
                     <strong>Importazione completata!</strong><br>
-                    <span class="badge badge-success">${importati} nuovi utenti</span>
-                    <span class="badge badge-warning">${aggiornati} aggiornati</span>
-                    ${saltati > 0 ? `<span class="badge badge-secondary">${saltati} saltati</span>` : ''}
+                    <span class="badge badge-success">${quanti(importati, 'nuovo utente', 'nuovi utenti')}</span>
+                    <span class="badge badge-warning">${quanti(aggiornati, 'aggiornato', 'aggiornati')}</span>
+                    ${saltati > 0 ? `<span class="badge badge-secondary">${quanti(saltati, 'saltato', 'saltati')}</span>` : ''}
                 </div>
             </div>
             ${data.backup_pre_import ? `
@@ -956,9 +956,9 @@ function renderRendPreview(data) {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
             <div>
-                <strong>${data.totale_match}</strong> rendicontazioni pronte da importare.
+                <strong>${data.totale_match}</strong> ${data.totale_match === 1 ? 'rendicontazione pronta' : 'rendicontazioni pronte'} da importare.
                 ${data.totale_non_trovati > 0 ? `<span class="text-warning">${data.totale_non_trovati === 1 ? '1 riga non abbinata' : `${data.totale_non_trovati} righe non abbinate`}</span> (utenti non in anagrafica, ${data.totale_non_trovati === 1 ? 'saltata' : 'saltate'}).` : ''}
-                ${data.totale_ambigui > 0 ? ` <span class="text-warning">${data.totale_ambigui} ambigue</span> (omonimi non risolti).` : ''}
+                ${data.totale_ambigui > 0 ? ` <span class="text-warning">${quanti(data.totale_ambigui, 'ambigua', 'ambigue')}</span> (omonimi non risolti).` : ''}
                 ${data.totale_fuori_limite > 0 ? ` <span class="text-danger">${data.totale_fuori_limite} fuori limite</span> (ore oltre ${CFG_IMPORT.max_ore_mensili} o pasti oltre ${CFG_IMPORT.max_pasti_mensili}: non verranno importate).` : ''}
             </div>
         </div>
@@ -975,7 +975,7 @@ function renderRendPreview(data) {
             ? `<details class="mt-2"><summary class="text-muted pointer">Mostra alcuni non abbinati (${f.n_non_trovati})</summary>
                  <div class="text-xs text-muted" style="margin-top:6px; line-height:1.6;">
                     ${f.esempi_non_trovati.map(v => `${escapeHtml(v.nome)} <span style="opacity:0.6">(${escapeHtml(v.commessa)})</span>`).join(' · ')}
-                    ${f.n_non_trovati > f.esempi_non_trovati.length ? ` … e altri ${f.n_non_trovati - f.esempi_non_trovati.length}` : ''}
+                    ${f.n_non_trovati > f.esempi_non_trovati.length ? ` … e ${f.n_non_trovati - f.esempi_non_trovati.length === 1 ? 'un altro' : `altri ${f.n_non_trovati - f.esempi_non_trovati.length}`}` : ''}
                  </div></details>`
             : '';
         const ambiguiEsempi = f.n_ambigui
@@ -990,8 +990,8 @@ function renderRendPreview(data) {
                     <h3 class="card-title" style="margin:0;">${escapeHtml(f.mese_nome)} ${f.anno}</h3>
                     <div class="flex gap-2 flex-wrap">
                         <span class="badge badge-success">${f.n_match} da importare</span>
-                        ${f.n_non_trovati ? `<span class="badge badge-warning">${f.n_non_trovati} non abbinati</span>` : ''}
-                        ${f.n_ambigui ? `<span class="badge badge-danger">${f.n_ambigui} ambigui</span>` : ''}
+                        ${f.n_non_trovati ? `<span class="badge badge-warning">${quanti(f.n_non_trovati, 'non abbinato', 'non abbinati')}</span>` : ''}
+                        ${f.n_ambigui ? `<span class="badge badge-danger">${quanti(f.n_ambigui, 'ambiguo', 'ambigui')}</span>` : ''}
                         ${f.n_fuori_limite ? `<span class="badge badge-danger">${f.n_fuori_limite} fuori limite</span>` : ''}
                     </div>
                 </div>
@@ -1045,8 +1045,8 @@ async function importRendicontazione() {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                    <strong>Import completato:</strong> ${data.totale_scritti} rendicontazioni salvate.
-                    ${data.totale_saltati_gia_pieni > 0 ? `<br>${data.totale_saltati_gia_pieni} saltate (mese già compilato).` : ''}
+                    <strong>Import completato:</strong> ${quanti(data.totale_scritti, 'rendicontazione salvata', 'rendicontazioni salvate')}.
+                    ${data.totale_saltati_gia_pieni > 0 ? `<br>${quanti(data.totale_saltati_gia_pieni, 'saltata', 'saltate')} (mese già compilato).` : ''}
                     ${data.totale_non_trovati > 0 ? `<br>${data.totale_non_trovati === 1 ? '1 riga non abbinata' : `${data.totale_non_trovati} righe non abbinate`} (utenti non in anagrafica).` : ''}
                     ${data.totale_fuori_limite > 0 ? `<br><span class="text-danger">${data.totale_fuori_limite === 1 ? '1 riga NON importata' : `${data.totale_fuori_limite} righe NON importate`} perché fuori limite:</span> ` +
                         data.dettaglio.flatMap(d => d.fuori_limite || []).map(v => `${escapeHtml(v.nome)} (${escapeHtml(v.motivo)})`).join(', ') : ''}
@@ -1072,7 +1072,7 @@ async function importRendicontazione() {
             </div>` : ''}
         `;
         result.classList.remove('hidden');
-        showToast(`${data.totale_scritti} rendicontazioni importate`, 'success');
+        showToast(quanti(data.totale_scritti, 'rendicontazione importata', 'rendicontazioni importate'), 'success');
         loadCronologiaImport();
         document.getElementById('rend-btn-import').disabled = true;
     } catch (error) {
@@ -1297,8 +1297,8 @@ function _righeEsitoMigrazione(stats) {
         const agg = s.aggiornati ?? s.aggiornate ?? 0;
         const salt = s.saltati ?? 0;
         const chiusi = s.saltate_mese_chiuso ?? 0;
-        return `${tabella}: ${imp} nuovi, ${agg} aggiornati${salt ? `, ${salt} saltati` : ''}` +
-            (chiusi ? `, ${chiusi} non scritte (mese chiuso)` : '');
+        return `${tabella}: ${quanti(imp, 'nuovo', 'nuovi')}, ${quanti(agg, 'aggiornato', 'aggiornati')}${salt ? `, ${quanti(salt, 'saltato', 'saltati')}` : ''}` +
+            (chiusi ? `, ${quanti(chiusi, 'non scritta', 'non scritte')} (mese chiuso)` : '');
     });
 }
 
@@ -1329,7 +1329,7 @@ async function eseguiMigrazione(mode, conferma) {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                    <strong>${titolo}</strong> ${data.totale_importati} importati, ${data.totale_aggiornati} aggiornati.
+                    <strong>${titolo}</strong> ${quanti(data.totale_importati, 'importato', 'importati')}, ${quanti(data.totale_aggiornati, 'aggiornato', 'aggiornati')}.
                     ${data.backup ? `<br>Backup dei dati precedenti: <code>${escapeHtml(data.backup)}</code>` : ''}
                     <div class="mt-2" style="font-size: 0.85rem;">${_righeEsitoMigrazione(data.stats).map(escapeHtml).join('<br>')}</div>
                     ${(data.avvisi || []).map(a => `<div class="mt-2"><strong>Attenzione:</strong> ${escapeHtml(a)}</div>`).join('')}
@@ -1340,7 +1340,7 @@ async function eseguiMigrazione(mode, conferma) {
         resultDiv.classList.remove('hidden');
 
         document.getElementById('migrazione-preview').classList.add('hidden');
-        showToast(`${titolo} ${data.totale_importati} importati, ${data.totale_aggiornati} aggiornati`,
+        showToast(`${titolo} ${quanti(data.totale_importati, 'importato', 'importati')}, ${quanti(data.totale_aggiornati, 'aggiornato', 'aggiornati')}`,
                   (data.avvisi || []).length ? 'warning' : 'success');
 
         // Reset

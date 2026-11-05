@@ -1193,7 +1193,8 @@ def api_import_excel():
                 errors.append(f"Riga {idx+2}: {str(e)}")
 
         logger.info(f"Import completato: {imported} nuovi, {updated} aggiornati, {skipped} saltati")
-        db.log_audit('import', 'utenti', dettagli=f'{imported} nuovi, {updated} aggiornati da {file.filename}')
+        db.log_audit('import', 'utenti', dettagli=(f"{_quanti(imported, 'nuovo', 'nuovi')}, "
+                                                  f"{_quanti(updated, 'aggiornato', 'aggiornati')} da {file.filename}"))
 
         # Salva in cronologia
         try:
@@ -1381,7 +1382,8 @@ def api_import_rendicontazione():
         })
 
     db.log_audit('import_rendicontazione', 'rendicontazione',
-                 dettagli=f"{tot_scritti} rendicontazioni importate da {file.filename}")
+                 dettagli=(f"{_quanti(tot_scritti, 'rendicontazione importata', 'rendicontazioni importate')} "
+                           f"da {file.filename}"))
     try:
         with db.get_db_context() as conn:
             conn.execute('''
@@ -1539,7 +1541,8 @@ def api_import_dipendenti():
         return jsonify({'error': 'Errore interno del server'}), 500
 
     db.log_audit('import_dipendenti', 'dipendente',
-                 dettagli=f"{res['creati']} creati, {res['aggiornati']} aggiornati da {file.filename}")
+                 dettagli=(f"{_quanti(res['creati'], 'creato', 'creati')}, "
+                           f"{_quanti(res['aggiornati'], 'aggiornato', 'aggiornati')} da {file.filename}"))
     try:
         with db.get_db_context() as conn:
             conn.execute('''CREATE TABLE IF NOT EXISTS import_cronologia (
@@ -1680,7 +1683,8 @@ def api_create_assenza_dip(dipendente_id):
         return jsonify({'error': str(e)}), 400
     # Genera automaticamente le sostituzioni da coprire per i turni nel periodo
     create = db.crea_sostituzioni_per_assenza(aid)
-    db.log_audit('create', 'assenza_dipendente', aid, f"dip {dipendente_id}, {create} turni da coprire")
+    db.log_audit('create', 'assenza_dipendente', aid,
+                 f"dip {dipendente_id}, {_quanti(create, 'turno', 'turni')} da coprire")
     return jsonify({'success': True, 'id': aid, 'turni_da_coprire': create})
 
 
@@ -2054,7 +2058,8 @@ def api_bulk_update_utenti():
 
     if precedenti:
         push_undo('bulk_update_utenti', {'items': precedenti})
-    db.log_audit('bulk_modifica', 'utenti', dettagli=f'{successi} utenti aggiornati in bulk')
+    db.log_audit('bulk_modifica', 'utenti',
+                 dettagli=f"{_quanti(successi, 'utente aggiornato', 'utenti aggiornati')} in bulk")
     logger.info(f"Bulk update: {successi} utenti aggiornati")
 
     return jsonify({
@@ -2095,7 +2100,8 @@ def api_bulk_delete_utenti():
             errori.append({'id': uid, 'errore': 'Eliminazione non riuscita'})
 
     db.log_audit('bulk_eliminazione', 'utenti',
-                 dettagli=f'{eliminati} utenti eliminati in bulk' + (f', {len(errori)} non riusciti' if errori else ''))
+                 dettagli=(f"{_quanti(eliminati, 'utente eliminato', 'utenti eliminati')} in bulk"
+                           + (f", {_quanti(len(errori), 'non riuscito', 'non riusciti')}" if errori else '')))
     # Prima rispondeva sempre "success" anche con righe fallite: ora le elenca
     return jsonify({'success': not errori, 'eliminati': eliminati, 'errori': errori})
 
@@ -2761,7 +2767,8 @@ def api_batch_update_rendicontazione(anno, mese):
 
     if aggiornati:
         db.log_audit('modifica_ore', 'rendicontazione', None,
-                     dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: {aggiornati} utenti aggiornati",
+                     dettagli=(f"{MESI_NOME.get(mese, mese)} {anno}: "
+                               f"{_quanti(aggiornati, 'utente aggiornato', 'utenti aggiornati')}"),
                      dati_nuovi={'utenti': [r['utente_id'] for r in righe]})
 
     return jsonify({'success': True, 'aggiornati': aggiornati})
@@ -2867,7 +2874,7 @@ def api_copia_mese_precedente(anno, mese):
 
     if copiati:
         db.log_audit('modifica_ore', 'rendicontazione', None,
-                     dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: ore di {copiati} utenti copiate "
+                     dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: ore di {_quanti(copiati, 'utente', 'utenti')} copiate "
                               f"da {MESI_NOME.get(mese_prec, '')} {anno_prec}",
                      dati_nuovi={'utenti': [u['utente_id'] for u in updates]})
 
@@ -2921,7 +2928,8 @@ def api_compila_con_media(anno, mese):
 
     if compilati:
         db.log_audit('modifica_ore', 'rendicontazione', None,
-                     dettagli=f"{MESI_NOME.get(mese, mese)} {anno}: {compilati} utenti compilati con la media prevista",
+                     dettagli=(f"{MESI_NOME.get(mese, mese)} {anno}: "
+                               f"{_quanti(compilati, 'utente compilato', 'utenti compilati')} con la media prevista"),
                      dati_nuovi={'utenti': [u['utente_id'] for u in updates]})
 
     return jsonify({
@@ -3557,7 +3565,7 @@ def api_anno_scolastico_prepara():
     mesi = calcola_e_salva_calendario_auto(anno_scolastico)
     utenti_attivi = db.count_utenti()
     db.log_audit('preparazione_anno', 'sistema',
-                 dettagli=f'Preparato anno scolastico {anno_scolastico} ({len(mesi)} mesi)')
+                 dettagli=f"Preparato anno scolastico {anno_scolastico} ({_quanti(len(mesi), 'mese', 'mesi')})")
     logger.info(f"Anno scolastico {anno_scolastico} preparato: {len(mesi)} mesi di calendario")
 
     return jsonify({
@@ -3633,10 +3641,10 @@ def api_anno_scolastico_prepara_utenti():
                      dettagli=f'Archiviato con il nuovo anno {anno_scolastico}')
     db.log_audit('preparazione_anno_utenti', 'sistema',
                  dettagli=f'Utenti preparati per {anno_scolastico}: '
-                          f"{esito['variazioni_chiuse']} variazioni chiuse, "
-                          f"{len(esito['monte_ore_modificati'])} monte ore aggiornati "
+                          f"{_quanti(esito['variazioni_chiuse'], 'variazione chiusa', 'variazioni chiuse')}, "
+                          f"{_quanti(len(esito['monte_ore_modificati']), 'monte ore aggiornato', 'monte ore aggiornati')} "
                           f"({esito['variazioni_conservate']} con il valore vecchio conservato "
-                          f"per i mesi passati), {len(esito['archiviati'])} archiviati")
+                          f"per i mesi passati), {_quanti(len(esito['archiviati']), 'archiviato', 'archiviati')}")
     logger.info(f"Passo utenti nuovo anno {anno_scolastico}: {esito}")
 
     return jsonify({
@@ -3767,8 +3775,9 @@ def _descrivi_azione_undo(action):
         return f"Eliminazione di {u.get('nome', '')} {u.get('cognome', '')}".strip() + \
             ": l'utente torna con le sue ore, note e variazioni"
     if tipo == 'bulk_update_utenti':
-        return (f"Modifica di {_quanti(len(dati.get('items', [])), 'utente', 'utenti')} insieme "
-                "(monte ore e lista d'attesa)")
+        n = len(dati.get('items', []))
+        return ("Modifica di 1 utente (monte ore e lista d'attesa)" if n == 1
+                else f"Modifica di {n} utenti insieme (monte ore e lista d'attesa)")
     if tipo == 'update_utente':
         old = dati.get('dati_precedenti', {})
         attuale = db.get_utente_by_id(dati.get('id')) or {}

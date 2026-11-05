@@ -630,7 +630,7 @@ function apriModifica(id) {
     apiCall('/api/utenti/' + u.id + '/variazioni-monte-ore').then(function(data) {
         var n = (data.variazioni || []).length;
         if (n > 0) {
-            helpEl.textContent = n + ' variazione/i programmata/e';
+            helpEl.textContent = n === 1 ? '1 variazione programmata' : n + ' variazioni programmate';
             helpEl.style.display = 'block';
         }
     });
@@ -914,7 +914,7 @@ function importUtentiCSV() {
         .then(r => r.json())
         .then(data => {
             if (data.error) throw new Error(data.error);
-            var msg = 'Importati: ' + data.aggiunti + ' nuovi, ' + data.aggiornati + ' aggiornati';
+            var msg = 'Importati: ' + quanti(data.aggiunti, 'nuovo', 'nuovi') + ', ' + quanti(data.aggiornati, 'aggiornato', 'aggiornati');
             if (data.errori && data.errori.length > 0) {
                 msg += '. Errori: ' + data.errori.length;
             }
@@ -1116,7 +1116,7 @@ function loadVariazioniMonteOre() {
         // Mostra hint nel form di modifica utente se ci sono variazioni
         var helpEl = document.getElementById('edit-monte-ore-help');
         if (variazioni.length > 0) {
-            helpEl.textContent = variazioni.length + ' variazione/i programmata/e';
+            helpEl.textContent = variazioni.length === 1 ? '1 variazione programmata' : variazioni.length + ' variazioni programmate';
             helpEl.style.display = 'block';
         } else {
             helpEl.style.display = 'none';

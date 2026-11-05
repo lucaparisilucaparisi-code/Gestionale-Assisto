@@ -407,12 +407,20 @@ async function loadStatistiche() {
 
     try {
         const qs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}` : '';
-        const stats = await apiCall(`/api/stats/advanced${qs}`);
+        // Monte ore di oggi con la stessa regola della Dashboard (monteOreSettimanaleOggi,
+        // app.js: quello del mese, variazioni comprese). /api/stats/advanced da' la somma
+        // delle basi: con una variazione in corso le due pagine davano 57 e 59 h
+        const [stats, monte] = await Promise.all([
+            apiCall(`/api/stats/advanced${qs}`),
+            monteOreSettimanaleOggi(filters.commessa).catch(() => null),
+        ]);
 
         // KPI (numeri di oggi)
         animateCounter(document.getElementById('kpi-utenti'), stats.num_utenti || 0);
         animateCounter(document.getElementById('kpi-scuole'), stats.num_scuole || 0);
-        animateCounter(document.getElementById('kpi-monte-ore'), Math.round(stats.monte_ore_totale || 0));
+        animateCounter(document.getElementById('kpi-monte-ore'), Math.round(monte ? monte.totale : (stats.monte_ore_totale || 0)));
+        const cardMonte = document.getElementById('kpi-monte-ore')?.closest('.kpi-card');
+        if (cardMonte && monte) cardMonte.title = monte.titolo;
         animateCounter(document.getElementById('kpi-commesse'), stats.num_commesse || 0);
 
         // Utenti per commessa: col colore scelto in Impostazioni > Commesse (uno diverso
@@ -560,7 +568,7 @@ async function loadConfrontoAnnualeDettaglio() {
                     <thead>
                         <tr>
                             <th>Anno Scolastico</th>
-                            <th class="text-right" title="Solo gli utenti con le ore del mese registrate">Utenti con ore</th>
+                            <th class="text-right" title="Utenti con ore o pasti del mese salvati in Rendicontazione, anche a zero ore">Utenti con dati</th>
                             <th class="text-right">Ore Erogate</th>
                             <th class="text-right">Imponibile</th>
                             <th class="text-right" title="Ore erogate rispetto all'anno prima, nella riga dell'anno più recente">Variazione</th>
@@ -588,9 +596,10 @@ async function loadConfrontoAnnualeDettaglio() {
         });
 
         html += '</tbody></table></div>';
-        // Report > Confronto annuale conta invece tutti gli utenti in servizio nel mese
-        html += '<p class="confronto-nota mt-3 mb-0" style="text-align: left;">Utenti con ore: solo quelli con le ore del mese registrate '
-            + '(Report › Confronto annuale conta tutti gli utenti in servizio, anche senza ore). '
+        // Il numero conta le righe del mese (anche a 0 ore, es. solo pasti): non e' il
+        // "con ore" del Confronto mese ne' gli utenti in servizio del Report
+        html += '<p class="confronto-nota mt-3 mb-0" style="text-align: left;">Utenti con dati: quelli con ore o pasti del mese salvati, anche a zero ore '
+            + '(il Confronto mese conta solo quelli con ore, Report › Confronto annuale tutti gli utenti in servizio). '
             + 'La variazione di ogni anno è sulle ore erogate, rispetto all\'anno prima.</p>';
         container.innerHTML = html;
 
@@ -674,7 +683,8 @@ async function loadConfrontoMese() {
             <div class="confronto-colonna">
                 <div class="confronto-etichetta">${escapeHtml(etichetta)}</div>
                 <div class="confronto-ore">${formatNumber(m.ore)} h</div>
-                <div class="confronto-dettaglio">${m.utenti_attivi} ${m.utenti_attivi === 1 ? 'utente' : 'utenti'} con ore${m.ore ? ` · ${formatNumero(m.giorni_lavorativi, 0)} giorni di scuola` : ''}</div>
+                <div class="confronto-dettaglio">${quanti(m.utenti_attivi, 'utente', 'utenti')} con ore</div>
+                ${m.ore ? `<div class="confronto-dettaglio">${quanti(Math.round(m.giorni_lavorativi), 'giorno', 'giorni')} di scuola</div>` : ''}
                 ${m.ore && m.ore_giorno !== null && m.ore_giorno !== undefined ? `<div class="confronto-dettaglio">${formatNumber(m.ore_giorno)} h al giorno</div>` : ''}
             </div>`;
 

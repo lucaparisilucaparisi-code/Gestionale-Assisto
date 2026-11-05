@@ -600,6 +600,51 @@ function chiudiAnteprima() {
 }
 
 // === Confronto Annuale ===
+/** Il mese scelto negli ultimi 5 anni scolastici (dal piu' recente), dalla vista mensile. */
+async function datiConfrontoAnnuale(anni, mese, commessa) {
+    const datiAnni = [];
+    for (const annoScolastico of anni.slice(0, 5)) {
+        const [annoInizio, annoFine] = annoScolastico.split('-').map(Number);
+        const anno = parseInt(mese) >= 9 ? annoInizio : annoFine;
+        try {
+            let url = `/api/rendicontazione/${anno}/${mese}`;
+            if (commessa) url += `?commessa=${encodeURIComponent(commessa)}`;
+            const data = await apiCall(url);
+            const oreTotal = data.totale_generale.ore_lavorate_60 || 0;
+            const numUtenti = data.totale_generale.num_utenti || 0;
+            // utenti con la riga del mese (ore o pasti, anche a zero): senza riga le ore sono null
+            const conDati = data.dati.filter(d => d.ore_lavorate_60 !== null && d.ore_lavorate_60 !== undefined).length;
+            datiAnni.push({ annoScolastico, oreTotal, numUtenti, conDati, anno });
+        } catch (e) {
+            datiAnni.push({ annoScolastico, oreTotal: 0, numUtenti: 0, conDati: 0, anno });
+        }
+    }
+    return datiAnni;
+}
+
+/**
+ * Variazione di ogni anno del Confronto annuale, con la regola di Statistiche ›
+ * Confronto annuale (/api/stats/confronto-annuale-dettaglio). Gli anni vanno dal piu'
+ * recente: la variazione sta nella riga dell'anno piu' recente ed e' sulle ore erogate
+ * rispetto all'anno prima (la riga sotto). Prima stava nella riga dell'anno prima,
+ * calcolata al contrario: -1,3% qui e +1,3% in Statistiche per gli stessi due anni.
+ * Nessuna variazione (diff null) se l'anno prima non ha ore, con la nota se nel mese
+ * nessun utente ha dati o se il mese non e' ancora concluso.
+ */
+function variazioniConfrontoAnnuale(datiAnni, mese, oggi = new Date()) {
+    const meseOggi = oggi.getFullYear() * 12 + oggi.getMonth() + 1;
+    return datiAnni.map((d, i) => {
+        const prima = datiAnni[i + 1];
+        let nota = null;
+        if (!(d.conDati > 0)) nota = 'dati non ancora inseriti';
+        else if (d.anno * 12 + Number(mese) >= meseOggi) nota = 'mese non ancora concluso';
+        const diff = nota === null && prima && prima.oreTotal > 0
+            ? (d.oreTotal - prima.oreTotal) / prima.oreTotal * 100
+            : null;
+        return { diff, nota };
+    });
+}
+
 async function generaConfrontoAnnuale() {
     const mese = document.getElementById('confronto-mese').value;
     const commessa = document.getElementById('confronto-commessa').value;
@@ -618,44 +663,16 @@ async function generaConfrontoAnnuale() {
             + '<th class="text-right" title="Tutti gli utenti in servizio nel mese, anche senza ore">Utenti in servizio</th>'
             + '<th class="text-right" title="Ore erogate rispetto all\'anno prima, nella riga dell\'anno più recente">Variazione</th></tr></thead><tbody>';
 
-        let datiAnni = [];
-
-        for (const annoScolastico of anni.slice(0, 5)) {
-            const [annoInizio, annoFine] = annoScolastico.split('-').map(Number);
-            const anno = parseInt(mese) >= 9 ? annoInizio : annoFine;
-
-            try {
-                let url = `/api/rendicontazione/${anno}/${mese}`;
-                if (commessa) url += `?commessa=${encodeURIComponent(commessa)}`;
-                const data = await apiCall(url);
-
-                const oreTotal = data.totale_generale.ore_lavorate_60 || 0;
-                const numUtenti = data.totale_generale.num_utenti || 0;
-
-                datiAnni.push({ annoScolastico, oreTotal, numUtenti, anno });
-            } catch (e) {
-                datiAnni.push({ annoScolastico, oreTotal: 0, numUtenti: 0, anno });
-            }
-        }
-
-        // Gli anni vanno dal piu' recente: come in Statistiche > Confronto annuale la
-        // variazione sta nella riga dell'anno piu' recente ed e' rispetto all'anno
-        // prima (la riga sotto). Prima stava nella riga dell'anno prima, calcolata
-        // al contrario: -1,3% qui e +1,3% in Statistiche per gli stessi due anni.
-        // Niente variazione se il mese non ha ancora ore o non e' ancora finito.
-        const oggi = new Date();
-        const meseOggi = oggi.getFullYear() * 12 + oggi.getMonth() + 1;
+        const datiAnni = await datiConfrontoAnnuale(anni, mese, commessa);
+        const variazioni = variazioniConfrontoAnnuale(datiAnni, mese);
         datiAnni.forEach((d, i) => {
+            const { diff, nota } = variazioni[i];
             let variazione = '-';
-            const prima = datiAnni[i + 1];
-            if (!(d.oreTotal > 0)) {
-                variazione = '-<br><span class="text-muted text-xs">dati non ancora inseriti</span>';
-            } else if (d.anno * 12 + parseInt(mese) >= meseOggi) {
-                variazione = '-<br><span class="text-muted text-xs">mese non ancora concluso</span>';
-            } else if (prima && prima.oreTotal > 0) {
-                const diff = (d.oreTotal - prima.oreTotal) / prima.oreTotal * 100;
+            if (nota) {
+                variazione = `-<br><span class="text-muted text-xs">${nota}</span>`;
+            } else if (diff !== null) {
                 const color = diff >= 0 ? 'var(--success)' : 'var(--danger)';
-                variazione = `<span style="color: ${color}">${diff >= 0 ? '+' : ''}${formatNumber(diff, 1)}%</span>`;
+                variazione = `<span style="color: ${color}">${diff >= 0 ? '+' : ''}${formatNumero(diff, 1)}%</span>`;
             }
             html += `<tr>
                 <td><strong>${d.annoScolastico}</strong></td>
@@ -667,7 +684,7 @@ async function generaConfrontoAnnuale() {
 
         html += '</tbody></table></div>';
         html += '<p class="text-muted text-xs mt-2 mb-0">Utenti in servizio: tutti quelli del mese, anche senza ore '
-            + '(Statistiche › Confronto annuale conta solo quelli con ore). '
+            + '(Statistiche › Confronto annuale conta solo gli utenti con dati, cioè con ore o pasti del mese salvati). '
             + 'La variazione di ogni anno è sulle ore erogate, rispetto all\'anno prima.</p>';
         previewContent.innerHTML = html;
         previewCard.scrollIntoView({ behavior: 'smooth' });

@@ -7,8 +7,6 @@ let _ultimoTrend = null;   // dati del trend, per ridisegnarlo al cambio di tema
 // risposte di un caricamento vecchio non devono sovrascrivere quelle nuove.
 let _caricamento = 0;
 const _superato = (n) => n !== _caricamento;
-// '1 utente archiviato', '2 utenti archiviati': il numero con la parola giusta
-const _quanti = (n, uno, tanti) => `${n} ${n === 1 ? uno : tanti}`;
 
 document.addEventListener('DOMContentLoaded', async () => {
     await initDashboardFilters();
@@ -94,17 +92,14 @@ async function loadDashboardData() {
 async function loadNumeri(filters, n = _caricamento) {
     try {
         const qs = filters.commessa ? `?commessa=${encodeURIComponent(filters.commessa)}` : '';
-        const urlUtenti = filters.commessa ? `/api/utenti?commessa=${encodeURIComponent(filters.commessa)}` : '/api/utenti';
-        // Monte ore di QUESTO mese (variazioni comprese), dalla vista mensile: la
-        // somma usava la base dell'anagrafica anche per chi ha una variazione in corso
-        const oggi = new Date();
-        const annoOggi = oggi.getFullYear(), meseOggi = oggi.getMonth() + 1;
-        const [stats, commesse, base, utenti, meseOggiDati] = await Promise.all([
+        // Monte ore di QUESTO mese (variazioni comprese), con la stessa regola delle
+        // Statistiche (monteOreSettimanaleOggi, app.js): la somma usava la base
+        // dell'anagrafica anche per chi ha una variazione in corso
+        const [stats, commesse, base, monte] = await Promise.all([
             apiCall(`/api/stats/filtered${qs}`),
             apiCall('/api/commesse'),
             apiCall('/api/stats'),
-            apiCall(urlUtenti),
-            apiCall(`/api/rendicontazione/${annoOggi}/${meseOggi}${qs}`).catch(() => null),
+            monteOreSettimanaleOggi(filters.commessa),
         ]);
         if (_superato(n)) return;
         animateCounter(document.getElementById('stat-utenti'), stats.num_utenti || 0, 800);
@@ -136,17 +131,9 @@ async function loadNumeri(filters, n = _caricamento) {
             dettaglio.innerHTML = voci.length > 1 ? voci.join('') : '';
         }
 
-        // Per ogni utente attivo il monte ore del mese calcolato dal server; chi non e'
-        // nella vista del mese (es. comincia piu' avanti) resta con la base
-        const delMese = new Map(((meseOggiDati && meseOggiDati.dati) || [])
-            .map(d => [d.utente_id, d.monte_ore_effettivo]));
-        const monteOreTotale = utenti.reduce((sum, u) =>
-            sum + ((delMese.has(u.id) ? delMese.get(u.id) : u.monte_ore_settimanale) || 0), 0);
-        animateCounter(document.getElementById('stat-monte-ore'), Math.round(monteOreTotale), 1000);
+        animateCounter(document.getElementById('stat-monte-ore'), Math.round(monte.totale), 1000);
         const monteLink = document.getElementById('stat-monte-ore')?.closest('.dash-numero');
-        if (monteLink && meseOggiDati) {
-            monteLink.title = `Somma del monte ore settimanale degli utenti attivi a ${MESI[meseOggi]} ${annoOggi}, variazioni comprese`;
-        }
+        if (monteLink) monteLink.title = monte.titolo;
     } catch (error) {
         console.error('Errore caricamento numeri dashboard:', error);
     }
@@ -211,7 +198,7 @@ async function loadStatoMese(n = _caricamento) {
         barEl.style.width = `${percent}%`;
         barEl.style.background = livello ? `var(--${livello})` : 'var(--primary)';
         testoEl.textContent = totale > 0
-            ? `${completati} di ${_quanti(totale, 'utente rendicontato', 'utenti rendicontati')} — ${daCompletare.length} senza ore`
+            ? `${completati} di ${quanti(totale, 'utente rendicontato', 'utenti rendicontati')} — ${daCompletare.length} senza ore`
             : 'Nessun utente attivo nel periodo selezionato';
 
         if (daCompletare.length === 0) {
@@ -280,8 +267,14 @@ const ICONE_LIVELLO = {
 };
 
 /** Voce dell'elenco "Da fare" nello stesso formato per avvisi e controlli. */
-function _vocePerDaFare(livello, titolo, messaggio, nomi, totaleNomi, azione, etichettaAzione) {
-    return { livello: LIVELLI[livello] !== undefined ? livello : 'info', titolo, messaggio, nomi: nomi || [], totaleNomi: totaleNomi || 0, azione, etichettaAzione };
+function _vocePerDaFare(livello, titolo, messaggio, nomi, totaleNomi, azione, etichettaAzione, femminile = false) {
+    return { livello: LIVELLI[livello] !== undefined ? livello : 'info', titolo, messaggio, nomi: nomi || [], totaleNomi: totaleNomi || 0, azione, etichettaAzione, femminile };
+}
+
+/** "e un altro", "e altri 3" (per le commesse "e un'altra", "e altre 3") dopo i primi nomi. */
+function _eAltri(n, femminile) {
+    if (n === 1) return femminile ? "e un'altra" : 'e un altro';
+    return `e ${femminile ? 'altre' : 'altri'} ${n}`;
 }
 
 async function loadDaFare(n = _caricamento) {
@@ -310,7 +303,8 @@ async function loadDaFare(n = _caricamento) {
         (controlli.value.anomalie || []).filter(a => !DA_FARE_ESCLUSI.has(a.categoria)).forEach(a => {
             const nomi = (a.dettagli || []).map(d => d.nome || d.commessa || '').filter(Boolean);
             const azione = a.categoria === 'commesse_vuote' ? '/commesse' : urlMese;
-            voci.push(_vocePerDaFare(a.tipo, a.titolo, a.messaggio, nomi, a.conteggio, azione, 'Verifica'));
+            voci.push(_vocePerDaFare(a.tipo, a.titolo, a.messaggio, nomi, a.conteggio, azione, 'Verifica',
+                a.categoria === 'commesse_vuote'));
         });
     }
     voci.sort((x, y) => LIVELLI[x.livello] - LIVELLI[y.livello]);
@@ -339,7 +333,7 @@ async function loadDaFare(n = _caricamento) {
         const altri = Math.max(v.totaleNomi, v.nomi.length) - nomiVisti.length;
         const nomi = nomiVisti.length ? `
             <div class="da-fare-nomi">${nomiVisti.map(n => escapeHtml(n)).join(', ')}${
-                altri > 0 ? ` … e altri ${altri}${v.azione ? ` · <a href="${escapeHtml(v.azione)}">vedi tutti</a>` : ''}` : ''}</div>` : '';
+                altri > 0 ? ` … ${_eAltri(altri, v.femminile)}${v.azione ? ` · <a href="${escapeHtml(v.azione)}">${v.femminile ? 'vedi tutte' : 'vedi tutti'}</a>` : ''}` : ''}</div>` : '';
         return `
         <div class="validation-item da-fare-item da-fare-${v.livello}">
             <svg class="da-fare-icona" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -613,7 +607,7 @@ function preparaNuovoAnno(annoScolastico) {
                 const utentiFatti = document.getElementById('passo-utenti')?.classList.contains('fatto');
                 document.getElementById('nuovo-anno-esito').innerHTML = `
                     <div class="alert alert-success">
-                        <div><strong>Calendario ${escapeHtml(data.anno_scolastico)} creato</strong> per ${_quanti(data.mesi.length, 'mese', 'mesi')}.
+                        <div><strong>Calendario ${escapeHtml(data.anno_scolastico)} creato</strong> per ${quanti(data.mesi.length, 'mese', 'mesi')}.
                         ${utentiFatti ? 'Il nuovo anno è pronto.' : 'Ora puoi passare al punto 2 (utenti e monte ore).'}</div>
                     </div>
                     <div class="table-responsive mt-2" style="max-width:420px;">
@@ -678,7 +672,7 @@ function renderWizardUtenti() {
             <td><strong>${escapeHtml(u.nome)} ${escapeHtml(u.cognome || '')}</strong>
                 <div class="text-muted" style="font-size:0.8rem;">${escapeHtml(u.scuola || '')}</div></td>
             <td class="text-center">${formatNumero(u.monte_ore_base)}</td>
-            <td class="text-center ${diverso ? 'wizard-diff' : ''}" title="${u.variazioni_aperte} variazione/i ancora aperta/e">${formatNumero(u.effettivo_giugno)}${diverso ? ' ⚠' : ''}</td>
+            <td class="text-center ${diverso ? 'wizard-diff' : ''}" title="${u.variazioni_aperte === 1 ? '1 variazione ancora aperta' : `${u.variazioni_aperte} variazioni ancora aperte`}">${formatNumero(u.effettivo_giugno)}${diverso ? ' ⚠' : ''}</td>
             <td><input type="number" class="form-control wizard-nuovo-mo" data-id="${u.id}" value="${nuovo}" step="0.5" min="0" max="40" style="width:100px;" aria-label="Nuovo monte ore"></td>
             <td class="text-center wizard-cella-archivia"><label class="wizard-archivia-label">
                 <input type="checkbox" class="wizard-archivia" data-id="${u.id}" ${archivia ? 'checked' : ''} aria-label="Archivia ${escapeHtml(u.nome)} ${escapeHtml(u.cognome || '')}">
@@ -706,7 +700,7 @@ function aggiornaRiepilogoWizard() {
     const { monte_ore, archivia } = _modificheWizard();
     const chiudi = document.getElementById('wizard-chiudi-variazioni').checked;
     const nVar = chiudi ? Number(document.getElementById('wizard-variazioni-n').textContent || 0) : 0;
-    el.textContent = `${_quanti(nVar, 'variazione', 'variazioni')} da chiudere · ${Object.keys(monte_ore).length} monte ore da aggiornare · ${archivia.length} da archiviare`;
+    el.textContent = `${quanti(nVar, 'variazione', 'variazioni')} da chiudere · ${Object.keys(monte_ore).length} monte ore da aggiornare · ${archivia.length} da archiviare`;
 }
 
 function applicaWizardUtenti() {
@@ -714,9 +708,9 @@ function applicaWizardUtenti() {
     const chiudi = document.getElementById('wizard-chiudi-variazioni').checked;
     const nVar = chiudi ? Number(document.getElementById('wizard-variazioni-n').textContent || 0) : 0;
     const righe = [];
-    if (chiudi) righe.push(`${_quanti(nVar, 'variazione monte ore chiusa', 'variazioni monte ore chiuse')} al 31 agosto`);
-    righe.push(_quanti(Object.keys(monte_ore).length, 'monte ore di partenza aggiornato', 'monte ore di partenza aggiornati'));
-    righe.push(_quanti(archivia.length, 'utente archiviato', 'utenti archiviati'));
+    if (chiudi) righe.push(`${quanti(nVar, 'variazione monte ore chiusa', 'variazioni monte ore chiuse')} al 31 agosto`);
+    righe.push(quanti(Object.keys(monte_ore).length, 'monte ore di partenza aggiornato', 'monte ore di partenza aggiornati'));
+    righe.push(quanti(archivia.length, 'utente archiviato', 'utenti archiviati'));
     // Testo vero: niente cambia nei mesi gia' rendicontati (monte ore e archiviati)
     let spiegazione = '.';
     if (Object.keys(monte_ore).length) {
@@ -742,9 +736,9 @@ function applicaWizardUtenti() {
                 document.getElementById('nuovo-anno-esito').innerHTML = `
                     <div class="alert alert-success">
                         <div><strong>Utenti pronti per il ${escapeHtml(_annoWizard)}.</strong>
-                        ${_quanti(res.variazioni_chiuse, 'variazione chiusa', 'variazioni chiuse')}, ${_quanti(res.monte_ore_modificati, 'monte ore aggiornato', 'monte ore aggiornati')}
+                        ${quanti(res.variazioni_chiuse, 'variazione chiusa', 'variazioni chiuse')}, ${quanti(res.monte_ore_modificati, 'monte ore aggiornato', 'monte ore aggiornati')}
                         (per ${res.variazioni_conservate || 0} i mesi passati tengono il valore di prima),
-                        ${_quanti(res.archiviati, 'utente archiviato', 'utenti archiviati')}. I mesi già rendicontati non cambiano.</div>
+                        ${quanti(res.archiviati, 'utente archiviato', 'utenti archiviati')}. I mesi già rendicontati non cambiano.</div>
                     </div>`;
                 showToast('Utenti preparati per il nuovo anno', 'success');
                 loadBannerNuovoAnno();

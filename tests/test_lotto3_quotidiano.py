@@ -47,7 +47,7 @@ def test_modifica_ore_lascia_traccia_nell_audit(client, db_mod):
     azioni = [a for a in audit if a['azione'] == 'modifica_ore']
     assert any(a['entita_id'] == uid and 'ore_lavorate=12' in (a['dettagli'] or '') for a in azioni), \
         'la modifica delle ore non lasciava traccia'
-    assert any('1 utenti aggiornati' in (a['dettagli'] or '') for a in azioni)
+    assert any('1 utente aggiornato' in (a['dettagli'] or '') for a in azioni)   # al singolare con 1
 
 
 # ---------- 12. modifica massiva: una transazione, annullabile ----------

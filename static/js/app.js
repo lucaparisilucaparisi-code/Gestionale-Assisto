@@ -1370,6 +1370,47 @@ function animateCounter(element, targetValue, duration = 1000) {
     requestAnimationFrame(update);
 }
 
+/** Il numero con la parola giusta: quanti(1, 'utente', 'utenti') -> '1 utente', con 2 -> '2 utenti'. */
+function quanti(n, uno, tanti) {
+    return `${n} ${n === 1 ? uno : tanti}`;
+}
+
+// ==================== MONTE ORE SETTIMANALE DI OGGI ====================
+
+/**
+ * Somma del monte ore settimanale degli utenti, ognuno con quello del mese
+ * (monte_ore_effettivo della vista mensile, variazioni comprese); chi non e' nella
+ * vista del mese (es. comincia piu' avanti) resta con la base dell'anagrafica.
+ */
+function sommaMonteOreDelMese(utenti, righeMese) {
+    const delMese = new Map((righeMese || []).map(d => [d.utente_id, d.monte_ore_effettivo]));
+    return (utenti || []).reduce((somma, u) =>
+        somma + ((delMese.has(u.id) ? delMese.get(u.id) : u.monte_ore_settimanale) || 0), 0);
+}
+
+/**
+ * Monte ore settimanale di OGGI degli utenti attivi (della commessa, se scelta):
+ * una sola regola per la Dashboard ("monte ore a settimana") e le Statistiche
+ * ("Monte ore settimanale oggi"), che prima con una variazione in corso davano due
+ * numeri diversi. Se la vista del mese non risponde resta la base (delMese: false).
+ */
+async function monteOreSettimanaleOggi(commessa = '') {
+    const oggi = new Date();
+    const anno = oggi.getFullYear(), mese = oggi.getMonth() + 1;
+    const qs = commessa ? `?commessa=${encodeURIComponent(commessa)}` : '';
+    const [utenti, vista] = await Promise.all([
+        apiCall(`/api/utenti${qs}`),
+        apiCall(`/api/rendicontazione/${anno}/${mese}${qs}`).catch(() => null),
+    ]);
+    return {
+        totale: sommaMonteOreDelMese(utenti, vista && vista.dati),
+        delMese: Boolean(vista),
+        titolo: vista
+            ? `Somma del monte ore settimanale degli utenti attivi a ${MESI[mese]} ${anno}, variazioni comprese`
+            : 'Somma del monte ore settimanale degli utenti attivi',
+    };
+}
+
 // ==================== POPULATE COMMESSE SELECT ====================
 
 async function populateCommesseSelect(selectId, includeAll = true) {
@@ -1670,6 +1711,9 @@ window.populateMesiScolastici = populateMesiScolastici;
 window.populateCommesseSelect = populateCommesseSelect;
 window.initFileUpload = initFileUpload;
 window.animateCounter = animateCounter;
+window.quanti = quanti;
+window.sommaMonteOreDelMese = sommaMonteOreDelMese;
+window.monteOreSettimanaleOggi = monteOreSettimanaleOggi;
 window.ChartManager = ChartManager;
 window.coloriCommesseDistinti = coloriCommesseDistinti;
 window.CommandPalette = CommandPalette;
